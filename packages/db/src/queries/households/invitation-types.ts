@@ -108,6 +108,7 @@ export type HouseholdInvitationStore = {
         | "expiresAt"
         | "lastSentAt"
         | "resendCount"
+        | "invitedByUserId"
         | "acceptedByUserId"
         | "resolvedAt"
       >

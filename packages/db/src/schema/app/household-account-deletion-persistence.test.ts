@@ -71,6 +71,12 @@ describe("household account-deletion persistence", () => {
     expect(migration).toContain("'transition', 'account_deletion'");
   });
 
+  it("dissolves every sole-member workspace even if legacy data contains more than one", () => {
+    expect(migration).toContain("FOR sole_household IN");
+    expect(migration).toContain("END LOOP;");
+    expect(migration).not.toContain("INTO sole_household_id");
+  });
+
   it("performs the complete access-ending cleanup for sole-member dissolution", () => {
     expect(migration).toContain('UPDATE "household_invitations"');
     expect(migration).toContain("'canceled'::household_invitation_state");

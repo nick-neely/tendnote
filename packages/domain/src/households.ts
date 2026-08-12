@@ -86,7 +86,7 @@ export const createHouseholdMembershipSchema = householdMembershipSchema
     pendingRoleOfferedByUserId: true,
     pendingRoleOfferedAt: true,
   })
-  .extend({ invitedByUserId: z.string() });
+  .extend({ invitedByUserId: z.string().nullable() });
 export type CreateHouseholdMembershipInput = z.infer<typeof createHouseholdMembershipSchema>;
 
 export function assertHouseholdOwner(membership: Pick<HouseholdMembership, "role" | "status">) {

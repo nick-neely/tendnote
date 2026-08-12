@@ -518,8 +518,7 @@ export function createHouseholdInvitationLifecycle(
         if (
           !invitation ||
           invitation.secretDigest !== secretDigest ||
-          !isHouseholdInvitationLive(invitation, at) ||
-          !invitation.invitedByUserId
+          !isHouseholdInvitationLive(invitation, at)
         ) {
           unusableLink();
         }

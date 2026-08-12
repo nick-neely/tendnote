@@ -103,7 +103,7 @@ CREATE FUNCTION "tendnote_prepare_user_delete"() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  sole_household_id uuid;
+  sole_household record;
   transition_at timestamptz := now();
 BEGIN
   -- Serialize admission, role changes, and deletion against the same workspace
@@ -133,22 +133,21 @@ BEGIN
       USING ERRCODE = 'check_violation';
   END IF;
 
-  SELECT deleting_membership."household_id"
-  INTO sole_household_id
+  FOR sole_household IN
+  SELECT deleting_membership."household_id" AS id
   FROM "household_memberships" deleting_membership
   WHERE deleting_membership."user_id" = OLD."id"
     AND deleting_membership."status" = 'active'
     AND (SELECT count(*) FROM "household_memberships" members
          WHERE members."household_id" = deleting_membership."household_id"
            AND members."status" = 'active') = 1
-  LIMIT 1;
+  LOOP
 
   -- A sole member's account deletion is the unanimous one-owner dissolution.
   -- Perform the same access-ending cleanup as explicit dissolution inside this
   -- deletion transaction. The workspace and household-native records survive
   -- for recovery, but no invitation, share, reminder, provider cache, or active
   -- membership may describe a Household that has already ended.
-  IF sole_household_id IS NOT NULL THEN
     UPDATE "household_invitations"
     SET "state" = CASE
           WHEN "expires_at" > transition_at THEN 'canceled'::household_invitation_state
@@ -156,25 +155,25 @@ BEGIN
         END,
         "resolved_at" = transition_at,
         "updated_at" = transition_at
-    WHERE "household_id" = sole_household_id
+    WHERE "household_id" = sole_household.id
       AND "state" = 'pending';
 
     DELETE FROM "household_record_shares"
-    WHERE "household_id" = sole_household_id;
+    WHERE "household_id" = sole_household.id;
 
     DELETE FROM "household_dissolution_confirmations"
-    WHERE "household_id" = sole_household_id;
+    WHERE "household_id" = sole_household.id;
 
     DELETE FROM "reminder_schedules"
     WHERE "record_id" IN (
       SELECT "id" FROM "general_actions"
-      WHERE "household_id" = sole_household_id
+      WHERE "household_id" = sole_household.id
     );
 
     DELETE FROM "household_calendar_event_cache"
     WHERE "connection_id" IN (
       SELECT "id" FROM "household_calendar_connections"
-      WHERE "household_id" = sole_household_id
+      WHERE "household_id" = sole_household.id
         AND "status" = 'connected'
     );
 
@@ -183,7 +182,7 @@ BEGIN
         "disconnected_at" = transition_at,
         "disconnected_reason" = 'household_dissolved',
         "updated_at" = transition_at
-    WHERE "household_id" = sole_household_id
+    WHERE "household_id" = sole_household.id
       AND "status" = 'connected';
 
     UPDATE "household_memberships"
@@ -193,14 +192,14 @@ BEGIN
         "pending_role_offered_by_user_id" = NULL,
         "pending_role_offered_at" = NULL,
         "updated_at" = transition_at
-    WHERE "household_id" = sole_household_id
+    WHERE "household_id" = sole_household.id
       AND "status" = 'active';
 
     UPDATE "household_workspaces"
     SET "status" = 'dissolved',
         "dissolved_at" = transition_at,
         "updated_at" = transition_at
-    WHERE "id" = sole_household_id;
+    WHERE "id" = sole_household.id;
 
     INSERT INTO "audit_log" (
       "owner_user_id", "action", "entity_type", "entity_id", "metadata_json"
@@ -208,14 +207,14 @@ BEGIN
       OLD."id",
       'household.dissolve',
       'household',
-      sole_household_id::text,
+      sole_household.id::text,
       jsonb_build_object(
-        'householdId', sole_household_id,
+        'householdId', sole_household.id,
         'transition', 'account_deletion',
         'recovery', 'support-only'
       )
     );
-  END IF;
+  END LOOP;
 
   UPDATE "general_actions" record
   SET "owner_user_id" = "tendnote_account_deletion_replacement"(record."household_id", OLD."id")
