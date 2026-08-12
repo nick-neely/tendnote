@@ -553,6 +553,50 @@ describe("proposal gating", () => {
     });
   });
 
+  it("does not attach another member's owner-keyed source to the actor's proposal", async () => {
+    const { proposals, store, assetLifecycle, review } = setup();
+    const household = await seedOwnerMemberHousehold(store, OWNER, MEMBER);
+    const source = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Replace the filter every six months.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "active",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "household",
+      householdId: household.id,
+      importance: 3,
+      metadataJson: {},
+    });
+    const asset = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Kitchen refrigerator",
+      kind: "appliance",
+      ownership: "household_native",
+      householdId: household.id,
+    });
+    const memory = await review.createActiveAssetMemory({
+      ownerUserId: OWNER,
+      assetId: asset.id,
+      label: "Replacement interval",
+      value: { type: "interval", interval: 6, unit: "month" },
+      sourceRecordId: source.id,
+      ownership: "household_native",
+      scope: "household",
+    });
+
+    const { proposed } = await proposals.proposeAssetMemoryActions({
+      actorUserId: MEMBER,
+      assetId: asset.id,
+      now: NOW,
+    });
+
+    expect(proposed[0]?.action).toMatchObject({ ownerUserId: MEMBER, sourceRecordId: null });
+    expect(proposed[0]?.assetMemoryId).toBe(memory.id);
+  });
+
   it("narrows the selection to the memories the caller named", async () => {
     const { proposals, seedAsset, seedMemory } = setup();
     const asset = await seedAsset();

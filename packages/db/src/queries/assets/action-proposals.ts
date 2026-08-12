@@ -226,6 +226,10 @@ async function openProposedAction(
 ): Promise<GeneralAction> {
   const { asset, memory, plan } = input;
   const { scope, householdId } = await resolveProposalVisibility(store, memory, input.actorUserId);
+  // A member-owned Suggested Action may only retain owner-keyed grounding.
+  // Cross-creator household evidence remains explainable through the durable
+  // Asset-Memory link below, but must not be attached as an unresolvable source.
+  const sourceRecordId = memory.ownerUserId === input.actorUserId ? memory.sourceRecordId : null;
 
   const action = await store.createGeneralAction(
     buildCreateGeneralActionValues(
@@ -240,7 +244,7 @@ async function openProposedAction(
       },
       {
         status: "suggested",
-        sourceRecordId: memory.sourceRecordId,
+        sourceRecordId,
         areaId: null,
         scope,
         householdId,
@@ -255,7 +259,7 @@ async function openProposedAction(
     actorUserId: input.actorUserId,
     detailJson: {
       scope: action.scope,
-      grounded: memory.sourceRecordId !== null,
+      grounded: sourceRecordId !== null,
       filed: false,
       peopleLinked: 0,
       recurring: action.recurrence !== null,
