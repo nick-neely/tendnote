@@ -3,6 +3,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "../client";
 import { householdMemberships, user } from "../schema";
 import { privatizeGiftPlansForHouseholdAccessEnded } from "./gift-plans";
+import { createAccountDeletionHouseholdGuard } from "./households/account-deletion";
 import { createHouseholdAuthorizationProver } from "./households/authorization";
 import { createHouseholdContextActorReader } from "./households/context-actors";
 import { createDrizzleHouseholdInvitationStore } from "./households/drizzle-invitation-store";
@@ -21,6 +22,10 @@ import type {
 } from "./households/types";
 import { revokeUnreadableSavedItemReminders } from "./reminders";
 
+export {
+  type AccountDeletionHouseholdOverview,
+  createAccountDeletionHouseholdGuard,
+} from "./households/account-deletion";
 export {
   createHouseholdAuthorizationProver,
   type HouseholdRecordFacts,
@@ -273,6 +278,10 @@ export function confirmHouseholdDissolution(input: { ownerUserId: string; endsNo
 export function cancelHouseholdDissolution(input: { ownerUserId: string }) {
   return defaultHouseholdGovernance.cancelDissolution(input);
 }
+
+export const assertHouseholdAccountDeletionAllowed = createAccountDeletionHouseholdGuard(
+  getHouseholdOverviewForUser,
+);
 
 export function shareHouseholdRecordWithSelectedMembers(input: ShareHouseholdRecordInput) {
   return defaultHouseholdLifecycle.shareRecordWithSelectedMembers(input);
