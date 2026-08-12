@@ -1,10 +1,10 @@
 import type { AssetMemoryValue } from "@tendnote/domain";
 import { sql } from "drizzle-orm";
-import { customType, index, integer, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { check, customType, index, integer, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { assetReviewGroups } from "./asset-review-groups";
 import { assets } from "./assets";
-import { timestamps } from "./common";
+import { householdRecordOwnershipCheck, timestamps } from "./common";
 import { assetMemoryStatus, assetOwnership, privacyScope } from "./enums";
 import { householdWorkspaces } from "./households";
 import { sourceRecords } from "./source-records";
@@ -32,9 +32,7 @@ export const assetMemories = pgTable(
     assetId: uuid("asset_id")
       .notNull()
       .references(() => assets.id, { onDelete: "cascade" }),
-    ownerUserId: text("owner_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id").notNull(),
     status: assetMemoryStatus("status").notNull().default("suggested"),
     label: text("label").notNull(),
     valueJson: jsonb("value_json").$type<AssetMemoryValue | null>(),
@@ -81,5 +79,6 @@ export const assetMemories = pgTable(
     index("asset_memories_owner_status_idx").on(table.ownerUserId, table.status),
     index("asset_memories_review_group_idx").on(table.reviewGroupId),
     index("asset_memories_search_vector_idx").using("gin", table.searchVector),
+    check("asset_memories_ownership_check", householdRecordOwnershipCheck(table)),
   ],
 );

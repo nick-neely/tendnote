@@ -36,12 +36,8 @@ export const contextFacts = pgTable(
     sensitivity: sensitivity("sensitivity").notNull().default("normal"),
     provenanceJson: jsonb("provenance_json").$type<ContextFactProvenance>().notNull(),
     suggestionEvidence: text("suggestion_evidence"),
-    creatorUserId: text("creator_user_id")
-      .notNull()
-      .references(() => user.id),
-    lastActorUserId: text("last_actor_user_id")
-      .notNull()
-      .references(() => user.id),
+    creatorUserId: text("creator_user_id").references(() => user.id, { onDelete: "set null" }),
+    lastActorUserId: text("last_actor_user_id").references(() => user.id, { onDelete: "set null" }),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     ...timestamps,

@@ -24,9 +24,7 @@ export const householdInvitations = pgTable(
     householdId: uuid("household_id")
       .notNull()
       .references(() => householdWorkspaces.id, { onDelete: "cascade" }),
-    invitedByUserId: text("invited_by_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    invitedByUserId: text("invited_by_user_id").references(() => user.id, { onDelete: "set null" }),
     role: householdRole("role").notNull().default("member"),
     /** The address exactly as the Owner typed it, shown back only to them. */
     email: text("email").notNull(),

@@ -20,7 +20,7 @@ export type HouseholdStatus = z.infer<typeof householdStatusSchema>;
 export const householdWorkspaceSchema = z.object({
   id: z.string(),
   /** Who created it. History, not authority: co-owners govern jointly. */
-  ownerUserId: z.string(),
+  ownerUserId: z.string().nullable(),
   name: z.string().min(1),
   defaultScope: privacyScopeSchema.default("private"),
   status: householdStatusSchema.default("active"),
@@ -34,7 +34,7 @@ export const householdMembershipSchema = z.object({
   id: z.string(),
   householdId: z.string(),
   userId: z.string(),
-  invitedByUserId: z.string(),
+  invitedByUserId: z.string().nullable(),
   role: householdRoleSchema,
   status: householdMemberStatusSchema,
   invitedAt: z.date(),
@@ -58,13 +58,16 @@ export const householdMembershipSchema = z.object({
 export type HouseholdMembership = z.infer<typeof householdMembershipSchema>;
 
 /** A household is only ever created active; ending one is a governance transition. */
-export const createHouseholdWorkspaceSchema = householdWorkspaceSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  status: true,
-  dissolvedAt: true,
-});
+export const createHouseholdWorkspaceSchema = householdWorkspaceSchema
+  .omit({
+    id: true,
+    createdAt: true,
+    updatedAt: true,
+    status: true,
+    dissolvedAt: true,
+    ownerUserId: true,
+  })
+  .extend({ ownerUserId: z.string() });
 export type CreateHouseholdWorkspaceInput = z.infer<typeof createHouseholdWorkspaceSchema>;
 
 /**
@@ -73,14 +76,17 @@ export type CreateHouseholdWorkspaceInput = z.infer<typeof createHouseholdWorksp
  * are omitted here rather than defaulted: there is no shape of create input that
  * can smuggle one in.
  */
-export const createHouseholdMembershipSchema = householdMembershipSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  pendingRole: true,
-  pendingRoleOfferedByUserId: true,
-  pendingRoleOfferedAt: true,
-});
+export const createHouseholdMembershipSchema = householdMembershipSchema
+  .omit({
+    id: true,
+    createdAt: true,
+    updatedAt: true,
+    invitedByUserId: true,
+    pendingRole: true,
+    pendingRoleOfferedByUserId: true,
+    pendingRoleOfferedAt: true,
+  })
+  .extend({ invitedByUserId: z.string() });
 export type CreateHouseholdMembershipInput = z.infer<typeof createHouseholdMembershipSchema>;
 
 export function assertHouseholdOwner(membership: Pick<HouseholdMembership, "role" | "status">) {

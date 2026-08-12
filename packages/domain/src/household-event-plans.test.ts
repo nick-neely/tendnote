@@ -7,6 +7,7 @@ import {
   type HouseholdEventPlan,
   HouseholdEventPlanConflictError,
   householdEventPlanCalendarRef,
+  householdEventPlanSchema,
   normalizeHouseholdEventPlanDraft,
 } from "./household-event-plans";
 import { HouseholdValidationError } from "./household-policy";
@@ -33,6 +34,12 @@ function plan(overrides: Partial<HouseholdEventPlan> = {}): HouseholdEventPlan {
 }
 
 describe("draft normalization", () => {
+  it("retains a plan after its creator and last actor accounts are gone", () => {
+    expect(
+      householdEventPlanSchema.parse(plan({ createdByUserId: null, lastActorUserId: null })),
+    ).toMatchObject({ createdByUserId: null, lastActorUserId: null });
+  });
+
   it("trims the title and keeps empty notes as null rather than an empty string", () => {
     expect(normalizeHouseholdEventPlanDraft({ title: "  Concert  ", details: "   " })).toEqual({
       title: "Concert",

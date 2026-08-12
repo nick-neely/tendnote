@@ -498,6 +498,13 @@
       "when": 1786383061556,
       "tag": "0070_household_checkin_opt_in",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1786503865532,
+      "tag": "0071_preserve_household_records_on_account_delete",
+      "breakpoints": true
     }
   ]
 }

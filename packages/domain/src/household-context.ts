@@ -86,10 +86,11 @@ export type HouseholdContextActorIdentity = {
  * to "who wrote this" for a person nobody here can name is that they are gone.
  */
 export function householdContextActorLabel(input: {
-  userId: string;
+  userId: string | null;
   viewerUserId: string;
   identities: readonly HouseholdContextActorIdentity[];
 }): string {
+  if (input.userId === null) return "a former member";
   if (input.userId === input.viewerUserId) return "you";
   const identity = input.identities.find((candidate) => candidate.userId === input.userId);
   if (!identity) return "someone who's left";
@@ -175,7 +176,7 @@ export type HouseholdContextCurrentState = {
   sensitivity: Sensitivity;
   lifecycle: ContextFactView["lifecycle"];
   updatedAt: Date;
-  lastActorUserId: string;
+  lastActorUserId: string | null;
 };
 
 /**

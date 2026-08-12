@@ -183,8 +183,8 @@ const contextFactFieldsSchema = z.object({
   sensitivity: sensitivitySchema,
   provenance: contextFactProvenanceSchema,
   suggestionEvidence: contextFactContentSchema.nullable(),
-  creatorUserId: nonEmptyIdentifier,
-  lastActorUserId: nonEmptyIdentifier,
+  creatorUserId: nonEmptyIdentifier.nullable(),
+  lastActorUserId: nonEmptyIdentifier.nullable(),
   reviewedAt: z.date().nullable(),
   archivedAt: z.date().nullable(),
 });
@@ -211,7 +211,11 @@ export const contextFactSchema = contextFactFieldsSchema
   .superRefine(addContextFactSubjectIssues);
 
 export const persistContextFactSchema = contextFactFieldsSchema
-  .extend({ id: nonEmptyIdentifier.optional() })
+  .extend({
+    id: nonEmptyIdentifier.optional(),
+    creatorUserId: nonEmptyIdentifier,
+    lastActorUserId: nonEmptyIdentifier,
+  })
   .superRefine(addContextFactSubjectIssues);
 
 export const createContextFactInputSchema = z
@@ -505,8 +509,8 @@ export const contextFactViewSchema = z
     visibility: contextFactVisibilitySchema,
     actorAttribution: z
       .object({
-        creatorUserId: nonEmptyIdentifier,
-        lastActorUserId: nonEmptyIdentifier,
+        creatorUserId: nonEmptyIdentifier.nullable(),
+        lastActorUserId: nonEmptyIdentifier.nullable(),
       })
       .strict()
       .nullable()

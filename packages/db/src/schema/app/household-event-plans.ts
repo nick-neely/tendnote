@@ -34,12 +34,8 @@ export const householdEventPlans = pgTable(
      * leaves. `on delete cascade` follows the account being deleted, not the
      * membership ending: a departed member's authorship survives their departure.
      */
-    createdByUserId: text("created_by_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    lastActorUserId: text("last_actor_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    lastActorUserId: text("last_actor_user_id").references(() => user.id, { onDelete: "set null" }),
     title: text("title").notNull(),
     details: text("details"),
     /** The household's own note of when. Never derived from the provider event. */
@@ -94,9 +90,7 @@ export const householdEventPlanLinks = pgTable(
       .references(() => householdEventPlans.id, { onDelete: "cascade" }),
     linkKind: householdEventPlanLinkKind("link_kind").notNull(),
     recordId: uuid("record_id").notNull(),
-    linkedByUserId: text("linked_by_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    linkedByUserId: text("linked_by_user_id").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

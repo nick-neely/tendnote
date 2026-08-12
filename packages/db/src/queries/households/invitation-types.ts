@@ -7,7 +7,7 @@ import type { HouseholdStore } from "./types";
 export type HouseholdInvitation = {
   id: string;
   householdId: string;
-  invitedByUserId: string;
+  invitedByUserId: string | null;
   role: HouseholdRole;
   email: string;
   normalizedEmail: string;

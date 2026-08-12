@@ -8,9 +8,16 @@ const directProvenance = {
   sourceRecordId: null,
 };
 
-export function contextFactFixture(overrides: Partial<ContextFact> = {}): ContextFact {
+type WritableContextFactFixture = ContextFact & {
+  creatorUserId: string;
+  lastActorUserId: string;
+};
+
+export function contextFactFixture(
+  overrides: Partial<ContextFact> = {},
+): WritableContextFactFixture {
   const now = new Date("2026-08-02T12:00:00.000Z");
-  return contextFactSchema.parse({
+  const fact = contextFactSchema.parse({
     id: "fact-fixture",
     subject: { kind: "self", userId: OWNER },
     category: "background",
@@ -27,4 +34,8 @@ export function contextFactFixture(overrides: Partial<ContextFact> = {}): Contex
     updatedAt: now,
     ...overrides,
   });
+  if (fact.creatorUserId === null || fact.lastActorUserId === null) {
+    throw new Error("A writable Context Fact fixture needs live actor ids.");
+  }
+  return fact as WritableContextFactFixture;
 }

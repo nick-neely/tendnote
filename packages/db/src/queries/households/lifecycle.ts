@@ -143,7 +143,7 @@ export function createHouseholdLifecycle(store: HouseholdStore) {
       });
 
       await store.createAuditLogEntry({
-        ownerUserId: updated.invitedByUserId,
+        ownerUserId: updated.invitedByUserId ?? updated.userId,
         action: "household.member_accept",
         entityType: "household_membership",
         entityId: updated.id,

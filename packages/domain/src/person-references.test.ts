@@ -59,6 +59,12 @@ describe("personReferenceSchema", () => {
     expect(personReferenceSchema.parse(reference).label).toBe("Dr. Alvarez");
   });
 
+  it("retains a record-local name after its creator account is gone", () => {
+    expect(
+      personReferenceSchema.parse({ ...reference, createdByUserId: null }).createdByUserId,
+    ).toBeNull();
+  });
+
   /**
    * The structural guarantee behind acceptance criterion three. A Person
    * Reference that could hold a person id would be one join away from another

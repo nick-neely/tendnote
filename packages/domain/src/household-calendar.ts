@@ -80,7 +80,7 @@ export const householdCalendarConnectionSchema = z.object({
    */
   connectorUserId: z.string(),
   /** The Household Owner who made the whole-household designation. */
-  designatedByUserId: z.string(),
+  designatedByUserId: z.string().nullable(),
   providerKey: z.string(),
   capabilityKey: z.string(),
   calendarId: z.string().min(1),
@@ -100,7 +100,7 @@ export type HouseholdCalendarConnectionSummary = {
   label: string;
   calendarId: string;
   connectorUserId: string;
-  designatedByUserId: string;
+  designatedByUserId: string | null;
   connectedAt: Date;
 };
 

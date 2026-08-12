@@ -135,6 +135,8 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
         async function persistShares(action: typeof generalActions.$inferSelect) {
           const householdId = action.householdId;
           if (action.scope !== "shared" || !householdId || sharedWithUserIds.length === 0) return;
+          if (!action.ownerUserId) throw new Error("A member-owned shared action needs an owner.");
+          const sharedByUserId = action.ownerUserId;
           await tx
             .insert(householdRecordShares)
             .values(
@@ -143,7 +145,7 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
                 recordKind: "general_action" as const,
                 recordId: action.id,
                 sharedWithUserId,
-                sharedByUserId: action.ownerUserId,
+                sharedByUserId,
               })),
             )
             .onConflictDoNothing();

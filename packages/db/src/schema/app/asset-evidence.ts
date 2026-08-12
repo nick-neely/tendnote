@@ -1,6 +1,7 @@
 import type { AssetEvidenceMoney } from "@tendnote/domain";
 import { sql } from "drizzle-orm";
 import {
+  check,
   customType,
   date,
   index,
@@ -15,7 +16,7 @@ import {
 import { user } from "../auth";
 import { assetReviewGroups } from "./asset-review-groups";
 import { assets } from "./assets";
-import { timestamps } from "./common";
+import { householdRecordOwnershipCheck, timestamps } from "./common";
 import { assetEvidenceKind, assetOwnership, privacyScope } from "./enums";
 import { householdWorkspaces } from "./households";
 import { sourceRecords } from "./source-records";
@@ -44,9 +45,7 @@ export const assetEvidence = pgTable(
     assetId: uuid("asset_id")
       .notNull()
       .references(() => assets.id, { onDelete: "cascade" }),
-    ownerUserId: text("owner_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id").notNull(),
     kind: assetEvidenceKind("kind").notNull(),
     label: text("label").notNull(),
     // Upload metadata, present together when (and only when) bytes are stored.
@@ -102,6 +101,7 @@ export const assetEvidence = pgTable(
     index("asset_evidence_owner_idx").on(table.ownerUserId),
     index("asset_evidence_review_group_idx").on(table.reviewGroupId),
     index("asset_evidence_search_vector_idx").using("gin", table.searchVector),
+    check("asset_evidence_ownership_check", householdRecordOwnershipCheck(table)),
   ],
 );
 
@@ -137,9 +137,7 @@ export const assetEvidenceFiles = pgTable(
     evidenceId: uuid("evidence_id")
       .notNull()
       .references(() => assetEvidence.id, { onDelete: "cascade" }),
-    ownerUserId: text("owner_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id").notNull(),
     bytes: bytea("bytes").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
