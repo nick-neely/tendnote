@@ -151,12 +151,13 @@ export type AssetOwnership = z.infer<typeof assetOwnershipSchema>;
 export const assetSchema = z.object({
   id: z.string(),
   /**
-   * The member the row is keyed by. On a `household_native` Asset this is the
-   * creating member and **nothing else**: not authority, and not an access path.
-   * It exists because the column is `NOT NULL`, because every owner-keyed write
-   * and audit row hangs off it, and because provenance is worth keeping — read
-   * it as an owner and a departed creator would keep editing the household's
-   * refrigerator after they moved out (ADR 0214).
+   * The member the row is keyed by. On a `household_native` Asset this is
+   * operational plumbing and **nothing else**: initially the creator, then a
+   * deterministic remaining member if one exists when that account is deleted;
+   * otherwise it stays opaque through dissolution recovery. It is not a member
+   * foreign key, authority, provenance, or an access path. It exists because the
+   * column is `NOT NULL` and owner-keyed writes and audit rows hang off it
+   * (ADR 0214).
    */
   ownerUserId: z.string(),
   name: z.string().trim().min(1),
