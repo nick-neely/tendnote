@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { assetEvidence, assetEvidenceFiles } from "./asset-evidence";
 import { assetMemories } from "./asset-memories";
 import { assetAuditEvents, assets } from "./assets";
+import { generalActionAssets } from "./general-action-assets";
 import { generalActionEvents, generalActions } from "./general-actions";
 
 const migration = readFileSync(
@@ -107,11 +108,22 @@ describe("household account-deletion persistence", () => {
       "household_event_plans_created_by_user_id_user_id_fk",
       "household_event_plan_links_linked_by_user_id_user_id_fk",
       "context_facts_creator_user_id_user_id_fk",
+      "general_action_assets_owner_user_id_user_id_fk",
       "person_references_created_by_user_id_user_id_fk",
     ]) {
       expect(migration).toMatch(
         new RegExp(`ADD CONSTRAINT "${constraint}"[^;]+ON DELETE set null`),
       );
     }
+
+    const generalActionAssetConfig = getTableConfig(generalActionAssets);
+    const creator = generalActionAssetConfig.columns.find(
+      (column) => column.name === "owner_user_id",
+    );
+    const creatorForeignKey = generalActionAssetConfig.foreignKeys.find(
+      (candidate) => candidate.reference().columns[0]?.name === "owner_user_id",
+    );
+    expect(creator?.notNull).toBe(false);
+    expect(creatorForeignKey?.onDelete).toBe("set null");
   });
 });

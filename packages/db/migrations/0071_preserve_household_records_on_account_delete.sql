@@ -14,6 +14,8 @@ ALTER TABLE "context_facts" DROP CONSTRAINT "context_facts_last_actor_user_id_us
 --> statement-breakpoint
 ALTER TABLE "general_action_events" DROP CONSTRAINT "general_action_events_owner_user_id_user_id_fk";
 --> statement-breakpoint
+ALTER TABLE "general_action_assets" DROP CONSTRAINT "general_action_assets_owner_user_id_user_id_fk";
+--> statement-breakpoint
 ALTER TABLE "general_actions" DROP CONSTRAINT "general_actions_owner_user_id_user_id_fk";
 --> statement-breakpoint
 ALTER TABLE "household_calendar_connections" DROP CONSTRAINT "household_calendar_connections_designated_by_user_id_user_id_fk";
@@ -34,6 +36,7 @@ ALTER TABLE "person_references" DROP CONSTRAINT "person_references_created_by_us
 --> statement-breakpoint
 ALTER TABLE "context_facts" ALTER COLUMN "creator_user_id" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "context_facts" ALTER COLUMN "last_actor_user_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "general_action_assets" ALTER COLUMN "owner_user_id" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "household_calendar_connections" ALTER COLUMN "designated_by_user_id" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "household_event_plan_links" ALTER COLUMN "linked_by_user_id" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "household_event_plans" ALTER COLUMN "created_by_user_id" DROP NOT NULL;--> statement-breakpoint
@@ -44,6 +47,7 @@ ALTER TABLE "household_workspaces" ALTER COLUMN "owner_user_id" DROP NOT NULL;--
 ALTER TABLE "person_references" ALTER COLUMN "created_by_user_id" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "context_facts" ADD CONSTRAINT "context_facts_creator_user_id_user_id_fk" FOREIGN KEY ("creator_user_id") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "context_facts" ADD CONSTRAINT "context_facts_last_actor_user_id_user_id_fk" FOREIGN KEY ("last_actor_user_id") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "general_action_assets" ADD CONSTRAINT "general_action_assets_owner_user_id_user_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "household_calendar_connections" ADD CONSTRAINT "household_calendar_connections_designated_by_user_id_user_id_fk" FOREIGN KEY ("designated_by_user_id") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "household_event_plan_links" ADD CONSTRAINT "household_event_plan_links_linked_by_user_id_user_id_fk" FOREIGN KEY ("linked_by_user_id") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "household_event_plans" ADD CONSTRAINT "household_event_plans_created_by_user_id_user_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
