@@ -224,6 +224,46 @@ describe("protected owners", () => {
     expect(screen.getByRole("button", { name: "Leave household" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Step down" })).toBeTruthy();
   });
+
+  /**
+   * A household of one has exactly one exit, and only that one is drawn.
+   *
+   * Stepping down and leaving are both held by the last-owner rule when nobody
+   * else is here, so both rows could only ever render the sentence saying so —
+   * two refusals stacked above the single control that does work. The one fact
+   * they were teaching is said by the row that can act on it instead. The rows
+   * themselves are untouched: the test above proves they still appear, blocked
+   * notes and all, the moment a second person is here.
+   */
+  it("draws a household of one only the exit it actually has", () => {
+    render(
+      <HouseholdSurface
+        initialOverview={overview({
+          isSoleMember: true,
+          seats: { limit: 8, occupied: 1, remaining: 7, isFull: false },
+          members: [
+            member({ userId: "ana", name: "Ana", email: "ana@example.com", role: "owner" }),
+          ],
+          ...governanceDefaults({ viewerRole: "owner", soleMember: true }),
+        })}
+      />,
+    );
+
+    expect(screen.queryByText("Stepping down as an owner")).toBeNull();
+    expect(screen.queryByText("Leaving this household")).toBeNull();
+    // And neither refusal survives as a stray line with no row around it.
+    expect(screen.queryByText(/only owner/i)).toBeNull();
+    expect(screen.queryByText(/nobody to hand the household to/i)).toBeNull();
+
+    // The section still stands, and the exit it does have carries what the
+    // departure row would otherwise have been the one to say.
+    expect(screen.getByRole("heading", { name: "Leaving and ending" })).toBeTruthy();
+    expect(screen.getByText("Ending this household")).toBeTruthy();
+    expect(screen.getByText(/you're the only person here/i).textContent).toMatch(
+      /ending it is how this household closes/i,
+    );
+    expect(screen.getByRole("button", { name: "End this household" })).toBeTruthy();
+  });
 });
 
 describe("removal and departure", () => {

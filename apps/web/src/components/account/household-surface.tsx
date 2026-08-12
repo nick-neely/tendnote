@@ -285,35 +285,51 @@ function HouseholdActivation({
       className="flex flex-col gap-4 rounded-xl border bg-surface px-4 py-5 sm:px-5"
     >
       <div className="flex flex-col gap-1">
-        {/* A focus landing, not a control: `tabIndex={-1}` keeps it out of the tab order. */}
+        {/*
+          A focus landing, not a control: `tabIndex={-1}` keeps it out of the tab
+          order. It carries the same weight as the household name and the ending
+          receipt, because all three are this surface's own title in one of its
+          three states — sizing one of them smaller made the same slot change
+          scale depending on which state you arrived in.
+        */}
         <h2
-          className="text-[length:var(--text-title)] leading-[var(--text-title-line)] font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
+          className="text-[length:var(--text-h2)] leading-[var(--text-h2-line)] font-semibold tracking-normal text-balance outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
           id="household-activation-heading"
           ref={headingRef}
           tabIndex={-1}
         >
           Start a household
         </h2>
+        {/*
+          What a first-time reader needs while their hands are on the field, and
+          no more: what pressing the button makes, and what it does not touch.
+          The two halves of the privacy boundary — nothing already written moves
+          in, nothing new is shared on its own — are the part that earns its
+          words here, because they are the question someone naming a shared
+          space actually has.
+        */}
         <p
           className="max-w-[65ch] text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground"
           id={hintId}
         >
-          Name it and it&rsquo;s ready. You&rsquo;ll be its owner. Nothing you&rsquo;ve already
-          written moves into it, and nothing is shared until you choose to share it.
+          Name it and it&rsquo;s ready — you&rsquo;ll be its owner. Nothing you&rsquo;ve written
+          moves into it, and nothing is shared unless you share it.
         </p>
         {/*
           This once said a household was a one-way door, because leaving and
-          dissolution were not built. They are now, so the sentence says what is
-          true: the exits exist, they are deliberate, and ending one is not
-          casually undone. Renaming still is not built, so the name is still the
-          part worth pausing over.
+          dissolution were not built. They are now, so the first sentence says
+          what is true: the exits exist and ending one is a decision the owners
+          make together. It stays to a clause each — the exits matter later, and
+          the governance surface tells them properly at the moment they are
+          used. The rename is the one fact that is decision-relevant *now*, so
+          it gets the sentence with the instruction in it.
         */}
         <p
           className="max-w-[65ch] text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground"
           id={durabilityId}
         >
-          You can leave a household later, and its owners can end it together — but nothing here
-          renames one, so pick a name you&rsquo;ll still want.
+          You can leave later, and its owners can end it together. Nothing renames a household, so
+          pick a name you&rsquo;ll still want.
         </p>
       </div>
 
@@ -329,7 +345,11 @@ function HouseholdActivation({
             maxLength={HOUSEHOLD_NAME_LIMIT}
             name="householdName"
             onChange={(event) => setName(event.target.value)}
-            placeholder="The Neely house"
+            // A street, not a surname. An example household name is read by
+            // everyone who ever opens this field, so it has to be a name nobody
+            // in particular owns — "Ash Lane" is the same stand-in the rest of
+            // the product's household examples use.
+            placeholder="Ash Lane"
             value={name}
           />
         </div>

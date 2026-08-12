@@ -58,7 +58,7 @@ describe("the transport the app is handed", () => {
 
     const written = info.mock.calls[0]?.[0] as string;
     expect(written).toContain("You're invited to The Neely house on Tendnote");
-    expect(written).toContain("Alex invited you to join The Neely house");
+    expect(written).toContain("Alex invited you to join their household on Tendnote");
     expect(written).toContain(MESSAGE.acceptUrl);
     expect(resendSend).not.toHaveBeenCalled();
   });

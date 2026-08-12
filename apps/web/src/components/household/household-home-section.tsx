@@ -8,7 +8,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 import { completeHouseholdHomeRecordAction } from "@/app/actions/household-home";
-import { CheckIcon, GiftIcon, type Icon, ListTodoIcon, RepeatIcon } from "@/components/icons";
+import {
+  HOUSEHOLD_SECTION_HEADING_CLASS,
+  HouseholdRecordRow,
+  HouseholdRecordRowReserve,
+} from "@/components/household/household-record-row";
+import { CheckIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Spinner } from "@/components/ui/spinner";
@@ -34,16 +39,6 @@ const EMPTY_COPY: Record<HouseholdHomeSectionKey, { title: string; description: 
     title: "Nothing shared is dated in the next couple of weeks.",
     description: "A shared Action or Routine shows up here as its date approaches.",
   },
-};
-
-/** The section heading treatment every sibling surface already uses. */
-const SECTION_HEADING_CLASS =
-  "font-semibold text-[length:var(--text-h2)] leading-[var(--text-h2-line)] tracking-normal";
-
-const FAMILY_ICON: Record<HouseholdHomeRecord["family"], Icon> = {
-  action: ListTodoIcon,
-  routine: RepeatIcon,
-  gift_plan: GiftIcon,
 };
 
 const GENERIC_FAILURE = "That didn't go through. Nothing changed.";
@@ -122,7 +117,7 @@ export function HouseholdHomeSection({
 
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
-      <h2 className={SECTION_HEADING_CLASS} id={headingId}>
+      <h2 className={HOUSEHOLD_SECTION_HEADING_CLASS} id={headingId}>
         {view.heading}
       </h2>
 
@@ -199,6 +194,14 @@ export function HouseholdHomeSection({
   );
 }
 
+/**
+ * The shared row anatomy, plus the one thing the home can do to a record.
+ *
+ * The control sits at the row's end from `sm` up rather than under five stacked
+ * lines: a household with five things waiting scrolled for most of a screen to
+ * read a list it was supposed to glance at. On a phone it drops beneath the text
+ * and keeps its 44px target, because there is no room to do both.
+ */
 function HouseholdHomeRow({
   onComplete,
   pending,
@@ -208,59 +211,32 @@ function HouseholdHomeRow({
   pending: boolean;
   record: HouseholdHomeRecord;
 }) {
-  const FamilyIcon = FAMILY_ICON[record.family];
   return (
-    <li
-      aria-busy={pending || undefined}
-      className="flex items-start gap-3 py-4"
-      data-household-row={record.identity}
-    >
-      <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
-        <FamilyIcon aria-hidden className="size-4" />
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p className="text-[length:var(--text-caption)] text-muted-foreground leading-[var(--text-caption-line)]">
-          {record.context}
-        </p>
-        <Link
-          className="w-fit font-medium text-[length:var(--text-title)] leading-[var(--text-title-line)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          href={record.record.href}
-        >
-          {record.title}
-        </Link>
-        <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-          {record.timing.explanation}
-        </p>
-        {/* Attribution and responsibility are two different facts and never one
-            line: who the record belongs to, and who said they have it. Text
-            rather than pills, because a badge reads as a status the row is
-            reporting and neither of these is one. */}
-        <p className="text-[length:var(--text-caption)] text-muted-foreground leading-[var(--text-caption-line)]">
-          {record.scopeLabel}
-          {record.responsibility ? ` · ${record.responsibility}` : null}
-        </p>
-        {record.progress ? (
-          <div className="mt-2">
-            <Button
-              aria-label={`${record.progress.label}: ${record.title}`}
-              className="min-h-11"
-              disabled={pending}
-              onClick={onComplete}
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              {pending ? (
-                <Spinner aria-hidden data-icon="inline-start" />
-              ) : (
-                <CheckIcon aria-hidden data-icon="inline-start" />
-              )}
-              {record.progress.label}
-            </Button>
-          </div>
-        ) : null}
-      </div>
-    </li>
+    <HouseholdRecordRow
+      action={
+        record.progress ? (
+          <Button
+            aria-label={`${record.progress.label}: ${record.title}`}
+            className="min-h-11 sm:min-h-8"
+            disabled={pending}
+            onClick={onComplete}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            {pending ? (
+              <Spinner aria-hidden data-icon="inline-start" />
+            ) : (
+              <CheckIcon aria-hidden data-icon="inline-start" />
+            )}
+            {record.progress.label}
+          </Button>
+        ) : null
+      }
+      busy={pending}
+      focusIdentity={record.identity}
+      record={record}
+    />
   );
 }
 
@@ -301,17 +277,10 @@ function restoreRowFocus(identity: string): void {
 export function HouseholdHomeSectionReserve({ heading }: { heading: string }) {
   return (
     <section aria-busy="true" aria-label={`Loading ${heading}`} className="flex flex-col gap-3">
-      <h2 className={SECTION_HEADING_CLASS}>{heading}</h2>
+      <h2 className={HOUSEHOLD_SECTION_HEADING_CLASS}>{heading}</h2>
       <div className="flex flex-col divide-y border-t border-b">
         {[0, 1, 2].map((row) => (
-          <div className="flex items-start gap-3 py-4" key={row}>
-            <div className="size-9 shrink-0 animate-pulse rounded-lg bg-muted/60" />
-            <div className="flex min-w-0 flex-1 flex-col gap-2">
-              <div className="h-3 w-16 animate-pulse rounded bg-muted/60" />
-              <div className="h-4 w-2/3 animate-pulse rounded bg-muted/60" />
-              <div className="h-3 w-1/3 animate-pulse rounded bg-muted/60" />
-            </div>
-          </div>
+          <HouseholdRecordRowReserve key={row} withAction />
         ))}
       </div>
     </section>

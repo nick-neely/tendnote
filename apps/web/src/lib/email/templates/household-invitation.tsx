@@ -2,7 +2,6 @@ import { HOUSEHOLD_SUPPORT_EMAIL } from "@tendnote/domain/household-governance";
 import {
   Body,
   Button,
-  Column,
   Container,
   Head,
   Heading,
@@ -10,7 +9,6 @@ import {
   Html,
   Link,
   Preview,
-  Row,
   render,
   Section,
   Text,
@@ -84,9 +82,12 @@ function HouseholdInvitationEmail({
   expiresAt,
 }: HouseholdInvitationEmailProps) {
   const deadline = INVITATION_DATE_FORMAT_UTC.format(expiresAt);
-  const opening = inviterName
-    ? `${inviterName} invited you to join`
-    : "You've been invited to join";
+  const invitationLine = inviterName
+    ? `${inviterName} invited you to join their household on Tendnote.`
+    : "You've been invited to join a household on Tendnote.";
+  const receiptReason = inviterName
+    ? `${inviterName} invited this email address to join ${householdName}.`
+    : `Someone invited this email address to join ${householdName}.`;
 
   return (
     <Html dir="ltr" lang="en">
@@ -122,72 +123,55 @@ function HouseholdInvitationEmail({
           single most common accessibility failure in production email.
         */}
         <Container className="tn-page" dir="ltr" lang="en" style={styles.container}>
-          {/*
-            The ledger header: who this is from on the left, what it is on the
-            right in quiet mono. Naming the kind of message before the reader
-            opens a word of it is Personal Ledger density applied to an inbox -
-            and it is the row every later Tendnote template inherits, which is
-            what keeps it a system rather than an eyebrow.
-          */}
           <Section style={styles.masthead}>
-            <Row>
-              <Column>
-                <Text className="tn-ink" style={styles.wordmark}>
-                  Tendnote
-                </Text>
-              </Column>
-              {/* Bottom-aligned so the 13px label sits on the wordmark's baseline. */}
-              <Column align="right" style={styles.mastheadLabelCell}>
-                <Text className="tn-muted" style={styles.mastheadLabel}>
-                  Household invitation
-                </Text>
-              </Column>
-            </Row>
+            <Text className="tn-ink" style={styles.wordmark}>
+              Tendnote
+            </Text>
           </Section>
-          <Hr className="tn-rule" style={styles.rule} />
-
-          <Heading as="h1" className="tn-ink" style={styles.heading}>
-            You&rsquo;re invited
-          </Heading>
-          <Text className="tn-ink" style={styles.body_}>
-            {opening} <strong>{householdName}</strong> on Tendnote.
-          </Text>
-          <Text className="tn-ink" style={styles.body_}>
-            A household is a small shared layer for the people you live with. Nothing you write in
-            Tendnote is shared until you choose to share it.
-          </Text>
-
-          <Section style={styles.actionRow}>
-            <Button className="tn-action" href={acceptUrl} style={styles.action}>
-              Join {householdName}
-            </Button>
+          <Section style={styles.invitation}>
+            <Text className="tn-muted" style={styles.invitationLine}>
+              {invitationLine}
+            </Text>
+            <Heading as="h1" className="tn-ink" style={styles.heading}>
+              {householdName}
+            </Heading>
+            <Text className="tn-ink" style={styles.body_}>
+              A shared place for plans and reminders with the people you live with. Your private
+              notes stay private.
+            </Text>
+            <Section style={styles.actionRow}>
+              <Button className="tn-action" href={acceptUrl} style={styles.action}>
+                Review invitation
+              </Button>
+            </Section>
+            <Text className="tn-muted" style={styles.deadline}>
+              Available until {deadline}
+            </Text>
           </Section>
 
-          <Text className="tn-muted" style={styles.small}>
-            If the button doesn&rsquo;t work, paste this link into your browser:
-          </Text>
-          <Text className="tn-muted" style={styles.url}>
-            {acceptUrl}
-          </Text>
-
-          <Hr className="tn-rule" style={styles.rule} />
-
-          <Text className="tn-muted" style={styles.small}>
-            This link works until {deadline}, and only for the address it was sent to.
-          </Text>
-          <Text className="tn-muted" style={styles.small}>
-            If you weren&rsquo;t expecting this, you can ignore it. Nothing happens unless you
-            accept.
-          </Text>
+          <Section className="tn-panel" style={styles.fallback}>
+            <Text className="tn-ink" style={styles.fallbackTitle}>
+              Button not working?
+            </Text>
+            <Text className="tn-muted" style={styles.small}>
+              <Link className="tn-link" href={acceptUrl} style={styles.fallbackLink}>
+                Open the invitation in your browser
+              </Link>
+              , or copy and paste this address:
+            </Text>
+            <Text className="tn-muted" style={styles.url}>
+              {acceptUrl}
+            </Text>
+          </Section>
 
           <Hr className="tn-rule" style={styles.rule} />
 
           <Text className="tn-muted" style={styles.caption}>
-            Tendnote is a private notebook for remembering the people in your life.
+            Why you received this: {receiptReason} If you weren&rsquo;t expecting it, you can ignore
+            this email. Nothing happens unless you accept.
           </Text>
           <Text className="tn-muted" style={styles.captionLast}>
-            You received this because someone invited this address to their household. Reply to this
-            email, or write to{" "}
+            Need help? Reply to this email or write to{" "}
             <Link
               className="tn-muted"
               href={`mailto:${HOUSEHOLD_SUPPORT_EMAIL}`}
@@ -208,10 +192,15 @@ const DARK_MODE_CSS = `@media (prefers-color-scheme: dark) {
   .tn-ink { color: ${emailColorsDark.foreground} !important; }
   .tn-muted { color: ${emailColorsDark.mutedForeground} !important; }
   .tn-rule { border-top-color: ${emailColorsDark.border} !important; }
+  .tn-panel { background-color: ${emailColorsDark.surface} !important; }
+  .tn-link { color: ${emailColorsDark.foreground} !important; }
   .tn-action {
     background-color: ${emailColorsDark.primary} !important;
     color: ${emailColorsDark.primaryForeground} !important;
   }
+}
+@media only screen and (max-width: 480px) {
+  .tn-action { display: block !important; text-align: center !important; }
 }`;
 
 const styles = {
@@ -226,9 +215,9 @@ const styles = {
     backgroundColor: emailColors.background,
     margin: "0 auto",
     maxWidth: emailLayout.width,
-    padding: `32px ${emailLayout.gutter} 40px`,
+    padding: `40px ${emailLayout.gutter} 36px`,
   },
-  masthead: { paddingBottom: "4px" },
+  masthead: { paddingBottom: "40px" },
   /** Live text, weight 600, tracking -0.01em - the lockup rule from DESIGN.md. */
   wordmark: {
     color: emailColors.foreground,
@@ -239,14 +228,13 @@ const styles = {
     lineHeight: "1",
     margin: "0",
   },
-  mastheadLabelCell: { verticalAlign: "bottom" as const },
-  /** What kind of message this is. Metadata, so mono - and quiet. */
-  mastheadLabel: {
+  invitation: { paddingBottom: "32px" },
+  invitationLine: {
     color: emailColors.mutedForeground,
-    fontFamily: emailFonts.mono,
-    fontSize: emailText.caption.fontSize,
-    lineHeight: "1",
-    margin: "0",
+    fontFamily: emailFonts.sans,
+    fontSize: emailText.body.fontSize,
+    lineHeight: emailText.body.lineHeight,
+    margin: "0 0 4px",
   },
   /** Every rule on the page. One hairline weight, one hairline color. */
   rule: {
@@ -261,7 +249,7 @@ const styles = {
     fontSize: emailText.h1.fontSize,
     fontWeight: 600,
     lineHeight: emailText.h1.lineHeight,
-    margin: "12px 0 16px",
+    margin: "0 0 16px",
   },
   // `body` is taken by the outer element's style; this is the prose step.
   body_: {
@@ -271,7 +259,7 @@ const styles = {
     lineHeight: emailText.body.lineHeight,
     margin: "0 0 16px",
   },
-  actionRow: { padding: "8px 0 24px" },
+  actionRow: { padding: "8px 0 10px" },
   /**
    * The one sage moment. Inline-block rather than full width: a banner-width
    * button is a marketing reflex, and this is a notebook asking a question. The
@@ -296,13 +284,37 @@ const styles = {
     lineHeight: emailText.small.lineHeight,
     margin: "0 0 8px",
   },
+  deadline: {
+    color: emailColors.mutedForeground,
+    fontFamily: emailFonts.sans,
+    fontSize: emailText.small.fontSize,
+    lineHeight: emailText.small.lineHeight,
+    margin: "0",
+  },
+  fallback: {
+    backgroundColor: emailColors.surface,
+    borderRadius: "10px",
+    padding: "16px",
+  },
+  fallbackTitle: {
+    color: emailColors.foreground,
+    fontFamily: emailFonts.sans,
+    fontSize: emailText.small.fontSize,
+    fontWeight: 600,
+    lineHeight: emailText.small.lineHeight,
+    margin: "0 0 4px",
+  },
+  fallbackLink: {
+    color: emailColors.foreground,
+    textDecoration: "underline",
+  },
   /** A machine fact, so mono - and it has to survive a narrow phone intact. */
   url: {
     color: emailColors.mutedForeground,
     fontFamily: emailFonts.mono,
     fontSize: emailText.caption.fontSize,
     lineHeight: emailText.caption.lineHeight,
-    margin: "0 0 8px",
+    margin: "0",
     wordBreak: "break-all" as const,
   },
   caption: {

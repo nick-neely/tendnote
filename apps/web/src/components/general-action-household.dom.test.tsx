@@ -189,13 +189,15 @@ describe("which controls a collaborator is offered", () => {
     renderRow(householdChore({ isRoutine: true, recurrenceLabel: "Every week" }));
 
     await openMenu();
-    for (const label of [/^edit$/i, /archive/i, /skip/i, /looking after/i]) {
-      expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /edit details/i })).toBeTruthy();
+    await userEvent.click(screen.getByRole("menuitem", { name: /manage action/i }));
+    for (const label of [/archive/i, /skip/i, /looking after/i]) {
+      expect(screen.getByRole("button", { name: label })).toBeTruthy();
     }
     // It is already everyone's, so there is no audience left to change and
     // nothing to hand over.
-    expect(screen.queryByRole("menuitem", { name: /who can see/i })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: /hand to the household/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /who can see/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /hand to the household/i })).toBeNull();
   });
 });
 

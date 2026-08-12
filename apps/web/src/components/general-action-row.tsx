@@ -4,7 +4,7 @@ import type { GeneralActionLink, GeneralActionRecurrence } from "@tendnote/domai
 import { describeProgressReconciliation } from "@tendnote/domain/household-actions";
 import { type VisibilityChoice, visibilityChoiceForScope } from "@tendnote/domain/privacy";
 import { formatSurfacingDay } from "@tendnote/domain/record-surfacing";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   completeGeneralActionAction,
   deferGeneralActionAction,
@@ -64,6 +64,7 @@ import {
   PauseIcon,
   PencilIcon,
   SkipForwardIcon,
+  SlidersHorizontalIcon,
   UserIcon,
   UsersIcon,
   XIcon,
@@ -76,7 +77,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -625,40 +625,20 @@ function ActionDeferForm({
  */
 function ActionOverflowMenu({
   action,
-  shareableMembers,
   pending,
   busyKey,
   onSetAside,
-  onPause,
-  onSkip,
   onEdit,
-  onShare,
-  onResponsibility,
-  onHandToHousehold,
-  onHistory,
-  onDismiss,
-  onArchive,
+  onManage,
 }: {
   action: GeneralActionView;
-  shareableMembers: ShareableActionMember[];
   pending: boolean;
   busyKey: string | null;
   onSetAside: () => void;
-  onPause: (focusTarget: HTMLElement | null) => void;
-  onSkip: (focusTarget: HTMLElement | null) => void;
   onEdit: () => void;
-  onShare: () => void;
-  onResponsibility: () => void;
-  onHandToHousehold: () => void;
-  onHistory: () => void;
-  onDismiss: (focusTarget: HTMLElement | null) => void;
-  onArchive: (focusTarget: HTMLElement | null) => void;
+  onManage: () => void;
 }) {
-  const triggerRef = useRef<HTMLButtonElement>(null);
   const { authority } = action;
-  // Handing a record over needs somewhere to hand it to, so a member with no
-  // household never sees the offer at all.
-  const inHousehold = shareableMembers.length > 0;
 
   return (
     <DropdownMenu>
@@ -668,7 +648,6 @@ function ActionOverflowMenu({
           className={`${ACTION_CONTROL_TOUCH_TARGET} max-sm:min-w-11`}
           data-action-control="overflow"
           disabled={pending}
-          ref={triggerRef}
           size="icon-sm"
           type="button"
           variant="ghost"
@@ -680,85 +659,189 @@ function ActionOverflowMenu({
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="min-w-44">
         {authority.defer ? (
           <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onSetAside}>
             <ClockIcon />
             Set aside
           </DropdownMenuItem>
         ) : null}
-        {/* Pausing suspends a Routine's recurrence until resumed — a one-time
-            Action has nothing to pause, so this only shows for Routines (ADR 0148). */}
-        {action.isRoutine && authority.skip ? (
-          <DropdownMenuItem
-            className={ACTION_CONTROL_TOUCH_TARGET}
-            onSelect={() => onSkip(triggerRef.current)}
-          >
-            <SkipForwardIcon />
-            Skip this occurrence
-          </DropdownMenuItem>
-        ) : null}
-        {action.isRoutine && authority.edit ? (
-          <DropdownMenuItem
-            className={ACTION_CONTROL_TOUCH_TARGET}
-            onSelect={() => onPause(triggerRef.current)}
-          >
-            <PauseIcon />
-            Pause routine
-          </DropdownMenuItem>
-        ) : null}
         {authority.edit ? (
           <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onEdit}>
             <PencilIcon />
-            Edit
+            Edit details
           </DropdownMenuItem>
         ) : null}
-        {/* Only a household-native record names who is looking after it: a
-            member-owned one already has an owner, and ownership is not a statement
-            about who does the work (ADR 0215). */}
-        {authority.responsibility ? (
-          <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onResponsibility}>
-            <UserIcon />
-            Who's looking after this
-          </DropdownMenuItem>
-        ) : null}
-        {authority.audience && inHousehold ? (
-          <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onShare}>
-            <UsersIcon />
-            Visibility
-          </DropdownMenuItem>
-        ) : null}
-        {authority.handToHousehold && inHousehold ? (
-          <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onHandToHousehold}>
-            <HomeIcon />
-            Hand to the household
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onHistory}>
-          <HistoryIcon />
-          History
+        <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onManage}>
+          <SlidersHorizontalIcon />
+          Manage action
         </DropdownMenuItem>
-        {authority.archive ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className={ACTION_CONTROL_TOUCH_TARGET}
-              onSelect={() => onDismiss(triggerRef.current)}
-            >
-              <XIcon />
-              Dismiss
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className={ACTION_CONTROL_TOUCH_TARGET}
-              onSelect={() => onArchive(triggerRef.current)}
-            >
-              <ArchiveIcon />
-              Archive
-            </DropdownMenuItem>
-          </>
-        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * The long tail of Action controls, shown only after someone explicitly asks to
+ * manage the record. Keeping this inline avoids a second floating menu on touch
+ * screens and gives the controls room to form understandable groups.
+ */
+function ActionManagementPanel({
+  action,
+  shareableMembers,
+  pending,
+  busyKey,
+  onPause,
+  onSkip,
+  onShare,
+  onResponsibility,
+  onHandToHousehold,
+  onHistory,
+  onDismiss,
+  onArchive,
+  onClose,
+}: {
+  action: GeneralActionView;
+  shareableMembers: ShareableActionMember[];
+  pending: boolean;
+  busyKey: string | null;
+  onPause: (focusTarget: HTMLElement | null) => void;
+  onSkip: (focusTarget: HTMLElement | null) => void;
+  onShare: () => void;
+  onResponsibility: () => void;
+  onHandToHousehold: () => void;
+  onHistory: () => void;
+  onDismiss: (focusTarget: HTMLElement | null) => void;
+  onArchive: (focusTarget: HTMLElement | null) => void;
+  onClose: () => void;
+}) {
+  const { authority } = action;
+  const inHousehold = shareableMembers.length > 0;
+
+  return (
+    <div className="flex flex-col gap-3 px-4 py-3.5">
+      <div>
+        <p className="text-[length:var(--text-body)] font-medium">Manage action</p>
+        <p className="text-[length:var(--text-caption)] text-muted-foreground">{action.title}</p>
+      </div>
+      <div className="grid gap-1 sm:grid-cols-2">
+        {action.isRoutine && authority.skip ? (
+          <Button
+            className={`${ACTION_CONTROL_TOUCH_TARGET} justify-start`}
+            disabled={pending}
+            onClick={(event) => onSkip(event.currentTarget)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <SkipForwardIcon />
+            Skip this occurrence
+          </Button>
+        ) : null}
+        {action.isRoutine && authority.edit ? (
+          <Button
+            className={`${ACTION_CONTROL_TOUCH_TARGET} justify-start`}
+            disabled={pending}
+            onClick={(event) => onPause(event.currentTarget)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            {busyKey === "pause" ? <Spinner /> : <PauseIcon />}
+            Pause routine
+          </Button>
+        ) : null}
+        {authority.responsibility ? (
+          <Button
+            className={`${ACTION_CONTROL_TOUCH_TARGET} justify-start`}
+            disabled={pending}
+            onClick={onResponsibility}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <UserIcon />
+            Who's looking after this
+          </Button>
+        ) : null}
+        {authority.audience && inHousehold ? (
+          <Button
+            className={`${ACTION_CONTROL_TOUCH_TARGET} justify-start`}
+            disabled={pending}
+            onClick={onShare}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <UsersIcon />
+            Visibility
+          </Button>
+        ) : null}
+        {authority.handToHousehold && inHousehold ? (
+          <Button
+            className={`${ACTION_CONTROL_TOUCH_TARGET} justify-start`}
+            disabled={pending}
+            onClick={onHandToHousehold}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <HomeIcon />
+            Hand to the household
+          </Button>
+        ) : null}
+        <Button
+          className={`${ACTION_CONTROL_TOUCH_TARGET} justify-start`}
+          disabled={pending}
+          onClick={onHistory}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <HistoryIcon />
+          History
+        </Button>
+      </div>
+      {authority.archive ? (
+        <div className="flex flex-wrap items-center gap-1.5 border-t pt-2">
+          <Button
+            className={ACTION_CONTROL_TOUCH_TARGET}
+            disabled={pending}
+            onClick={(event) => onDismiss(event.currentTarget)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            {busyKey === "dismiss" ? <Spinner /> : <XIcon />}
+            Dismiss
+          </Button>
+          <Button
+            className={ACTION_CONTROL_TOUCH_TARGET}
+            data-action-control="archive"
+            disabled={pending}
+            onClick={(event) => onArchive(event.currentTarget)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            {busyKey === "archive" ? <Spinner /> : <ArchiveIcon />}
+            Archive
+          </Button>
+        </div>
+      ) : null}
+      <div className="flex justify-end">
+        <Button
+          className={ACTION_CONTROL_TOUCH_TARGET}
+          disabled={pending}
+          onClick={onClose}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          Done
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -769,8 +852,8 @@ function ActionOverflowMenu({
  * can see the Action can act on it (complete, set aside, dismiss, archive) so a
  * household member can help move a shared Action along, but only the owner may edit
  * its content, links, people, asset hints, or visibility (ADR 0153). Actions sit at
- * the bottom-right of the row where a thumb reaches, and the row stacks cleanly on
- * narrow screens (ADR 0161 mobile-usable).
+ * in the row's leading checkbox and trailing overflow, with less-common lifecycle
+ * controls progressively disclosed one level deeper (ADR 0161 mobile-usable).
  *
  * The edit/defer/share modes and the overflow menu are extracted into their own components
  * above; what remains here is the view-mode composition. Its cognitive score reflects that
@@ -805,7 +888,9 @@ export function ActionRow({
     phase?: ReversibleMutationApplyPhase,
   ) => ReversibleMutationApplyResult;
 }) {
-  const [mode, setMode] = useState<"view" | "edit" | "defer" | "share" | "responsibility">("view");
+  const [mode, setMode] = useState<
+    "view" | "edit" | "defer" | "share" | "responsibility" | "manage"
+  >("view");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [handToHouseholdOpen, setHandToHouseholdOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -987,6 +1072,16 @@ export function ActionRow({
     });
   }
 
+  function runFromManagementPanel(run: (focusTarget: HTMLElement | null) => void) {
+    returnToView();
+    requestAnimationFrame(() => {
+      const focusTarget = document.querySelector<HTMLElement>(
+        `#action-${action.id} [data-action-control="overflow"]`,
+      );
+      run(focusTarget);
+    });
+  }
+
   if (mode === "edit") {
     return (
       <ActionEditForm
@@ -1026,6 +1121,38 @@ export function ActionRow({
     );
   }
 
+  if (mode === "manage") {
+    return (
+      <ActionManagementPanel
+        action={action}
+        busyKey={busyKey}
+        onArchive={() =>
+          runFromManagementPanel((focusTarget) => runLifecycle("archive", focusTarget))
+        }
+        onClose={returnToView}
+        onDismiss={() =>
+          runFromManagementPanel((focusTarget) => runLifecycle("dismiss", focusTarget))
+        }
+        onHandToHousehold={() => {
+          setHandToHouseholdOpen(true);
+          returnToView();
+        }}
+        onHistory={() => {
+          setHistoryOpen(true);
+          returnToView();
+        }}
+        onPause={() => runFromManagementPanel((focusTarget) => runLifecycle("pause", focusTarget))}
+        onResponsibility={() => setMode("responsibility")}
+        onShare={() => setMode("share")}
+        onSkip={() =>
+          runFromManagementPanel((focusTarget) => runRoutineOccurrence("skip", focusTarget))
+        }
+        pending={controlsBlocked}
+        shareableMembers={shareableMembers}
+      />
+    );
+  }
+
   const householdNative = action.ownership === "household_native";
   // A household-native record's scope chip would name the household as an audience
   // this member chose to share with, which is the wrong sentence: nobody shared it,
@@ -1040,7 +1167,7 @@ export function ActionRow({
   return (
     <article
       aria-busy={pending}
-      className={`flex scroll-mt-24 flex-col gap-2 px-4 py-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) motion-reduce:transition-none ${leaving ? "translate-y-0.5 opacity-70" : ""}`}
+      className={`grid scroll-mt-24 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-3 py-2.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) motion-reduce:transition-none sm:px-4 ${leaving ? "translate-y-0.5 opacity-70" : ""}`}
       data-leaving={leaving}
       // Deep-link target for the Action Today surface: `/actions#action-<id>` scrolls
       // to and briefly highlights this row (see useDeepLinkHighlight). tabIndex lets the
@@ -1048,8 +1175,24 @@ export function ActionRow({
       id={`action-${action.id}`}
       tabIndex={-1}
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="grid gap-1.5">
+      <Button
+        aria-label={action.isRoutine ? "Done for now" : "Complete"}
+        className={`${ACTION_CONTROL_TOUCH_TARGET} max-sm:min-w-11 rounded-full text-muted-foreground hover:border-primary/55 hover:bg-primary/6 hover:text-primary`}
+        disabled={controlsBlocked}
+        onClick={(event) => runLifecycle("complete", event.currentTarget)}
+        size="icon-sm"
+        title={action.isRoutine ? "Done for now" : "Complete"}
+        type="button"
+        variant="outline"
+      >
+        {busyKey === "complete" || busyKey === "routine-complete" ? (
+          <Spinner />
+        ) : (
+          <CheckIcon className="size-3.5" />
+        )}
+      </Button>
+      <div className="min-w-0 grid gap-1">
+        <div className="min-w-0">
           <p className="max-w-[60ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]">
             {action.title}
           </p>
@@ -1058,6 +1201,9 @@ export function ActionRow({
               {action.notes}
             </p>
           ) : null}
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <RecordTimingChip label={action.surfaceLabel} state={action.surfaceState} />
           <ActionLinks links={action.links} />
           {hasContext ? <ActionContextStrip action={action} onUpdate={onUpdate} /> : null}
           {/* One quiet line of attribution, never an avatar stack and never a
@@ -1077,107 +1223,89 @@ export function ActionRow({
             </span>
           ) : null}
         </div>
-        <div className="shrink-0 pt-0.5">
-          <RecordTimingChip label={action.surfaceLabel} state={action.surfaceState} />
-        </div>
       </div>
-      <div className="flex items-center justify-end gap-1.5">
-        {activeMutation?.state.undoAvailable ? (
-          <Button
-            disabled={activeMutation.state.undoRequested}
-            onClick={activeMutation.requestUndo}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {activeMutation.state.undoRequested ? <Spinner aria-hidden /> : null}
-            {activeMutation.state.undoRequested ? "Undoing…" : activeMutation.state.labels.undo}
-          </Button>
-        ) : null}
-        <Button
-          className={ACTION_CONTROL_TOUCH_TARGET}
-          disabled={controlsBlocked}
-          onClick={(event) => runLifecycle("complete", event.currentTarget)}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          {busyKey === "complete" || busyKey === "routine-complete" ? <Spinner /> : <CheckIcon />}
-          {action.isRoutine ? "Done for now" : "Complete"}
-        </Button>
+      <div className="flex items-center">
         <ActionOverflowMenu
           action={action}
           busyKey={busyKey}
-          onArchive={(focusTarget) => runLifecycle("archive", focusTarget)}
-          onDismiss={(focusTarget) => runLifecycle("dismiss", focusTarget)}
           onEdit={() => setMode("edit")}
-          onHandToHousehold={() => setHandToHouseholdOpen(true)}
-          onHistory={() => setHistoryOpen(true)}
-          onPause={(focusTarget) => runLifecycle("pause", focusTarget)}
-          onResponsibility={() => setMode("responsibility")}
-          onSkip={(focusTarget) => runRoutineOccurrence("skip", focusTarget)}
+          onManage={() => setMode("manage")}
           onSetAside={() => setMode("defer")}
-          onShare={() => setMode("share")}
           pending={controlsBlocked}
-          shareableMembers={shareableMembers}
         />
       </div>
-      {pending ? (
-        <p aria-live="polite" className="text-[length:var(--text-caption)] text-muted-foreground">
-          {activeMutation?.state.labels.pending || "Updating action…"}
-        </p>
-      ) : null}
-      {error ? <ErrorText message={error} /> : null}
-      {notice ? (
-        <p
-          className="inline-flex items-center gap-1.5 self-end text-[length:var(--text-caption)] text-muted-foreground"
-          role="status"
-        >
-          <CheckIcon aria-hidden className="size-3 text-primary" />
-          {notice}
-        </p>
-      ) : null}
-      {/* Someone else had already settled this occurrence. A plain statement in the
-          row's own quiet register — not an error, not a warning, and not a colour:
-          the member did nothing wrong, and the record is now what it says it is. */}
-      {reconciled ? (
-        <p className="text-[length:var(--text-caption)] text-muted-foreground" role="status">
-          {reconciled}
-        </p>
-      ) : null}
-      {/* Both offers arrive unbidden, so both announce themselves. The regions
-          are mounted permanently and filled conditionally — a live region added
-          to the DOM at the same moment as its content is not announced. */}
-      <div aria-live="polite">
-        {handoffOpen ? (
-          <ResponsibilityHandoffOffer
-            action={action}
-            members={shareableMembers}
-            onDismiss={() => setHandoffOpen(false)}
-            onUpdate={onUpdate}
-          />
+      <div className="col-span-2 col-start-2 flex flex-col gap-2 empty:hidden">
+        {activeMutation?.state.undoAvailable ? (
+          <div className="flex items-center justify-end">
+            <Button
+              disabled={activeMutation.state.undoRequested}
+              onClick={activeMutation.requestUndo}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {activeMutation.state.undoRequested ? <Spinner aria-hidden /> : null}
+              {activeMutation.state.undoRequested ? "Undoing…" : activeMutation.state.labels.undo}
+            </Button>
+          </div>
         ) : null}
+        {pending ? (
+          <p aria-live="polite" className="text-[length:var(--text-caption)] text-muted-foreground">
+            {activeMutation?.state.labels.pending || "Updating action…"}
+          </p>
+        ) : null}
+        {error ? <ErrorText message={error} /> : null}
+        {notice ? (
+          <p
+            className="inline-flex items-center gap-1.5 self-end text-[length:var(--text-caption)] text-muted-foreground"
+            role="status"
+          >
+            <CheckIcon aria-hidden className="size-3 text-primary" />
+            {notice}
+          </p>
+        ) : null}
+        {/* Someone else had already settled this occurrence. A plain statement in the
+            row's own quiet register — not an error, not a warning, and not a colour:
+            the member did nothing wrong, and the record is now what it says it is. */}
+        {reconciled ? (
+          <p className="text-[length:var(--text-caption)] text-muted-foreground" role="status">
+            {reconciled}
+          </p>
+        ) : null}
+        {/* Both offers arrive unbidden, so both announce themselves. The regions
+            are mounted permanently and filled conditionally — a live region added
+            to the DOM at the same moment as its content is not announced. */}
+        <div aria-live="polite" className="empty:hidden">
+          {handoffOpen ? (
+            <ResponsibilityHandoffOffer
+              action={action}
+              members={shareableMembers}
+              onDismiss={() => setHandoffOpen(false)}
+              onUpdate={onUpdate}
+            />
+          ) : null}
+        </div>
+        {/* One question at a time. The member who just handed a chore on is
+            usually also its outgoing holder, so both offers qualify at once — and
+            two stacked yes/no asks in one breath is the wall of asks this domain
+            otherwise refuses. The reminder waits; it is not urgent, and it will
+            still be there next time. */}
+        <div aria-live="polite" className="empty:hidden">
+          <HolderReminderOffer action={action} onUpdate={onUpdate} suppressed={handoffOpen} />
+        </div>
+        <ActionHistoryDialog
+          generalActionId={action.id}
+          onOpenChange={setHistoryOpen}
+          open={historyOpen}
+          title={action.title}
+        />
+        <HandToHouseholdDialog
+          action={action}
+          onOpenChange={setHandToHouseholdOpen}
+          onUpdate={onUpdate}
+          open={handToHouseholdOpen}
+        />
       </div>
-      {/* One question at a time. The member who just handed a chore on is
-          usually also its outgoing holder, so both offers qualify at once — and
-          two stacked yes/no asks in one breath is the wall of asks this domain
-          otherwise refuses. The reminder waits; it is not urgent, and it will
-          still be there next time. */}
-      <div aria-live="polite">
-        <HolderReminderOffer action={action} onUpdate={onUpdate} suppressed={handoffOpen} />
-      </div>
-      <ActionHistoryDialog
-        generalActionId={action.id}
-        onOpenChange={setHistoryOpen}
-        open={historyOpen}
-        title={action.title}
-      />
-      <HandToHouseholdDialog
-        action={action}
-        onOpenChange={setHandToHouseholdOpen}
-        onUpdate={onUpdate}
-        open={handToHouseholdOpen}
-      />
     </article>
   );
 }

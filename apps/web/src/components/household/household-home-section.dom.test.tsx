@@ -69,8 +69,10 @@ describe("a Household home section", () => {
 
     const row = within(screen.getByRole("listitem"));
     expect(row.getByText("Routine · every week")).toBeDefined();
-    expect(row.getByText("Due today.")).toBeDefined();
-    expect(row.getByText(/Household · Mara is looking after this/)).toBeDefined();
+    // Timing, ownership, and responsibility are three facts on one line rather
+    // than three stacked ones: the reader is scanning a list, and a row that
+    // towers is a list nobody glances at. All three stay written out.
+    expect(row.getByText("Due today. · Household · Mara is looking after this")).toBeDefined();
     expect(row.getByRole("link", { name: "Put the bins out" }).getAttribute("href")).toBe(
       `/actions#action-${CHORE_ID}`,
     );
@@ -84,7 +86,7 @@ describe("a Household home section", () => {
       />,
     );
 
-    expect(screen.getByText("Household")).toBeDefined();
+    expect(screen.getByText("Due today. · Household")).toBeDefined();
     expect(screen.queryByText(/looking after/)).toBeNull();
   });
 
@@ -107,7 +109,7 @@ describe("a Household home section", () => {
       />,
     );
 
-    expect(screen.getByText("Shared by Nick")).toBeDefined();
+    expect(screen.getByText("Due today. · Shared by Nick")).toBeDefined();
   });
 
   it("uses semantic headings and a list, in one column", () => {

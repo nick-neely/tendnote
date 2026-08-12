@@ -192,6 +192,17 @@ export function HouseholdOwnerOffer({
  * before it happens, and the only destructive treatment on the screen is on the
  * final press inside a confirmation, never on a heading, a blocked state, or an
  * ordinary membership change.
+ *
+ * A household of one has one exit, and only that one is drawn. Stepping down and
+ * leaving are both held by the last-owner rule when nobody else is here, so both
+ * rows could only ever render the sentence saying so — two refusals stacked
+ * above the single control that does work, which reads as a screen mostly made
+ * of things the reader cannot do. What those two sentences were teaching is a
+ * single fact, that ending it is how a household of one closes, and the
+ * dissolution row says it directly instead. This is a presentation choice and
+ * nothing else: the rules, the server's answers, and both rows come back
+ * untouched — blocked notes included — the moment a second person is here, where
+ * "you can't leave yet" is news and names what would unblock it.
  */
 export function HouseholdEndingsPanel({
   overview,
@@ -199,6 +210,14 @@ export function HouseholdEndingsPanel({
   onOverviewChange,
   onAnnounce,
 }: PanelProps) {
+  // Read off the answers rather than off the seat count alone, so the rule is
+  // "hide the rows that could only be a refusal" rather than "a lone reader has
+  // no exits". The last-owner rule means a household of one always answers this
+  // way, but this panel is not the thing that guarantees that — and if a lone
+  // reader ever did have a departure open to them, hiding it would take away
+  // the only door they had.
+  const refusalsOnly =
+    overview.isSoleMember && !overview.stepDown.available && !overview.departure.available;
   return (
     <section aria-labelledby="household-endings-heading" className="flex flex-col gap-3">
       <h2
@@ -208,18 +227,22 @@ export function HouseholdEndingsPanel({
         Leaving and ending
       </h2>
       <div className="flex flex-col gap-4 rounded-xl border bg-surface px-4 py-4 sm:px-5">
-        <StepDownRow
-          actions={actions}
-          onAnnounce={onAnnounce}
-          onOverviewChange={onOverviewChange}
-          overview={overview}
-        />
-        <DepartureRow
-          actions={actions}
-          onAnnounce={onAnnounce}
-          onOverviewChange={onOverviewChange}
-          overview={overview}
-        />
+        {refusalsOnly ? null : (
+          <>
+            <StepDownRow
+              actions={actions}
+              onAnnounce={onAnnounce}
+              onOverviewChange={onOverviewChange}
+              overview={overview}
+            />
+            <DepartureRow
+              actions={actions}
+              onAnnounce={onAnnounce}
+              onOverviewChange={onOverviewChange}
+              overview={overview}
+            />
+          </>
+        )}
         <DissolutionRow
           actions={actions}
           onAnnounce={onAnnounce}
@@ -256,7 +279,8 @@ function ExitRow({
 }) {
   return (
     <div className="flex flex-col gap-2 border-b pb-4 last:border-b-0 last:pb-0">
-      <div className="flex flex-col gap-0.5">
+      {/* 4px, the rhythm's tight step, as every other title-and-line pair here. */}
+      <div className="flex flex-col gap-1">
         <p className="text-[length:var(--text-title)] leading-[var(--text-title-line)] font-medium">
           {title}
         </p>
@@ -332,10 +356,10 @@ function DepartureRow({ overview, actions = {}, onOverviewChange, onAnnounce }: 
   const [pending, startTransition] = useTransition();
 
   return (
-    <ExitRow
-      description="Your access ends right away. What you wrote stays yours."
-      title="Leaving this household"
-    >
+    // One line to know this is the row, no more: the dialog below already tells
+    // the whole of it, this line's second half included, to the reader who has
+    // decided to look.
+    <ExitRow description="Your access ends right away." title="Leaving this household">
       {overview.departure.available ? (
         <AlertDialog
           onOpenChange={(next) => {
@@ -716,7 +740,7 @@ function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }
     if (!dissolution.blockedReason) return null;
     return (
       <ExitRow
-        description="Ending a household is an owner decision, and every owner has to agree to it."
+        description="Ending a household is an owner decision, and every owner has to agree."
         title="Ending this household"
       >
         <BlockedNote reason={dissolution.blockedReason} />
@@ -730,7 +754,16 @@ function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }
 
   return (
     <ExitRow
-      description={`Every owner has to agree. Once they all do, the household closes for everyone and support can put it back for ${HOUSEHOLD_RECOVERY_WINDOW_DAYS} days.`}
+      // In a household of one this is the only exit drawn, so its line carries
+      // the fact the departure row would otherwise have taught: with nobody to
+      // hand the household to, ending it is how it closes. The recovery window
+      // stays on the row either way — an owner who only ever agrees to a
+      // dissolution never reaches the final dialog that states it.
+      description={
+        overview.isSoleMember
+          ? `You're the only person here, so ending it is how this household closes. Support can put it back for ${HOUSEHOLD_RECOVERY_WINDOW_DAYS} days afterwards.`
+          : `Every owner has to agree. Once they all do, it closes for everyone, and support can put it back for ${HOUSEHOLD_RECOVERY_WINDOW_DAYS} days.`
+      }
       title="Ending this household"
     >
       {dissolution.viewerHasConfirmed ? (

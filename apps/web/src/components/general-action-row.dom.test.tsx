@@ -200,6 +200,27 @@ describe("asset hints on an Action row (#199)", () => {
   });
 });
 
+describe("read-only shared Action controls", () => {
+  it("keeps History reachable when the viewer has no management authority", async () => {
+    const user = userEvent.setup();
+    renderRow(
+      actionWithHint({
+        owned: false,
+        ownerUserId: "someone-else",
+        scope: "household",
+        visibilityLabel: "Household",
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Manage action" }));
+
+    expect(await screen.findByRole("button", { name: "History" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Who's looking after this" })).toBeNull();
+  });
+});
+
 describe("Routine occurrence lifecycle", () => {
   it("waits for the server-owned next occurrence instead of projecting a date", async () => {
     const user = userEvent.setup();
@@ -220,7 +241,8 @@ describe("Routine occurrence lifecycle", () => {
     const onUpdate = renderRow(action);
 
     await user.click(screen.getByRole("button", { name: "More actions" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Skip this occurrence" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Manage action" }));
+    await user.click(await screen.findByRole("button", { name: "Skip this occurrence" }));
 
     expect(onUpdate).not.toHaveBeenCalled();
     settle?.({ ok: true, view: next });
@@ -248,7 +270,8 @@ describe("Routine occurrence lifecycle", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "More actions" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Skip this occurrence" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Manage action" }));
+    await user.click(await screen.findByRole("button", { name: "Skip this occurrence" }));
 
     await waitFor(() =>
       expect(skipGeneralActionOccurrenceAction).toHaveBeenCalledWith({
@@ -259,7 +282,7 @@ describe("Routine occurrence lifecycle", () => {
         expectedOccurrenceVersion: 0,
       }),
     );
-    expect(onUpdate).toHaveBeenCalledWith(next);
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(next));
     expect(await screen.findByText(/Skipped · next/)).toBeDefined();
   });
 
@@ -278,8 +301,9 @@ describe("Routine occurrence lifecycle", () => {
     renderRow(action);
 
     await user.click(screen.getByRole("button", { name: "More actions" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Skip this occurrence" }));
-    await user.click(screen.getByRole("button", { name: "Undo Skip" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Manage action" }));
+    await user.click(await screen.findByRole("button", { name: "Skip this occurrence" }));
+    await user.click(await screen.findByRole("button", { name: "Undo Skip" }));
 
     await waitFor(() =>
       expect(undoRoutineOccurrenceAction).toHaveBeenCalledWith({
@@ -380,11 +404,13 @@ describe("reversible Action lifecycle acknowledgement", () => {
 
     const overflow = screen.getByRole("button", { name: "More actions" });
     await user.click(overflow);
-    await user.click(await screen.findByRole("menuitem", { name: "Archive" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Manage action" }));
+    await user.click(await screen.findByRole("button", { name: "Archive" }));
 
     await screen.findByText("Unable to archive this action.");
-    await waitFor(() => expect(document.activeElement).toBe(overflow));
-    expect(overflow.hasAttribute("disabled")).toBe(false);
-    expect(overflow.getAttribute("data-action-control")).toBe("overflow");
+    const restoredOverflow = screen.getByRole("button", { name: "More actions" });
+    await waitFor(() => expect(document.activeElement).toBe(restoredOverflow));
+    expect(restoredOverflow.hasAttribute("disabled")).toBe(false);
+    expect(restoredOverflow.getAttribute("data-action-control")).toBe("overflow");
   });
 });
