@@ -486,7 +486,7 @@ describe("action ↔ asset display, both directions", () => {
     expect(again).toMatchObject({ outcome: "already_linked", asset: { id: existing.id } });
   });
 
-  it("does not re-point a readable Action the resolver cannot mutate", async () => {
+  it("fails duplicate resolution when any linked Action cannot be mutated", async () => {
     const { store, links, review, assetLifecycle, actionLifecycle, seedAction, seedHousehold } =
       setup();
     const household = await seedHousehold();
@@ -516,21 +516,26 @@ describe("action ↔ asset display, both directions", () => {
       assetId: result.group.asset.id,
     });
 
-    await review.linkAssetReviewGroup({
-      actorUserId: OWNER,
-      groupId: result.group.group.id,
-      targetAssetId: target.id,
-    });
+    await expect(
+      review.linkAssetReviewGroup({
+        actorUserId: OWNER,
+        groupId: result.group.group.id,
+        targetAssetId: target.id,
+      }),
+    ).rejects.toThrow(/no longer available/);
 
     const rows = await store.listGeneralActionAssetLinksForActions({
       generalActionIds: [authorizedAction.id, inaccessibleAction.id],
     });
     expect(rows.find((row) => row.generalActionId === authorizedAction.id)?.assetId).toBe(
-      target.id,
+      result.group.asset.id,
     );
     expect(rows.find((row) => row.generalActionId === inaccessibleAction.id)?.assetId).toBe(
       result.group.asset.id,
     );
+    await expect(
+      store.getAsset({ ownerUserId: OWNER, assetId: result.group.asset.id }),
+    ).resolves.toMatchObject({ status: "suggested" });
   });
 
   it("does not delete another member's link from the shared in-memory mutation seam", async () => {

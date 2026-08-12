@@ -278,6 +278,7 @@ export function createDrizzleGeneralActionAssetLinkStore(): GeneralActionAssetLi
     async repointGeneralActionAssetLinks(input) {
       // fallow-ignore-next-line complexity -- Repointing is one atomic collision-aware graph rewrite after both parent authorities and lifecycle statuses are locked and rechecked.
       return getDb().transaction(async (tx) => {
+        const requestedActionIds = new Set(input.generalActionIds);
         const authorized = await lockAndAuthorizeLinkParents(tx, {
           callerUserId: input.callerUserId,
           generalActionIds: input.generalActionIds,
@@ -292,7 +293,7 @@ export function createDrizzleGeneralActionAssetLinkStore(): GeneralActionAssetLi
         // the same governance and record locks.
         if (
           !authorized.visibleAssetIds.has(input.toAssetId) ||
-          (input.generalActionIds.length > 0 && authorized.actionIds.size === 0)
+          authorized.actionIds.size !== requestedActionIds.size
         ) {
           return { outcome: "unauthorized" };
         }

@@ -281,8 +281,9 @@ export function createInMemoryGeneralActionAssetLinkStore(
     },
     async repointGeneralActionAssetLinks(input) {
       if (!policy) return { outcome: "unauthorized" };
+      const requestedActions = new Set(input.generalActionIds);
       const authorizedActions = new Set(await policy.authorizeActions(input));
-      if (authorizedActions.size === 0 && input.generalActionIds.length > 0) {
+      if (authorizedActions.size !== requestedActions.size) {
         return { outcome: "unauthorized" };
       }
       const source = await policy.checkAsset({

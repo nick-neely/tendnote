@@ -112,13 +112,18 @@ export async function linkAssetReviewGroup(
   // target must leave the proposal, its details, and its Action links wholly
   // untouched rather than producing a half-resolved review group.
   const linkedRows = await store.listGeneralActionAssetLinksForAsset({ assetId: anchor.id });
+  const linkedActionIds = [...new Set(linkedRows.map((link) => link.generalActionId))];
   const authorizedActionIds = await store.listAuthorizedGeneralActionAssetLinkActionIds({
     callerUserId: input.actorUserId,
-    generalActionIds: linkedRows.map((link) => link.generalActionId),
+    generalActionIds: linkedActionIds,
   });
+  const authorizedIdSet = new Set(authorizedActionIds);
+  if (authorizedIdSet.size !== linkedActionIds.length) {
+    throw new HouseholdRecordUnavailableError();
+  }
   const actionRepoint = await store.repointGeneralActionAssetLinks({
     callerUserId: input.actorUserId,
-    generalActionIds: authorizedActionIds,
+    generalActionIds: linkedActionIds,
     fromAssetId: anchor.id,
     toAssetId: target.id,
     fromAssetStatus: "suggested",

@@ -86,6 +86,7 @@ describe("general action asset link drizzle store guards (#199)", () => {
     expect(source).toContain("statuses.get(input.toAssetId) !== input.toAssetStatus");
     expect(source).toContain("authorized.editableAssetIds.has(input.fromAssetId)");
     expect(source).toContain("authorized.visibleAssetIds.has(input.toAssetId)");
+    expect(source).toContain("authorized.actionIds.size !== requestedActionIds.size");
     expect(source).toContain('eq(householdRecordShares.recordKind, "asset")');
     expect(source).toContain(
       "inArray(generalActionAssets.generalActionId, [...authorized.actionIds])",
