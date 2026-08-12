@@ -486,6 +486,91 @@ describe("action ↔ asset display, both directions", () => {
     expect(again).toMatchObject({ outcome: "already_linked", asset: { id: existing.id } });
   });
 
+  it("fails duplicate resolution when any linked Action cannot be mutated", async () => {
+    const { store, links, review, assetLifecycle, actionLifecycle, seedAction, seedHousehold } =
+      setup();
+    const household = await seedHousehold();
+    const target = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Fridge filter",
+      kind: "appliance",
+    });
+    const authorizedAction = await seedAction();
+    const result = await links.promoteGeneralActionAssetHint({
+      actorUserId: OWNER,
+      generalActionId: authorizedAction.id,
+      hintLabel: HINT,
+    });
+    if (result.outcome !== "pending_review") throw new Error("expected a pending review");
+
+    const inaccessibleAction = await actionLifecycle.createGeneralAction({
+      ownerUserId: "user-member",
+      title: "Member-owned shared action",
+      scope: "shared",
+      householdId: household.id,
+      selectedUserIds: [OWNER],
+    });
+    await store.createGeneralActionAssetLink({
+      createdByUserId: OWNER,
+      generalActionId: inaccessibleAction.id,
+      assetId: result.group.asset.id,
+    });
+
+    await expect(
+      review.linkAssetReviewGroup({
+        actorUserId: OWNER,
+        groupId: result.group.group.id,
+        targetAssetId: target.id,
+      }),
+    ).rejects.toThrow(/no longer available/);
+
+    const rows = await store.listGeneralActionAssetLinksForActions({
+      generalActionIds: [authorizedAction.id, inaccessibleAction.id],
+    });
+    expect(rows.find((row) => row.generalActionId === authorizedAction.id)?.assetId).toBe(
+      result.group.asset.id,
+    );
+    expect(rows.find((row) => row.generalActionId === inaccessibleAction.id)?.assetId).toBe(
+      result.group.asset.id,
+    );
+    await expect(
+      store.getAsset({ ownerUserId: OWNER, assetId: result.group.asset.id }),
+    ).resolves.toMatchObject({ status: "suggested" });
+  });
+
+  it("does not delete another member's link from the shared in-memory mutation seam", async () => {
+    const { store, assetLifecycle, actionLifecycle, seedHousehold } = setup();
+    const household = await seedHousehold();
+    const asset = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Shared refrigerator",
+      kind: "appliance",
+    });
+    const memberAction = await actionLifecycle.createGeneralAction({
+      ownerUserId: "user-member",
+      title: "Replace filter",
+      scope: "shared",
+      householdId: household.id,
+      selectedUserIds: [OWNER],
+    });
+    const link = await store.createGeneralActionAssetLink({
+      createdByUserId: "user-member",
+      generalActionId: memberAction.id,
+      assetId: asset.id,
+    });
+
+    await store.deleteGeneralActionAssetLink({
+      callerUserId: OWNER,
+      linkId: link.id,
+      generalActionId: memberAction.id,
+      assetId: asset.id,
+    });
+
+    await expect(
+      store.listGeneralActionAssetLinksForActions({ generalActionIds: [memberAction.id] }),
+    ).resolves.toMatchObject([{ id: link.id }]);
+  });
+
   it("collapses a re-point that would duplicate an existing action link", async () => {
     const { links, review, assetLifecycle, actionLifecycle } = setup();
     const target = await assetLifecycle.createAsset({

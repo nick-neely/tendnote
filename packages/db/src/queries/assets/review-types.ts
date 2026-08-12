@@ -128,19 +128,37 @@ export type GeneralActionAssetLinkStore = {
   listGeneralActionAssetLinksForAsset: (input: {
     assetId: string;
   }) => Promise<GeneralActionAssetLink[]>;
+  /** Fail-closed parent proof for link mutations; creator provenance is never consulted. */
+  listAuthorizedGeneralActionAssetLinkActionIds: (input: {
+    callerUserId: string;
+    generalActionIds: string[];
+  }) => Promise<string[]>;
   /**
    * Re-points the owner's links from a would-be duplicate onto the link target
    * during duplicate review (#199). A row that would collide with an existing
    * (action, target) pair is deleted instead — the link already exists. Returns
-   * how many rows now point at the target.
+   * an applied count, a stale lifecycle fence, or a fail-closed authorization
+   * result. Zero applied links is still success: there may be no linked Actions,
+   * or every source row may already collide with the target pair.
    */
   repointGeneralActionAssetLinks: (input: {
-    ownerUserId: string;
+    callerUserId: string;
+    /** Actions whose parent authorization the caller proved immediately before this mutation. */
+    generalActionIds: string[];
     fromAssetId: string;
     toAssetId: string;
-  }) => Promise<number>;
-  /** Owner-keyed hard delete, for clearing a stale link to a dismissed husk. */
-  deleteGeneralActionAssetLink: (input: { ownerUserId: string; linkId: string }) => Promise<void>;
+    fromAssetStatus: "suggested";
+    toAssetStatus: "active";
+  }) => Promise<
+    { outcome: "applied"; count: number } | { outcome: "stale" } | { outcome: "unauthorized" }
+  >;
+  /** Parent-authorized hard delete, for clearing a stale link to a dismissed husk. */
+  deleteGeneralActionAssetLink: (input: {
+    callerUserId: string;
+    linkId: string;
+    generalActionId: string;
+    assetId: string;
+  }) => Promise<void>;
 };
 
 /**
@@ -153,7 +171,10 @@ export type AssetReviewLifecycleStore = AssetLifecycleStore &
   AssetReviewStore &
   AssetEvidenceStore &
   GeneralActionAssetLinkStore &
-  Pick<SourceRecordResolutionStore, "getSourceRecord">;
+  Pick<SourceRecordResolutionStore, "getSourceRecord"> & {
+    /** Binds a composed review transition to one atomic store transaction. */
+    withTransaction?: <T>(fn: (store: AssetReviewLifecycleStore) => Promise<T>) => Promise<T>;
+  };
 
 /** One proposed memory riding a suggestion call: the reviewable content. */
 export type SuggestAssetMemoryContent = {

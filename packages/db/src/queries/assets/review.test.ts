@@ -1,5 +1,5 @@
 import { AssetValidationError } from "@tendnote/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createAuditKindsReader, seedOwnerMemberHousehold } from "./asset-test-fixtures";
 import { createInMemoryAssetReviewLifecycleStore } from "./in-memory-review-store";
 import { createAssetLifecycle } from "./lifecycle";
@@ -644,8 +644,21 @@ describe("duplicate review: link to an existing asset", () => {
     return { ...context, existing, result };
   }
 
+  async function expectReviewAnchorPending(
+    store: ReturnType<typeof setup>["store"],
+    result: Awaited<ReturnType<typeof linkSetup>>["result"],
+  ) {
+    await expect(
+      store.getAsset({ ownerUserId: OWNER, assetId: result.asset.id }),
+    ).resolves.toMatchObject({ status: "suggested" });
+    await expect(
+      store.getAssetReviewGroup({ ownerUserId: OWNER, groupId: result.group.id }),
+    ).resolves.toMatchObject({ assetId: result.asset.id });
+  }
+
   it("re-anchors the pending details instead of creating a near-duplicate", async () => {
-    const { review, lifecycle, existing, result, auditKinds } = await linkSetup();
+    const { review, store, lifecycle, existing, result, auditKinds } = await linkSetup();
+    const transaction = vi.spyOn(store, "withTransaction");
 
     const linked = await review.linkAssetReviewGroup({
       actorUserId: OWNER,
@@ -658,6 +671,7 @@ describe("duplicate review: link to an existing asset", () => {
     expect(linked.duplicateCandidates).toEqual([]);
     expect(linked.memories).toHaveLength(2);
     expect(linked.memories.every((memory) => memory.assetId === existing.id)).toBe(true);
+    expect(transaction).toHaveBeenCalledOnce();
 
     // The would-be duplicate never becomes a durable asset.
     const listed = await lifecycle.listAssets({ callerUserId: OWNER });
@@ -673,6 +687,53 @@ describe("duplicate review: link to an existing asset", () => {
     // Both sides of the link carry the audit trail.
     await expect(auditKinds(result.asset.id)).resolves.toContain("linked_existing");
     await expect(auditKinds(existing.id)).resolves.toContain("linked_existing");
+  });
+
+  it("leaves the review untouched when the locked target lifecycle is stale", async () => {
+    const { review, store, existing, result } = await linkSetup();
+    store.repointGeneralActionAssetLinks = async () => ({ outcome: "stale" });
+
+    await expect(
+      review.linkAssetReviewGroup({
+        actorUserId: OWNER,
+        groupId: result.group.id,
+        targetAssetId: existing.id,
+      }),
+    ).rejects.toThrow(/changed while you were linking/);
+
+    await expectReviewAnchorPending(store, result);
+    const memories = await store.listAssetMemoriesForOwner({
+      ownerUserId: OWNER,
+      reviewGroupId: result.group.id,
+    });
+    expect(memories.every((memory) => memory.assetId === result.asset.id)).toBe(true);
+  });
+
+  it("refuses to dismiss the anchor when any linked Action is unauthorized", async () => {
+    const { review, store, existing, result } = await linkSetup();
+    await store.createGeneralActionAssetLink({
+      createdByUserId: OWNER,
+      generalActionId: "authorized-action",
+      assetId: result.asset.id,
+    });
+    await store.createGeneralActionAssetLink({
+      createdByUserId: OUTSIDER,
+      generalActionId: "unauthorized-action",
+      assetId: result.asset.id,
+    });
+    store.listAuthorizedGeneralActionAssetLinkActionIds = async () => ["authorized-action"];
+    const repoint = vi.spyOn(store, "repointGeneralActionAssetLinks");
+
+    await expect(
+      review.linkAssetReviewGroup({
+        actorUserId: OWNER,
+        groupId: result.group.id,
+        targetAssetId: existing.id,
+      }),
+    ).rejects.toThrow(/no longer available/);
+
+    expect(repoint).not.toHaveBeenCalled();
+    await expectReviewAnchorPending(store, result);
   });
 
   it("clamps a linked detail's visibility to what the target allows", async () => {

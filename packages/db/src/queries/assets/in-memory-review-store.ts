@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
+  type Asset,
+  type AssetAuthorityOperation,
   type AssetMemory,
   type AssetReviewGroup,
   assetMemorySchema,
@@ -15,12 +17,16 @@ import { createInMemoryHouseholdStore } from "../households/in-memory-store";
 import type { HouseholdStore } from "../households/types";
 import { createInMemorySourceRecordStore } from "../source-records/in-memory-store";
 import type { InMemorySourceRecordStore } from "../source-records/types";
-import type { AssetEvidenceStore } from "./evidence-types";
+import { createAssetAuthority, resolveOwnedOrVisible } from "./household-authority";
 import { createInMemoryAssetEvidenceStore } from "./in-memory-evidence-store";
 import { createInMemoryAssetLinkStore } from "./in-memory-link-store";
 import { createInMemoryAssetStore } from "./in-memory-store";
 import type { AssetLinkStore } from "./link-types";
-import type { AssetReviewStore, GeneralActionAssetLinkStore } from "./review-types";
+import type {
+  AssetReviewLifecycleStore,
+  AssetReviewStore,
+  GeneralActionAssetLinkStore,
+} from "./review-types";
 import type { AssetStore } from "./types";
 
 /**
@@ -222,7 +228,19 @@ export function createInMemoryAssetReviewStore(deps: {
  * drizzle link store's behavior: idempotent creation per (action, asset) pair,
  * oldest-first reads, and collision-deleting re-points for duplicate review.
  */
-export function createInMemoryGeneralActionAssetLinkStore(): GeneralActionAssetLinkStore {
+type InMemoryActionLinkMutationPolicy = {
+  authorizeActions: GeneralActionAssetLinkStore["listAuthorizedGeneralActionAssetLinkActionIds"];
+  checkAsset: (input: {
+    callerUserId: string;
+    assetId: string;
+    operation: AssetAuthorityOperation;
+    expectedStatus?: "suggested" | "active";
+  }) => Promise<"authorized" | "stale" | "unauthorized">;
+};
+
+export function createInMemoryGeneralActionAssetLinkStore(
+  policy?: InMemoryActionLinkMutationPolicy,
+): GeneralActionAssetLinkStore {
   const links = new Map<string, GeneralActionAssetLink>();
 
   /** Oldest first, id tiebreak — the shared ordering contract with drizzle. */
@@ -261,10 +279,35 @@ export function createInMemoryGeneralActionAssetLinkStore(): GeneralActionAssetL
         .filter((link) => link.assetId === input.assetId)
         .sort(byCreatedThenId);
     },
+    async listAuthorizedGeneralActionAssetLinkActionIds(input) {
+      return policy ? policy.authorizeActions(input) : [];
+    },
     async repointGeneralActionAssetLinks(input) {
+      if (!policy) return { outcome: "unauthorized" };
+      const requestedActions = new Set(input.generalActionIds);
+      const authorizedActions = new Set(await policy.authorizeActions(input));
+      if (authorizedActions.size !== requestedActions.size) {
+        return { outcome: "unauthorized" };
+      }
+      const source = await policy.checkAsset({
+        callerUserId: input.callerUserId,
+        assetId: input.fromAssetId,
+        operation: "edit",
+        expectedStatus: input.fromAssetStatus,
+      });
+      const target = await policy.checkAsset({
+        callerUserId: input.callerUserId,
+        assetId: input.toAssetId,
+        operation: "attach",
+        expectedStatus: input.toAssetStatus,
+      });
+      if (source === "stale" || target === "stale") return { outcome: "stale" };
+      if (source !== "authorized" || target !== "authorized") {
+        return { outcome: "unauthorized" };
+      }
       let repointed = 0;
       for (const link of [...links.values()]) {
-        if (link.ownerUserId !== input.ownerUserId || link.assetId !== input.fromAssetId) {
+        if (link.assetId !== input.fromAssetId || !authorizedActions.has(link.generalActionId)) {
           continue;
         }
         // The action already links to the target — the stale row just goes.
@@ -275,11 +318,23 @@ export function createInMemoryGeneralActionAssetLinkStore(): GeneralActionAssetL
         links.set(link.id, { ...link, assetId: input.toAssetId });
         repointed += 1;
       }
-      return repointed;
+      return { outcome: "applied", count: repointed };
     },
     async deleteGeneralActionAssetLink(input) {
+      if (!policy) return;
+      const authorizedActions = await policy.authorizeActions({
+        callerUserId: input.callerUserId,
+        generalActionIds: [input.generalActionId],
+      });
+      if (!authorizedActions.includes(input.generalActionId)) return;
+      const asset = await policy.checkAsset({
+        callerUserId: input.callerUserId,
+        assetId: input.assetId,
+        operation: "edit",
+      });
+      if (asset !== "authorized") return;
       const link = links.get(input.linkId);
-      if (link && link.ownerUserId === input.ownerUserId) {
+      if (link?.generalActionId === input.generalActionId && link.assetId === input.assetId) {
         links.delete(input.linkId);
       }
     },
@@ -292,13 +347,14 @@ export function createInMemoryGeneralActionAssetLinkStore(): GeneralActionAssetL
  * source-record base for grounding and the action-link rows (#199) — the
  * composition `createAssetReview` and the review tests run against.
  */
-export function createInMemoryAssetReviewLifecycleStore(): AssetStore &
-  AssetReviewStore &
-  AssetEvidenceStore &
-  GeneralActionAssetLinkStore &
+type InMemoryAssetReviewLifecycleStore = AssetReviewLifecycleStore &
   AssetLinkStore &
   HouseholdStore &
-  InMemorySourceRecordStore {
+  InMemorySourceRecordStore;
+
+export function createInMemoryAssetReviewLifecycleStore(
+  options: { authorizeLinkActions?: InMemoryActionLinkMutationPolicy["authorizeActions"] } = {},
+): InMemoryAssetReviewLifecycleStore {
   const householdStore = createInMemoryHouseholdStore();
   const assetStore = createInMemoryAssetStore(householdStore);
   const reviewStore = createInMemoryAssetReviewStore({
@@ -310,12 +366,36 @@ export function createInMemoryAssetReviewLifecycleStore(): AssetStore &
     getVisibleAsset: (input) => assetStore.getVisibleAsset(input),
     householdStore,
   });
-  return {
+  const assetAuthority = createAssetAuthority({ ...assetStore, ...householdStore });
+  const actionLinkStore = createInMemoryGeneralActionAssetLinkStore({
+    authorizeActions: options.authorizeLinkActions ?? (async () => []),
+    async checkAsset(input) {
+      const asset: Asset | null = await resolveOwnedOrVisible({
+        owned: () =>
+          assetStore.getAsset({ ownerUserId: input.callerUserId, assetId: input.assetId }),
+        visible: () =>
+          assetStore.getVisibleAsset({ callerUserId: input.callerUserId, assetId: input.assetId }),
+      });
+      if (!asset) return "unauthorized";
+      if (input.expectedStatus && asset.status !== input.expectedStatus) return "stale";
+      const authorized = await assetAuthority.proveAssetAuthority({
+        actorUserId: input.callerUserId,
+        asset,
+        operation: input.operation,
+      });
+      return authorized ? "authorized" : "unauthorized";
+    },
+  });
+  const store: InMemoryAssetReviewLifecycleStore = {
     ...createInMemorySourceRecordStore(),
     ...assetStore,
     ...reviewStore,
     ...evidenceStore,
-    ...createInMemoryGeneralActionAssetLinkStore(),
+    ...actionLinkStore,
     ...createInMemoryAssetLinkStore(),
+    // The in-memory adapter has no rollback substrate; it still marks the
+    // product boundary so behavior tests exercise the same composition seam.
+    withTransaction: (fn) => fn(store),
   };
+  return store;
 }

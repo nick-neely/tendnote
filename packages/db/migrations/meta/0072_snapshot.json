@@ -1,6 +1,6 @@
 {
-  "id": "eeda6ea2-e674-4ea1-ac41-55fb361325b4",
-  "prevId": "6fd2e551-e8d0-46f1-9976-200799027348",
+  "id": "0737ccbf-b125-4b13-84b4-9df67479a44a",
+  "prevId": "eeda6ea2-e674-4ea1-ac41-55fb361325b4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5261,11 +5261,11 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "owner_user_id": {
-          "name": "owner_user_id",
+        "created_by_user_id": {
+          "name": "created_by_user_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "general_action_id": {
           "name": "general_action_id",
@@ -5336,11 +5336,11 @@
           "method": "btree",
           "with": {}
         },
-        "general_action_assets_owner_idx": {
-          "name": "general_action_assets_owner_idx",
+        "general_action_assets_creator_idx": {
+          "name": "general_action_assets_creator_idx",
           "columns": [
             {
-              "expression": "owner_user_id",
+              "expression": "created_by_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5368,17 +5368,17 @@
         }
       },
       "foreignKeys": {
-        "general_action_assets_owner_user_id_user_id_fk": {
-          "name": "general_action_assets_owner_user_id_user_id_fk",
+        "general_action_assets_created_by_user_id_user_id_fk": {
+          "name": "general_action_assets_created_by_user_id_user_id_fk",
           "tableFrom": "general_action_assets",
           "tableTo": "user",
           "columnsFrom": [
-            "owner_user_id"
+            "created_by_user_id"
           ],
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "general_action_assets_general_action_id_general_actions_id_fk": {

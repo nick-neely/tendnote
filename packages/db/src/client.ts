@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
@@ -14,6 +15,7 @@ export type DatabaseExecutor = Database | Parameters<Parameters<Database["transa
 
 let db: Database | undefined;
 let postgresClient: postgres.Sql | undefined;
+const transactionContext = new AsyncLocalStorage<DatabaseExecutor>();
 
 const localDatabaseUrl = "postgres://tendnote:tendnote@localhost:55432/tendnote";
 
@@ -44,6 +46,12 @@ export function hasDatabaseUrl() {
 }
 
 export function getDb(): Database {
+  const transaction = transactionContext.getStore();
+  if (transaction) {
+    // Transaction executors expose the query surface used by stores. Keep the
+    // root Database type here so adapters need not branch at every statement.
+    return transaction as Database;
+  }
   const url = getDatabaseUrl();
 
   if (!db) {
@@ -60,6 +68,14 @@ export function getDb(): Database {
   }
 
   return db;
+}
+
+/** Keeps every nested store call in one commit or rollback boundary. */
+export async function withDatabaseTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  if (transactionContext.getStore()) {
+    return fn();
+  }
+  return getDb().transaction((tx) => transactionContext.run(tx, fn));
 }
 
 export async function closeDb() {

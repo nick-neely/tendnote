@@ -15,9 +15,9 @@ import { z } from "zod";
  */
 export const generalActionAssetLinkSchema = z.object({
   id: z.string(),
-  // The action owner who created the link. The linked asset may belong to a
-  // co-member after duplicate review links to an existing household Asset.
-  ownerUserId: z.string(),
+  // Historical attribution only. Authority is proved independently through
+  // the Action and Asset parents; deletion of this account leaves the link.
+  createdByUserId: z.string().nullable(),
   generalActionId: z.string(),
   assetId: z.string(),
   hintLabel: z.string().trim().min(1).max(120).nullable().default(null),
@@ -30,10 +30,12 @@ export const generalActionAssetLinkSchema = z.object({
   createdAt: z.date(),
 });
 
-export const createGeneralActionAssetLinkSchema = generalActionAssetLinkSchema.omit({
-  id: true,
-  createdAt: true,
-});
+export const createGeneralActionAssetLinkSchema = generalActionAssetLinkSchema
+  .omit({
+    id: true,
+    createdAt: true,
+  })
+  .extend({ createdByUserId: z.string() });
 
 export type GeneralActionAssetLink = z.infer<typeof generalActionAssetLinkSchema>;
 export type CreateGeneralActionAssetLinkInput = z.input<typeof createGeneralActionAssetLinkSchema>;

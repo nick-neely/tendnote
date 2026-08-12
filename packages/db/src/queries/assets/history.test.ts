@@ -61,7 +61,7 @@ describe("listAssetHistory", () => {
       title: "Replace the refrigerator water filter",
     });
     await store.createGeneralActionAssetLink({
-      ownerUserId: OWNER,
+      createdByUserId: OWNER,
       generalActionId: action.id,
       assetId: asset.id,
       hintLabel: null,
@@ -135,7 +135,7 @@ describe("listAssetHistory", () => {
       title: "Buy a spare filter",
     });
     await store.createGeneralActionAssetLink({
-      ownerUserId: OWNER,
+      createdByUserId: OWNER,
       generalActionId: privateAction.id,
       assetId: asset.id,
       hintLabel: null,

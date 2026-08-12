@@ -433,7 +433,7 @@ describe("proposal gating", () => {
     ).rejects.toBeInstanceOf(AssetValidationError);
   });
 
-  it("refuses a co-member on someone else's asset, and allows one on the household's own", async () => {
+  it("refuses a co-member on someone else's asset, and filters children on the household's own", async () => {
     const { proposals, assetLifecycle, store, seedAsset, seedMemory } = setup();
     const household = await seedOwnerMemberHousehold(store, OWNER, MEMBER);
     const asset = await seedAsset();
@@ -454,10 +454,32 @@ describe("proposal gating", () => {
       ownership: "household_native",
       householdId: household.id,
     });
-    await seedMemory(fridge.id);
-    await expect(
-      proposals.proposeAssetMemoryActions({ actorUserId: MEMBER, assetId: fridge.id, now: NOW }),
-    ).resolves.toBeDefined();
+    await seedMemory(fridge.id, {
+      label: "Private warranty expires",
+      value: { type: "date", date: "2027-01-04" },
+      scope: "private",
+    });
+    const privatePass = await proposals.proposeAssetMemoryActions({
+      actorUserId: MEMBER,
+      assetId: fridge.id,
+      now: NOW,
+    });
+    expect(privatePass.proposed).toEqual([]);
+
+    const sharedMemory = await seedMemory(fridge.id, {
+      label: "Shared replacement interval",
+      value: { type: "interval", interval: 6, unit: "month" },
+      ownership: "household_native",
+      scope: "household",
+    });
+    const sharedPass = await proposals.proposeAssetMemoryActions({
+      actorUserId: MEMBER,
+      assetId: fridge.id,
+      now: NOW,
+    });
+    expect(sharedPass.proposed.map((proposal) => proposal.assetMemoryId)).toEqual([
+      sharedMemory.id,
+    ]);
   });
 
   it("never widens a private memory into a household action", async () => {
@@ -492,6 +514,87 @@ describe("proposal gating", () => {
 
     expect(proposed[0]?.action.scope).toBe("household");
     expect(proposed[0]?.action.householdId).toBe(household.id);
+  });
+
+  it("uses the active actor when a household memory's creator has departed", async () => {
+    const { proposals, store, assetLifecycle, seedMemory } = setup();
+    const household = await seedOwnerMemberHousehold(store, OWNER, MEMBER);
+    const asset = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Kitchen refrigerator",
+      kind: "appliance",
+      ownership: "household_native",
+      householdId: household.id,
+    });
+    await seedMemory(asset.id, {
+      ownership: "household_native",
+      scope: "household",
+    });
+    const ownerMembership = await store.getHouseholdMembership({
+      householdId: household.id,
+      userId: OWNER,
+    });
+    if (!ownerMembership) throw new Error("Expected the creator membership fixture.");
+    await store.updateHouseholdMembership({
+      membershipId: ownerMembership.id,
+      patch: { status: "removed", removedAt: NOW },
+    });
+
+    const { proposed } = await proposals.proposeAssetMemoryActions({
+      actorUserId: MEMBER,
+      assetId: asset.id,
+      now: NOW,
+    });
+
+    expect(proposed[0]?.action).toMatchObject({
+      ownerUserId: MEMBER,
+      scope: "household",
+      householdId: household.id,
+    });
+  });
+
+  it("does not attach another member's owner-keyed source to the actor's proposal", async () => {
+    const { proposals, store, assetLifecycle, review } = setup();
+    const household = await seedOwnerMemberHousehold(store, OWNER, MEMBER);
+    const source = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Replace the filter every six months.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "active",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "household",
+      householdId: household.id,
+      importance: 3,
+      metadataJson: {},
+    });
+    const asset = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Kitchen refrigerator",
+      kind: "appliance",
+      ownership: "household_native",
+      householdId: household.id,
+    });
+    const memory = await review.createActiveAssetMemory({
+      ownerUserId: OWNER,
+      assetId: asset.id,
+      label: "Replacement interval",
+      value: { type: "interval", interval: 6, unit: "month" },
+      sourceRecordId: source.id,
+      ownership: "household_native",
+      scope: "household",
+    });
+
+    const { proposed } = await proposals.proposeAssetMemoryActions({
+      actorUserId: MEMBER,
+      assetId: asset.id,
+      now: NOW,
+    });
+
+    expect(proposed[0]?.action).toMatchObject({ ownerUserId: MEMBER, sourceRecordId: null });
+    expect(proposed[0]?.assetMemoryId).toBe(memory.id);
   });
 
   it("narrows the selection to the memories the caller named", async () => {
@@ -566,10 +669,48 @@ describe("proposal provenance", () => {
     ).toEqual([]);
   });
 
-  it("hides a pending proposal from a co-member — review is owner-only", async () => {
-    const { proposals, store, seedAsset, seedMemory } = setup();
+  it("keeps a visible proposal when its re-anchored memory has a different creator", async () => {
+    const { proposals, store, review, assetLifecycle } = setup();
     const household = await seedOwnerMemberHousehold(store, OWNER, MEMBER);
-    const asset = await seedAsset({ scope: "household", householdId: household.id });
+    const asset = await assetLifecycle.createAsset({
+      ownerUserId: MEMBER,
+      name: "Household refrigerator",
+      kind: "appliance",
+      ownership: "household_native",
+      householdId: household.id,
+    });
+    const memory = await review.createActiveAssetMemory({
+      ownerUserId: OWNER,
+      assetId: asset.id,
+      label: "Replacement interval",
+      value: { type: "interval", interval: 6, unit: "month" },
+      ownership: "household_native",
+      scope: "household",
+    });
+    await proposals.proposeAssetMemoryActions({
+      actorUserId: MEMBER,
+      assetId: asset.id,
+      now: NOW,
+    });
+
+    const pending = await proposals.listPendingAssetActionProposals({
+      actorUserId: MEMBER,
+      assetId: asset.id,
+    });
+
+    expect(pending.map((proposal) => proposal.assetMemoryId)).toEqual([memory.id]);
+  });
+
+  it("hides a pending proposal from a co-member — review is owner-only", async () => {
+    const { proposals, store, assetLifecycle, seedMemory } = setup();
+    const household = await seedOwnerMemberHousehold(store, OWNER, MEMBER);
+    const asset = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Household refrigerator",
+      kind: "appliance",
+      ownership: "household_native",
+      householdId: household.id,
+    });
     await seedMemory(asset.id, { scope: "household" });
 
     await proposals.proposeAssetMemoryActions({

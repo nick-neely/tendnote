@@ -512,7 +512,7 @@ export const demoAssetGeneralActions: DemoGeneralAction[] = [
 export const demoGeneralActionAssets: DemoGeneralActionAsset[] = [
   {
     id: assetIds.actionLinkRoutine,
-    ownerUserId: demoOwnerUserId,
+    createdByUserId: demoOwnerUserId,
     generalActionId: assetIds.actionReplaceFilter,
     assetId: assetIds.filter,
     hintLabel: "refrigerator water filter",
@@ -522,7 +522,7 @@ export const demoGeneralActionAssets: DemoGeneralActionAsset[] = [
   {
     // The provenance that makes the dismissal stick: this detail already had its say.
     id: assetIds.actionLinkDismissed,
-    ownerUserId: demoOwnerUserId,
+    createdByUserId: demoOwnerUserId,
     generalActionId: assetIds.actionDismissedInterval,
     assetId: assetIds.filter,
     hintLabel: null,
@@ -531,7 +531,7 @@ export const demoGeneralActionAssets: DemoGeneralActionAsset[] = [
   },
   {
     id: assetIds.actionLinkDismissedOilChange,
-    ownerUserId: demoOwnerUserId,
+    createdByUserId: demoOwnerUserId,
     generalActionId: assetIds.actionDismissedOilChange,
     assetId: assetIds.car,
     hintLabel: null,

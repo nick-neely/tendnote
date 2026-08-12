@@ -4,12 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 
 // The store has no live-DB harness, so the connection is mocked to *fail loudly*: a
 // query that should never have been issued is the thing under test below.
-const { getDb } = vi.hoisted(() => ({
+const { getDb, withDatabaseTransaction } = vi.hoisted(() => ({
   getDb: vi.fn(() => {
     throw new Error("The store issued a query it should have refused.");
   }),
+  withDatabaseTransaction: vi.fn(),
 }));
-vi.mock("../../client", () => ({ getDb }));
+vi.mock("../../client", () => ({ getDb, withDatabaseTransaction }));
 
 const { createDrizzleAssetStore, isPersistedAssetId, selectOwnedAsset } = await import(
   "./drizzle-store"
@@ -20,6 +21,7 @@ const { createDrizzleAssetStore, isPersistedAssetId, selectOwnedAsset } = await 
 // in-memory store cannot exercise for it — the defaults-free update parse, the
 // shared scope predicate, and the name-ordering contract. A revert of any fails here.
 const source = readFileSync(join(import.meta.dirname, "drizzle-store.ts"), "utf8");
+const reviewLinkSource = readFileSync(join(import.meta.dirname, "review-link.ts"), "utf8");
 
 /**
  * A malformed id is a *denial*, not a fault (ADR 0153). Postgres compares a `uuid`
@@ -56,6 +58,10 @@ describe("a malformed asset id is denied, never queried", () => {
 });
 
 describe("assets drizzle store guards", () => {
+  it("binds the complete duplicate-link transition to one transaction", () => {
+    expect(source).toContain("withDatabaseTransaction");
+    expect(reviewLinkSource).toContain("store.withTransaction");
+  });
   it("validates update patches with the defaults-free schema, not a base partial", () => {
     // `assetSchema.partial().parse(patch)` would inject `.default()` values for
     // absent keys and silently wipe columns (scope, status, householdId) on every

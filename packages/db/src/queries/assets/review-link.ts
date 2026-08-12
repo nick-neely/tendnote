@@ -93,6 +93,15 @@ export async function linkAssetReviewGroup(
   store: AssetReviewLifecycleStore,
   input: LinkAssetReviewGroupInput,
 ): Promise<AssetReviewGroupResult> {
+  return store.withTransaction
+    ? store.withTransaction((transaction) => linkAssetReviewGroupInTransaction(transaction, input))
+    : linkAssetReviewGroupInTransaction(store, input);
+}
+
+async function linkAssetReviewGroupInTransaction(
+  store: AssetReviewLifecycleStore,
+  input: LinkAssetReviewGroupInput,
+): Promise<AssetReviewGroupResult> {
   const group = await requireGroup(store, {
     ownerUserId: input.actorUserId,
     groupId: input.groupId,
@@ -107,6 +116,35 @@ export async function linkAssetReviewGroup(
     );
   }
   const target = await requireLinkTarget(store, input, anchor);
+
+  // Fence both parent lifecycles before moving any child. A stale or revoked
+  // target must leave the proposal, its details, and its Action links wholly
+  // untouched rather than producing a half-resolved review group.
+  const linkedRows = await store.listGeneralActionAssetLinksForAsset({ assetId: anchor.id });
+  const linkedActionIds = [...new Set(linkedRows.map((link) => link.generalActionId))];
+  const authorizedActionIds = await store.listAuthorizedGeneralActionAssetLinkActionIds({
+    callerUserId: input.actorUserId,
+    generalActionIds: linkedActionIds,
+  });
+  const authorizedIdSet = new Set(authorizedActionIds);
+  if (authorizedIdSet.size !== linkedActionIds.length) {
+    throw new HouseholdRecordUnavailableError();
+  }
+  const actionRepoint = await store.repointGeneralActionAssetLinks({
+    callerUserId: input.actorUserId,
+    generalActionIds: linkedActionIds,
+    fromAssetId: anchor.id,
+    toAssetId: target.id,
+    fromAssetStatus: "suggested",
+    toAssetStatus: "active",
+  });
+  if (actionRepoint.outcome === "stale") {
+    throw new AssetValidationError("That asset changed while you were linking it. Try again.");
+  }
+  if (actionRepoint.outcome === "unauthorized") {
+    throw new HouseholdRecordUnavailableError();
+  }
+  const actionsLinked = actionRepoint.count;
 
   const pending = await listPendingMemories(store, group);
   for (const memory of pending) {
@@ -164,14 +202,6 @@ export async function linkAssetReviewGroup(
       recordId: record.id,
     });
   }
-
-  // Any General Actions whose hints resolved to the would-be duplicate follow
-  // it onto the target — an already-linked action keeps its single link (#199).
-  const actionsLinked = await store.repointGeneralActionAssetLinks({
-    ownerUserId: anchor.ownerUserId,
-    fromAssetId: anchor.id,
-    toAssetId: target.id,
-  });
 
   await resolveAnchorAsLinked(store, {
     input,
