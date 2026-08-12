@@ -301,23 +301,23 @@ async function main() {
         .where(and(eq(assets.id, sole.householdAsset.id), eq(assets.ownerUserId, soleId)))
     ).length === 1,
   );
+  const dissolvedWorkspaces = await getDb()
+    .select({ status: householdWorkspaces.status })
+    .from(householdWorkspaces)
+    .where(inArray(householdWorkspaces.id, [soleHouseholdId, secondSoleHouseholdId]));
   check(
     "every sole-member workspace entered dissolution recovery atomically",
-    (
-      await getDb()
-        .select({ status: householdWorkspaces.status })
-        .from(householdWorkspaces)
-        .where(inArray(householdWorkspaces.id, [soleHouseholdId, secondSoleHouseholdId]))
-    ).every((workspace) => workspace.status === "dissolved"),
+    dissolvedWorkspaces.length === 2 &&
+      dissolvedWorkspaces.every((workspace) => workspace.status === "dissolved"),
   );
+  const canceledInvitations = await getDb()
+    .select({ state: householdInvitations.state })
+    .from(householdInvitations)
+    .where(inArray(householdInvitations.id, [pendingInvitation.id, secondPendingInvitation.id]));
   check(
     "every sole-member dissolution canceled pending invitations",
-    (
-      await getDb()
-        .select({ state: householdInvitations.state })
-        .from(householdInvitations)
-        .where(inArray(householdInvitations.id, [pendingInvitation.id, secondPendingInvitation.id]))
-    ).every((invitation) => invitation.state === "canceled"),
+    canceledInvitations.length === 2 &&
+      canceledInvitations.every((invitation) => invitation.state === "canceled"),
   );
   const dissolutionAuditEntries = await getDb()
     .select({ ownerUserId: auditLog.ownerUserId })
