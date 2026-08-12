@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { mayViewLockedAssetLinkTarget } from "./drizzle-action-link-store";
 
 // Source-assertion guard, matching this package's convention: the drizzle store
 // has no live-DB harness, so we pin the production behaviors the in-memory store
@@ -19,6 +20,48 @@ const migration = readFileSync(
 );
 
 describe("general action asset link drizzle store guards (#199)", () => {
+  it("rechecks target attach visibility from locked Asset and governance facts", () => {
+    const householdIds = new Set(["household-1"]);
+    const input = {
+      callerUserId: "caller",
+      activeHouseholdIds: householdIds,
+      selectedAssetIds: new Set(["selected"]),
+    };
+    const record = {
+      id: "asset",
+      ownerUserId: "owner",
+      scope: "private" as const,
+      householdId: null,
+    };
+
+    expect(mayViewLockedAssetLinkTarget({ ...record, ownerUserId: "caller" }, input)).toBe(true);
+    expect(mayViewLockedAssetLinkTarget(record, input)).toBe(false);
+    expect(
+      mayViewLockedAssetLinkTarget(
+        { ...record, scope: "household", householdId: "household-1" },
+        input,
+      ),
+    ).toBe(true);
+    expect(
+      mayViewLockedAssetLinkTarget(
+        { ...record, scope: "household", householdId: "departed-household" },
+        input,
+      ),
+    ).toBe(false);
+    expect(
+      mayViewLockedAssetLinkTarget(
+        { ...record, id: "selected", scope: "shared", householdId: "household-1" },
+        input,
+      ),
+    ).toBe(true);
+    expect(
+      mayViewLockedAssetLinkTarget(
+        { ...record, scope: "shared", householdId: "household-1" },
+        input,
+      ),
+    ).toBe(false);
+  });
+
   it("creates links idempotently against the unique (action, asset) pair", () => {
     expect(source).toContain("onConflictDoNothing");
     expect(source).toContain("generalActionAssets.generalActionId, generalActionAssets.assetId");
@@ -41,6 +84,9 @@ describe("general action asset link drizzle store guards (#199)", () => {
     expect(source).toContain('eq(householdMemberships.status, "active")');
     expect(source).toContain("statuses.get(input.fromAssetId) !== input.fromAssetStatus");
     expect(source).toContain("statuses.get(input.toAssetId) !== input.toAssetStatus");
+    expect(source).toContain("authorized.editableAssetIds.has(input.fromAssetId)");
+    expect(source).toContain("authorized.visibleAssetIds.has(input.toAssetId)");
+    expect(source).toContain('eq(householdRecordShares.recordKind, "asset")');
     expect(source).toContain(
       "inArray(generalActionAssets.generalActionId, [...authorized.actionIds])",
     );

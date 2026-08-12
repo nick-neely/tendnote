@@ -10,6 +10,7 @@ import {
   generalActionAssets,
   generalActions,
   householdMemberships,
+  householdRecordShares,
   householdWorkspaces,
 } from "../../schema";
 import { createDrizzleGeneralActionStore } from "../general-actions/drizzle-store";
@@ -20,6 +21,27 @@ import type { GeneralActionAssetLinkStore } from "./review-types";
 // Shared ordering contract: oldest first, id tiebreak — the in-memory store's
 // `byCreatedThenId` mirrors this; keep the two in step.
 const linkOrder = [asc(generalActionAssets.createdAt), asc(generalActionAssets.id)];
+
+/** The Asset `attach` proof, expressed over rows already locked by the mutation. */
+export function mayViewLockedAssetLinkTarget(
+  record: {
+    id: string;
+    ownerUserId: string;
+    scope: "private" | "shared" | "household";
+    householdId: string | null;
+  },
+  input: {
+    callerUserId: string;
+    activeHouseholdIds: ReadonlySet<string>;
+    selectedAssetIds: ReadonlySet<string>;
+  },
+): boolean {
+  if (record.scope === "private") return record.ownerUserId === input.callerUserId;
+  if (record.householdId === null || !input.activeHouseholdIds.has(record.householdId))
+    return false;
+  if (record.scope === "household") return true;
+  return record.ownerUserId === input.callerUserId || input.selectedAssetIds.has(record.id);
+}
 
 // fallow-ignore-next-line complexity -- One transaction-ordering primitive must discover and lock governance before records, detect household drift, and return both parent authorities together so link mutations cannot split the race fence.
 async function lockAndAuthorizeLinkParents(
@@ -33,7 +55,11 @@ async function lockAndAuthorizeLinkParents(
   const actionIds = [...new Set(input.generalActionIds)];
   const assetIds = [...new Set(input.assetIds)];
   if (actionIds.length === 0 || assetIds.length === 0) {
-    return { actionIds: new Set<string>(), assetIds: new Set<string>() };
+    return {
+      actionIds: new Set<string>(),
+      editableAssetIds: new Set<string>(),
+      visibleAssetIds: new Set<string>(),
+    };
   }
 
   // Discover then lock every implicated governance row before locking records,
@@ -81,6 +107,7 @@ async function lockAndAuthorizeLinkParents(
       ownerUserId: assets.ownerUserId,
       ownership: assets.ownership,
       householdId: assets.householdId,
+      scope: assets.scope,
       status: assets.status,
     })
     .from(assets)
@@ -93,7 +120,11 @@ async function lockAndAuthorizeLinkParents(
     .map((record) => record.householdId)
     .filter((id): id is string => id !== null);
   if (currentHouseholdIds.some((id) => !lockedHouseholdIds.has(id))) {
-    return { actionIds: new Set<string>(), assetIds: new Set<string>() };
+    return {
+      actionIds: new Set<string>(),
+      editableAssetIds: new Set<string>(),
+      visibleAssetIds: new Set<string>(),
+    };
   }
 
   const memberships =
@@ -110,6 +141,21 @@ async function lockAndAuthorizeLinkParents(
             ),
           );
   const activeHouseholdIds = new Set(memberships.map((row) => row.householdId));
+  const selectedShares =
+    activeHouseholdIds.size === 0
+      ? []
+      : await db
+          .select({ recordId: householdRecordShares.recordId })
+          .from(householdRecordShares)
+          .where(
+            and(
+              eq(householdRecordShares.recordKind, "asset"),
+              eq(householdRecordShares.sharedWithUserId, input.callerUserId),
+              inArray(householdRecordShares.recordId, assetIds),
+              inArray(householdRecordShares.householdId, [...activeHouseholdIds]),
+            ),
+          );
+  const selectedAssetIds = new Set(selectedShares.map((share) => share.recordId));
   const mayEdit = (record: {
     ownerUserId: string;
     ownership: "member_owned" | "household_native";
@@ -118,10 +164,20 @@ async function lockAndAuthorizeLinkParents(
     record.ownership === "member_owned"
       ? record.ownerUserId === input.callerUserId
       : record.householdId !== null && activeHouseholdIds.has(record.householdId);
-
   return {
     actionIds: new Set(lockedActions.filter(mayEdit).map((record) => record.id)),
-    assetIds: new Set(lockedAssets.filter(mayEdit).map((record) => record.id)),
+    editableAssetIds: new Set(lockedAssets.filter(mayEdit).map((record) => record.id)),
+    visibleAssetIds: new Set(
+      lockedAssets
+        .filter((record) =>
+          mayViewLockedAssetLinkTarget(record, {
+            callerUserId: input.callerUserId,
+            activeHouseholdIds,
+            selectedAssetIds,
+          }),
+        )
+        .map((record) => record.id),
+    ),
   };
 }
 
@@ -224,7 +280,14 @@ export function createDrizzleGeneralActionAssetLinkStore(): GeneralActionAssetLi
           generalActionIds: input.generalActionIds,
           assetIds: [input.fromAssetId, input.toAssetId],
         });
-        if (authorized.assetIds.size !== 2 || authorized.actionIds.size === 0) {
+        if (!authorized.editableAssetIds.has(input.fromAssetId)) {
+          return 0;
+        }
+        // Re-pointing attaches the caller's independently authorized Action to
+        // the chosen Asset; it does not edit that Asset. Match `requireLinkTarget`
+        // and the Asset `attach` operation by rechecking target visibility under
+        // the same governance and record locks.
+        if (!authorized.visibleAssetIds.has(input.toAssetId) || authorized.actionIds.size === 0) {
           return 0;
         }
         const lockedAssets = await tx
@@ -282,7 +345,7 @@ export function createDrizzleGeneralActionAssetLinkStore(): GeneralActionAssetLi
           assetIds: [input.assetId],
         });
         if (!authorized.actionIds.has(input.generalActionId)) return;
-        if (!authorized.assetIds.has(input.assetId)) return;
+        if (!authorized.editableAssetIds.has(input.assetId)) return;
         await tx
           .delete(generalActionAssets)
           .where(
