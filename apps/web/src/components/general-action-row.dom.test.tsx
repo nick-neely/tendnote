@@ -200,6 +200,27 @@ describe("asset hints on an Action row (#199)", () => {
   });
 });
 
+describe("read-only shared Action controls", () => {
+  it("keeps History reachable when the viewer has no management authority", async () => {
+    const user = userEvent.setup();
+    renderRow(
+      actionWithHint({
+        owned: false,
+        ownerUserId: "someone-else",
+        scope: "household",
+        visibilityLabel: "Household",
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Manage action" }));
+
+    expect(await screen.findByRole("button", { name: "History" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Who's looking after this" })).toBeNull();
+  });
+});
+
 describe("Routine occurrence lifecycle", () => {
   it("waits for the server-owned next occurrence instead of projecting a date", async () => {
     const user = userEvent.setup();

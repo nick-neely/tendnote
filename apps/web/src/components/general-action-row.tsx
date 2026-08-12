@@ -625,7 +625,6 @@ function ActionDeferForm({
  */
 function ActionOverflowMenu({
   action,
-  shareableMembers,
   pending,
   busyKey,
   onSetAside,
@@ -633,7 +632,6 @@ function ActionOverflowMenu({
   onManage,
 }: {
   action: GeneralActionView;
-  shareableMembers: ShareableActionMember[];
   pending: boolean;
   busyKey: string | null;
   onSetAside: () => void;
@@ -641,11 +639,6 @@ function ActionOverflowMenu({
   onManage: () => void;
 }) {
   const { authority } = action;
-  const hasManagementActions =
-    (action.isRoutine && (authority.skip || authority.edit)) ||
-    authority.responsibility ||
-    (shareableMembers.length > 0 && (authority.audience || authority.handToHousehold)) ||
-    authority.archive;
 
   return (
     <DropdownMenu>
@@ -679,12 +672,10 @@ function ActionOverflowMenu({
             Edit details
           </DropdownMenuItem>
         ) : null}
-        {hasManagementActions ? (
-          <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onManage}>
-            <SlidersHorizontalIcon />
-            Manage action
-          </DropdownMenuItem>
-        ) : null}
+        <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onManage}>
+          <SlidersHorizontalIcon />
+          Manage action
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -1241,7 +1232,6 @@ export function ActionRow({
           onManage={() => setMode("manage")}
           onSetAside={() => setMode("defer")}
           pending={controlsBlocked}
-          shareableMembers={shareableMembers}
         />
       </div>
       <div className="col-span-2 col-start-2 flex flex-col gap-2 empty:hidden">
