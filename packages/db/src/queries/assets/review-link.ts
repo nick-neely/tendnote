@@ -108,6 +108,30 @@ export async function linkAssetReviewGroup(
   }
   const target = await requireLinkTarget(store, input, anchor);
 
+  // Fence both parent lifecycles before moving any child. A stale or revoked
+  // target must leave the proposal, its details, and its Action links wholly
+  // untouched rather than producing a half-resolved review group.
+  const linkedRows = await store.listGeneralActionAssetLinksForAsset({ assetId: anchor.id });
+  const authorizedActionIds = await store.listAuthorizedGeneralActionAssetLinkActionIds({
+    callerUserId: input.actorUserId,
+    generalActionIds: linkedRows.map((link) => link.generalActionId),
+  });
+  const actionRepoint = await store.repointGeneralActionAssetLinks({
+    callerUserId: input.actorUserId,
+    generalActionIds: authorizedActionIds,
+    fromAssetId: anchor.id,
+    toAssetId: target.id,
+    fromAssetStatus: "suggested",
+    toAssetStatus: "active",
+  });
+  if (actionRepoint.outcome === "stale") {
+    throw new AssetValidationError("That asset changed while you were linking it. Try again.");
+  }
+  if (actionRepoint.outcome === "unauthorized") {
+    throw new HouseholdRecordUnavailableError();
+  }
+  const actionsLinked = actionRepoint.count;
+
   const pending = await listPendingMemories(store, group);
   for (const memory of pending) {
     // Visibility is clamped to what the target allows — linking never widens.
@@ -164,23 +188,6 @@ export async function linkAssetReviewGroup(
       recordId: record.id,
     });
   }
-
-  // Any General Actions whose hints resolved to the would-be duplicate follow
-  // it onto the target only after their own parent authorization succeeds. The
-  // Asset proof above cannot grant authority over an independently scoped Action.
-  const linkedRows = await store.listGeneralActionAssetLinksForAsset({ assetId: anchor.id });
-  const authorizedActionIds = await store.listAuthorizedGeneralActionAssetLinkActionIds({
-    callerUserId: input.actorUserId,
-    generalActionIds: linkedRows.map((link) => link.generalActionId),
-  });
-  const actionsLinked = await store.repointGeneralActionAssetLinks({
-    callerUserId: input.actorUserId,
-    generalActionIds: authorizedActionIds,
-    fromAssetId: anchor.id,
-    toAssetId: target.id,
-    fromAssetStatus: "suggested",
-    toAssetStatus: "active",
-  });
 
   await resolveAnchorAsLinked(store, {
     input,

@@ -533,6 +533,39 @@ describe("action ↔ asset display, both directions", () => {
     );
   });
 
+  it("does not delete another member's link from the shared in-memory mutation seam", async () => {
+    const { store, assetLifecycle, actionLifecycle, seedHousehold } = setup();
+    const household = await seedHousehold();
+    const asset = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Shared refrigerator",
+      kind: "appliance",
+    });
+    const memberAction = await actionLifecycle.createGeneralAction({
+      ownerUserId: "user-member",
+      title: "Replace filter",
+      scope: "shared",
+      householdId: household.id,
+      selectedUserIds: [OWNER],
+    });
+    const link = await store.createGeneralActionAssetLink({
+      createdByUserId: "user-member",
+      generalActionId: memberAction.id,
+      assetId: asset.id,
+    });
+
+    await store.deleteGeneralActionAssetLink({
+      callerUserId: OWNER,
+      linkId: link.id,
+      generalActionId: memberAction.id,
+      assetId: asset.id,
+    });
+
+    await expect(
+      store.listGeneralActionAssetLinksForActions({ generalActionIds: [memberAction.id] }),
+    ).resolves.toMatchObject([{ id: link.id }]);
+  });
+
   it("collapses a re-point that would duplicate an existing action link", async () => {
     const { links, review, assetLifecycle, actionLifecycle } = setup();
     const target = await assetLifecycle.createAsset({

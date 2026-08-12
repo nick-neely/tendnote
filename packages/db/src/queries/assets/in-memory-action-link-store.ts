@@ -7,6 +7,7 @@ import type {
   InMemoryGeneralActionLifecycleStore,
 } from "../general-actions/types";
 import { createInMemoryAssetReviewLifecycleStore } from "./in-memory-review-store";
+import type { GeneralActionAssetLinkStore } from "./review-types";
 
 /**
  * The full in-memory bridge store (#199): the asset review lifecycle composition
@@ -20,42 +21,46 @@ export function createInMemoryAssetActionLinkStore(): ReturnType<
 > &
   GeneralActionStore &
   InMemoryGeneralActionLifecycleStore {
-  const reviewLifecycleStore = createInMemoryAssetReviewLifecycleStore();
+  let authorizeLinkActions: GeneralActionAssetLinkStore["listAuthorizedGeneralActionAssetLinkActionIds"] =
+    async () => [];
+  const reviewLifecycleStore = createInMemoryAssetReviewLifecycleStore({
+    authorizeLinkActions: (input) => authorizeLinkActions(input),
+  });
   const generalActionStore = createInMemoryGeneralActionStore(reviewLifecycleStore);
   const generalActionAuthority = createGeneralActionAuthority({
     ...generalActionStore,
     ...reviewLifecycleStore,
   });
+  authorizeLinkActions = async (input) => {
+    const authorized: string[] = [];
+    for (const generalActionId of new Set(input.generalActionIds)) {
+      const owned = await generalActionStore.getGeneralAction({
+        ownerUserId: input.callerUserId,
+        generalActionId,
+      });
+      const visible = owned
+        ? owned
+        : await generalActionStore.getVisibleGeneralAction({
+            callerUserId: input.callerUserId,
+            generalActionId,
+          });
+      if (!visible) continue;
+      try {
+        await generalActionAuthority.requireGeneralActionAuthority({
+          actorUserId: input.callerUserId,
+          action: visible,
+          operation: "edit",
+        });
+        authorized.push(generalActionId);
+      } catch (error) {
+        if (!(error instanceof HouseholdRecordUnavailableError)) throw error;
+      }
+    }
+    return authorized;
+  };
   return {
     ...createInMemoryGeneralActionAreaStore(),
     ...generalActionStore,
     ...reviewLifecycleStore,
-    async listAuthorizedGeneralActionAssetLinkActionIds(input) {
-      const authorized: string[] = [];
-      for (const generalActionId of new Set(input.generalActionIds)) {
-        const owned = await generalActionStore.getGeneralAction({
-          ownerUserId: input.callerUserId,
-          generalActionId,
-        });
-        const visible = owned
-          ? owned
-          : await generalActionStore.getVisibleGeneralAction({
-              callerUserId: input.callerUserId,
-              generalActionId,
-            });
-        if (!visible) continue;
-        try {
-          await generalActionAuthority.requireGeneralActionAuthority({
-            actorUserId: input.callerUserId,
-            action: visible,
-            operation: "edit",
-          });
-          authorized.push(generalActionId);
-        } catch (error) {
-          if (!(error instanceof HouseholdRecordUnavailableError)) throw error;
-        }
-      }
-      return authorized;
-    },
   };
 }

@@ -54,7 +54,7 @@ async function lockAndAuthorizeLinkParents(
 ) {
   const actionIds = [...new Set(input.generalActionIds)];
   const assetIds = [...new Set(input.assetIds)];
-  if (actionIds.length === 0 || assetIds.length === 0) {
+  if (assetIds.length === 0) {
     return {
       actionIds: new Set<string>(),
       editableAssetIds: new Set<string>(),
@@ -66,10 +66,13 @@ async function lockAndAuthorizeLinkParents(
   // matching Household membership transitions. If a record changes households
   // between discovery and its row lock, fail closed rather than trusting a
   // workspace whose roster was not serialized with this mutation.
-  const discoveredActions = await db
-    .select({ householdId: generalActions.householdId })
-    .from(generalActions)
-    .where(inArray(generalActions.id, actionIds));
+  const discoveredActions =
+    actionIds.length === 0
+      ? []
+      : await db
+          .select({ householdId: generalActions.householdId })
+          .from(generalActions)
+          .where(inArray(generalActions.id, actionIds));
   const discoveredAssets = await db
     .select({ householdId: assets.householdId })
     .from(assets)
@@ -90,17 +93,20 @@ async function lockAndAuthorizeLinkParents(
       .for("update");
   }
 
-  const lockedActions = await db
-    .select({
-      id: generalActions.id,
-      ownerUserId: generalActions.ownerUserId,
-      ownership: generalActions.ownership,
-      householdId: generalActions.householdId,
-    })
-    .from(generalActions)
-    .where(inArray(generalActions.id, actionIds))
-    .orderBy(generalActions.id)
-    .for("update");
+  const lockedActions =
+    actionIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: generalActions.id,
+            ownerUserId: generalActions.ownerUserId,
+            ownership: generalActions.ownership,
+            householdId: generalActions.householdId,
+          })
+          .from(generalActions)
+          .where(inArray(generalActions.id, actionIds))
+          .orderBy(generalActions.id)
+          .for("update");
   const lockedAssets = await db
     .select({
       id: assets.id,
@@ -270,9 +276,6 @@ export function createDrizzleGeneralActionAssetLinkStore(): GeneralActionAssetLi
       return authorized;
     },
     async repointGeneralActionAssetLinks(input) {
-      if (input.generalActionIds.length === 0) {
-        return 0;
-      }
       // fallow-ignore-next-line complexity -- Repointing is one atomic collision-aware graph rewrite after both parent authorities and lifecycle statuses are locked and rechecked.
       return getDb().transaction(async (tx) => {
         const authorized = await lockAndAuthorizeLinkParents(tx, {
@@ -281,22 +284,29 @@ export function createDrizzleGeneralActionAssetLinkStore(): GeneralActionAssetLi
           assetIds: [input.fromAssetId, input.toAssetId],
         });
         if (!authorized.editableAssetIds.has(input.fromAssetId)) {
-          return 0;
+          return { outcome: "unauthorized" };
         }
         // Re-pointing attaches the caller's independently authorized Action to
         // the chosen Asset; it does not edit that Asset. Match `requireLinkTarget`
         // and the Asset `attach` operation by rechecking target visibility under
         // the same governance and record locks.
-        if (!authorized.visibleAssetIds.has(input.toAssetId) || authorized.actionIds.size === 0) {
-          return 0;
+        if (
+          !authorized.visibleAssetIds.has(input.toAssetId) ||
+          (input.generalActionIds.length > 0 && authorized.actionIds.size === 0)
+        ) {
+          return { outcome: "unauthorized" };
         }
         const lockedAssets = await tx
           .select({ id: assets.id, status: assets.status })
           .from(assets)
           .where(inArray(assets.id, [input.fromAssetId, input.toAssetId]));
         const statuses = new Map(lockedAssets.map((asset) => [asset.id, asset.status]));
-        if (statuses.get(input.fromAssetId) !== input.fromAssetStatus) return 0;
-        if (statuses.get(input.toAssetId) !== input.toAssetStatus) return 0;
+        if (statuses.get(input.fromAssetId) !== input.fromAssetStatus) {
+          return { outcome: "stale" };
+        }
+        if (statuses.get(input.toAssetId) !== input.toAssetStatus) {
+          return { outcome: "stale" };
+        }
 
         const fromRows = await tx
           .select()
@@ -334,7 +344,7 @@ export function createDrizzleGeneralActionAssetLinkStore(): GeneralActionAssetLi
             .returning({ id: generalActionAssets.id });
           repointed += updated.length;
         }
-        return repointed;
+        return { outcome: "applied", count: repointed };
       });
     },
     async deleteGeneralActionAssetLink(input) {

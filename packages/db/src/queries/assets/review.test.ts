@@ -675,6 +675,31 @@ describe("duplicate review: link to an existing asset", () => {
     await expect(auditKinds(existing.id)).resolves.toContain("linked_existing");
   });
 
+  it("leaves the review untouched when the locked target lifecycle is stale", async () => {
+    const { review, store, existing, result } = await linkSetup();
+    store.repointGeneralActionAssetLinks = async () => ({ outcome: "stale" });
+
+    await expect(
+      review.linkAssetReviewGroup({
+        actorUserId: OWNER,
+        groupId: result.group.id,
+        targetAssetId: existing.id,
+      }),
+    ).rejects.toThrow(/changed while you were linking/);
+
+    await expect(
+      store.getAsset({ ownerUserId: OWNER, assetId: result.asset.id }),
+    ).resolves.toMatchObject({ status: "suggested" });
+    await expect(
+      store.getAssetReviewGroup({ ownerUserId: OWNER, groupId: result.group.id }),
+    ).resolves.toMatchObject({ assetId: result.asset.id });
+    const memories = await store.listAssetMemoriesForOwner({
+      ownerUserId: OWNER,
+      reviewGroupId: result.group.id,
+    });
+    expect(memories.every((memory) => memory.assetId === result.asset.id)).toBe(true);
+  });
+
   it("clamps a linked detail's visibility to what the target allows", async () => {
     const { review, store, seedSuggestedAsset, seedHousehold, lifecycle } = setup();
     const household = await seedHousehold();

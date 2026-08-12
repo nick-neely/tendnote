@@ -137,7 +137,9 @@ export type GeneralActionAssetLinkStore = {
    * Re-points the owner's links from a would-be duplicate onto the link target
    * during duplicate review (#199). A row that would collide with an existing
    * (action, target) pair is deleted instead — the link already exists. Returns
-   * how many rows now point at the target.
+   * an applied count, a stale lifecycle fence, or a fail-closed authorization
+   * result. Zero applied links is still success: there may be no linked Actions,
+   * or every source row may already collide with the target pair.
    */
   repointGeneralActionAssetLinks: (input: {
     callerUserId: string;
@@ -147,7 +149,9 @@ export type GeneralActionAssetLinkStore = {
     toAssetId: string;
     fromAssetStatus: "suggested";
     toAssetStatus: "active";
-  }) => Promise<number>;
+  }) => Promise<
+    { outcome: "applied"; count: number } | { outcome: "stale" } | { outcome: "unauthorized" }
+  >;
   /** Parent-authorized hard delete, for clearing a stale link to a dismissed husk. */
   deleteGeneralActionAssetLink: (input: {
     callerUserId: string;
