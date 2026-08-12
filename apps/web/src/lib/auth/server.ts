@@ -7,6 +7,7 @@ import { redisStorage } from "@better-auth/redis-storage";
 import { createTendnoteAuth, resolveBetterAuthSecret } from "@tendnote/auth";
 import { getDb } from "@tendnote/db/client";
 import { ensureAccessProfile } from "@tendnote/db/queries/access-profiles";
+import { assertHouseholdAccountDeletionAllowed } from "@tendnote/db/queries/households";
 import * as schema from "@tendnote/db/schema";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getRedis } from "@/lib/cache/redis";
@@ -118,6 +119,14 @@ function createAuth() {
       // linkSocial connects Google Calendar / Discord to the already signed-in
       // Tendnote user rather than creating a parallel account.
       accountLinking: socialAccountLinking(),
+    },
+    user: {
+      deleteUser: {
+        enabled: true,
+        beforeDelete: async (deletingUser) => {
+          await assertHouseholdAccountDeletionAllowed({ userId: deletingUser.id });
+        },
+      },
     },
     databaseHooks: createDatabaseHooks(),
     secondaryStorage: redisStorage({
