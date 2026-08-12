@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   customType,
   index,
   integer,
@@ -10,7 +11,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { user } from "../auth";
-import { timestamps } from "./common";
+import { householdRecordOwnershipCheck, timestamps } from "./common";
 import {
   assetAuditEventKind,
   assetAuditSource,
@@ -43,16 +44,14 @@ export const assets = pgTable(
     /**
      * The member this row is keyed by.
      *
-     * On a `household_native` Asset this is the creating member and nothing
-     * else: a storage key, kept because the column is `NOT NULL`, because every
-     * owner-keyed write and audit row hangs off it, and because creator
-     * provenance is worth keeping. It is never authority and never an access
-     * path — the owner-keyed *read* refuses household-native rows so a departed
-     * creator loses the household's refrigerator like anyone else (ADR 0214).
+     * On a `household_native` Asset this is operational plumbing and nothing
+     * else: initially the creator, then a deterministic remaining member if
+     * that account is deleted. With no remaining member it stays opaque through
+     * dissolution recovery. It is not a member foreign key, provenance, or
+     * authority. The owner-keyed read seams refuse household-native rows;
+     * access comes only through the Household Authorization Proof (ADR 0214).
      */
-    ownerUserId: text("owner_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id").notNull(),
     name: text("name").notNull(),
     // Small fixed kind set — behavior and prompts key off it; no custom taxonomy.
     kind: assetKind("kind").notNull(),
@@ -97,6 +96,7 @@ export const assets = pgTable(
     // find (#386) — both are (household, ownership) reads.
     index("assets_household_ownership_idx").on(table.householdId, table.ownership),
     index("assets_search_vector_idx").using("gin", table.searchVector),
+    check("assets_ownership_check", householdRecordOwnershipCheck(table)),
   ],
 );
 
@@ -114,9 +114,7 @@ export const assetAuditEvents = pgTable(
     assetId: uuid("asset_id")
       .notNull()
       .references(() => assets.id, { onDelete: "cascade" }),
-    ownerUserId: text("owner_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id").notNull(),
     kind: assetAuditEventKind("kind").notNull(),
     // Actor provenance: who performed this write (ADR 0154).
     actorUserId: text("actor_user_id").references(() => user.id, { onDelete: "set null" }),

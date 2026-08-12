@@ -33,9 +33,7 @@ export const personReferences = pgTable(
     recordKind: visibilityRecordKind("record_kind").notNull(),
     recordId: uuid("record_id").notNull(),
     label: text("label").notNull(),
-    createdByUserId: text("created_by_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
     ...timestamps,
   },
   (table) => [

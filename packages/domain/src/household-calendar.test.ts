@@ -7,6 +7,7 @@ import {
   findHouseholdCalendarEvent,
   HOUSEHOLD_CALENDAR_CONNECTION_LIMIT,
   type HouseholdCalendarConnectionSummary,
+  householdCalendarConnectionSchema,
   householdCalendarConnectRefusal,
   householdCalendarEventKey,
   householdCalendarFamilyFromResult,
@@ -84,6 +85,27 @@ describe("household calendar governance", () => {
 });
 
 describe("who may read a designated calendar", () => {
+  it("retains designation history after the designating owner account is gone", () => {
+    expect(
+      householdCalendarConnectionSchema.parse({
+        id: "connection-1",
+        householdId: HOUSEHOLD,
+        connectorUserId: "ben",
+        designatedByUserId: null,
+        providerKey: "google",
+        capabilityKey: "calendar",
+        calendarId: "primary",
+        label: "Family",
+        status: "connected",
+        connectedAt: new Date(),
+        disconnectedAt: null,
+        disconnectedReason: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).designatedByUserId,
+    ).toBeNull();
+  });
+
   const memberships = [
     { householdId: HOUSEHOLD, userId: "ana" },
     { householdId: HOUSEHOLD, userId: "ben" },

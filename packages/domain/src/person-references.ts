@@ -75,7 +75,7 @@ export const personReferenceSchema = z.object({
   recordKind: personReferenceRecordKindSchema,
   recordId: z.string(),
   label: personReferenceLabelSchema,
-  createdByUserId: z.string(),
+  createdByUserId: z.string().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

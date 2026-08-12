@@ -27,6 +27,11 @@ import type { GeneralActionLifecycleStore, GeneralActionStore } from "./types";
 // the alias the shared `visibleHouseholdRecordSql` builder expects.
 const visibleGeneralActions = alias(generalActions, "ga");
 
+function requireMemberOwnedActionOwner(ownerUserId: string | null): string {
+  if (!ownerUserId) throw new Error("A member-owned shared action needs an owner.");
+  return ownerUserId;
+}
+
 /**
  * Owner-scoped fetch of a single General Action by id. Shared by the lifecycle store's
  * `getGeneralAction` and the embedding store's `getGeneralActionForEmbedding` so the
@@ -135,6 +140,7 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
         async function persistShares(action: typeof generalActions.$inferSelect) {
           const householdId = action.householdId;
           if (action.scope !== "shared" || !householdId || sharedWithUserIds.length === 0) return;
+          const sharedByUserId = requireMemberOwnedActionOwner(action.ownerUserId);
           await tx
             .insert(householdRecordShares)
             .values(
@@ -143,7 +149,7 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
                 recordKind: "general_action" as const,
                 recordId: action.id,
                 sharedWithUserId,
-                sharedByUserId: action.ownerUserId,
+                sharedByUserId,
               })),
             )
             .onConflictDoNothing();

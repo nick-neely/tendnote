@@ -5,6 +5,7 @@ import type {
 } from "@tendnote/domain";
 import { sql } from "drizzle-orm";
 import {
+  check,
   customType,
   index,
   integer,
@@ -16,7 +17,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { user } from "../auth";
-import { timestamps } from "./common";
+import { householdRecordOwnershipCheck, timestamps } from "./common";
 import {
   generalActionEventKind,
   generalActionOfferKind,
@@ -51,17 +52,14 @@ export const generalActions = pgTable(
      * The member this row is keyed under, and — for a `member_owned` Action —
      * its author and its authority.
      *
-     * For a `household_native` Action it is the creating member and nothing
-     * more: a storage key kept because this column is `NOT NULL` and because
-     * every owner-keyed write and every history row hangs off it. It must never
-     * be read as authority (that is `ownership`, through the Household
-     * Authorization Proof) and never as an access path — the owner-keyed *read*
-     * seams exclude household-native rows precisely so a creator who leaves
-     * loses access exactly like anyone else (ADR 0214).
+     * For a `household_native` Action it is operational plumbing and nothing
+     * more: initially the creator, then a deterministic remaining member if
+     * that account is deleted. With no remaining member it stays opaque through
+     * dissolution recovery. It is not a member foreign key, provenance, or
+     * authority. The owner-keyed read seams exclude household-native rows;
+     * access comes only through the Household Authorization Proof (ADR 0214).
      */
-    ownerUserId: text("owner_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id").notNull(),
     /**
      * Whose record this is, as opposed to who may see it. `member_owned` for
      * everything written before Phase Eight and for anything a member writes
@@ -157,6 +155,7 @@ export const generalActions = pgTable(
     /** Departure clears every record naming the leaving member. */
     index("general_actions_responsibility_holder_idx").on(table.responsibilityHolderUserId),
     index("general_actions_search_vector_idx").using("gin", table.searchVector),
+    check("general_actions_ownership_check", householdRecordOwnershipCheck(table)),
   ],
 );
 
@@ -242,9 +241,7 @@ export const generalActionEvents = pgTable(
     generalActionId: uuid("general_action_id")
       .notNull()
       .references(() => generalActions.id, { onDelete: "cascade" }),
-    ownerUserId: text("owner_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id").notNull(),
     kind: generalActionEventKind("kind").notNull(),
     // Actor provenance: who performed this change (ADR 0154).
     actorUserId: text("actor_user_id").references(() => user.id, {

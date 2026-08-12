@@ -111,7 +111,7 @@ export function householdInvitationExpiresAt(sentAt: Date): Date {
 export type HouseholdInvitationRecord = {
   id: string;
   householdId: string;
-  invitedByUserId: string;
+  invitedByUserId: string | null;
   email: string;
   normalizedEmail: string;
   role: HouseholdRole;

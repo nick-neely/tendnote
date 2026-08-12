@@ -32,9 +32,9 @@ export const householdCalendarConnections = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     /** The Owner who made the whole-household designation. History; it does not change. */
-    designatedByUserId: text("designated_by_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    designatedByUserId: text("designated_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
     providerKey: text("provider_key").notNull(),
     capabilityKey: text("capability_key").notNull(),
     calendarId: text("calendar_id").notNull(),

@@ -23,11 +23,9 @@ export const generalActionAssets = pgTable(
   "general_action_assets",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    // The action owner who created the link; the asset may belong to a co-member
-    // after duplicate review links to an existing household Asset.
-    ownerUserId: text("owner_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    // Creator attribution only; both parents decide authority independently.
+    // Keep the legacy column name until its product-facing rename lands.
+    ownerUserId: text("owner_user_id").references(() => user.id, { onDelete: "set null" }),
     generalActionId: uuid("general_action_id")
       .notNull()
       .references(() => generalActions.id, { onDelete: "cascade" }),

@@ -13,9 +13,7 @@ export const householdWorkspaces = pgTable(
   "household_workspaces",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    ownerUserId: text("owner_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id").references(() => user.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     defaultScope: privacyScope("default_scope").notNull().default("private"),
     /**
@@ -52,9 +50,7 @@ export const householdMemberships = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    invitedByUserId: text("invited_by_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    invitedByUserId: text("invited_by_user_id").references(() => user.id, { onDelete: "set null" }),
     role: householdRole("role").notNull(),
     status: householdMemberStatus("status").notNull(),
     /**

@@ -306,5 +306,19 @@ describe("Context Fact domain contract", () => {
       creatorUserId: "user-1",
       lastActorUserId: "user-2",
     });
+
+    const formerMemberView = toContextFactView(
+      contextFactSchema.parse({
+        ...parsed,
+        id: "former-member-fact-1",
+        subject: { kind: "household", householdId: "household-1" },
+        creatorUserId: null,
+        lastActorUserId: null,
+      }),
+    );
+    expect(formerMemberView.actorAttribution).toEqual({
+      creatorUserId: null,
+      lastActorUserId: null,
+    });
   });
 });

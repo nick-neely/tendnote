@@ -279,6 +279,37 @@ describe("accepting an invitation", () => {
     });
   });
 
+  it("keeps an active household invitation usable after its inviter account is deleted", async () => {
+    const { invitations, households, store, household } = await setup({
+      members: [
+        [OWNER, "owner"],
+        ["owner-2", "owner"],
+      ],
+    });
+    const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
+    await store.updateInvitation({
+      invitationId: sent.invitation.id,
+      patch: { invitedByUserId: null },
+    });
+
+    expect(
+      await invitations.viewInvitation({
+        secret: sent.secret,
+        viewer: { userId: "sam-1", email: "sam@example.com", activeHouseholds: 0 },
+      }),
+    ).toMatchObject({ state: "ready", householdName: "The Neely house" });
+
+    await invitations.acceptInvitation({
+      secret: sent.secret,
+      userId: "sam-1",
+      userEmail: "sam@example.com",
+    });
+
+    expect(
+      await households.getHouseholdMembership({ householdId: household.id, userId: "sam-1" }),
+    ).toMatchObject({ status: "active", role: "member", invitedByUserId: null });
+  });
+
   /**
    * Pins the mailbox proof this ticket actually enforces, which is narrower than
    * the acceptance criterion's "invited verified email" wording.

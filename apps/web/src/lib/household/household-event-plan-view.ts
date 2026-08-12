@@ -188,10 +188,11 @@ function momentFormatter(timeZone: string): Intl.DateTimeFormat {
  * printing a raw id would both be worse than saying so plainly.
  */
 export function householdActorName(input: {
-  userId: string;
+  userId: string | null;
   viewerUserId: string;
   memberNames: ReadonlyMap<string, string>;
 }): string {
+  if (input.userId === null) return HOUSEHOLD_EVENT_PLAN_DEPARTED_ACTOR;
   if (input.userId === input.viewerUserId) return "you";
   return input.memberNames.get(input.userId) ?? HOUSEHOLD_EVENT_PLAN_DEPARTED_ACTOR;
 }

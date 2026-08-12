@@ -85,7 +85,7 @@ export const householdEventPlanLinkSchema = z.object({
   linkKind: householdEventPlanLinkKindSchema,
   recordId: z.string(),
   /** Kept after the linker leaves: attribution is history, not standing. */
-  linkedByUserId: z.string(),
+  linkedByUserId: z.string().nullable(),
   createdAt: z.coerce.date(),
 });
 export type HouseholdEventPlanLink = z.infer<typeof householdEventPlanLinkSchema>;
@@ -94,8 +94,8 @@ export const householdEventPlanSchema = z.object({
   id: z.string(),
   householdId: z.string(),
   /** Provenance, not authority: the creator holds no more than any active member. */
-  createdByUserId: z.string(),
-  lastActorUserId: z.string(),
+  createdByUserId: z.string().nullable(),
+  lastActorUserId: z.string().nullable(),
   title: z.string().min(1).max(HOUSEHOLD_EVENT_PLAN_TITLE_LIMIT),
   details: z.string().max(HOUSEHOLD_EVENT_PLAN_DETAILS_LIMIT).nullable().default(null),
   /**
