@@ -23,6 +23,7 @@ import type {
   ProposeAssetMemoryActionsInput,
 } from "./action-proposal-types";
 import { createAssetAuthority } from "./household-authority";
+import { listVisibleAssetMemories } from "./household-children";
 import { recordAudit, resolveAssetVisibility } from "./lifecycle";
 import { loadAnchor, requireGrounding } from "./review-shared";
 
@@ -91,12 +92,12 @@ async function requireProposalAnchor(
 async function listProposableMemories(
   store: AssetActionProposalStore,
   asset: Asset,
+  actorUserId: string,
   assetMemoryIds: string[] | undefined,
 ): Promise<AssetMemory[]> {
-  const memories = await store.listAssetMemoriesForOwner({
-    ownerUserId: asset.ownerUserId,
+  const memories = await listVisibleAssetMemories(store, {
+    callerUserId: actorUserId,
     assetId: asset.id,
-    statuses: ["active"],
   });
   if (!assetMemoryIds) {
     return memories;
@@ -400,7 +401,12 @@ async function proposeAssetMemoryActions(
   const now = input.now ?? new Date();
   const source = input.source ?? "user";
 
-  const reviewed = await listProposableMemories(store, asset, input.assetMemoryIds);
+  const reviewed = await listProposableMemories(
+    store,
+    asset,
+    input.actorUserId,
+    input.assetMemoryIds,
+  );
   const links = await store.listGeneralActionAssetLinksForAsset({ assetId: asset.id });
   const prior = await indexPriorProposals(store, input.actorUserId, links);
   const { memories, staleLinkByMemory, alreadySpokenFor } = selectProposableMemories(

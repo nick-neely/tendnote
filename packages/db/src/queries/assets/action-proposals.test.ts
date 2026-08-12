@@ -433,7 +433,7 @@ describe("proposal gating", () => {
     ).rejects.toBeInstanceOf(AssetValidationError);
   });
 
-  it("refuses a co-member on someone else's asset, and allows one on the household's own", async () => {
+  it("refuses a co-member on someone else's asset, and filters children on the household's own", async () => {
     const { proposals, assetLifecycle, store, seedAsset, seedMemory } = setup();
     const household = await seedOwnerMemberHousehold(store, OWNER, MEMBER);
     const asset = await seedAsset();
@@ -454,10 +454,32 @@ describe("proposal gating", () => {
       ownership: "household_native",
       householdId: household.id,
     });
-    await seedMemory(fridge.id);
-    await expect(
-      proposals.proposeAssetMemoryActions({ actorUserId: MEMBER, assetId: fridge.id, now: NOW }),
-    ).resolves.toBeDefined();
+    await seedMemory(fridge.id, {
+      label: "Private warranty expires",
+      value: { type: "date", date: "2027-01-04" },
+      scope: "private",
+    });
+    const privatePass = await proposals.proposeAssetMemoryActions({
+      actorUserId: MEMBER,
+      assetId: fridge.id,
+      now: NOW,
+    });
+    expect(privatePass.proposed).toEqual([]);
+
+    const sharedMemory = await seedMemory(fridge.id, {
+      label: "Shared replacement interval",
+      value: { type: "interval", interval: 6, unit: "month" },
+      ownership: "household_native",
+      scope: "household",
+    });
+    const sharedPass = await proposals.proposeAssetMemoryActions({
+      actorUserId: MEMBER,
+      assetId: fridge.id,
+      now: NOW,
+    });
+    expect(sharedPass.proposed.map((proposal) => proposal.assetMemoryId)).toEqual([
+      sharedMemory.id,
+    ]);
   });
 
   it("never widens a private memory into a household action", async () => {
