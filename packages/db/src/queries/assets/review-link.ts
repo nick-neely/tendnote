@@ -93,6 +93,15 @@ export async function linkAssetReviewGroup(
   store: AssetReviewLifecycleStore,
   input: LinkAssetReviewGroupInput,
 ): Promise<AssetReviewGroupResult> {
+  return store.withTransaction
+    ? store.withTransaction((transaction) => linkAssetReviewGroupInTransaction(transaction, input))
+    : linkAssetReviewGroupInTransaction(store, input);
+}
+
+async function linkAssetReviewGroupInTransaction(
+  store: AssetReviewLifecycleStore,
+  input: LinkAssetReviewGroupInput,
+): Promise<AssetReviewGroupResult> {
   const group = await requireGroup(store, {
     ownerUserId: input.actorUserId,
     groupId: input.groupId,

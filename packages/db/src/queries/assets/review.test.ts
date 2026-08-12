@@ -657,7 +657,8 @@ describe("duplicate review: link to an existing asset", () => {
   }
 
   it("re-anchors the pending details instead of creating a near-duplicate", async () => {
-    const { review, lifecycle, existing, result, auditKinds } = await linkSetup();
+    const { review, store, lifecycle, existing, result, auditKinds } = await linkSetup();
+    const transaction = vi.spyOn(store, "withTransaction");
 
     const linked = await review.linkAssetReviewGroup({
       actorUserId: OWNER,
@@ -670,6 +671,7 @@ describe("duplicate review: link to an existing asset", () => {
     expect(linked.duplicateCandidates).toEqual([]);
     expect(linked.memories).toHaveLength(2);
     expect(linked.memories.every((memory) => memory.assetId === existing.id)).toBe(true);
+    expect(transaction).toHaveBeenCalledOnce();
 
     // The would-be duplicate never becomes a durable asset.
     const listed = await lifecycle.listAssets({ callerUserId: OWNER });

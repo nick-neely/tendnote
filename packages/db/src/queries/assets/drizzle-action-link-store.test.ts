@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { mayViewLockedAssetLinkTarget } from "./drizzle-action-link-store";
+import {
+  mayViewLockedAssetLinkTarget,
+  selectedAssetIdsForLockedAssets,
+} from "./drizzle-action-link-store";
 
 // Source-assertion guard, matching this package's convention: the drizzle store
 // has no live-DB harness, so we pin the production behaviors the in-memory store
@@ -62,6 +65,23 @@ describe("general action asset link drizzle store guards (#199)", () => {
     ).toBe(false);
   });
 
+  it("correlates a selected share with the locked Asset's current Household", () => {
+    const lockedAssets = [{ id: "asset", householdId: "household-a" }];
+
+    expect(
+      selectedAssetIdsForLockedAssets(
+        [{ recordId: "asset", householdId: "household-b" }],
+        lockedAssets,
+      ),
+    ).toEqual(new Set());
+    expect(
+      selectedAssetIdsForLockedAssets(
+        [{ recordId: "asset", householdId: "household-a" }],
+        lockedAssets,
+      ),
+    ).toEqual(new Set(["asset"]));
+  });
+
   it("creates links idempotently against the unique (action, asset) pair", () => {
     expect(source).toContain("onConflictDoNothing");
     expect(source).toContain("generalActionAssets.generalActionId, generalActionAssets.assetId");
@@ -79,7 +99,7 @@ describe("general action asset link drizzle store guards (#199)", () => {
 
   it("scopes destructive mutations to the independently authorized parents", () => {
     expect(source).toContain("lockAndAuthorizeLinkParents");
-    expect(source).toContain("getDb().transaction");
+    expect(source).toContain("withDatabaseTransaction");
     expect(source).toContain('.for("update")');
     expect(source).toContain('eq(householdMemberships.status, "active")');
     expect(source).toContain("statuses.get(input.fromAssetId) !== input.fromAssetStatus");

@@ -171,7 +171,10 @@ export type AssetReviewLifecycleStore = AssetLifecycleStore &
   AssetReviewStore &
   AssetEvidenceStore &
   GeneralActionAssetLinkStore &
-  Pick<SourceRecordResolutionStore, "getSourceRecord">;
+  Pick<SourceRecordResolutionStore, "getSourceRecord"> & {
+    /** Binds a composed review transition to one atomic store transaction. */
+    withTransaction?: <T>(fn: (store: AssetReviewLifecycleStore) => Promise<T>) => Promise<T>;
+  };
 
 /** One proposed memory riding a suggestion call: the reviewable content. */
 export type SuggestAssetMemoryContent = {

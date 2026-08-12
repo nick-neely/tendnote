@@ -625,6 +625,38 @@ describe("proposal provenance", () => {
     ).toEqual([]);
   });
 
+  it("keeps a visible proposal when its re-anchored memory has a different creator", async () => {
+    const { proposals, store, review, assetLifecycle } = setup();
+    const household = await seedOwnerMemberHousehold(store, OWNER, MEMBER);
+    const asset = await assetLifecycle.createAsset({
+      ownerUserId: MEMBER,
+      name: "Household refrigerator",
+      kind: "appliance",
+      ownership: "household_native",
+      householdId: household.id,
+    });
+    const memory = await review.createActiveAssetMemory({
+      ownerUserId: OWNER,
+      assetId: asset.id,
+      label: "Replacement interval",
+      value: { type: "interval", interval: 6, unit: "month" },
+      ownership: "household_native",
+      scope: "household",
+    });
+    await proposals.proposeAssetMemoryActions({
+      actorUserId: MEMBER,
+      assetId: asset.id,
+      now: NOW,
+    });
+
+    const pending = await proposals.listPendingAssetActionProposals({
+      actorUserId: MEMBER,
+      assetId: asset.id,
+    });
+
+    expect(pending.map((proposal) => proposal.assetMemoryId)).toEqual([memory.id]);
+  });
+
   it("hides a pending proposal from a co-member — review is owner-only", async () => {
     const { proposals, store, assetLifecycle, seedMemory } = setup();
     const household = await seedOwnerMemberHousehold(store, OWNER, MEMBER);

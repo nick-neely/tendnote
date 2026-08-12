@@ -17,13 +17,16 @@ import { createInMemoryHouseholdStore } from "../households/in-memory-store";
 import type { HouseholdStore } from "../households/types";
 import { createInMemorySourceRecordStore } from "../source-records/in-memory-store";
 import type { InMemorySourceRecordStore } from "../source-records/types";
-import type { AssetEvidenceStore } from "./evidence-types";
 import { createAssetAuthority, resolveOwnedOrVisible } from "./household-authority";
 import { createInMemoryAssetEvidenceStore } from "./in-memory-evidence-store";
 import { createInMemoryAssetLinkStore } from "./in-memory-link-store";
 import { createInMemoryAssetStore } from "./in-memory-store";
 import type { AssetLinkStore } from "./link-types";
-import type { AssetReviewStore, GeneralActionAssetLinkStore } from "./review-types";
+import type {
+  AssetReviewLifecycleStore,
+  AssetReviewStore,
+  GeneralActionAssetLinkStore,
+} from "./review-types";
 import type { AssetStore } from "./types";
 
 /**
@@ -344,15 +347,14 @@ export function createInMemoryGeneralActionAssetLinkStore(
  * source-record base for grounding and the action-link rows (#199) — the
  * composition `createAssetReview` and the review tests run against.
  */
-export function createInMemoryAssetReviewLifecycleStore(
-  options: { authorizeLinkActions?: InMemoryActionLinkMutationPolicy["authorizeActions"] } = {},
-): AssetStore &
-  AssetReviewStore &
-  AssetEvidenceStore &
-  GeneralActionAssetLinkStore &
+type InMemoryAssetReviewLifecycleStore = AssetReviewLifecycleStore &
   AssetLinkStore &
   HouseholdStore &
-  InMemorySourceRecordStore {
+  InMemorySourceRecordStore;
+
+export function createInMemoryAssetReviewLifecycleStore(
+  options: { authorizeLinkActions?: InMemoryActionLinkMutationPolicy["authorizeActions"] } = {},
+): InMemoryAssetReviewLifecycleStore {
   const householdStore = createInMemoryHouseholdStore();
   const assetStore = createInMemoryAssetStore(householdStore);
   const reviewStore = createInMemoryAssetReviewStore({
@@ -384,12 +386,16 @@ export function createInMemoryAssetReviewLifecycleStore(
       return authorized ? "authorized" : "unauthorized";
     },
   });
-  return {
+  const store: InMemoryAssetReviewLifecycleStore = {
     ...createInMemorySourceRecordStore(),
     ...assetStore,
     ...reviewStore,
     ...evidenceStore,
     ...actionLinkStore,
     ...createInMemoryAssetLinkStore(),
+    // The in-memory adapter has no rollback substrate; it still marks the
+    // product boundary so behavior tests exercise the same composition seam.
+    withTransaction: (fn) => fn(store),
   };
+  return store;
 }

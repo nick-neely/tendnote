@@ -4,7 +4,7 @@ import {
   HouseholdRecordUnavailableError,
 } from "@tendnote/domain";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { type DatabaseExecutor, getDb } from "../../client";
+import { type DatabaseExecutor, getDb, withDatabaseTransaction } from "../../client";
 import {
   assets,
   generalActionAssets,
@@ -41,6 +41,19 @@ export function mayViewLockedAssetLinkTarget(
     return false;
   if (record.scope === "household") return true;
   return record.ownerUserId === input.callerUserId || input.selectedAssetIds.has(record.id);
+}
+
+/** A selected share authorizes only the Asset row in that same Household. */
+export function selectedAssetIdsForLockedAssets(
+  shares: ReadonlyArray<{ recordId: string; householdId: string }>,
+  lockedAssets: ReadonlyArray<{ id: string; householdId: string | null }>,
+): Set<string> {
+  const assetHouseholds = new Map(lockedAssets.map((asset) => [asset.id, asset.householdId]));
+  return new Set(
+    shares
+      .filter((share) => assetHouseholds.get(share.recordId) === share.householdId)
+      .map((share) => share.recordId),
+  );
 }
 
 // fallow-ignore-next-line complexity -- One transaction-ordering primitive must discover and lock governance before records, detect household drift, and return both parent authorities together so link mutations cannot split the race fence.
@@ -151,7 +164,10 @@ async function lockAndAuthorizeLinkParents(
     activeHouseholdIds.size === 0
       ? []
       : await db
-          .select({ recordId: householdRecordShares.recordId })
+          .select({
+            recordId: householdRecordShares.recordId,
+            householdId: householdRecordShares.householdId,
+          })
           .from(householdRecordShares)
           .where(
             and(
@@ -161,7 +177,7 @@ async function lockAndAuthorizeLinkParents(
               inArray(householdRecordShares.householdId, [...activeHouseholdIds]),
             ),
           );
-  const selectedAssetIds = new Set(selectedShares.map((share) => share.recordId));
+  const selectedAssetIds = selectedAssetIdsForLockedAssets(selectedShares, lockedAssets);
   const mayEdit = (record: {
     ownerUserId: string;
     ownership: "member_owned" | "household_native";
@@ -277,7 +293,8 @@ export function createDrizzleGeneralActionAssetLinkStore(): GeneralActionAssetLi
     },
     async repointGeneralActionAssetLinks(input) {
       // fallow-ignore-next-line complexity -- Repointing is one atomic collision-aware graph rewrite after both parent authorities and lifecycle statuses are locked and rechecked.
-      return getDb().transaction(async (tx) => {
+      return withDatabaseTransaction(async () => {
+        const tx = getDb();
         const requestedActionIds = new Set(input.generalActionIds);
         const authorized = await lockAndAuthorizeLinkParents(tx, {
           callerUserId: input.callerUserId,
@@ -349,7 +366,8 @@ export function createDrizzleGeneralActionAssetLinkStore(): GeneralActionAssetLi
       });
     },
     async deleteGeneralActionAssetLink(input) {
-      await getDb().transaction(async (tx) => {
+      await withDatabaseTransaction(async () => {
+        const tx = getDb();
         const authorized = await lockAndAuthorizeLinkParents(tx, {
           callerUserId: input.callerUserId,
           generalActionIds: [input.generalActionId],

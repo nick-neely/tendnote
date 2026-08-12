@@ -448,7 +448,6 @@ async function proposeAssetMemoryActions(
 async function resolvePendingProposal(
   store: AssetActionProposalStore,
   queueOwnerUserId: string,
-  memoryOwnerUserId: string,
   link: GeneralActionAssetLink,
 ): Promise<PendingAssetActionProposal | null> {
   if (link.assetMemoryId === null) {
@@ -461,8 +460,8 @@ async function resolvePendingProposal(
   if (action?.status !== "suggested") {
     return null;
   }
-  const memory = await store.getAssetMemory({
-    ownerUserId: memoryOwnerUserId,
+  const memory = await store.getVisibleAssetMemory({
+    callerUserId: queueOwnerUserId,
     memoryId: link.assetMemoryId,
   });
   if (!memory) {
@@ -509,12 +508,7 @@ async function listPendingAssetActionProposals(
   const links = await store.listGeneralActionAssetLinksForAsset({ assetId: asset.id });
   const pending: PendingAssetActionProposal[] = [];
   for (const link of links) {
-    const proposal = await resolvePendingProposal(
-      store,
-      input.actorUserId,
-      asset.ownerUserId,
-      link,
-    );
+    const proposal = await resolvePendingProposal(store, input.actorUserId, link);
     if (proposal) {
       pending.push(proposal);
     }

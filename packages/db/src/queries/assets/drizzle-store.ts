@@ -8,7 +8,7 @@ import {
 } from "@tendnote/domain";
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { getDb } from "../../client";
+import { getDb, withDatabaseTransaction } from "../../client";
 import {
   assetAuditEvents,
   assetEvidence,
@@ -320,11 +320,13 @@ export function createDrizzleAssetLifecycleStore(): AssetLifecycleStore {
  * `createAssetReview` composes over.
  */
 export function createDrizzleAssetReviewLifecycleStore(): AssetReviewLifecycleStore {
-  return {
+  const store: AssetReviewLifecycleStore = {
     ...createDrizzleSourceRecordStore(),
     ...createDrizzleAssetLifecycleStore(),
     ...createDrizzleAssetReviewStore(),
     ...createDrizzleAssetEvidenceStore(),
     ...createDrizzleGeneralActionAssetLinkStore(),
+    withTransaction: (fn) => withDatabaseTransaction(() => fn(store)),
   };
+  return store;
 }
