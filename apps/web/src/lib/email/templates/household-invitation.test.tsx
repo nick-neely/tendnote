@@ -18,23 +18,23 @@ describe("what the invitation says", () => {
   });
 
   it("names who invited, what a household is, and what joining does not do", () => {
-    expect(rendered.text).toContain("Alex invited you to join The Neely house");
-    expect(rendered.text).toContain("small shared layer for the people you live with");
-    expect(rendered.text).toContain("Nothing you write in Tendnote is shared until you choose");
+    expect(rendered.text).toContain("Alex invited you to join their household on Tendnote");
+    expect(rendered.text).toContain("A shared place for plans and reminders");
+    expect(rendered.text).toContain("Your private notes stay private");
     expect(rendered.text).toContain("Nothing happens unless you accept.");
   });
 
   it("says how long the link lasts, in the reader's terms and not the clock's", () => {
     // Pinned to UTC so the same invitation renders the same words on every
     // machine that builds it.
-    expect(rendered.text).toContain("This link works until Aug 15");
+    expect(rendered.text).toContain("Available until Aug 15");
     expect(rendered.html).toContain("Aug 15");
   });
 
   it("stands on its own when the household has no name for the sender", async () => {
     const anonymous = await renderHouseholdInvitationEmail({ ...INVITATION, inviterName: null });
 
-    expect(anonymous.text).toContain("You've been invited to join The Neely house");
+    expect(anonymous.text).toContain("You've been invited to join a household on Tendnote");
     expect(anonymous.text).not.toContain("null");
   });
 
@@ -43,14 +43,15 @@ describe("what the invitation says", () => {
    * are all ordinary. The link has to survive every one of them, so it appears
    * as a pressable control and again as something to paste.
    */
-  it("carries the acceptance link in both bodies, and twice in the HTML", () => {
+  it("carries the acceptance link in both bodies, with a linked and copyable fallback", () => {
     expect(rendered.text).toContain(INVITATION.acceptUrl);
-    expect(rendered.html.split(INVITATION.acceptUrl).length - 1).toBe(2);
+    expect(rendered.html.split(INVITATION.acceptUrl).length - 1).toBe(3);
+    expect(rendered.text).toContain("Open the invitation in your browser");
   });
 
   it("identifies the sender and why this arrived, and gives a way to answer", () => {
-    expect(rendered.text).toContain("Tendnote is a private notebook");
-    expect(rendered.text).toContain("someone invited this address to their household");
+    expect(rendered.text).toContain("Why you received this");
+    expect(rendered.text).toContain("Alex invited this email address");
     expect(rendered.text).toContain("support@stacklet.app");
   });
 });

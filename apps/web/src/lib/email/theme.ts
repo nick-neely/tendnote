@@ -30,6 +30,8 @@ export const emailColors = {
   primaryForeground: "#fcfcfc",
   /** `--border`: oklch(0.88 0.006 145). Every rule on the page is this hairline. */
   border: "#d5d8d5",
+  /** A quiet utility panel for fallback instructions, not a page-level card. */
+  surface: "#f5f7f5",
 } as const;
 
 /**
@@ -50,6 +52,7 @@ export const emailColorsDark = {
   primary: "#6ca366",
   primaryForeground: "#020202",
   border: "#161616",
+  surface: "#111411",
 } as const;
 
 /**

@@ -104,11 +104,12 @@ describe("Action mobile browser contracts", () => {
 
     await act(async () => moreActions.click());
 
+    await act(async () => page.getByRole("menuitem", { name: "Manage action" }).click());
+
     for (const control of [
-      await page.getByRole("menuitem", { name: "Set aside" }).element(),
-      await page.getByRole("menuitem", { name: "Pause routine" }).element(),
-      await page.getByRole("menuitem", { name: "Dismiss" }).element(),
-      await page.getByRole("menuitem", { name: "Archive" }).element(),
+      await page.getByRole("button", { name: "Pause routine" }).element(),
+      await page.getByRole("button", { name: "Dismiss" }).element(),
+      await page.getByRole("button", { name: "Archive" }).element(),
     ]) {
       await expect.poll(() => control.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
       expect(control.getBoundingClientRect().width).toBeGreaterThanOrEqual(44);
