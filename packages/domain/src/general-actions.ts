@@ -118,13 +118,15 @@ export const generalActionSchema = z.object({
   /**
    * On a `member_owned` Action, its author and its authority.
    *
-   * On a `household_native` one it is a **storage key only**: the member who
-   * created it, kept because the column is `NOT NULL` and because every
-   * owner-keyed write and history row hangs off it. It confers nothing. Nothing
-   * may read it to decide authority — that is `ownership`'s job, through the
-   * Household Authorization Proof — and no owner-keyed *read* path may return a
-   * household-native row, because its creator's access must end when their
-   * membership does, exactly like every other member's.
+   * On a `household_native` one it is a **storage key only**: initially the
+   * creating member, and reassigned to a remaining active member if possible
+   * when that account is deleted. With no remaining member it stays an opaque,
+   * non-resolving value through dissolution recovery. The column is `NOT NULL`
+   * because owner-keyed writes and history hang off it. It is not a member
+   * foreign key; reassignment is not provenance and confers nothing.
+   * Nothing may read it to decide authority — that is `ownership`'s job,
+   * through the Household Authorization Proof — and no owner-keyed *read* path
+   * may return a household-native row.
    */
   ownerUserId: z.string(),
   ownership: generalActionOwnershipSchema.default("member_owned"),

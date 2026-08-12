@@ -4,10 +4,13 @@ import { recordDiagnostic } from "./support/diagnostics";
 import { restoreMutationAction } from "./support/fixture-restore";
 import { arriveAdmitted, expect, test } from "./support/fixtures";
 import {
-  formatTiming,
+  formatSamples,
   measureInteraction,
   OPTIMISTIC_ACK_BUDGET_MS,
   RECONCILIATION_BUDGET_MS,
+  SAMPLE_CEILING_MULTIPLE,
+  type SampleSummary,
+  summariseSamples,
 } from "./support/measure";
 import { assertDestinationAccessibility } from "./support/navigate";
 
@@ -64,78 +67,117 @@ test.describe("@promotion-smoke Action complete and reopen", () => {
   test("acknowledges optimistically and reconciles authoritatively", async ({ page }, testInfo) => {
     const action = mutationActionFor(testInfo.parallelIndex);
     const actionRow = `article[id='action-${action.id}']`;
+    const completeShells: number[] = [];
+    const completeReconciliations: number[] = [];
+    const reopenShells: number[] = [];
+    const reopenReconciliations: number[] = [];
 
     await arriveAdmitted(page, "/actions");
     await expect(page.locator(actionRow)).toBeVisible();
 
-    const completion = await measureInteraction(page, {
-      toUrl: null,
-      // ADR 0209's deterministic local projection: the row leaves immediately.
-      shell: [{ selector: `${actionRow}[data-leaving='true']` }],
-      // The authoritative result, with its inverse offered rather than a
-      // cosmetic undo.
-      authoritative: [{ selector: "[role='status']", text: "Completed" }],
-      click: () =>
-        page.locator(actionRow).getByRole("button", { name: "Complete", exact: true }).click(),
-    });
+    // A browser timing is quantised to painted frames and a shared runner can
+    // drop one of them. As with navigation, sample the reversible lifecycle
+    // three times so the 100/500 ms contracts are enforced on the median while
+    // a hard ceiling still rejects a genuinely broken individual transition.
+    for (let sample = 0; sample < 3; sample += 1) {
+      const completion = await measureInteraction(page, {
+        toUrl: null,
+        // ADR 0209's deterministic local projection: the row leaves immediately.
+        shell: [{ selector: `${actionRow}[data-leaving='true']` }],
+        // The authoritative result, with its inverse offered rather than a
+        // cosmetic undo.
+        authoritative: [{ selector: "[role='status']", text: "Completed" }],
+        click: () =>
+          page.locator(actionRow).getByRole("button", { name: "Complete", exact: true }).click(),
+      });
 
-    recordMutation(testInfo.project.name, "Action complete", completion);
+      recordMutation(testInfo.project.name, "Action complete", completion);
+      completeShells.push(completion.shell);
+      completeReconciliations.push(completion.complete);
 
-    expect(
-      completion.shell,
-      `Action complete — ${formatTiming(completion)}: optimistic acknowledgement`,
-    ).toBeLessThanOrEqual(OPTIMISTIC_ACK_BUDGET_MS);
-    expect(
-      completion.complete,
-      `Action complete — ${formatTiming(completion)}: authoritative reconciliation`,
-    ).toBeLessThanOrEqual(RECONCILIATION_BUDGET_MS);
+      await assertDestinationAccessibility(page, "Action complete");
 
-    await assertDestinationAccessibility(page, "Action complete");
+      // Read-your-writes: a fresh authoritative render must agree with the
+      // acknowledged mutation rather than resurrecting the completed row.
+      await page.reload();
+      await expect(page.locator("[data-admitted]")).toBeAttached();
+      await expect(page.locator(actionRow)).toHaveCount(0);
 
-    // Read-your-writes: a fresh authoritative render must agree with the
-    // acknowledged mutation rather than resurrecting the completed row.
-    await page.reload();
-    await expect(page.locator("[data-admitted]")).toBeAttached();
-    await expect(page.locator(actionRow)).toHaveCount(0);
+      await openResolvedDisclosure(page);
+      const reopenControl = page.locator(`${actionRow} [data-action-control='reopen']`);
+      await expect(reopenControl).toBeVisible();
 
-    await openResolvedDisclosure(page);
-    const reopenControl = page.locator(`${actionRow} [data-action-control='reopen']`);
-    await expect(reopenControl).toBeVisible();
+      const reopen = await measureInteraction(page, {
+        toUrl: null,
+        shell: [{ selector: "[role='status']", text: "Reopening" }],
+        authoritative: [{ selector: "[role='status']", text: "Reopened" }],
+        click: () => reopenControl.click(),
+      });
 
-    const reopen = await measureInteraction(page, {
-      toUrl: null,
-      shell: [{ selector: "[role='status']", text: "Reopening" }],
-      authoritative: [{ selector: "[role='status']", text: "Reopened" }],
-      click: () => reopenControl.click(),
-    });
+      recordMutation(testInfo.project.name, "Action reopen", reopen);
+      reopenShells.push(reopen.shell);
+      reopenReconciliations.push(reopen.complete);
 
-    recordMutation(testInfo.project.name, "Action reopen", reopen);
+      // The fixture is restored, and it is restored by the server rather than by
+      // the client's projection: reload before believing it.
+      //
+      // One retrying assertion, not a count followed by a visibility check. For
+      // roughly 150–200 ms after this reload the reopened row renders *twice* —
+      // once in the active ledger and once in the not-yet revalidated Resolved
+      // projection behind its closed disclosure — before settling to one. Two
+      // separate assertions leave a gap the second one can land in; "exactly one
+      // visible row" is the settled invariant and retries until it holds, while
+      // still failing if the duplicate ever becomes permanent. Recorded as a
+      // finding in docs/verification/nextjs-16-3-instant-navigation.md.
+      await page.reload();
+      await expect(page.locator("[data-admitted]")).toBeAttached();
+      await expect(page.locator(actionRow).filter({ visible: true })).toHaveCount(1);
+    }
 
-    expect(
-      reopen.shell,
-      `Action reopen — ${formatTiming(reopen)}: optimistic acknowledgement`,
-    ).toBeLessThanOrEqual(OPTIMISTIC_ACK_BUDGET_MS);
-    expect(
-      reopen.complete,
-      `Action reopen — ${formatTiming(reopen)}: authoritative reconciliation`,
-    ).toBeLessThanOrEqual(RECONCILIATION_BUDGET_MS);
-
-    // The fixture is restored, and it is restored by the server rather than by
-    // the client's projection: reload before believing it.
-    //
-    // One retrying assertion, not a count followed by a visibility check. For
-    // roughly 150–200 ms after this reload the reopened row renders *twice* —
-    // once in the active ledger and once in the not-yet revalidated Resolved
-    // projection behind its closed disclosure — before settling to one. Two
-    // separate assertions leave a gap the second one can land in; "exactly one
-    // visible row" is the settled invariant and retries until it holds, while
-    // still failing if the duplicate ever becomes permanent. Recorded as a
-    // finding in docs/verification/nextjs-16-3-instant-navigation.md.
-    await page.reload();
-    await expect(page.locator("[data-admitted]")).toBeAttached();
-    await expect(page.locator(actionRow).filter({ visible: true })).toHaveCount(1);
+    expectWithinContract(
+      "Action complete",
+      "optimistic acknowledgement",
+      summariseSamples(completeShells),
+      OPTIMISTIC_ACK_BUDGET_MS,
+    );
+    expectWithinContract(
+      "Action complete",
+      "authoritative reconciliation",
+      summariseSamples(completeReconciliations),
+      RECONCILIATION_BUDGET_MS,
+    );
+    expectWithinContract(
+      "Action reopen",
+      "optimistic acknowledgement",
+      summariseSamples(reopenShells),
+      OPTIMISTIC_ACK_BUDGET_MS,
+    );
+    expectWithinContract(
+      "Action reopen",
+      "authoritative reconciliation",
+      summariseSamples(reopenReconciliations),
+      RECONCILIATION_BUDGET_MS,
+    );
   });
 });
+
+function expectWithinContract(
+  scenario: string,
+  stage: string,
+  summary: SampleSummary,
+  budgetMs: number,
+) {
+  const ceiling = budgetMs * SAMPLE_CEILING_MULTIPLE;
+
+  expect(
+    summary.median,
+    `${scenario}: ${stage} within the contract — ${formatSamples(summary)}`,
+  ).toBeLessThanOrEqual(budgetMs);
+  expect(
+    summary.max,
+    `${scenario}: no ${stage} sample past ${ceiling}ms — ${formatSamples(summary)}`,
+  ).toBeLessThanOrEqual(ceiling);
+}
 
 function recordMutation(
   project: string,

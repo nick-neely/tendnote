@@ -35,6 +35,7 @@ export * from "./general-actions";
 export * from "./gift-plans";
 export * from "./global-recall";
 export * from "./gmail-drafts";
+export * from "./household-account-deletion";
 export * from "./household-actions";
 export * from "./household-assets";
 export * from "./household-authorization";
