@@ -59,6 +59,7 @@ async function cleanupTestArtifacts() {
   }
 }
 
+// fallow-ignore-next-line complexity -- This destructive integration fixture spells the complete persisted membership states inline so its database arrangement remains auditable beside the assertions.
 async function seedHousehold(input: {
   ownerUserId: string;
   otherOwnerUserId?: string;
@@ -101,6 +102,7 @@ async function seedHousehold(input: {
   return household.id;
 }
 
+// fallow-ignore-next-line complexity -- This destructive integration fixture intentionally seeds the retained parent-child graph in one ordered database setup rather than hiding the contract across helpers.
 async function seedRecordFamilies(householdId: string, ownerUserId: string) {
   const [householdAction, memberAction] = await getDb()
     .insert(generalActions)
@@ -180,6 +182,7 @@ async function seedRecordFamilies(householdId: string, ownerUserId: string) {
   return { householdAction, memberAction, householdAsset, memberAsset };
 }
 
+// fallow-ignore-next-line complexity -- This executable is a linear destructive Postgres contract whose ordered setup, deletion, and assertions must stay visible together; it is exercised directly against a fresh migrated database.
 async function main() {
   await cleanupTestArtifacts();
   for (const id of [creatorId, survivorId, outsiderId, soleId]) await seedUser(id);
@@ -197,7 +200,12 @@ async function main() {
     .where(eq(generalActions.householdId, sharedHouseholdId));
   check(
     "member-owned action was deleted",
-    !retainedActions.some((row) => row.id === shared.memberAction.id),
+    !(
+      await getDb()
+        .select()
+        .from(generalActions)
+        .where(eq(generalActions.id, shared.memberAction.id))
+    ).length,
   );
   check(
     "household-native action survived",
@@ -243,19 +251,32 @@ async function main() {
   );
 
   const soleHouseholdId = await seedHousehold({ ownerUserId: soleId });
+  const secondSoleHouseholdId = await seedHousehold({ ownerUserId: soleId });
   const sole = await seedRecordFamilies(soleHouseholdId, soleId);
-  const [pendingInvitation] = await getDb()
+  const [pendingInvitation, secondPendingInvitation] = await getDb()
     .insert(householdInvitations)
-    .values({
-      householdId: soleHouseholdId,
-      invitedByUserId: soleId,
-      email: `pending-${run}@example.invalid`,
-      normalizedEmail: `pending-${run}@example.invalid`,
-      secretDigest: `pending-${run}`,
-      expiresAt: new Date(Date.now() + 60_000),
-    })
+    .values([
+      {
+        householdId: soleHouseholdId,
+        invitedByUserId: soleId,
+        email: `pending-${run}@example.invalid`,
+        normalizedEmail: `pending-${run}@example.invalid`,
+        secretDigest: `pending-${run}`,
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+      {
+        householdId: secondSoleHouseholdId,
+        invitedByUserId: soleId,
+        email: `pending-second-${run}@example.invalid`,
+        normalizedEmail: `pending-second-${run}@example.invalid`,
+        secretDigest: `pending-second-${run}`,
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    ])
     .returning();
-  if (!pendingInvitation) throw new Error("Failed to seed pending invitation.");
+  if (!pendingInvitation || !secondPendingInvitation) {
+    throw new Error("Failed to seed pending invitations.");
+  }
   await getDb().delete(user).where(eq(user.id, soleId));
   check(
     "sole-member dissolved household action survived",
@@ -281,33 +302,36 @@ async function main() {
     ).length === 1,
   );
   check(
-    "sole-member workspace entered dissolution recovery atomically",
+    "every sole-member workspace entered dissolution recovery atomically",
     (
       await getDb()
         .select({ status: householdWorkspaces.status })
         .from(householdWorkspaces)
-        .where(eq(householdWorkspaces.id, soleHouseholdId))
-    )[0]?.status === "dissolved",
+        .where(inArray(householdWorkspaces.id, [soleHouseholdId, secondSoleHouseholdId]))
+    ).every((workspace) => workspace.status === "dissolved"),
   );
   check(
-    "sole-member dissolution canceled pending invitations",
+    "every sole-member dissolution canceled pending invitations",
     (
       await getDb()
         .select({ state: householdInvitations.state })
         .from(householdInvitations)
-        .where(eq(householdInvitations.id, pendingInvitation.id))
-    )[0]?.state === "canceled",
+        .where(inArray(householdInvitations.id, [pendingInvitation.id, secondPendingInvitation.id]))
+    ).every((invitation) => invitation.state === "canceled"),
   );
+  const dissolutionAuditEntries = await getDb()
+    .select({ ownerUserId: auditLog.ownerUserId })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.action, "household.dissolve"),
+        inArray(auditLog.entityId, [soleHouseholdId, secondSoleHouseholdId]),
+      ),
+    );
   check(
-    "sole-member dissolution retained a minimized audit event",
-    (
-      await getDb()
-        .select({ ownerUserId: auditLog.ownerUserId })
-        .from(auditLog)
-        .where(
-          and(eq(auditLog.action, "household.dissolve"), eq(auditLog.entityId, soleHouseholdId)),
-        )
-    )[0]?.ownerUserId === null,
+    "sole-member dissolution retained a minimized audit event for every workspace",
+    dissolutionAuditEntries.length === 2 &&
+      dissolutionAuditEntries.every((entry) => entry.ownerUserId === null),
   );
 }
 
