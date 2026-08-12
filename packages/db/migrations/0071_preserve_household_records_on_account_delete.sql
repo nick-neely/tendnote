@@ -92,11 +92,16 @@ CREATE FUNCTION "tendnote_require_member_owned_user"() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  IF NEW."ownership" = 'member_owned'
-    AND NOT EXISTS (SELECT 1 FROM "user" WHERE "id" = NEW."owner_user_id")
-  THEN
-    RAISE EXCEPTION 'member-owned record owner must reference an existing user'
-      USING ERRCODE = 'foreign_key_violation';
+  IF NEW."ownership" = 'member_owned' THEN
+    PERFORM 1
+    FROM "user"
+    WHERE "id" = NEW."owner_user_id"
+    FOR KEY SHARE;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'member-owned record owner must reference an existing user'
+        USING ERRCODE = 'foreign_key_violation';
+    END IF;
   END IF;
   RETURN NEW;
 END
