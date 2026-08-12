@@ -8,7 +8,7 @@
  *   pnpm --filter @tendnote/db db:account-deletion:check
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, like, lt, or, sql } from "drizzle-orm";
 import { closeDb, getDb } from "./client";
 import { createDrizzleGeneralActionStore } from "./queries/general-actions/drizzle-store";
 import {
@@ -27,6 +27,13 @@ import {
 } from "./schema";
 
 const run = randomUUID();
+const fixtureHouseholdPrefix = "Account deletion delete-";
+const fixtureHouseholdName = `${fixtureHouseholdPrefix}${run}`;
+const legacyFixtureHouseholdPattern =
+  "^Account deletion [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
+// A crashed run is eventually reclaimed without allowing overlapping fresh
+// checks to erase one another's fixtures while they are still executing.
+const staleFixtureCutoff = new Date(Date.now() - 60 * 60 * 1000);
 const creatorId = `delete-creator-${run}`;
 const survivorId = `delete-survivor-${run}`;
 const outsiderId = `delete-outsider-${run}`;
@@ -43,11 +50,42 @@ async function seedUser(id: string) {
     .values({ id, name: id, email: `${id}@example.invalid` });
 }
 
-async function cleanupTestArtifacts() {
+function householdCleanupFilter(includeStale: boolean) {
+  return includeStale
+    ? or(
+        eq(householdWorkspaces.name, fixtureHouseholdName),
+        and(
+          lt(householdWorkspaces.createdAt, staleFixtureCutoff),
+          or(
+            like(householdWorkspaces.name, `${fixtureHouseholdPrefix}%`),
+            sql`${householdWorkspaces.name} ~ ${legacyFixtureHouseholdPattern}`,
+          ),
+        ),
+      )
+    : eq(householdWorkspaces.name, fixtureHouseholdName);
+}
+
+async function cleanupStaleFixtureUsers() {
+  await getDb()
+    .delete(user)
+    .where(
+      and(
+        lt(user.createdAt, staleFixtureCutoff),
+        or(
+          like(user.id, "delete-creator-%"),
+          like(user.id, "delete-survivor-%"),
+          like(user.id, "delete-outsider-%"),
+          like(user.id, "delete-sole-%"),
+        ),
+      ),
+    );
+}
+
+async function cleanupTestArtifacts(input: { includeStale: boolean }) {
   const households = await getDb()
     .select({ id: householdWorkspaces.id })
     .from(householdWorkspaces)
-    .where(eq(householdWorkspaces.name, `Account deletion ${run}`));
+    .where(householdCleanupFilter(input.includeStale));
   const householdIds = households.map((household) => household.id);
   if (householdIds.length > 0) {
     await getDb().delete(generalActions).where(inArray(generalActions.householdId, householdIds));
@@ -57,6 +95,9 @@ async function cleanupTestArtifacts() {
   }
   for (const id of [creatorId, survivorId, outsiderId, soleId]) {
     await getDb().delete(user).where(eq(user.id, id));
+  }
+  if (input.includeStale) {
+    await cleanupStaleFixtureUsers();
   }
 }
 
@@ -70,7 +111,7 @@ async function seedHousehold(input: {
     .insert(householdWorkspaces)
     .values({
       ownerUserId: input.ownerUserId,
-      name: `Account deletion ${run}`,
+      name: fixtureHouseholdName,
       status: input.dissolved ? "dissolved" : "active",
       dissolvedAt: input.dissolved ? new Date() : null,
     })
@@ -185,7 +226,7 @@ async function seedRecordFamilies(householdId: string, ownerUserId: string) {
 
 // fallow-ignore-next-line complexity -- This executable is a linear destructive Postgres contract whose ordered setup, deletion, and assertions must stay visible together; it is exercised directly against a fresh migrated database.
 async function main() {
-  await cleanupTestArtifacts();
+  await cleanupTestArtifacts({ includeStale: true });
   for (const id of [creatorId, survivorId, outsiderId, soleId]) await seedUser(id);
 
   const sharedHouseholdId = await seedHousehold({
@@ -340,6 +381,6 @@ try {
   await main();
   console.log("Household account-deletion live check passed.");
 } finally {
-  await cleanupTestArtifacts();
+  await cleanupTestArtifacts({ includeStale: false });
   await closeDb();
 }
