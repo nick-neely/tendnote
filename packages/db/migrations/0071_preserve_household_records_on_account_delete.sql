@@ -84,6 +84,31 @@ ALTER TABLE "general_actions" ADD CONSTRAINT "general_actions_ownership_check" C
       and "general_actions"."scope" = 'household'
     )
   ));--> statement-breakpoint
+CREATE FUNCTION "tendnote_require_member_owned_user"() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW."ownership" = 'member_owned'
+    AND NOT EXISTS (SELECT 1 FROM "user" WHERE "id" = NEW."owner_user_id")
+  THEN
+    RAISE EXCEPTION 'member-owned record owner must reference an existing user'
+      USING ERRCODE = 'foreign_key_violation';
+  END IF;
+  RETURN NEW;
+END
+$$;--> statement-breakpoint
+CREATE TRIGGER "general_actions_member_owner_exists"
+BEFORE INSERT OR UPDATE OF "owner_user_id", "ownership" ON "general_actions"
+FOR EACH ROW EXECUTE FUNCTION "tendnote_require_member_owned_user"();--> statement-breakpoint
+CREATE TRIGGER "assets_member_owner_exists"
+BEFORE INSERT OR UPDATE OF "owner_user_id", "ownership" ON "assets"
+FOR EACH ROW EXECUTE FUNCTION "tendnote_require_member_owned_user"();--> statement-breakpoint
+CREATE TRIGGER "asset_memories_member_owner_exists"
+BEFORE INSERT OR UPDATE OF "owner_user_id", "ownership" ON "asset_memories"
+FOR EACH ROW EXECUTE FUNCTION "tendnote_require_member_owned_user"();--> statement-breakpoint
+CREATE TRIGGER "asset_evidence_member_owner_exists"
+BEFORE INSERT OR UPDATE OF "owner_user_id", "ownership" ON "asset_evidence"
+FOR EACH ROW EXECUTE FUNCTION "tendnote_require_member_owned_user"();--> statement-breakpoint
 CREATE FUNCTION "tendnote_account_deletion_replacement"(
   target_household_id uuid,
   deleting_user_id text

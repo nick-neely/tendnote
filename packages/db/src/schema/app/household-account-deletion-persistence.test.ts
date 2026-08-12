@@ -57,6 +57,17 @@ describe("household account-deletion persistence", () => {
     expect(migration).toContain('event."general_action_id"');
   });
 
+  it("keeps detached member-owned keys foreign-key strict without rejecting opaque household keys", () => {
+    expect(migration).toContain('CREATE FUNCTION "tendnote_require_member_owned_user"');
+    expect(migration).toContain("NEW.\"ownership\" = 'member_owned'");
+    expect(migration).toContain('FROM "user" WHERE "id" = NEW."owner_user_id"');
+    expect(migration).toContain("ERRCODE = 'foreign_key_violation'");
+    for (const table of ["general_actions", "assets", "asset_memories", "asset_evidence"]) {
+      expect(migration).toContain(`CREATE TRIGGER "${table}_member_owner_exists"`);
+      expect(migration).toContain(`ON "${table}"`);
+    }
+  });
+
   it("refuses to strand a multi-member household without an owner", () => {
     expect(migration).toContain(
       "another active household owner is required before account deletion",
