@@ -183,7 +183,7 @@ export const HOUSEHOLD_ACCOUNT_DELETION_FOREIGN_KEYS = [
   { table: "person_references", column: "created_by_user_id", disposition: "null_provenance" },
   {
     table: "general_action_assets",
-    column: "owner_user_id",
+    column: "created_by_user_id",
     disposition: "null_provenance",
   },
 ] as const satisfies readonly HouseholdAccountDeletionForeignKey[];

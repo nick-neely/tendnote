@@ -53,5 +53,8 @@ gap: adapters use it operationally for lookup and deletion, and some write paths
 copy a parent owner rather than the member who created the association. The
 settled representation is nullable `created_by_user_id` provenance; adapters
 must authorize through the two parents and account deletion must scrub the
-creator rather than delete the link. That migration is #404's dependent layer,
-not documentation-only cleanup.
+creator rather than delete the link. Because the legacy values mix real actors
+with copied parent storage keys, migration cannot truthfully distinguish them:
+all existing values become null, and only writes made through the corrected
+contract establish creator provenance. That migration is #404's dependent
+layer, not documentation-only cleanup.

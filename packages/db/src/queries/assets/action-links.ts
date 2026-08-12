@@ -104,7 +104,12 @@ async function resolveExistingHintLink(
     return { outcome: "pending_review", group: await buildGroupResult(store, group) };
   }
   if (owned?.status === "dismissed") {
-    await store.deleteGeneralActionAssetLink({ ownerUserId: link.ownerUserId, linkId: link.id });
+    await store.deleteGeneralActionAssetLink({
+      callerUserId: actorUserId,
+      linkId: link.id,
+      generalActionId: link.generalActionId,
+      assetId: link.assetId,
+    });
     return { replacedDismissedAssetId: owned.id };
   }
   if (owned) {
@@ -224,7 +229,7 @@ async function promoteGeneralActionAssetHint(
   });
 
   await store.createGeneralActionAssetLink({
-    ownerUserId: action.ownerUserId,
+    createdByUserId: input.actorUserId,
     generalActionId: action.id,
     assetId: asset.id,
     hintLabel: hint.label,
@@ -245,7 +250,7 @@ async function getPromotedFromGeneralAction(
 ): Promise<Pick<GeneralAction, "id" | "title"> | null> {
   const links = await store.listGeneralActionAssetLinksForAsset({ assetId: input.assetId });
   for (const link of links) {
-    if (link.ownerUserId !== input.ownerUserId || link.hintLabel === null) {
+    if (link.hintLabel === null) {
       continue;
     }
     const action = await store.getGeneralAction({

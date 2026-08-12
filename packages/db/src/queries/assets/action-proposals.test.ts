@@ -567,9 +567,15 @@ describe("proposal provenance", () => {
   });
 
   it("hides a pending proposal from a co-member — review is owner-only", async () => {
-    const { proposals, store, seedAsset, seedMemory } = setup();
+    const { proposals, store, assetLifecycle, seedMemory } = setup();
     const household = await seedOwnerMemberHousehold(store, OWNER, MEMBER);
-    const asset = await seedAsset({ scope: "household", householdId: household.id });
+    const asset = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Household refrigerator",
+      kind: "appliance",
+      ownership: "household_native",
+      householdId: household.id,
+    });
     await seedMemory(asset.id, { scope: "household" });
 
     await proposals.proposeAssetMemoryActions({

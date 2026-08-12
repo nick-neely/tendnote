@@ -90,7 +90,7 @@ describe("account deletion record ownership", () => {
       "household_calendar_connections.connector_user_id",
       "household_calendar_connections.designated_by_user_id",
       "person_references.created_by_user_id",
-      "general_action_assets.owner_user_id",
+      "general_action_assets.created_by_user_id",
     ]);
   });
 
@@ -101,7 +101,7 @@ describe("account deletion record ownership", () => {
 
     expect(retainedProvenance).toContain("general_action_events.actor_user_id");
     expect(retainedProvenance).toContain("household_event_plans.created_by_user_id");
-    expect(retainedProvenance).toContain("general_action_assets.owner_user_id");
+    expect(retainedProvenance).toContain("general_action_assets.created_by_user_id");
   });
 });
 

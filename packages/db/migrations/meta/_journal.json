@@ -505,6 +505,13 @@
       "when": 1786503865532,
       "tag": "0071_preserve_household_records_on_account_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1786504890375,
+      "tag": "0072_record_asset_link_creator_provenance",
+      "breakpoints": true
     }
   ]
 }

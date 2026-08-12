@@ -128,6 +128,11 @@ export type GeneralActionAssetLinkStore = {
   listGeneralActionAssetLinksForAsset: (input: {
     assetId: string;
   }) => Promise<GeneralActionAssetLink[]>;
+  /** Fail-closed parent proof for link mutations; creator provenance is never consulted. */
+  listAuthorizedGeneralActionAssetLinkActionIds: (input: {
+    callerUserId: string;
+    generalActionIds: string[];
+  }) => Promise<string[]>;
   /**
    * Re-points the owner's links from a would-be duplicate onto the link target
    * during duplicate review (#199). A row that would collide with an existing
@@ -135,12 +140,21 @@ export type GeneralActionAssetLinkStore = {
    * how many rows now point at the target.
    */
   repointGeneralActionAssetLinks: (input: {
-    ownerUserId: string;
+    callerUserId: string;
+    /** Actions whose parent authorization the caller proved immediately before this mutation. */
+    generalActionIds: string[];
     fromAssetId: string;
     toAssetId: string;
+    fromAssetStatus: "suggested";
+    toAssetStatus: "active";
   }) => Promise<number>;
-  /** Owner-keyed hard delete, for clearing a stale link to a dismissed husk. */
-  deleteGeneralActionAssetLink: (input: { ownerUserId: string; linkId: string }) => Promise<void>;
+  /** Parent-authorized hard delete, for clearing a stale link to a dismissed husk. */
+  deleteGeneralActionAssetLink: (input: {
+    callerUserId: string;
+    linkId: string;
+    generalActionId: string;
+    assetId: string;
+  }) => Promise<void>;
 };
 
 /**

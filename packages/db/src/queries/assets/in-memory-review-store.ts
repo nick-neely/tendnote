@@ -261,10 +261,16 @@ export function createInMemoryGeneralActionAssetLinkStore(): GeneralActionAssetL
         .filter((link) => link.assetId === input.assetId)
         .sort(byCreatedThenId);
     },
+    async listAuthorizedGeneralActionAssetLinkActionIds() {
+      // The generic Asset Review store has no Action policy. Fail closed; the
+      // composed Action–Asset bridge overrides this with its shared Action store.
+      return [];
+    },
     async repointGeneralActionAssetLinks(input) {
+      const authorizedActions = new Set(input.generalActionIds);
       let repointed = 0;
       for (const link of [...links.values()]) {
-        if (link.ownerUserId !== input.ownerUserId || link.assetId !== input.fromAssetId) {
+        if (link.assetId !== input.fromAssetId || !authorizedActions.has(link.generalActionId)) {
           continue;
         }
         // The action already links to the target — the stale row just goes.
@@ -279,7 +285,7 @@ export function createInMemoryGeneralActionAssetLinkStore(): GeneralActionAssetL
     },
     async deleteGeneralActionAssetLink(input) {
       const link = links.get(input.linkId);
-      if (link && link.ownerUserId === input.ownerUserId) {
+      if (link?.generalActionId === input.generalActionId && link.assetId === input.assetId) {
         links.delete(input.linkId);
       }
     },

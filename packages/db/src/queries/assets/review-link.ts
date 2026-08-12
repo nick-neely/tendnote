@@ -166,11 +166,20 @@ export async function linkAssetReviewGroup(
   }
 
   // Any General Actions whose hints resolved to the would-be duplicate follow
-  // it onto the target — an already-linked action keeps its single link (#199).
+  // it onto the target only after their own parent authorization succeeds. The
+  // Asset proof above cannot grant authority over an independently scoped Action.
+  const linkedRows = await store.listGeneralActionAssetLinksForAsset({ assetId: anchor.id });
+  const authorizedActionIds = await store.listAuthorizedGeneralActionAssetLinkActionIds({
+    callerUserId: input.actorUserId,
+    generalActionIds: linkedRows.map((link) => link.generalActionId),
+  });
   const actionsLinked = await store.repointGeneralActionAssetLinks({
-    ownerUserId: anchor.ownerUserId,
+    callerUserId: input.actorUserId,
+    generalActionIds: authorizedActionIds,
     fromAssetId: anchor.id,
     toAssetId: target.id,
+    fromAssetStatus: "suggested",
+    toAssetStatus: "active",
   });
 
   await resolveAnchorAsLinked(store, {

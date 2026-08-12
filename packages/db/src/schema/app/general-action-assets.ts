@@ -23,9 +23,10 @@ export const generalActionAssets = pgTable(
   "general_action_assets",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    // Creator attribution only; both parents decide authority independently.
-    // Keep the legacy column name until its product-facing rename lands.
-    ownerUserId: text("owner_user_id").references(() => user.id, { onDelete: "set null" }),
+    // Attribution only; both parents decide authority independently.
+    createdByUserId: text("created_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
     generalActionId: uuid("general_action_id")
       .notNull()
       .references(() => generalActions.id, { onDelete: "cascade" }),
@@ -44,7 +45,7 @@ export const generalActionAssets = pgTable(
   (table) => [
     uniqueIndex("general_action_assets_action_asset_idx").on(table.generalActionId, table.assetId),
     index("general_action_assets_asset_idx").on(table.assetId),
-    index("general_action_assets_owner_idx").on(table.ownerUserId),
+    index("general_action_assets_creator_idx").on(table.createdByUserId),
     // The idempotency read: "has this memory already proposed an action?" (#203).
     index("general_action_assets_asset_memory_idx").on(table.assetMemoryId),
   ],

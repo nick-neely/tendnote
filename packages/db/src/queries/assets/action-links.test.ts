@@ -486,6 +486,53 @@ describe("action ↔ asset display, both directions", () => {
     expect(again).toMatchObject({ outcome: "already_linked", asset: { id: existing.id } });
   });
 
+  it("does not re-point a readable Action the resolver cannot mutate", async () => {
+    const { store, links, review, assetLifecycle, actionLifecycle, seedAction, seedHousehold } =
+      setup();
+    const household = await seedHousehold();
+    const target = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Fridge filter",
+      kind: "appliance",
+    });
+    const authorizedAction = await seedAction();
+    const result = await links.promoteGeneralActionAssetHint({
+      actorUserId: OWNER,
+      generalActionId: authorizedAction.id,
+      hintLabel: HINT,
+    });
+    if (result.outcome !== "pending_review") throw new Error("expected a pending review");
+
+    const inaccessibleAction = await actionLifecycle.createGeneralAction({
+      ownerUserId: "user-member",
+      title: "Member-owned shared action",
+      scope: "shared",
+      householdId: household.id,
+      selectedUserIds: [OWNER],
+    });
+    await store.createGeneralActionAssetLink({
+      createdByUserId: OWNER,
+      generalActionId: inaccessibleAction.id,
+      assetId: result.group.asset.id,
+    });
+
+    await review.linkAssetReviewGroup({
+      actorUserId: OWNER,
+      groupId: result.group.group.id,
+      targetAssetId: target.id,
+    });
+
+    const rows = await store.listGeneralActionAssetLinksForActions({
+      generalActionIds: [authorizedAction.id, inaccessibleAction.id],
+    });
+    expect(rows.find((row) => row.generalActionId === authorizedAction.id)?.assetId).toBe(
+      target.id,
+    );
+    expect(rows.find((row) => row.generalActionId === inaccessibleAction.id)?.assetId).toBe(
+      result.group.asset.id,
+    );
+  });
+
   it("collapses a re-point that would duplicate an existing action link", async () => {
     const { links, review, assetLifecycle, actionLifecycle } = setup();
     const target = await assetLifecycle.createAsset({

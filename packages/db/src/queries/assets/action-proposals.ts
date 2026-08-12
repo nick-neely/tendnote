@@ -137,7 +137,7 @@ async function indexPriorProposals(
 ): Promise<Map<string, PriorProposal>> {
   const prior = new Map<string, PriorProposal>();
   for (const link of links) {
-    if (link.assetMemoryId === null || link.ownerUserId !== ownerUserId) {
+    if (link.assetMemoryId === null) {
       continue;
     }
     const action = await store.getGeneralAction({
@@ -225,7 +225,9 @@ async function openProposedAction(
   const action = await store.createGeneralAction(
     buildCreateGeneralActionValues(
       {
-        ownerUserId: memory.ownerUserId,
+        // Suggested Actions belong to the member whose private review queue
+        // created them, even when their grounding Memory is household-native.
+        ownerUserId: input.actorUserId,
         title: plan.title,
         notes: plan.notes,
         dueAt: plan.dueAt,
@@ -261,7 +263,7 @@ async function openProposedAction(
   });
 
   await store.createGeneralActionAssetLink({
-    ownerUserId: memory.ownerUserId,
+    createdByUserId: input.actorUserId,
     generalActionId: action.id,
     assetId: asset.id,
     hintLabel: null,
@@ -289,7 +291,7 @@ async function openProposedAction(
 type ProposableSelection = {
   memories: AssetMemory[];
   /** memory id → the ignored proposal's link row, cleared as the memory proposes again. */
-  staleLinkByMemory: Map<string, string>;
+  staleLinkByMemory: Map<string, PriorProposal>;
   /** How many memories were skipped because a prior proposal already settled them. */
   alreadySpokenFor: number;
 };
@@ -316,7 +318,7 @@ function selectProposableMemories(
       continue;
     }
     if (previous) {
-      selection.staleLinkByMemory.set(memory.id, previous.linkId);
+      selection.staleLinkByMemory.set(memory.id, previous);
     }
     selection.memories.push(memory);
   }
@@ -340,7 +342,7 @@ async function openProposalFromPlan(
     asset: Asset;
     memory: AssetMemory;
     plan: AssetActionProposalPlan;
-    staleLinkId: string | undefined;
+    staleLink: PriorProposal | undefined;
     actorUserId: string;
     source: AssetAuditSource;
   },
@@ -348,10 +350,12 @@ async function openProposalFromPlan(
   const { asset, memory, plan } = input;
   await requireProposalGrounding(store, memory);
 
-  if (input.staleLinkId) {
+  if (input.staleLink) {
     await store.deleteGeneralActionAssetLink({
-      ownerUserId: memory.ownerUserId,
-      linkId: input.staleLinkId,
+      callerUserId: input.actorUserId,
+      linkId: input.staleLink.linkId,
+      generalActionId: input.staleLink.generalActionId,
+      assetId: asset.id,
     });
   }
 
@@ -394,7 +398,7 @@ async function proposeAssetMemoryActions(
 
   const reviewed = await listProposableMemories(store, asset, input.assetMemoryIds);
   const links = await store.listGeneralActionAssetLinksForAsset({ assetId: asset.id });
-  const prior = await indexPriorProposals(store, asset.ownerUserId, links);
+  const prior = await indexPriorProposals(store, input.actorUserId, links);
   const { memories, staleLinkByMemory, alreadySpokenFor } = selectProposableMemories(
     reviewed,
     prior,
@@ -414,7 +418,7 @@ async function proposeAssetMemoryActions(
         asset,
         memory,
         plan,
-        staleLinkId: staleLinkByMemory.get(memory.id),
+        staleLink: staleLinkByMemory.get(memory.id),
         actorUserId: input.actorUserId,
         source,
       }),
@@ -433,20 +437,24 @@ async function proposeAssetMemoryActions(
  */
 async function resolvePendingProposal(
   store: AssetActionProposalStore,
-  ownerUserId: string,
+  queueOwnerUserId: string,
+  memoryOwnerUserId: string,
   link: GeneralActionAssetLink,
 ): Promise<PendingAssetActionProposal | null> {
-  if (link.assetMemoryId === null || link.ownerUserId !== ownerUserId) {
+  if (link.assetMemoryId === null) {
     return null;
   }
   const action = await store.getGeneralAction({
-    ownerUserId,
+    ownerUserId: queueOwnerUserId,
     generalActionId: link.generalActionId,
   });
   if (action?.status !== "suggested") {
     return null;
   }
-  const memory = await store.getAssetMemory({ ownerUserId, memoryId: link.assetMemoryId });
+  const memory = await store.getAssetMemory({
+    ownerUserId: memoryOwnerUserId,
+    memoryId: link.assetMemoryId,
+  });
   if (!memory) {
     return null;
   }
@@ -491,7 +499,12 @@ async function listPendingAssetActionProposals(
   const links = await store.listGeneralActionAssetLinksForAsset({ assetId: asset.id });
   const pending: PendingAssetActionProposal[] = [];
   for (const link of links) {
-    const proposal = await resolvePendingProposal(store, input.actorUserId, link);
+    const proposal = await resolvePendingProposal(
+      store,
+      input.actorUserId,
+      asset.ownerUserId,
+      link,
+    );
     if (proposal) {
       pending.push(proposal);
     }
