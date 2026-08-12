@@ -22,7 +22,7 @@ multi-member household must establish another Owner before account deletion, so
 an account operation cannot strand the remaining members without governance.
 
 The exhaustive column-level persistence inventory for this rule is exported as
-`HOUSEHOLD_ACCOUNT_DELETION_FOREIGN_KEYS`. Each path has one of three explicit
+`HOUSEHOLD_ACCOUNT_DELETION_FOREIGN_KEYS`. Each path has one of four explicit
 dispositions: delete a member relationship, delete a member-owned root or
 reassign its operational key when household-native, null a workspace-native key
 that already supports memberless ownership, or null retained provenance. At the
@@ -39,12 +39,12 @@ family level:
 
 Membership subjects, share recipients, dissolution confirmations, and self
 Context subjects are relationships that end. Ownership keys are conditional on
-the root's ownership form. Creator, inviter, actor, linker, and workspace-creator
-keys on General Actions and Assets are reassigned storage plumbing; they do not
-become provenance for the replacement member. Saved Items already represent
-workspace ownership with a null key. Creator, inviter, actor, linker, and
-workspace-creator keys are retained provenance and become null. A child may
-cascade from its retained parent, but never from a member provenance key.
+the root's ownership form. The operational `owner_user_id` on household-native
+General Actions and Assets is reassigned storage plumbing; it does not become
+provenance for the replacement member. Saved Items already represent workspace
+ownership with a null key. Creator, inviter, actor, linker, and workspace-creator
+keys are retained provenance and become null. A child may cascade from its
+retained parent, but never from a member provenance key.
 
 `general_action_assets` is context, not an independently owned record. Its
 Action and Asset are each authorized separately, and the link survives exactly
