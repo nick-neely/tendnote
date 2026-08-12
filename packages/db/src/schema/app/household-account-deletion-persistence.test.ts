@@ -121,11 +121,12 @@ describe("household account-deletion persistence", () => {
 
     const generalActionAssetConfig = getTableConfig(generalActionAssets);
     const creator = generalActionAssetConfig.columns.find(
-      (column) => column.name === "owner_user_id",
+      (column) => column.name === "owner_user_id" || column.name === "created_by_user_id",
     );
-    const creatorForeignKey = generalActionAssetConfig.foreignKeys.find(
-      (candidate) => candidate.reference().columns[0]?.name === "owner_user_id",
-    );
+    const creatorForeignKey = generalActionAssetConfig.foreignKeys.find((candidate) => {
+      const columnName = candidate.reference().columns[0]?.name;
+      return columnName === "owner_user_id" || columnName === "created_by_user_id";
+    });
     expect(creator?.notNull).toBe(false);
     expect(creatorForeignKey?.onDelete).toBe("set null");
   });
