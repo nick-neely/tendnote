@@ -190,10 +190,14 @@ async function requireProposalGrounding(
  * proposal inherited the asset's household scope, a private fact would leak to
  * co-members through the reminder it inspired.
  */
-function resolveProposalVisibility(store: AssetActionProposalStore, memory: AssetMemory) {
+function resolveProposalVisibility(
+  store: AssetActionProposalStore,
+  memory: AssetMemory,
+  actorUserId: string,
+) {
   const household = memory.scope === "household";
   return resolveAssetVisibility(store, {
-    ownerUserId: memory.ownerUserId,
+    ownerUserId: actorUserId,
     scope: household ? "household" : "private",
     householdId: household ? memory.householdId : null,
   });
@@ -220,7 +224,7 @@ async function openProposedAction(
   },
 ): Promise<GeneralAction> {
   const { asset, memory, plan } = input;
-  const { scope, householdId } = await resolveProposalVisibility(store, memory);
+  const { scope, householdId } = await resolveProposalVisibility(store, memory, input.actorUserId);
 
   const action = await store.createGeneralAction(
     buildCreateGeneralActionValues(

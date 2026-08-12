@@ -21,6 +21,7 @@ import type { GeneralActionAssetLinkStore } from "./review-types";
 // `byCreatedThenId` mirrors this; keep the two in step.
 const linkOrder = [asc(generalActionAssets.createdAt), asc(generalActionAssets.id)];
 
+// fallow-ignore-next-line complexity -- One transaction-ordering primitive must discover and lock governance before records, detect household drift, and return both parent authorities together so link mutations cannot split the race fence.
 async function lockAndAuthorizeLinkParents(
   db: DatabaseExecutor,
   input: {
@@ -179,6 +180,7 @@ export function createDrizzleGeneralActionAssetLinkStore(): GeneralActionAssetLi
         .orderBy(...linkOrder);
       return rows.map((row) => generalActionAssetLinkSchema.parse(row));
     },
+    // fallow-ignore-next-line complexity -- This boundary deliberately performs the same owner-or-visible lookup and edit-authority proof per Action; collapsing those states would turn visibility into mutation authority.
     async listAuthorizedGeneralActionAssetLinkActionIds(input) {
       const actions = createDrizzleGeneralActionStore();
       const authority = createGeneralActionAuthority({
@@ -215,6 +217,7 @@ export function createDrizzleGeneralActionAssetLinkStore(): GeneralActionAssetLi
       if (input.generalActionIds.length === 0) {
         return 0;
       }
+      // fallow-ignore-next-line complexity -- Repointing is one atomic collision-aware graph rewrite after both parent authorities and lifecycle statuses are locked and rechecked.
       return getDb().transaction(async (tx) => {
         const authorized = await lockAndAuthorizeLinkParents(tx, {
           callerUserId: input.callerUserId,

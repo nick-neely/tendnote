@@ -494,6 +494,43 @@ describe("proposal gating", () => {
     expect(proposed[0]?.action.householdId).toBe(household.id);
   });
 
+  it("uses the active actor when a household memory's creator has departed", async () => {
+    const { proposals, store, assetLifecycle, seedMemory } = setup();
+    const household = await seedOwnerMemberHousehold(store, OWNER, MEMBER);
+    const asset = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Kitchen refrigerator",
+      kind: "appliance",
+      ownership: "household_native",
+      householdId: household.id,
+    });
+    await seedMemory(asset.id, {
+      ownership: "household_native",
+      scope: "household",
+    });
+    const ownerMembership = await store.getHouseholdMembership({
+      householdId: household.id,
+      userId: OWNER,
+    });
+    if (!ownerMembership) throw new Error("Expected the creator membership fixture.");
+    await store.updateHouseholdMembership({
+      membershipId: ownerMembership.id,
+      patch: { status: "removed", removedAt: NOW },
+    });
+
+    const { proposed } = await proposals.proposeAssetMemoryActions({
+      actorUserId: MEMBER,
+      assetId: asset.id,
+      now: NOW,
+    });
+
+    expect(proposed[0]?.action).toMatchObject({
+      ownerUserId: MEMBER,
+      scope: "household",
+      householdId: household.id,
+    });
+  });
+
   it("narrows the selection to the memories the caller named", async () => {
     const { proposals, seedAsset, seedMemory } = setup();
     const asset = await seedAsset();
