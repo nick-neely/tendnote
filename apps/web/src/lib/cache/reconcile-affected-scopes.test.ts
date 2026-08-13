@@ -61,6 +61,15 @@ const scopes: AffectedScope[] = [
   { kind: "visible-entity", entity: "saved-item", entityId: "saved-1" },
 ];
 
+function expectRouteRevalidation() {
+  expect(revalidatePath).toHaveBeenCalledWith("/account");
+  expect(revalidatePath).toHaveBeenCalledWith("/account/contacts/import");
+  expect(revalidatePath).toHaveBeenCalledWith("/account/discord");
+  expect(revalidatePath).toHaveBeenCalledWith("/account/about-you");
+  expect(revalidatePath).toHaveBeenCalledWith("/household");
+  expect(revalidatePath).toHaveBeenCalledTimes(5);
+}
+
 describe("affected-scope reconciliation", () => {
   beforeEach(() => {
     revalidatePath.mockReset();
@@ -90,12 +99,7 @@ describe("affected-scope reconciliation", () => {
     expect(updateTag).toHaveBeenCalledWith("account:owner:owner-1");
     expect(updateTag).toHaveBeenCalledWith("household-planning:viewer:owner-1");
     expect(updateTag).toHaveBeenCalledWith("briefs:owner:owner-1");
-    expect(revalidatePath).toHaveBeenCalledWith("/account");
-    expect(revalidatePath).toHaveBeenCalledWith("/account/contacts/import");
-    expect(revalidatePath).toHaveBeenCalledWith("/account/discord");
-    expect(revalidatePath).toHaveBeenCalledWith("/account/about-you");
-    expect(revalidatePath).toHaveBeenCalledWith("/household");
-    expect(revalidatePath).toHaveBeenCalledTimes(5);
+    expectRouteRevalidation();
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
@@ -109,11 +113,6 @@ describe("affected-scope reconciliation", () => {
     expect(revalidateTag).toHaveBeenCalledWith("household-planning:viewer:owner-1", "max");
     expect(revalidateTag).toHaveBeenCalledWith("briefs:owner:owner-1", "max");
     expect(updateTag).not.toHaveBeenCalled();
-    expect(revalidatePath).toHaveBeenCalledWith("/account");
-    expect(revalidatePath).toHaveBeenCalledWith("/account/contacts/import");
-    expect(revalidatePath).toHaveBeenCalledWith("/account/discord");
-    expect(revalidatePath).toHaveBeenCalledWith("/account/about-you");
-    expect(revalidatePath).toHaveBeenCalledWith("/household");
-    expect(revalidatePath).toHaveBeenCalledTimes(5);
+    expectRouteRevalidation();
   });
 });

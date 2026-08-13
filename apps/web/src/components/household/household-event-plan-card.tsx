@@ -11,18 +11,18 @@ import {
 } from "@/app/actions/household-event-plans";
 import { CalendarDotsIcon, HistoryIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import {
-  buildHouseholdEventPlanConflictView,
-  type HouseholdEventPlanConflictView,
-  type HouseholdEventPlanLinkCandidate,
-  type HouseholdEventPlanRecord,
-  type HouseholdEventPlanView,
+import type {
+  HouseholdEventPlanConflictView,
+  HouseholdEventPlanLinkCandidate,
+  HouseholdEventPlanRecord,
+  HouseholdEventPlanView,
 } from "@/lib/household/household-event-plan-view";
 import { HOUSEHOLD_GENERIC_ERROR } from "@/lib/household/invitation-copy";
 import { formatEventWhen } from "@/lib/integrations/calendar-preview";
 import { EditHouseholdEventPlanForm } from "./household-event-plan-edit-form";
 import { HouseholdEventPlanErrorText } from "./household-event-plan-fields";
 import { HouseholdEventPlanLinks } from "./household-event-plan-links";
+import { handleHouseholdEventPlanResult } from "./household-event-plan-result";
 import type { HouseholdEventPlanActions } from "./household-event-plan-types";
 
 type PlanCardProps = {
@@ -91,25 +91,25 @@ function usePlanLifecycle({
   const archived = plan.status === "archived";
 
   function handleResult(result: HouseholdEventPlanResult) {
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    if (result.view.outcome === "conflict") {
-      onPlanRefreshed(result.view.current);
-      setConflict(
-        buildHouseholdEventPlanConflictView({
-          current: result.view.current,
-          viewerUserId,
-          memberNames,
-        }),
-      );
-      onAnnounce("Someone else changed this plan just now. Nothing was archived.");
-      return;
-    }
-    setConflict(null);
-    onPlansChange(result.view.plans);
-    onAnnounce(archived ? `${plan.title} is back on the list.` : `${plan.title} was archived.`);
+    handleHouseholdEventPlanResult(
+      result,
+      { viewerUserId, memberNames },
+      {
+        onError: setError,
+        onConflict: ({ conflict: nextConflict, current }) => {
+          onPlanRefreshed(current);
+          setConflict(nextConflict);
+          onAnnounce("Someone else changed this plan just now. Nothing was archived.");
+        },
+        onSaved: (plans) => {
+          setConflict(null);
+          onPlansChange(plans);
+          onAnnounce(
+            archived ? `${plan.title} is back on the list.` : `${plan.title} was archived.`,
+          );
+        },
+      },
+    );
   }
 
   function move(expectedVersion: number) {

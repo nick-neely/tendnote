@@ -17,9 +17,7 @@ import type {
 } from "./household-event-plan-types";
 
 export type {
-  HouseholdCalendarEventAddress,
   HouseholdEventPlanActions,
-  HouseholdEventPlanDraftInput,
   PendingHouseholdCalendarEvent,
 } from "./household-event-plan-types";
 

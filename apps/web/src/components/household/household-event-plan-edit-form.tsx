@@ -2,17 +2,17 @@ import type { HouseholdEventPlan } from "@tendnote/domain/household-event-plans"
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import type { HouseholdEventPlanResult } from "@/app/actions/household-event-plans";
 import { Button } from "@/components/ui/button";
-import {
-  buildHouseholdEventPlanConflictView,
-  type HouseholdEventPlanConflictView,
-  type HouseholdEventPlanRecord,
-  type HouseholdEventPlanView,
+import type {
+  HouseholdEventPlanConflictView,
+  HouseholdEventPlanRecord,
+  HouseholdEventPlanView,
 } from "@/lib/household/household-event-plan-view";
 import { HOUSEHOLD_GENERIC_ERROR } from "@/lib/household/invitation-copy";
 import {
   HouseholdEventPlanErrorText,
   HouseholdEventPlanFields,
 } from "./household-event-plan-fields";
+import { handleHouseholdEventPlanResult } from "./household-event-plan-result";
 import type { HouseholdEventPlanActions } from "./household-event-plan-types";
 
 type EditPlanProps = {
@@ -52,27 +52,25 @@ function useEditPlanController({
   }, [conflict]);
 
   function handleResult(result: HouseholdEventPlanResult) {
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    if (result.view.outcome === "conflict") {
-      // Their draft is untouched on purpose: every piece of state this form
-      // holds about what they typed survives this branch.
-      onPlanRefreshed(result.view.current);
-      setConflict(
-        buildHouseholdEventPlanConflictView({
-          current: result.view.current,
-          viewerUserId,
-          memberNames,
-        }),
-      );
-      onAnnounce(result.view.message);
-      return;
-    }
-    onPlansChange(result.view.plans);
-    onAnnounce(`${trimmed} was saved.`);
-    onClose();
+    handleHouseholdEventPlanResult(
+      result,
+      { viewerUserId, memberNames },
+      {
+        onError: setError,
+        onConflict: ({ conflict: nextConflict, current, message }) => {
+          // Their draft is untouched on purpose: every piece of state this form
+          // holds about what they typed survives this branch.
+          onPlanRefreshed(current);
+          setConflict(nextConflict);
+          onAnnounce(message);
+        },
+        onSaved: (plans) => {
+          onPlansChange(plans);
+          onAnnounce(`${trimmed} was saved.`);
+          onClose();
+        },
+      },
+    );
   }
 
   function save(version: number) {
