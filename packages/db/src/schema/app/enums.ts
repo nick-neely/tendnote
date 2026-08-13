@@ -1,3 +1,4 @@
+import { HOUSEHOLD_RECORD_OWNERSHIP_VALUES } from "@tendnote/domain";
 import { pgEnum } from "drizzle-orm/pg-core";
 
 export const accessStatus = pgEnum("access_status", ["pending", "granted", "denied"]);
@@ -80,12 +81,14 @@ export const householdMemberStatus = pgEnum("household_member_status", [
 ]);
 
 // Who a scoped record belongs to, which is a different question from who may see
-// it (ADR 0214). Shared across record families so a household-native Saved Item
-// and a household-native Action cannot come to mean different things by it.
-export const householdRecordOwnership = pgEnum("household_record_ownership", [
-  "member_owned",
-  "household_native",
-]);
+// it (ADR 0214). Saved Items, Assets, and General Actions intentionally retain
+// their existing family-specific PostgreSQL enum type names: replacing deployed
+// types would be migration churn without a domain change. All three consume the
+// same domain-owned tuple so their vocabulary cannot drift.
+export const householdRecordOwnership = pgEnum(
+  "household_record_ownership",
+  HOUSEHOLD_RECORD_OWNERSHIP_VALUES,
+);
 
 // Whether a Household Workspace still exists for its members. `dissolved` is the
 // unanimous active-Owner ending (ADR 0213): the row outlives the household so its
@@ -218,11 +221,9 @@ export const assetKind = pgEnum("asset_kind", [
 // scope-visible read filters to active/archived.
 export const assetStatus = pgEnum("asset_status", ["active", "archived", "suggested", "dismissed"]);
 
-// Phase Eight (#386): who an Asset or one of its child records belongs to, which
-// is not the same question as who may see it (ADR 0214). Deliberately the same
-// two members as `general_action_ownership` (#383) — a second household-native
-// family naming its forms differently would be a fork of the contract.
-export const assetOwnership = pgEnum("asset_ownership", ["member_owned", "household_native"]);
+// Phase Eight (#386): the Asset family's PostgreSQL type remains distinct while
+// its values come from the shared household-record ownership vocabulary above.
+export const assetOwnership = pgEnum("asset_ownership", HOUSEHOLD_RECORD_OWNERSHIP_VALUES);
 
 export const assetAuditEventKind = pgEnum("asset_audit_event_kind", [
   "created",
@@ -401,10 +402,10 @@ export const generalActionEventKind = pgEnum("general_action_event_kind", [
  * the two look identical to the audience rule (ADR 0214). General Actions are
  * the first family to carry it.
  */
-export const generalActionOwnership = pgEnum("general_action_ownership", [
-  "member_owned",
-  "household_native",
-]);
+export const generalActionOwnership = pgEnum(
+  "general_action_ownership",
+  HOUSEHOLD_RECORD_OWNERSHIP_VALUES,
+);
 
 /**
  * The questions a household record may put to one of its members, and which

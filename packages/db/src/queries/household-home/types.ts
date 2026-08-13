@@ -1,8 +1,8 @@
 import type {
   HouseholdAuthorizationGrant,
   HouseholdCheckinComposition,
+  HouseholdCoordinationRecord,
   HouseholdHomeComposition,
-  HouseholdHomeRecord,
 } from "@tendnote/domain";
 import type { HouseholdRecordFacts } from "../households/authorization";
 
@@ -17,7 +17,7 @@ import type { HouseholdRecordFacts } from "../households/authorization";
  */
 export type HouseholdHomeCandidate = {
   facts: HouseholdRecordFacts;
-  record: HouseholdHomeRecord;
+  record: HouseholdCoordinationRecord;
 };
 
 /**

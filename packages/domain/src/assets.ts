@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HOUSEHOLD_RECORD_OWNERSHIP_VALUES } from "./household-authorization";
 import { privacyScopeSchema } from "./privacy";
 
 /**
@@ -139,7 +140,7 @@ export function isDurableAssetStatus(status: AssetStatus): boolean {
  * told apart without this column. General Actions and Routines carry the
  * identical enum (#383) — the two families must not drift.
  */
-export const assetOwnershipSchema = z.enum(["member_owned", "household_native"]);
+export const assetOwnershipSchema = z.enum(HOUSEHOLD_RECORD_OWNERSHIP_VALUES);
 export type AssetOwnership = z.infer<typeof assetOwnershipSchema>;
 
 /**

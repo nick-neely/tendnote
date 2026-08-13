@@ -108,7 +108,7 @@ export function assertGeneralActionOperationForm(input: {
  *
  * #384 settled that it does not need one. The Household home is the surface a
  * household-level Area would have organised, and it organises by timing instead:
- * **Needs attention** and **Coming up**, capped at three records and never more
+ * **Ready now** and **Coming up**, capped at three records and never more
  * than five, with a link to Actions for the rest. Filing exists to make a long
  * list navigable, and the home is deliberately never a long list — so an Area
  * there would be a category label with nothing to categorise. Areas stay one

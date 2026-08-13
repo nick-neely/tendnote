@@ -186,8 +186,10 @@ product patterns over invented affordances.
 - **Assistant/review surfaces**: panel treatment with explicit approval language.
   Outbound actions require visible confirmation.
 
-Spacing should feel quiet but not airy. Default rhythm is `4, 6, 8, 12, 16, 24,
-32`; use `48` only for major page separation.
+Spacing should feel quiet but not airy. Default rhythm is `4, 6, 8, 12, 14, 16,
+24, 32`; use `48` only for major page separation. Use `14px` (`3.5`) for compact
+rows, cards, and controls that need a little more room than `12px` without the
+breadth of `16px`.
 
 **Phone gutter.** The one exception to that rhythm, and the only one: every
 narrow-viewport surface is inset from the screen edge by **20px**, declared as

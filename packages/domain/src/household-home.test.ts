@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   composeHouseholdHome,
+  type HouseholdCoordinationRecord,
   type HouseholdHomeRecord,
   type HouseholdHomeSection,
   householdRecordScopeLabel,
@@ -10,11 +11,11 @@ const CREATED_AT = new Date("2026-06-01T00:00:00.000Z");
 
 function record(
   id: string,
-  overrides: Omit<Partial<HouseholdHomeRecord>, "at" | "section"> & {
+  overrides: Omit<Partial<HouseholdCoordinationRecord>, "at" | "section"> & {
     section: HouseholdHomeSection;
     at: string;
   },
-): HouseholdHomeRecord {
+): HouseholdCoordinationRecord {
   const { at, ...rest } = overrides;
   return {
     identity: `action:${id}`,
@@ -46,10 +47,30 @@ describe("composeHouseholdHome", () => {
       ],
     });
 
-    expect(composition.needsAttention.heading).toBe("Needs attention");
+    expect(composition.needsAttention.heading).toBe("Ready now");
     expect(identities(composition.needsAttention.records)).toEqual(["action:a"]);
     expect(composition.comingUp.heading).toBe("Coming up");
     expect(identities(composition.comingUp.records)).toEqual(["action:b"]);
+  });
+
+  it("keeps caller-scoped Gift Plans out of the shared home", () => {
+    const composition = composeHouseholdHome({
+      records: [
+        record("plan", {
+          identity: "gift_plan:plan",
+          family: "gift_plan",
+          section: "coming_up",
+          at: "2026-07-28T09:00:00.000Z",
+          pressing: false,
+          record: { kind: "gift_plan", id: "plan", href: "/gift-plans/plan" },
+          context: "Gift plan",
+          progress: null,
+        }),
+      ],
+    });
+
+    expect(composition.needsAttention.records).toEqual([]);
+    expect(composition.comingUp.records).toEqual([]);
   });
 
   it("orders every section by time, then by identity, so two members see one order", () => {

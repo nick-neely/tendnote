@@ -226,11 +226,16 @@ describe("the Household Check-in composition", () => {
     expect(view.records).toEqual([]);
   });
 
-  it("composes an authorized Gift Plan as a planning reference, never a task", async () => {
-    const { checkin, seedGiftPlan } = await household({ giftPlans: true });
+  it("composes an authorized Gift Plan in the Check-in but not the shared home", async () => {
+    const { checkin, seedGiftPlan, service } = await household({ giftPlans: true });
     await seedGiftPlan({ occasionOn: days(4) });
 
     const view = await checkin(MEMBER);
+    const home = await service.getHouseholdHome({
+      callerUserId: MEMBER,
+      localDate: LOCAL_DATE,
+      now: NOW,
+    });
 
     const plan = view.records.find((record) => record.family === "gift_plan");
     expect(plan).toBeDefined();
@@ -242,6 +247,7 @@ describe("the Household Check-in composition", () => {
     // The audience shape, and no member named on it.
     expect(plan?.scopeLabel).toBe("Shared with you");
     expect(JSON.stringify(plan)).not.toContain(OWNER);
+    expect(home.comingUp.records).toEqual([]);
   });
 
   it("gives the Surprise Subject no plan, no count, and no gap where one was", async () => {

@@ -100,7 +100,8 @@ export type HouseholdAuthorizationSubject = {
  * family that cannot name its ownership form will infer authority from scope
  * instead, which is the mistake this distinction exists to prevent.
  */
-export type HouseholdRecordOwnership = "member_owned" | "household_native";
+export const HOUSEHOLD_RECORD_OWNERSHIP_VALUES = ["member_owned", "household_native"] as const;
+export type HouseholdRecordOwnership = (typeof HOUSEHOLD_RECORD_OWNERSHIP_VALUES)[number];
 
 /**
  * Whether the record still exists for authorization purposes.

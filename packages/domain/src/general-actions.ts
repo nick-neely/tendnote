@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HOUSEHOLD_RECORD_OWNERSHIP_VALUES } from "./household-authorization";
 import { privacyScopeSchema } from "./privacy";
 
 /**
@@ -110,7 +111,7 @@ export type GeneralActionRecurrence = z.infer<typeof generalActionRecurrenceSche
  * more than anyone else, and it stays with the household when its creator leaves
  * (ADR 0214).
  */
-export const generalActionOwnershipSchema = z.enum(["member_owned", "household_native"]);
+export const generalActionOwnershipSchema = z.enum(HOUSEHOLD_RECORD_OWNERSHIP_VALUES);
 export type GeneralActionOwnership = z.infer<typeof generalActionOwnershipSchema>;
 
 export const generalActionSchema = z.object({

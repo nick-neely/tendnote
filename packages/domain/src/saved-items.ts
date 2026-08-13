@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { HouseholdRecordOwnership } from "./household-authorization";
+import { HOUSEHOLD_RECORD_OWNERSHIP_VALUES } from "./household-authorization";
 import { privacyScopeSchema } from "./privacy";
 
 export const savedItemKindSchema = z.enum(["note", "link", "open_question"]);
@@ -22,14 +22,10 @@ export const savedItemSearchQuerySchema = z.string().trim().min(1).max(400);
 /**
  * Which of the two Saved Item ownership forms a record is.
  *
- * The list is pinned to {@link HouseholdRecordOwnership} rather than restated,
- * so a Saved Item can never name an ownership form the Household Authorization
- * Proof does not evaluate (ADR 0219).
+ * The shared Household vocabulary keeps Saved Items aligned with the
+ * Authorization Proof and every other household-native record family (ADR 0219).
  */
-export const savedItemOwnershipSchema = z.enum([
-  "member_owned",
-  "household_native",
-] as const satisfies readonly HouseholdRecordOwnership[]);
+export const savedItemOwnershipSchema = z.enum(HOUSEHOLD_RECORD_OWNERSHIP_VALUES);
 
 const savedItemContentFields = z.object({
   kind: savedItemKindSchema,

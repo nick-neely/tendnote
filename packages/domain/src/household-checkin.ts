@@ -1,4 +1,4 @@
-import type { HouseholdHomeRecord } from "./household-home";
+import type { HouseholdCoordinationRecord } from "./household-home";
 
 /**
  * At most three, and never a fourth.
@@ -25,7 +25,7 @@ export const HOUSEHOLD_CHECKIN_UNAVAILABLE =
   "The check-in is temporarily unavailable. Your household's records are unchanged.";
 
 export type HouseholdCheckinComposition = {
-  records: HouseholdHomeRecord[];
+  records: HouseholdCoordinationRecord[];
   limitations: string[];
 };
 
@@ -44,10 +44,10 @@ export type HouseholdCheckinComposition = {
  * which it could widen anything: it can only shorten a list someone else proved.
  */
 export function composeHouseholdCheckin(input: {
-  records: readonly HouseholdHomeRecord[];
+  records: readonly HouseholdCoordinationRecord[];
   limitations?: readonly string[];
 }): HouseholdCheckinComposition {
-  const byIdentity = new Map<string, HouseholdHomeRecord>();
+  const byIdentity = new Map<string, HouseholdCoordinationRecord>();
   for (const record of input.records) {
     if (!byIdentity.has(record.identity)) byIdentity.set(record.identity, record);
   }
@@ -73,7 +73,10 @@ export function composeHouseholdCheckin(input: {
  * severity, because "this is urgent for you" is precisely the personal obligation
  * a shared record must not manufacture.
  */
-function compareCheckinRecords(left: HouseholdHomeRecord, right: HouseholdHomeRecord): number {
+function compareCheckinRecords(
+  left: HouseholdCoordinationRecord,
+  right: HouseholdCoordinationRecord,
+): number {
   if (left.pressing !== right.pressing) return left.pressing ? -1 : 1;
   return left.at.getTime() - right.at.getTime() || left.identity.localeCompare(right.identity);
 }

@@ -72,7 +72,7 @@ beforeEach(() => {
   getAdmittedHouseholdForUser.mockResolvedValue({ id: "household-1", name: "Ash Lane" });
   getHouseholdHome.mockResolvedValue({
     household: { id: "household-1", name: "Ash Lane" },
-    needsAttention: emptySection("needs_attention", "Needs attention"),
+    needsAttention: emptySection("needs_attention", "Ready now"),
     comingUp: emptySection("coming_up", "Coming up"),
   });
   getHouseholdCheckin.mockResolvedValue({
@@ -106,10 +106,10 @@ describe("the Household destination", () => {
    * than a rearranged one. Asserted by position because the requirement is the
    * order itself, not that the headings exist.
    */
-  it("keeps one column in the same order: Needs attention, Coming up, then links", async () => {
+  it("keeps one column in the same order: Ready now, Coming up, then links", async () => {
     const markup = renderToStaticMarkup(await HouseholdHomeContent());
 
-    expect(markup.indexOf("Needs attention")).toBeLessThan(markup.indexOf("Coming up"));
+    expect(markup.indexOf("Ready now")).toBeLessThan(markup.indexOf("Coming up"));
     expect(markup.indexOf("Coming up")).toBeLessThan(markup.indexOf("Actions and Routines"));
   });
 
@@ -133,7 +133,7 @@ describe("the Household destination", () => {
     getHouseholdHome.mockResolvedValue({
       household: { id: "household-1", name: "Ash Lane" },
       needsAttention: {
-        ...emptySection("needs_attention", "Needs attention"),
+        ...emptySection("needs_attention", "Ready now"),
         records: [{ identity: "routine:a", title: "Put the bins out" }],
       },
       comingUp: {

@@ -1,4 +1,4 @@
-import type { HouseholdHomeRecord } from "@tendnote/domain/household-home";
+import type { HouseholdCoordinationRecord } from "@tendnote/domain/household-home";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { GiftIcon, type Icon, ListTodoIcon, RepeatIcon } from "@/components/icons";
@@ -12,7 +12,7 @@ import { GiftIcon, type Icon, ListTodoIcon, RepeatIcon } from "@/components/icon
  * Caption below. So the anatomy lives here once and both surfaces compose it —
  * what differs between them is what a row can *do*, not what it looks like.
  */
-const FAMILY_ICON: Record<HouseholdHomeRecord["family"], Icon> = {
+const FAMILY_ICON: Record<HouseholdCoordinationRecord["family"], Icon> = {
   action: ListTodoIcon,
   routine: RepeatIcon,
   gift_plan: GiftIcon,
@@ -69,7 +69,7 @@ export function HouseholdRecordRow({
    * focus query land in the wrong list.
    */
   focusIdentity?: string;
-  record: HouseholdHomeRecord;
+  record: HouseholdCoordinationRecord;
 }) {
   const FamilyIcon = FAMILY_ICON[record.family];
   return (

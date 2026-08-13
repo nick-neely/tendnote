@@ -1,4 +1,4 @@
-import type { HouseholdHomeRecord } from "@tendnote/domain";
+import type { HouseholdCoordinationRecord } from "@tendnote/domain";
 import { giftPlanExclusions, HOUSEHOLD_HOME_COMING_UP_DAYS } from "@tendnote/domain";
 import type { GiftPlanWithContext } from "../../gift-plans/types";
 import { formatDateInZone } from "../../today/candidate-loaders/shared";
@@ -86,7 +86,7 @@ function checkinRecord(
   plan: GiftPlanWithContext,
   at: Date,
   input: Parameters<HouseholdHomeCandidateLoader>[0],
-): HouseholdHomeRecord {
+): HouseholdCoordinationRecord {
   return {
     identity: `gift_plan:${plan.id}`,
     family: "gift_plan",

@@ -2,39 +2,47 @@ import { z } from "zod";
 import type { HouseholdRecordOwnership } from "./household-authorization";
 
 /**
- * The record families the Household home can compose.
+ * The record families the shared Household row can render.
  *
- * Actions and Routines launch the destination because they are the first domain
- * to earn a full Phase Eight collaboration contract (#383). Saved Items, Event
- * Plans, and shared Follow-Ups each owe their own contract before they may be
- * added here; adding one is a new enum member, a loader, and a destination case,
- * and nothing else — the caps, ordering, provenance, and proof are already
- * common to every family.
- *
- * `gift_plan` is a member of this vocabulary but is composed only by the
- * Household Check-in, not by the home (#390). That is deliberate rather than
- * half-done: a Gift Plan is a member-owned record with a selected audience, so
- * it belongs on a caller-specific read and not on a surface whose whole contract
- * is that every member with the same access sees the same thing. The home would
- * be showing one member a row another cannot see, which is exactly what
- * "never personalised" rules out.
+ * This is wider than the Household home's composition because the same compact
+ * row also appears in a member's caller-scoped Household Check-in. Gift Plans
+ * belong only to that Check-in: they are private, member-owned planning
+ * references with a selected audience and Surprise Subject exclusion, and the
+ * Check-in already owns that per-caller view (#396).
  */
-export const householdHomeFamilySchema = z.enum(["action", "routine", "gift_plan"]);
+export const householdCoordinationFamilySchema = z.enum(["action", "routine", "gift_plan"]);
+export type HouseholdCoordinationFamily = z.infer<typeof householdCoordinationFamilySchema>;
+
+/**
+ * The record families the shared Household home can compose.
+ *
+ * Actions and Routines launch the destination because they have a full Phase
+ * Eight collaboration contract (#383). Gift Plans are deliberately absent from
+ * this surface and remain eligible for the caller-scoped Household Check-in
+ * instead (#396). This does not claim two members' authorized home records are
+ * always identical — selected-member sharing may legitimately differ. Saved
+ * Items, Event Plans, and shared Follow-Ups each owe their own implemented home
+ * contract before they may be added here; adding one is a new enum member, a
+ * loader, and a destination case.
+ */
+export const householdHomeFamilySchema = z.enum(["action", "routine"]);
 export type HouseholdHomeFamily = z.infer<typeof householdHomeFamilySchema>;
 
 /**
  * The home's two sections, and the only two it has.
  *
- * `needs_attention` is what the household could act on now; `coming_up` is what
- * is dated and approaching. There is deliberately no third collection — no
- * activity stream, no member panel, no "recently completed" — because the home
- * answers one question and a third section would start answering another.
+ * `needs_attention` is the stable wire key for what the household could act on
+ * now; its human heading is **Ready now**, which describes availability without
+ * manufacturing urgency or guilt (#398). `coming_up` is what is dated and
+ * approaching. There is deliberately no third collection — no activity stream,
+ * no member panel, no "recently completed" — because the home answers one
+ * question and a third section would start answering another.
  */
 export const householdHomeSectionSchema = z.enum(["needs_attention", "coming_up"]);
 export type HouseholdHomeSection = z.infer<typeof householdHomeSectionSchema>;
 
 export const householdHomeSectionHeadings: Record<HouseholdHomeSection, string> = {
-  needs_attention: "Needs attention",
+  needs_attention: "Ready now",
   coming_up: "Coming up",
 };
 
@@ -66,10 +74,10 @@ export const householdHomeProgressSchema = z.object({
   expectedOccurrenceVersion: z.number().int().min(0),
 });
 
-export const householdHomeRecordSchema = z.object({
+export const householdCoordinationRecordSchema = z.object({
   /** Family-prefixed and stable, so two families can never collide on one id. */
   identity: z.string().min(1),
-  family: householdHomeFamilySchema,
+  family: householdCoordinationFamilySchema,
   section: householdHomeSectionSchema,
   /**
    * Whether the record is already asking something of the household today.
@@ -102,6 +110,11 @@ export const householdHomeRecordSchema = z.object({
   /** The instant the timing refers to. The section's sort key. */
   at: z.date(),
   createdAt: z.date(),
+});
+export type HouseholdCoordinationRecord = z.infer<typeof householdCoordinationRecordSchema>;
+
+export const householdHomeRecordSchema = householdCoordinationRecordSchema.extend({
+  family: householdHomeFamilySchema,
 });
 export type HouseholdHomeRecord = z.infer<typeof householdHomeRecordSchema>;
 
@@ -193,8 +206,6 @@ export function householdHomeFamilyDestination(
     case "action":
     case "routine":
       return { label: "Actions", href: "/actions" };
-    case "gift_plan":
-      return { label: "Gift plans", href: "/gift-plans" };
   }
 }
 
@@ -209,12 +220,12 @@ export function householdHomeFamilyDestination(
  * record for anybody, including the member who chose it.
  */
 export function composeHouseholdHome(input: {
-  records: readonly HouseholdHomeRecord[];
+  records: readonly HouseholdCoordinationRecord[];
   limitations?: readonly string[];
 }): HouseholdHomeComposition {
   const records = deduplicateRecords(
-    input.records.map((record) => householdHomeRecordSchema.parse(record)),
-  );
+    input.records.map((record) => householdCoordinationRecordSchema.parse(record)),
+  ).filter(isHouseholdHomeRecord);
   const limitations = [...new Set(input.limitations ?? [])];
   return {
     needsAttention: sectionView("needs_attention", records, limitations),
@@ -261,12 +272,18 @@ function compareRecords(left: HouseholdHomeRecord, right: HouseholdHomeRecord): 
   return left.at.getTime() - right.at.getTime() || left.identity.localeCompare(right.identity);
 }
 
-function deduplicateRecords(records: readonly HouseholdHomeRecord[]): HouseholdHomeRecord[] {
-  const byIdentity = new Map<string, HouseholdHomeRecord>();
+function deduplicateRecords(
+  records: readonly HouseholdCoordinationRecord[],
+): HouseholdCoordinationRecord[] {
+  const byIdentity = new Map<string, HouseholdCoordinationRecord>();
   for (const record of records) {
     if (!byIdentity.has(record.identity)) byIdentity.set(record.identity, record);
   }
   return [...byIdentity.values()];
+}
+
+function isHouseholdHomeRecord(record: HouseholdCoordinationRecord): record is HouseholdHomeRecord {
+  return householdHomeFamilySchema.safeParse(record.family).success;
 }
 
 function destinationsFor(records: readonly HouseholdHomeRecord[]): HouseholdHomeDestination[] {
