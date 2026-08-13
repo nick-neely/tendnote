@@ -2075,10 +2075,12 @@ Deliverables:
   governance. Membership alone does not ship a prominent empty destination
   before any shared coordination capability exists.
 - The Household home is a deterministic, shared, read-first composition with
-  capped **Needs attention** and **Coming up** sections. Each normally shows
-  three authoritative household-visible records and never more than five, with
-  domain links for overflow. Suggestions remain in Review and Household Context
-  remains orientation and Account-managed context rather than feed content.
+  capped **Ready now** and **Coming up** sections. **Ready now** describes what
+  can be acted on without implying urgency, fault, or a collective backlog. Each
+  normally shows three authoritative household-visible records and never more
+  than five, with domain links for overflow. Suggestions remain in Review and
+  Household Context remains orientation and Account-managed context rather than
+  feed content.
 - Members with the same record access see the same Household composition.
   Selected-member visibility may produce legitimate differences, while a
   member's **Not today** action affects only private Today and never hides or
@@ -2098,7 +2100,7 @@ Deliverables:
   admitted Household frame, fails closed on membership uncertainty, and never
   substitutes stale shared data. Departure or removal immediately removes the
   destination; dissolution routes eligible Owners to recovery.
-- Mobile preserves a single-column **Needs attention**, **Coming up**, and
+- Mobile preserves a single-column **Ready now**, **Coming up**, and
   domain-link hierarchy. Semantic headings and lists, textual type/scope/state,
   canonical links, keyboard and focus behavior, reduced-motion-safe
   reconciliation, and 200% text support are required; dashboard grids,
@@ -2162,8 +2164,8 @@ Deliverables:
   Review item any active member may accept, edit-and-accept, or dismiss for the
   household. Private-channel ambient extraction stays member-owned and private
   even when its content describes the household.
-- Household-visible Actions and Routines compose into the capped **Needs
-  attention** and **Coming up** sections with completion and reopening as the only
+- Household-visible Actions and Routines compose into the capped **Ready now**
+  and **Coming up** sections with completion and reopening as the only
   inline actions. Private Today narrows Phase Seven eligibility: a household
   record reaches a member's Today only when it is due, overdue, or deliberately
   resurfaced **and** they own it, are its named Responsibility Holder, or hold
@@ -2289,13 +2291,18 @@ Deliverables:
   shares only deliberate plan-facing subject and occasion data, never access to
   the underlying Person, birthday, Memories, Assets, Source Records, or
   Follow-Ups.
-- Authorized active plans may appear as compact upcoming references in Household
-  and, when individually relevant under normal deterministic policy, private
-  Today. Each authorized co-planner may opt into one of their own Reminder
-  Schedules; no member action enrolls another device, and the Surprise Subject
-  can never receive one. Writes reconcile with draft preservation and actor
-  explanation; self-claims are atomic. On owner departure, removal, or
-  dissolution, the plan becomes private to its owner and every collaborator's
+- Authorized active plans may appear as compact upcoming references in each
+  co-planner's caller-scoped Household Check-in, but not in the shared Household
+  home. The Check-in owns these private, member-owned planning references and
+  their per-caller Surprise Subject exclusion; this does not require other
+  selected-member records on the shared home to be identical for every member.
+  When individually relevant under normal deterministic policy, plans may also
+  appear in private Today. Each authorized co-planner may opt into one of their
+  own Reminder Schedules; no member action enrolls another device, and the
+  Surprise Subject can never receive one. Writes reconcile with draft
+  preservation and actor explanation; self-claims are atomic. On owner
+  departure, removal, or dissolution, the plan becomes private to its owner and
+  every collaborator's
   access, claim, reminder, and pending intent ends. A departing co-planner loses
   access while their existing contributions remain attributed unless removed
   before departure. Plan-local history is quiet and authorized-only, never a

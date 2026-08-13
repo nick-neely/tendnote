@@ -134,7 +134,7 @@ function SharedSectionsReserve() {
  * The global Household destination added in #384 is the working surface, not a
  * relocation of this one: a member arrives here from its "Manage household"
  * link and leaves the same way. Governance deliberately does not move onto the
- * home, and the home's own read model - what needs attention, what is coming up
+ * home, and the home's own read model - what is ready now, what is coming up
  * - deliberately does not appear here. The shared Calendar and Event Plan
  * sections above are the one thing still sitting on the wrong side of that
  * line; see {@link SharedSections}.

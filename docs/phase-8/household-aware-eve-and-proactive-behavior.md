@@ -108,7 +108,7 @@ items without converting shared visibility into personal obligation.
   ordering is the fallback when generation is unavailable.
 - It is available through a compact **Household check-in** entry from the
   member's private briefing/Today context and from Household. It is not a new
-  third collection on the calm **Needs attention** / **Coming up** Household
+  third collection on the calm **Ready now** / **Coming up** Household
   home, a persistent shared brief, or an activity feed.
 - It is in-app only in Phase Eight. Tendnote adds no household email, shared
   channel, cross-member push, or general proactive notification. Existing

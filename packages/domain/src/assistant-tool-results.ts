@@ -3,7 +3,7 @@ import { assetMemoryValueSchema } from "./asset-memories";
 import { assetKindSchema, assetOwnershipSchema } from "./assets";
 import { conversationalCaptureConfirmationSchema } from "./conversational-capture-schemas";
 import { draftProposalResultSchema } from "./draft-proposals";
-import { householdHomeFamilySchema } from "./household-home";
+import { householdCoordinationFamilySchema } from "./household-home";
 import { memoryCuratorProposalResultSchema } from "./memory-curator";
 import { privacyScopeSchema } from "./privacy";
 
@@ -412,7 +412,7 @@ export const householdCheckinToolResult = z.object({
       recordKind: z.string().min(1),
       recordId: z.string().min(1),
       /** The domain family, so the row picks a glyph from a fact rather than prose. */
-      family: householdHomeFamilySchema,
+      family: householdCoordinationFamilySchema,
       href: z.string().min(1),
       title: z.string().min(1),
       /** The record's own type and cadence, in words. "Action", "Routine · weekly". */

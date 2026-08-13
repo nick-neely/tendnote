@@ -45,8 +45,8 @@ existing recovery state.
 The Household home is a calm coordination view, not a dashboard framework. It
 has two primary sections:
 
-1. **Needs attention** — currently actionable or overdue household-visible
-   records.
+1. **Ready now** — household-visible records that can be acted on now, without
+   implying urgency, fault, or a collective backlog.
 2. **Coming up** — time-bound household-visible records approaching soon.
 
 Each section normally shows three records and never more than five. When a
@@ -126,7 +126,7 @@ shared contract. It does not lead with invitations, generic **Add item**, setup
 progress, empty widgets, or a blank activity feed.
 
 Navigation and the household name render only inside a currently admitted
-Household frame. **Needs attention** and **Coming up** stream independently with
+Household frame. **Ready now** and **Coming up** stream independently with
 truthful shaped reserves. One failed domain family does not erase successful
 families or produce a misleading global empty state.
 
@@ -137,7 +137,7 @@ changed or access ended, and reconciles to authoritative state.
 
 ## Responsive and accessibility contract
 
-Phones retain the same single-column order: **Needs attention**, **Coming up**,
+Phones retain the same single-column order: **Ready now**, **Coming up**,
 then supported domain links. The surface does not collapse into a horizontal
 dashboard grid, carousel, or sidebar.
 

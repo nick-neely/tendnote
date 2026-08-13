@@ -41,7 +41,7 @@ function record(overrides: Partial<HouseholdHomeRecord> = {}): HouseholdHomeReco
 function section(overrides: Partial<HouseholdHomeSectionView> = {}): HouseholdHomeSectionView {
   return {
     section: "needs_attention",
-    heading: "Needs attention",
+    heading: "Ready now",
     records: [record()],
     more: null,
     limitations: [],
@@ -115,7 +115,7 @@ describe("a Household home section", () => {
   it("uses semantic headings and a list, in one column", () => {
     render(<HouseholdHomeSection sectionKey="needsAttention" view={section()} />);
 
-    expect(screen.getByRole("heading", { level: 2, name: "Needs attention" })).toBeDefined();
+    expect(screen.getByRole("heading", { level: 2, name: "Ready now" })).toBeDefined();
     expect(screen.getByRole("list")).toBeDefined();
   });
 
@@ -224,7 +224,7 @@ describe("a Household home section", () => {
 
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        screen.getByRole("heading", { level: 2, name: "Needs attention" }),
+        screen.getByRole("heading", { level: 2, name: "Ready now" }),
       ),
     );
   });

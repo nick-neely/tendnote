@@ -10,7 +10,7 @@ import {
 /**
  * The heading the check-in wears where it is a guest.
  *
- * On the Household page it is a peer of "Needs attention" and "Coming up", so it
+ * On the Household page it is a peer of "Ready now" and "Coming up", so it
  * takes their H2 exactly — one page, one heading treatment. Inside a brief or an
  * Eve surface it sits among sections whose own headings are Small and muted, and
  * a 20px section heading dropped into a 380px rail reads as a page that wandered

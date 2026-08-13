@@ -82,14 +82,20 @@ Subject receives no result or existence signal. Eve never infers collaborators,
 persists an idea by itself, creates an external draft, or sends on a plan's
 behalf.
 
-## Household, Today, and reminders
+## Household Check-in, Today, and reminders
 
-An active, time-bound plan may compose into the capped Household **Coming up**
-section for its authorized co-planners. It is a compact planning reference with
-a canonical plan link, not a task or a prompt to contact someone. It may appear
-in an authorized member's private Today only when the ordinary deterministic
-Today policy finds it relevant; Household visibility never makes it personally
-urgent.
+An active, time-bound plan may compose into each authorized co-planner's
+caller-scoped **Household Check-in**. It remains excluded from the shared
+Household home's **Coming up** section: selected co-planners and the Surprise
+Subject exclusion can legitimately produce a different list for each member,
+and the caller-scoped Check-in already owns those private planning references.
+This exclusion does not require every member's authorized Household home to be
+identical; selected-member access in other supported families may still produce
+legitimate differences. In the Check-in a Gift Plan is a compact planning
+reference with a canonical plan link, not a task or a prompt to contact someone.
+It may appear in an authorized member's private Today only when the ordinary
+deterministic Today policy finds it relevant; Household visibility never makes
+it personally urgent.
 
 Each authorized co-planner may choose one of their own Reminder Schedules for an
 upcoming plan. This is an explicit personal opt-in: creating, sharing, claiming,

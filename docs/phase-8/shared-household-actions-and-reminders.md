@@ -267,7 +267,7 @@ Review, out of the Household home, out of Today, and out of ordinary Eve answers
 ## Composition into Household and Today
 
 **Household home.** Household-native and member-owned shared Actions and Routines
-both compose into the existing capped **Needs attention** and **Coming up**
+both compose into the existing capped **Ready now** and **Coming up**
 sections under the already-decided deterministic eligibility, ordering, and caps.
 Scope and holder appear as quiet text labels. The home applies no default filter
 to the current member's records. Its inline actions are limited to completion and

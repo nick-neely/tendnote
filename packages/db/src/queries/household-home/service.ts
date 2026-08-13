@@ -54,10 +54,11 @@ export type HouseholdHomeServiceDeps = {
    * Families the Check-in composes and the home does not.
    *
    * Gift Plans are the motivating case and the reason this is a separate list
-   * rather than a wider shared one: a Gift Plan is member-owned with a selected
-   * audience, so it belongs on a caller-specific read and not on a surface whose
-   * contract is that every member with the same access sees the same thing. The
-   * home would be showing one member a row another member cannot see.
+   * rather than a wider shared one: a Gift Plan is a private, member-owned
+   * planning reference with a selected audience and Surprise Subject exclusion,
+   * and the caller-specific Check-in already owns that view (#396). The shared
+   * home may still differ legitimately where another family's selected-member
+   * access differs; this split is about which surface owns Gift Plans.
    *
    * Everything else is identical — same loader shape, same proof, same caps — so
    * a family joining the Check-in is one entry here and nothing else.

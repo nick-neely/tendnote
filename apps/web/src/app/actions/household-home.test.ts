@@ -34,7 +34,7 @@ function home() {
     household: { id: "household-1", name: "Ash Lane" },
     needsAttention: {
       section: "needs_attention",
-      heading: "Needs attention",
+      heading: "Ready now",
       records: [],
       more: null,
       limitations: [],

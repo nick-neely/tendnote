@@ -35,14 +35,14 @@ Inference is stricter than explicit Household capture. Evidence already visible 
 Promotion is explicit and creates the destination's correct ownership form:
 
 - The owner of a member-owned Saved Item may promote it into their own member-owned Action, retaining only the audience they explicitly confirm.
-- That owner may instead explicitly choose **Make household Action**. This creates a household-native Action and archives the member-owned Saved Item as resolved; it is a new, confirmed workspace-owned destination, not an implicit transfer of the Saved Item itself.
+- That owner may instead explicitly choose **Give to the household**. This creates a household-native Action and archives the member-owned Saved Item as resolved; it is a new, confirmed workspace-owned destination, not an implicit transfer of the Saved Item itself.
 - Any active member may promote a household-native Saved Item only into a household-native Action.
 
 Every promotion preserves source links, is idempotent, records quiet provenance, and archives the originating Saved Item as resolved. It never turns a link, note, or open question into a task automatically.
 
 ## Household, Today, reminders, and assisted surfaces
 
-Authorized active Saved Items compose into the deterministic, read-first **Needs attention** and **Coming up** sections of Household when their bring-back timing makes them relevant. A household-native item is labelled **Household**; a member-owned one is labelled **Shared by <member>**. Selected-member sharing can create legitimate per-member differences, but inaccessible records produce no item, count, explanation, or existence signal.
+Authorized active Saved Items compose into the deterministic, read-first **Ready now** and **Coming up** sections of Household when their bring-back timing makes them relevant. A household-native item is labelled **Household**; a member-owned one is labelled **Shared by <member>**. Selected-member sharing can create legitimate per-member differences, but inaccessible records produce no item, count, explanation, or existence signal.
 
 Private Today remains individually relevant rather than a second Household queue. An authorized Saved Item reaches a member's Today only when its usual due or deterministic resurfacing rule applies and that member either owns the item or holds their own Reminder Schedule for it. A shared note with no individual opt-in sits on Household and nags nobody privately.
 

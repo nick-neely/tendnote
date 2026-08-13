@@ -260,7 +260,7 @@ describe("what composes into the Household home", () => {
 });
 
 describe("how the home dates a record", () => {
-  it("puts what the household has already reached under Needs attention", async () => {
+  it("puts what the household has already reached under Ready now", async () => {
     const { home, seedHouseholdNative } = await household();
     await seedHouseholdNative({ title: "Waiting", dueAt: days(-3) });
     await seedHouseholdNative({ title: "Today", dueAt: NOW });

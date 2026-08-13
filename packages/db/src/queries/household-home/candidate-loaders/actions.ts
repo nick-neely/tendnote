@@ -34,7 +34,7 @@ const ACTION_WINDOW = 40;
  * never do — the home answers what *we* are coordinating, and a private errand is
  * not part of that answer even for the member who owns it.
  *
- * An undated Action does not compose either. "Needs attention" is a shortlist of
+ * An undated Action does not compose either. "Ready now" is a shortlist of
  * what is asking for the household now, and an Action with no date is asking for
  * nothing in particular; admitting them would turn the section into the second
  * task backlog the home is explicitly not allowed to become. They stay on

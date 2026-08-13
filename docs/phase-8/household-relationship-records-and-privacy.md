@@ -114,7 +114,7 @@ Memories and Source Records never become standalone Household cards, a people
 feed, or a shared relationship dashboard. They may ground an authorized
 Household-native coordination record or answer a direct authorized request.
 
-A shared active Follow-Up may appear in Household **Needs attention** or
+A shared active Follow-Up may appear in Household **Ready now** or
 **Coming up** only when its ordinary deterministic timing makes it eligible. It
 is labeled **Shared by <member>**, remains read only to the audience, and offers
 no audience mutation inline. It appears in private Today and reminder delivery
