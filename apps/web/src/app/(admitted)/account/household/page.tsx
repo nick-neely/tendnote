@@ -9,7 +9,7 @@ import { unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { HouseholdContextSummary } from "@/components/account/household-context-summary";
-import { HouseholdSharedSections } from "@/components/account/household-shared-sections";
+import { HouseholdPlanningSections } from "@/components/household/household-planning-sections";
 import { HouseholdSurface } from "@/components/account/household-surface";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { appDestination } from "@/components/app-destinations";
@@ -104,7 +104,7 @@ async function SharedSections({
 }) {
   const shared = await getHouseholdSharedContext(userId);
   return (
-    <HouseholdSharedSections
+    <HouseholdPlanningSections
       calendars={shared.calendars}
       linkCandidates={shared.linkCandidates}
       members={overview.members}

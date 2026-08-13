@@ -6,12 +6,12 @@ import { useMemo, useState } from "react";
 import {
   type HouseholdCalendarActions,
   HouseholdCalendarsPanel,
-} from "@/components/account/household-calendars-panel";
+} from "@/components/household/household-calendars-panel";
 import {
   type HouseholdEventPlanActions,
   HouseholdEventPlansPanel,
   type PendingHouseholdCalendarEvent,
-} from "@/components/account/household-event-plans-panel";
+} from "@/components/household/household-event-plans-panel";
 import { buildHouseholdCalendarFamilyViews } from "@/lib/household/household-calendar-view";
 import {
   buildHouseholdEventPlanViews,
@@ -22,7 +22,7 @@ import {
 } from "@/lib/household/household-event-plan-view";
 import type { HouseholdCalendarSurface } from "@/lib/household/household-shared-data";
 
-export type HouseholdSharedSectionsProps = {
+export type HouseholdPlanningSectionsProps = {
   viewerUserId: string;
   viewerRole: "owner" | "member";
   /** The household's roster, used only to put a name on a Plan's provenance. */
@@ -39,7 +39,7 @@ export type HouseholdSharedSectionsProps = {
 };
 
 /**
- * Account > Household's shared Calendar and Event Plan sections (issue #387).
+ * The Household's shared Calendar and Event Plan planning region (issue #387).
  *
  * The two live under one component because one gesture crosses between them:
  * "Plan this event" is pressed on a read-only calendar row and answered by a
@@ -56,7 +56,7 @@ export type HouseholdSharedSectionsProps = {
  * Plans are separate reads, separate props, and separate sections, so one being
  * unreadable is invisible to the other.
  */
-export function HouseholdSharedSections({
+export function HouseholdPlanningSections({
   viewerUserId,
   viewerRole,
   members,
@@ -67,7 +67,7 @@ export function HouseholdSharedSections({
   viewerHasCalendarAccess,
   calendarActions,
   planActions,
-}: HouseholdSharedSectionsProps) {
+}: HouseholdPlanningSectionsProps) {
   const router = useRouter();
   const [calendars, setCalendars] = useState(initialCalendars);
   const [plans, setPlans] = useState(initialPlans);

@@ -40,8 +40,8 @@ vi.mock("@/components/account/household-surface", () => ({
 vi.mock("@/lib/household/household-shared-data", () => ({
   getHouseholdSharedContext: vi.fn(),
 }));
-vi.mock("@/components/account/household-shared-sections", () => ({
-  HouseholdSharedSections: () => null,
+vi.mock("@/components/household/household-planning-sections", () => ({
+  HouseholdPlanningSections: () => null,
 }));
 
 import { renderToStaticMarkup } from "react-dom/server";

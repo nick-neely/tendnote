@@ -45,9 +45,9 @@ import type {
   HouseholdEventPlanLinkCandidate,
   HouseholdEventPlanRecord,
 } from "@/lib/household/household-event-plan-view";
-import type { HouseholdCalendarActions } from "./household-calendars-panel";
-import type { HouseholdEventPlanActions } from "./household-event-plans-panel";
-import { HouseholdSharedSections } from "./household-shared-sections";
+import type { HouseholdCalendarActions } from "@/components/household/household-calendars-panel";
+import type { HouseholdEventPlanActions } from "@/components/household/household-event-plans-panel";
+import { HouseholdPlanningSections } from "@/components/household/household-planning-sections";
 import { HouseholdSurface } from "./household-surface";
 import { governanceDefaults, member } from "./household-test-overview";
 
@@ -147,7 +147,7 @@ function renderShared(
   } = {},
 ) {
   return render(
-    <HouseholdSharedSections
+    <HouseholdPlanningSections
       calendarActions={overrides.calendarActions}
       calendars={
         overrides.calendars === undefined
@@ -241,7 +241,7 @@ describe("the multi-member matrix", () => {
 
 function renderSharedSections(viewerRole: "owner" | "member") {
   return (
-    <HouseholdSharedSections
+    <HouseholdPlanningSections
       calendars={{ connections: [CONNECTION], read: read() }}
       linkCandidates={CANDIDATES}
       members={MEMBERS}
