@@ -50,7 +50,7 @@ function plan(overrides: Partial<GiftPlanView> = {}): GiftPlanView {
     acceptsCommitments: true,
     closedReason: null,
     scope: "shared",
-    visibilityLabel: "1 co-planner",
+    visibilityLabel: "Shared with 1 person",
     householdName: "The Neely house",
     subjectPersonId: null,
     surprise: false,

@@ -1,9 +1,6 @@
 import Link from "next/link";
-import {
-  ActionLinkedAssetChip,
-  ActionRoutineChip,
-  ActionScopeChip,
-} from "@/components/general-action-shared";
+import { ActionLinkedAssetChip, ActionRoutineChip } from "@/components/general-action-shared";
+import { VisibilityStatus } from "@/components/visibility-affordance";
 import type { ActionTodayItem } from "@/lib/action-today";
 import { type ActionTodayGroup, actionTodayAssets, actionTodayCaption } from "@/lib/action-today";
 
@@ -104,7 +101,7 @@ function ActionTodayRow({ item }: { item: ActionTodayItem }) {
         {/* A household-native record has no audience anyone chose, so a scope chip
             would name the household as people this member shared with (ADR 0214). */}
         {view.ownership === "household_native" ? null : (
-          <ActionScopeChip label={view.visibilityLabel} scope={view.scope} />
+          <VisibilityStatus scope={view.scope} selectedCount={view.sharedWithCount} />
         )}
       </span>
     </li>

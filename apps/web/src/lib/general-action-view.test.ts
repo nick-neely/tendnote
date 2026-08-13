@@ -48,17 +48,17 @@ describe("toGeneralActionView scope + ownership", () => {
     expect(view.owned).toBe(false);
   });
 
-  it("names the audience on the scope label: household name and shared count", () => {
+  it("names the audience on the scope label: whole household and a shared count", () => {
     const household = toGeneralActionView(
       baseAction({ scope: "household", householdName: "Smith Household" }),
       { callerUserId: OWNER },
     );
-    expect(household.visibilityLabel).toBe("Smith Household");
+    expect(household.visibilityLabel).toBe("Whole household");
 
     const shared = toGeneralActionView(baseAction({ scope: "shared", sharedWithCount: 2 }), {
       callerUserId: OWNER,
     });
-    expect(shared.visibilityLabel).toBe("Specific people · 2");
+    expect(shared.visibilityLabel).toBe("Shared with 2 people");
   });
 
   it("carries linked people and asset hints through to the surface", () => {

@@ -104,10 +104,12 @@ export type AssetView = {
   scope: PrivacyScope;
   /**
    * A calm scope label that says *who*, not just that it's shared — "Only me",
-   * "Specific people · 2", or the household's name. Mirrors the General Action
+   * "Shared with 2 people", or "Whole household". Mirrors the General Action
    * audience label so scope reads the same across surfaces.
    */
   visibilityLabel: string;
+  /** How many members a `shared` Asset reaches; 0 otherwise. */
+  sharedWithCount: number;
   /**
    * Whether the viewing user owns this asset. Kept for the surfaces that phrase
    * things in the first person; authority questions go through `authority`.
@@ -168,6 +170,7 @@ export function toAssetView(
     archived: asset.status === "archived",
     scope: asset.scope,
     visibilityLabel: surfacing.audienceLabel,
+    sharedWithCount: asset.sharedWithCount,
     owned: surfacing.owned,
     ownerUserId: asset.ownerUserId,
     ownership: asset.ownership,

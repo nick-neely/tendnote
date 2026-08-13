@@ -145,20 +145,20 @@ describe("gift plan view", () => {
     expect(toGiftPlanView(plan({ status: "archived" }), PEOPLE, NOW).statusLabel).toBe("Archived");
   });
 
-  it("counts co-planners on a shared plan and pluralises the count", () => {
+  it("names a shared plan's audience the same way every other surface does", () => {
     expect(
       toGiftPlanView(plan({ scope: "shared", sharedWithUserIds: [MARA] }), PEOPLE, NOW)
         .visibilityLabel,
-    ).toBe("1 co-planner");
+    ).toBe("Shared with 1 person");
     expect(
       toGiftPlanView(plan({ scope: "shared", sharedWithUserIds: [MARA, "user-ben"] }), PEOPLE, NOW)
         .visibilityLabel,
-    ).toBe("2 co-planners");
+    ).toBe("Shared with 2 people");
   });
 
-  it("falls back to the scope's own label when a shared plan has nobody on it yet", () => {
+  it("falls back to the editor choice when a shared plan has nobody on it yet", () => {
     const view = toGiftPlanView(plan({ scope: "shared", sharedWithUserIds: [] }), PEOPLE, NOW);
-    expect(view.visibilityLabel).not.toContain("co-planner");
+    expect(view.visibilityLabel).toBe("Specific people");
   });
 
   it("reports ownership from the caller rather than from the surface", () => {
@@ -204,7 +204,7 @@ describe("gift plan history", () => {
   it("writes every event kind as a sentence about the member who acted", () => {
     expect(summaryFor("created", MARA)).toBe("Mara started this plan");
     expect(summaryFor("edited", MARA)).toBe("Mara updated the details");
-    expect(summaryFor("audience_changed", MARA)).toBe("Mara changed who can see this");
+    expect(summaryFor("audience_changed", MARA)).toBe("Mara changed visibility");
     expect(summaryFor("surprise_protected", MARA)).toBe("Mara turned on surprise protection");
     expect(summaryFor("surprise_lifted", MARA)).toBe("Mara turned off surprise protection");
     expect(summaryFor("idea_added", MARA)).toBe("Mara added an idea");

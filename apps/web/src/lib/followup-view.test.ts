@@ -80,7 +80,7 @@ describe("toFollowupView", () => {
       "member-1",
     );
 
-    expect(view.visibilityLabel).toBe("Specific people · 2");
+    expect(view.visibilityLabel).toBe("Shared with 2 people");
     expect(view.owned).toBe(false);
     expect(view.ownerUserId).toBe("user-1");
   });

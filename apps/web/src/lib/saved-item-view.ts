@@ -55,6 +55,8 @@ export type SavedItemView = {
   bringBackLabel: string | null;
   scope: PrivacyScope;
   visibilityLabel: string;
+  /** How many members a `shared` Saved Item reaches; 0 otherwise. */
+  sharedWithCount: number;
   /** "Created by <name>" on a household-native item somebody else wrote. */
   createdByLabel: string | null;
   /** "Last changed by <name>" when the last actor is neither the creator nor the viewer. */
@@ -191,6 +193,7 @@ export function toSavedItemView(
     bringBackLabel: hasActiveBringBack ? surfacing.timingLabel : null,
     scope: item.scope,
     visibilityLabel: audienceLabel(item, callerUserId, surfacing.audienceLabel, memberNames),
+    sharedWithCount: item.sharedWithUserIds.length,
     ...provenanceLabels(item, callerUserId, memberNames),
     sourceRecordId: item.sourceRecordId,
     resolutionReason: item.resolutionReason,

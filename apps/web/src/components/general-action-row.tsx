@@ -66,7 +66,6 @@ import {
   SkipForwardIcon,
   SlidersHorizontalIcon,
   UserIcon,
-  UsersIcon,
   XIcon,
 } from "@/components/icons";
 import { RecordTimingChip } from "@/components/record-timing-chip";
@@ -82,6 +81,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import { VisibilityControl } from "@/components/visibility-affordance";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import {
   GENERAL_ACTION_MUTATION_INTENTS,
@@ -765,17 +765,14 @@ function ActionManagementPanel({
           </Button>
         ) : null}
         {authority.audience && inHousehold ? (
-          <Button
+          <VisibilityControl
             className={`${ACTION_CONTROL_TOUCH_TARGET} justify-start`}
             disabled={pending}
             onClick={onShare}
             size="sm"
             type="button"
             variant="ghost"
-          >
-            <UsersIcon />
-            Visibility
-          </Button>
+          />
         ) : null}
         {authority.handToHousehold && inHousehold ? (
           <Button

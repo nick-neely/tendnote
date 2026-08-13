@@ -31,7 +31,7 @@ function actionView(overrides: Partial<GeneralActionView> = {}): GeneralActionVi
     isRoutine: true,
     recurrenceLabel: "Every 6 months",
     scope: "household",
-    visibilityLabel: "Home",
+    visibilityLabel: "Whole household",
     ownerUserId: "user-1",
     areaId: "area-1",
     dueAtISO: "2026-08-01T00:00:00.000Z",
@@ -75,7 +75,7 @@ describe("SuggestedGeneralActionReviewCard", () => {
     // Timing, recurrence, Area, scope, and asset hint all read at a glance.
     expect(html).toContain("Due Aug 1");
     expect(html).toContain("Every 6 months");
-    expect(html).toContain("Home");
+    expect(html).toContain("Whole household");
     expect(html).toContain("fridge water filter");
     // Source grounding makes the proposal trustworthy.
     expect(html).toContain("From manual note");

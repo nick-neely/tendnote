@@ -31,6 +31,7 @@ export function generalActionViewFixture(
     recurrenceLabel: null,
     scope: "private",
     visibilityLabel: "Only me",
+    sharedWithCount: 0,
     owned,
     ownerUserId: "owner-1",
     viewerUserId: "owner-1",

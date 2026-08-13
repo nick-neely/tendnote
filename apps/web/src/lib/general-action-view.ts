@@ -170,11 +170,12 @@ export type GeneralActionView = {
   scope: PrivacyScope;
   /**
    * A calm scope label that says *who*, not just that it's shared — "Only me",
-   * "Specific people · 2", or the household's name (falling back to "Whole
-   * household"). So an owner can read the audience off the chip without opening the
-   * editor.
+   * "Shared with 2 people", or "Whole household". So an owner can read the
+   * audience off the chip without opening the editor.
    */
   visibilityLabel: string;
+  /** How many members a `shared` Action reaches; 0 otherwise. */
+  sharedWithCount: number;
   /**
    * Whether the viewing user owns this Action. Only the owner may edit content or
    * re-scope; a household member who can see a shared/household Action may still act
@@ -330,6 +331,7 @@ export function toGeneralActionView(
       : null,
     scope: action.scope,
     visibilityLabel: surfacing.audienceLabel,
+    sharedWithCount: action.sharedWithCount,
     owned: surfacing.owned,
     ownerUserId: action.ownerUserId,
     viewerUserId: options.callerUserId,

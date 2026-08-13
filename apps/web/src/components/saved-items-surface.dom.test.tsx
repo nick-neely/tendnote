@@ -91,6 +91,7 @@ function fixture(overrides: Partial<SavedItemView> = {}): SavedItemView {
     bringBackLabel: null,
     scope: "private",
     visibilityLabel: "Only me",
+    sharedWithCount: 0,
     createdByLabel: null,
     lastChangedByLabel: null,
     sourceRecordId: "source-1",

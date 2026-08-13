@@ -1,6 +1,6 @@
 import type { FollowupStatus } from "./followups";
 import { type GeneralActionStatus, startOfLocalDay } from "./general-actions";
-import { type PrivacyScope, visibilityLabelForScope } from "./privacy";
+import { type PrivacyScope, visibilityStatusLabel } from "./privacy";
 import type { SavedItemStatus } from "./saved-items";
 
 export type RecordSurfacingState =
@@ -114,14 +114,10 @@ export function resolveRecordTiming(
 }
 
 function audienceLabel(record: RecordSurfacingContextInput): string {
-  if (record.scope === "shared") {
-    const base = visibilityLabelForScope(record.scope);
-    return record.sharedWithCount > 0 ? `${base} · ${record.sharedWithCount}` : base;
-  }
-  if (record.scope === "household") {
-    return record.householdName ?? visibilityLabelForScope(record.scope);
-  }
-  return visibilityLabelForScope(record.scope);
+  return visibilityStatusLabel({
+    scope: record.scope,
+    selectedCount: record.sharedWithCount,
+  });
 }
 
 export function formatSurfacingDay(date: Date, now: Date): string {

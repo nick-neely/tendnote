@@ -6,41 +6,32 @@ import {
   restrictedShareConfirmationPrompt,
   scopeForVisibilityChoice,
   visibilityChoiceForScope,
+  visibilityStatusLabel,
 } from "@tendnote/domain";
 import type { PrivacyScope } from "@tendnote/domain/privacy";
 import { useId, useRef, useState, useTransition } from "react";
 import { setRelationshipShareAudienceAction as defaultSetAudienceAction } from "@/app/actions/relationship-shares";
-import { ACTION_CONTROL_TOUCH_TARGET, ActionScopeChip } from "@/components/general-action-shared";
+import { ACTION_CONTROL_TOUCH_TARGET } from "@/components/general-action-shared";
 import {
   ActionVisibilityField,
   AudiencePreview,
   type ShareableActionMember,
 } from "@/components/general-action-visibility-field";
-import { CheckIcon, UsersIcon } from "@/components/icons";
+import { CheckIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import { VisibilityControl, VisibilityStatus } from "@/components/visibility-affordance";
 
 const GENERIC_ERROR = "That didn't go through. Nothing changed, so you can try again.";
 
 export type SetRelationshipShareAudience = typeof defaultSetAudienceAction;
 
-/** The word beside the scope glyph. Factual, never a count of who is watching. */
-function scopeLabel(scope: PrivacyScope, selectedCount: number): string {
-  if (scope === "household") return "Whole household";
-  return selectedCount === 1 ? "Shared with 1 person" : `Shared with ${selectedCount} people`;
-}
-
-/**
- * What a save is announced as. Private has no chip to read, so the announcement
- * is the only way a screen-reader user learns the record came back — which is
- * exactly the change most worth confirming.
- */
 function savedAnnouncement(scope: PrivacyScope, selectedCount: number): string {
   return scope === "private"
     ? "Visibility saved. Only you can see this."
-    : `Visibility saved. ${scopeLabel(scope, selectedCount)}.`;
+    : `Visibility saved. ${visibilityStatusLabel({ scope, selectedCount })}.`;
 }
 
 /**
@@ -110,13 +101,10 @@ export function RelationshipShareControl({
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           {children}
-          <ActionScopeChip
-            label={scopeLabel(currentScope, currentSelected.length)}
-            scope={currentScope}
-          />
+          <VisibilityStatus scope={currentScope} selectedCount={currentSelected.length} />
         </span>
         {shareableMembers.length ? (
-          <Button
+          <VisibilityControl
             aria-expanded={open}
             className={`${ACTION_CONTROL_TOUCH_TARGET} shrink-0`}
             onClick={() => setOpen((wasOpen) => !wasOpen)}
@@ -124,10 +112,7 @@ export function RelationshipShareControl({
             size="sm"
             type="button"
             variant="ghost"
-          >
-            <UsersIcon aria-hidden />
-            Visibility
-          </Button>
+          />
         ) : null}
       </div>
       {open ? (
