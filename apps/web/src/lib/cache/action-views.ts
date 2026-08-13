@@ -80,6 +80,11 @@ export async function getCachedActionLedgerViews(input: {
 
 type LinkedAssetsByAction = Awaited<ReturnType<typeof listLinkedAssetsForGeneralActions>>;
 type ActionViewOptions = Parameters<typeof toGeneralActionView>[1];
+type ReminderSchedule = Awaited<ReturnType<typeof listReminderSchedulesForOwner>>[number];
+
+function reminderSchedulesByActionId(reminderSchedules: readonly ReminderSchedule[]) {
+  return new Map(reminderSchedules.map((schedule) => [schedule.generalActionId, schedule]));
+}
 
 /**
  * Display names for the co-members a projection actually has to name.
@@ -142,17 +147,25 @@ function toTaggedActionView(
  */
 async function taggedActiveActionViews(ownerUserId: string, refreshedAt: number) {
   const active = await listActiveGeneralActions({ ownerUserId });
-  const [linkedAssetsByAction, memberNames] = await Promise.all([
+  const [linkedAssetsByAction, memberNames, reminderSchedules] = await Promise.all([
     listLinkedAssetsForGeneralActions({
       callerUserId: ownerUserId,
       generalActionIds: active.map((action) => action.id),
     }),
     memberNamesForHolders(ownerUserId, active),
+    listReminderSchedulesForOwner({ ownerUserId }),
   ]);
+  const reminderScheduleByActionId = reminderSchedulesByActionId(reminderSchedules);
   const now = new Date(refreshedAt);
   return active.map((action) => ({
     action,
-    view: toTaggedActionView(action, { ownerUserId, now, linkedAssetsByAction, memberNames }),
+    view: toTaggedActionView(action, {
+      ownerUserId,
+      now,
+      linkedAssetsByAction,
+      memberNames,
+      reminderSchedule: reminderScheduleByActionId.get(action.id) ?? null,
+    }),
   }));
 }
 
@@ -215,9 +228,7 @@ async function cachedActionLedgerViews(
     memberNamesForHolders(ownerUserId, all),
   ]);
   const now = new Date(refreshedAt);
-  const reminderScheduleByActionId = new Map(
-    reminderSchedules.map((schedule) => [schedule.generalActionId, schedule]),
-  );
+  const reminderScheduleByActionId = reminderSchedulesByActionId(reminderSchedules);
   const toView = (action: (typeof all)[number]) =>
     toTaggedActionView(action, {
       ownerUserId,

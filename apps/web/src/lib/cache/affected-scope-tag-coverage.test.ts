@@ -55,7 +55,14 @@ vi.mock("@tendnote/db/queries/people", () => ({
   listPeopleProductView: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("@tendnote/db/queries/reminders", () => ({
-  listReminderSchedulesForOwner: vi.fn().mockResolvedValue([]),
+  listReminderSchedulesForOwner: vi.fn().mockResolvedValue([
+    {
+      id: "schedule-1",
+      generalActionId: "action-1",
+      ownerUserId: "owner-1",
+      recordKind: "general_action",
+    },
+  ]),
 }));
 vi.mock("@tendnote/db/queries/saved-items", () => ({
   listSavedItems: vi.fn().mockResolvedValue([{ id: "saved-item-1", householdId: "household-1" }]),
@@ -75,7 +82,10 @@ vi.mock("@/lib/general-action-area-view", () => ({
 }));
 vi.mock("@/lib/general-action-view", () => ({
   toGeneralActionLinkedAssetView: vi.fn((value) => value),
-  toGeneralActionView: vi.fn((value) => value),
+  toGeneralActionView: vi.fn((value, options) => ({
+    ...value,
+    reminderSchedule: options.reminderSchedule ?? null,
+  })),
 }));
 vi.mock("@/lib/reminder-schedule-view", () => ({
   toReminderScheduleView: vi.fn((value) => value),
@@ -87,7 +97,11 @@ vi.mock("@/lib/saved-item-view", () => ({
   toSavedItemView: vi.fn((value) => value),
 }));
 
-import { getCachedActionLedgerViews, getCachedActionTodayViews } from "./action-views";
+import {
+  getCachedActionLedgerViews,
+  getCachedActionPrimaryViews,
+  getCachedActionTodayViews,
+} from "./action-views";
 import { tagsForAffectedScope } from "./affected-scope-tags";
 import {
   getCachedActiveSavedItemViews,
@@ -205,6 +219,19 @@ describe("affected-scope tag coverage", () => {
         expect(attachedTags, `read coverage for ${JSON.stringify(scope)}`).toContain(tag);
       }
     }
+  });
+
+  it("projects the persisted Reminder Schedule into primary and Today Action views", async () => {
+    const [primary, today] = await Promise.all([
+      getCachedActionPrimaryViews({ ownerUserId: "owner-1", now: NOW }),
+      getCachedActionTodayViews({ ownerUserId: "owner-1", now: NOW }),
+    ]);
+
+    expect(primary.active[0]?.reminderSchedule).toMatchObject({
+      id: "schedule-1",
+      generalActionId: "action-1",
+    });
+    expect(today[0]?.view.reminderSchedule).toEqual(primary.active[0]?.reminderSchedule);
   });
 
   it("keeps the Context Fact projection tags distinct and owner-scoped", () => {
