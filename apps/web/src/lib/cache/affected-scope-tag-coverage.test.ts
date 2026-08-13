@@ -104,6 +104,7 @@ const everyScope: AffectedScope[] = [
   { kind: "owner-collection", collection: "account", ownerUserId: "owner-1" },
   { kind: "owner-collection", collection: "assets", ownerUserId: "owner-1" },
   { kind: "owner-collection", collection: "briefs", ownerUserId: "owner-1" },
+  { kind: "owner-collection", collection: "household-planning", ownerUserId: "owner-1" },
   { kind: "owner-collection", collection: "people", ownerUserId: "owner-1" },
   { kind: "owner-collection", collection: "review", ownerUserId: "owner-1" },
   { kind: "owner-collection", collection: "saved-items", ownerUserId: "owner-1" },
@@ -169,7 +170,7 @@ describe("affected-scope tag coverage", () => {
     cacheTag.mockClear();
   });
 
-  it("attaches every tag the closed scope union can produce to a cache read", async () => {
+  it("attaches every generated tag and pins the path-only scope exception", async () => {
     await Promise.all([
       getCachedActionTodayViews({ ownerUserId: "owner-1", now: NOW }),
       getCachedActionLedgerViews({ ownerUserId: "owner-1", now: NOW, resolvedLimit: 20 }),
@@ -195,6 +196,10 @@ describe("affected-scope tag coverage", () => {
     const attachedTags = new Set(cacheTag.mock.calls.flat());
     for (const scope of everyScope) {
       const tags = tagsForAffectedScope(scope);
+      if (scope.kind === "owner-collection" && scope.collection === "household-planning") {
+        expect(tags, `path-only scope ${JSON.stringify(scope)}`).toEqual([]);
+        continue;
+      }
       expect(tags, `tags for ${JSON.stringify(scope)}`).not.toHaveLength(0);
       for (const tag of tags) {
         expect(attachedTags, `read coverage for ${JSON.stringify(scope)}`).toContain(tag);
@@ -233,13 +238,13 @@ describe("affected-scope tag coverage", () => {
     ).toEqual(["context-facts:household:household-1:collection"]);
   });
 
-  it("keys the Household planning projection by admitted viewer", () => {
+  it("keeps the online-required Household planning projection path-only", () => {
     expect(
       tagsForAffectedScope({
         kind: "owner-collection",
         collection: "household-planning",
         ownerUserId: "member-1",
       }),
-    ).toEqual(["household-planning:viewer:member-1"]);
+    ).toEqual([]);
   });
 });

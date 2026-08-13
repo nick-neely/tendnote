@@ -109,7 +109,7 @@ describe("createHouseholdEventPlanAction", () => {
       },
     });
     expect(result).toEqual({ ok: true, view: { outcome: "saved", plans: REFRESHED } });
-    expect(updateTagSpy).toHaveBeenCalledWith("household-planning:viewer:owner-1");
+    expect(updateTagSpy).not.toHaveBeenCalled();
     expect(revalidatePathSpy).toHaveBeenCalledWith("/household");
     expect(revalidatePathSpy).not.toHaveBeenCalledWith("/account");
   });
@@ -296,7 +296,7 @@ describe("linking and unlinking records", () => {
       recordId: "action-1",
     });
     expect(result).toEqual({ ok: true, view: { outcome: "saved", plans: REFRESHED } });
-    expect(updateTagSpy).toHaveBeenCalledWith("household-planning:viewer:owner-1");
+    expect(updateTagSpy).not.toHaveBeenCalled();
     expect(revalidatePathSpy).toHaveBeenCalledWith("/household");
   });
 

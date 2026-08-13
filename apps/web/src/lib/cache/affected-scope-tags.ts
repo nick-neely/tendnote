@@ -60,10 +60,11 @@ function tagsForOwnerCollection(
     return [`global-recall:owner:${ownerUserId}`];
   }
   if (scope.collection === "household-planning") {
-    // The planning surface contains viewer-specific provider state and link
-    // candidates even though its Calendars and Plans are shared. Keep its cache
-    // projection keyed by the admitted viewer rather than by household.
-    return [`household-planning:viewer:${ownerUserId}`];
+    // This projection is intentionally online-required: provider state,
+    // authorization, and link candidates are read at request time. Its scope is
+    // consumed only by path reconciliation, so inventing a tag here would
+    // create a write-only invalidation contract with no cache entry to expire.
+    return [];
   }
   if (scope.collection === "gift-plans") {
     return giftPlanCollectionTags(ownerUserId);

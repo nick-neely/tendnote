@@ -78,7 +78,7 @@ describe("connectHouseholdCalendarAction", () => {
       connectorHasCalendarAccess: true,
     });
     expect(result.ok).toBe(true);
-    expect(updateTagSpy).toHaveBeenCalledWith("household-planning:viewer:owner-1");
+    expect(updateTagSpy).not.toHaveBeenCalled();
     expect(revalidatePathSpy).toHaveBeenCalledWith("/household");
     expect(revalidatePathSpy).not.toHaveBeenCalledWith("/account");
   });
@@ -165,7 +165,7 @@ describe("disconnectHouseholdCalendarAction", () => {
       connectionId: "connection-1",
     });
     expect(result).toEqual({ ok: true, view: { connections: [], read: { families: [] } } });
-    expect(updateTagSpy).toHaveBeenCalledWith("household-planning:viewer:owner-1");
+    expect(updateTagSpy).not.toHaveBeenCalled();
     expect(revalidatePathSpy).toHaveBeenCalledWith("/household");
   });
 });

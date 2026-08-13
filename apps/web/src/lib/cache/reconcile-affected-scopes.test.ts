@@ -97,7 +97,6 @@ describe("affected-scope reconciliation", () => {
     expect(updateTag).toHaveBeenCalledWith("saved-item:viewer:owner-1:item:saved-1");
     expect(updateTag).toHaveBeenCalledWith("saved-item:visible:item:saved-1");
     expect(updateTag).toHaveBeenCalledWith("account:owner:owner-1");
-    expect(updateTag).toHaveBeenCalledWith("household-planning:viewer:owner-1");
     expect(updateTag).toHaveBeenCalledWith("briefs:owner:owner-1");
     expectRouteRevalidation();
     expect(revalidateTag).not.toHaveBeenCalled();
@@ -110,7 +109,6 @@ describe("affected-scope reconciliation", () => {
     expect(revalidateTag).toHaveBeenCalledWith("action:owner:owner-1:action:action-1", "max");
     expect(revalidateTag).toHaveBeenCalledWith("people:visible-person:person-1", "max");
     expect(revalidateTag).toHaveBeenCalledWith("account:owner:owner-1", "max");
-    expect(revalidateTag).toHaveBeenCalledWith("household-planning:viewer:owner-1", "max");
     expect(revalidateTag).toHaveBeenCalledWith("briefs:owner:owner-1", "max");
     expect(updateTag).not.toHaveBeenCalled();
     expectRouteRevalidation();
