@@ -4,11 +4,11 @@ import {
   HOUSEHOLD_CHECKIN_MAX_RECORDS,
   householdCheckinIsWorthShowing,
 } from "./household-checkin";
-import type { HouseholdHomeRecord } from "./household-home";
+import type { HouseholdCoordinationRecord } from "./household-home";
 
 const NOW = new Date("2026-07-21T09:00:00.000Z");
 
-function record(overrides: Partial<HouseholdHomeRecord> = {}): HouseholdHomeRecord {
+function record(overrides: Partial<HouseholdCoordinationRecord> = {}): HouseholdCoordinationRecord {
   return {
     identity: "action:a1",
     family: "action",

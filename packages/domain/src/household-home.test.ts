@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   composeHouseholdHome,
+  type HouseholdCoordinationRecord,
   type HouseholdHomeRecord,
   type HouseholdHomeSection,
   householdRecordScopeLabel,
@@ -10,11 +11,11 @@ const CREATED_AT = new Date("2026-06-01T00:00:00.000Z");
 
 function record(
   id: string,
-  overrides: Omit<Partial<HouseholdHomeRecord>, "at" | "section"> & {
+  overrides: Omit<Partial<HouseholdCoordinationRecord>, "at" | "section"> & {
     section: HouseholdHomeSection;
     at: string;
   },
-): HouseholdHomeRecord {
+): HouseholdCoordinationRecord {
   const { at, ...rest } = overrides;
   return {
     identity: `action:${id}`,

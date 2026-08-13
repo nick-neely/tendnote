@@ -1,5 +1,5 @@
 import { HOUSEHOLD_CHECKIN_HEADING } from "@tendnote/domain/household-checkin";
-import type { HouseholdHomeRecord } from "@tendnote/domain/household-home";
+import type { HouseholdCoordinationRecord } from "@tendnote/domain/household-home";
 import {
   HOUSEHOLD_SECTION_HEADING_CLASS,
   HouseholdRecordRow,
@@ -54,7 +54,7 @@ export function HouseholdCheckinSection({
   context = "away",
 }: {
   householdName: string;
-  records: readonly HouseholdHomeRecord[];
+  records: readonly HouseholdCoordinationRecord[];
   limitations: readonly string[];
   headingId: string;
   /**

@@ -74,7 +74,7 @@ export const householdHomeProgressSchema = z.object({
   expectedOccurrenceVersion: z.number().int().min(0),
 });
 
-export const householdHomeRecordSchema = z.object({
+export const householdCoordinationRecordSchema = z.object({
   /** Family-prefixed and stable, so two families can never collide on one id. */
   identity: z.string().min(1),
   family: householdCoordinationFamilySchema,
@@ -110,6 +110,11 @@ export const householdHomeRecordSchema = z.object({
   /** The instant the timing refers to. The section's sort key. */
   at: z.date(),
   createdAt: z.date(),
+});
+export type HouseholdCoordinationRecord = z.infer<typeof householdCoordinationRecordSchema>;
+
+export const householdHomeRecordSchema = householdCoordinationRecordSchema.extend({
+  family: householdHomeFamilySchema,
 });
 export type HouseholdHomeRecord = z.infer<typeof householdHomeRecordSchema>;
 
@@ -215,11 +220,11 @@ export function householdHomeFamilyDestination(
  * record for anybody, including the member who chose it.
  */
 export function composeHouseholdHome(input: {
-  records: readonly HouseholdHomeRecord[];
+  records: readonly HouseholdCoordinationRecord[];
   limitations?: readonly string[];
 }): HouseholdHomeComposition {
   const records = deduplicateRecords(
-    input.records.map((record) => householdHomeRecordSchema.parse(record)),
+    input.records.map((record) => householdCoordinationRecordSchema.parse(record)),
   ).filter(isHouseholdHomeRecord);
   const limitations = [...new Set(input.limitations ?? [])];
   return {
@@ -230,7 +235,7 @@ export function composeHouseholdHome(input: {
 
 function sectionView(
   section: HouseholdHomeSection,
-  records: readonly ComposedHouseholdHomeRecord[],
+  records: readonly HouseholdHomeRecord[],
   limitations: readonly string[],
 ): HouseholdHomeSectionView {
   const ordered = records.filter((record) => record.section === section).sort(compareRecords);
@@ -267,23 +272,21 @@ function compareRecords(left: HouseholdHomeRecord, right: HouseholdHomeRecord): 
   return left.at.getTime() - right.at.getTime() || left.identity.localeCompare(right.identity);
 }
 
-function deduplicateRecords(records: readonly HouseholdHomeRecord[]): HouseholdHomeRecord[] {
-  const byIdentity = new Map<string, HouseholdHomeRecord>();
+function deduplicateRecords(
+  records: readonly HouseholdCoordinationRecord[],
+): HouseholdCoordinationRecord[] {
+  const byIdentity = new Map<string, HouseholdCoordinationRecord>();
   for (const record of records) {
     if (!byIdentity.has(record.identity)) byIdentity.set(record.identity, record);
   }
   return [...byIdentity.values()];
 }
 
-type ComposedHouseholdHomeRecord = HouseholdHomeRecord & { family: HouseholdHomeFamily };
-
-function isHouseholdHomeRecord(record: HouseholdHomeRecord): record is ComposedHouseholdHomeRecord {
+function isHouseholdHomeRecord(record: HouseholdCoordinationRecord): record is HouseholdHomeRecord {
   return householdHomeFamilySchema.safeParse(record.family).success;
 }
 
-function destinationsFor(
-  records: readonly ComposedHouseholdHomeRecord[],
-): HouseholdHomeDestination[] {
+function destinationsFor(records: readonly HouseholdHomeRecord[]): HouseholdHomeDestination[] {
   const destinations = new Map<string, HouseholdHomeDestination>();
   for (const record of records) {
     const destination = householdHomeFamilyDestination(record.family);

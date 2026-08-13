@@ -1,4 +1,8 @@
-import type { GeneralAction, HouseholdHomeRecord, HouseholdHomeTimingCode } from "@tendnote/domain";
+import type {
+  GeneralAction,
+  HouseholdCoordinationRecord,
+  HouseholdHomeTimingCode,
+} from "@tendnote/domain";
 import {
   describeRecurrence,
   HOUSEHOLD_HOME_COMING_UP_DAYS,
@@ -103,7 +107,7 @@ function householdHomeRecord(
   action: GeneralAction,
   timing: ActionTiming,
   input: Parameters<HouseholdHomeCandidateLoader>[0],
-): HouseholdHomeRecord {
+): HouseholdCoordinationRecord {
   const routine = action.recurrence !== null;
   const holderUserId = action.responsibilityHolderUserId;
   return {

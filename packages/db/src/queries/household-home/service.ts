@@ -1,4 +1,4 @@
-import type { HouseholdHomeRecord } from "@tendnote/domain";
+import type { HouseholdCoordinationRecord } from "@tendnote/domain";
 import {
   composeHouseholdCheckin,
   composeHouseholdHome,
@@ -87,7 +87,7 @@ export function createHouseholdHomeService(deps: HouseholdHomeServiceDeps) {
     now?: Date;
     memberNames: ReadonlyMap<string, string>;
     families: HouseholdHomeCandidateLoader[];
-  }): Promise<{ records: HouseholdHomeRecord[]; failedFamilies: number }> {
+  }): Promise<{ records: HouseholdCoordinationRecord[]; failedFamilies: number }> {
     const settled = await Promise.allSettled(
       input.families.map((load) =>
         load({
@@ -226,7 +226,7 @@ async function provenRecords(
   prove: HouseholdHomeProver,
   callerUserId: string,
   candidates: readonly HouseholdHomeCandidate[],
-): Promise<HouseholdHomeRecord[]> {
+): Promise<HouseholdCoordinationRecord[]> {
   if (candidates.length === 0) return [];
   const grants = await prove({
     callerUserId,

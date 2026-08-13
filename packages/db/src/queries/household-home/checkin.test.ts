@@ -247,7 +247,7 @@ describe("the Household Check-in composition", () => {
     // The audience shape, and no member named on it.
     expect(plan?.scopeLabel).toBe("Shared with you");
     expect(JSON.stringify(plan)).not.toContain(OWNER);
-    expect(home.comingUp.records.some((record) => record.family === "gift_plan")).toBe(false);
+    expect(home.comingUp.records).toEqual([]);
   });
 
   it("gives the Surprise Subject no plan, no count, and no gap where one was", async () => {
