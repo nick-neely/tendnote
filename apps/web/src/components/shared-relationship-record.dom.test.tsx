@@ -32,6 +32,17 @@ describe("a shared record on its own page", () => {
     expect(screen.getByText("Shared by Mara")).toBeTruthy();
   });
 
+  it("names the audience in words, not only a glyph", () => {
+    render(<SharedRelationshipRecord view={view()} />);
+    expect(screen.getByText("Whole household")).toBeTruthy();
+  });
+
+  it("names a selected-member share Specific people when the count is not on the view", () => {
+    render(<SharedRelationshipRecord view={view({ audience: "selected_members" })} />);
+    expect(screen.getByText("Specific people")).toBeTruthy();
+    expect(screen.queryByText("Whole household")).toBeNull();
+  });
+
   it("names a shared note without naming a person", () => {
     render(
       <SharedRelationshipRecord
@@ -92,6 +103,9 @@ describe("a shared record on its own page", () => {
     expect(screen.queryByText(/to edit or take back/)).toBeNull();
     // Nor lecture them about their own record being read-only.
     expect(screen.queryByText(/Yours to read/)).toBeNull();
+    // An owner may be reaching a still-private record; do not invent an audience.
+    expect(screen.queryByText("Whole household")).toBeNull();
+    expect(screen.queryByText("Specific people")).toBeNull();
   });
 });
 

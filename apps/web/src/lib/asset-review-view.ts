@@ -1,7 +1,7 @@
 import type { AssetReviewGroupResult } from "@tendnote/db/queries/assets";
 import type { AssetKind, AssetMemoryValue, AssetOwnership, PrivacyScope } from "@tendnote/domain";
 import { assetLabelForKind } from "@tendnote/domain";
-import { visibilityLabelForScope } from "@tendnote/domain/privacy";
+import { visibilityStatusLabel } from "@tendnote/domain/privacy";
 import { type AssetEvidenceView, toAssetEvidenceView } from "./asset-evidence-view";
 import { formatAssetMemoryValue } from "./asset-memory-value";
 
@@ -84,7 +84,7 @@ export function toAssetReviewGroupView(
       kind: result.asset.kind,
       kindLabel: assetLabelForKind(result.asset.kind),
       scope: result.asset.scope,
-      visibilityLabel: visibilityLabelForScope(result.asset.scope),
+      visibilityLabel: visibilityStatusLabel({ scope: result.asset.scope }),
       ownership: result.asset.ownership,
       pending: result.assetPending,
     },

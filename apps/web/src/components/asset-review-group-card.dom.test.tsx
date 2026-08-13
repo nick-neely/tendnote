@@ -132,6 +132,22 @@ describe("AssetReviewGroupCard", () => {
     expect(screen.getByText("Whole household")).toBeDefined();
     unmount();
 
+    const { unmount: unmountShared } = render(
+      <AssetReviewGroupCard
+        onResolve={vi.fn()}
+        review={reviewFixture({
+          asset: {
+            ...reviewFixture().asset,
+            scope: "shared",
+            visibilityLabel: "Specific people",
+          },
+        })}
+      />,
+    );
+    // Review payloads do not carry a share count; Specific people is the honest unknown.
+    expect(screen.getByText("Specific people")).toBeDefined();
+    unmountShared();
+
     render(
       <AssetReviewGroupCard
         onResolve={vi.fn()}

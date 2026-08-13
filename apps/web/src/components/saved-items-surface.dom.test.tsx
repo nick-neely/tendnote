@@ -379,6 +379,7 @@ describe("SavedItemsSurface", () => {
     render(<SavedItemsSurface items={[sharedByOther()]} shareableMembers={MEMBERS} />);
 
     expect(screen.getByText("Shared by Ben")).toBeDefined();
+    expect(screen.queryByText("Whole household")).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Make an action" })).toBeNull();
@@ -395,6 +396,7 @@ describe("SavedItemsSurface", () => {
     render(<SavedItemsSurface hasHousehold items={[item]} shareableMembers={MEMBERS} />);
 
     expect(screen.getByText("Household")).toBeDefined();
+    expect(screen.queryByText("Whole household")).toBeNull();
     expect(screen.getByText("Created by Ben")).toBeDefined();
     // Archive is a workspace-owned item's removal path; nobody deletes its evidence.
     await user.click(screen.getByText("Source grounding"));
@@ -541,13 +543,14 @@ describe("SavedItemsSurface", () => {
 
   it("requires a stated, confirmed hand-off before an Action becomes the household's", async () => {
     const user = userEvent.setup();
-    const item = fixture({ scope: "household", visibilityLabel: "Home" });
+    const item = fixture({ scope: "household", visibilityLabel: "Whole household" });
     promoteSavedItemToGeneralActionAction.mockResolvedValue({
       ok: true,
       view: { ...item, archived: true, status: "archived" },
     });
     render(<SavedItemsSurface hasHousehold items={[item]} shareableMembers={MEMBERS} />);
 
+    expect(screen.getByText("Whole household")).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Give to the household" }));
     expect(promoteSavedItemToGeneralActionAction).not.toHaveBeenCalled();
     expect(screen.getByText(/no way to take it back/i)).toBeDefined();
@@ -563,7 +566,7 @@ describe("SavedItemsSurface", () => {
 
   it("moves focus into the hand-off panel, and back out again when it closes", async () => {
     const user = userEvent.setup();
-    const item = fixture({ scope: "household", visibilityLabel: "Home" });
+    const item = fixture({ scope: "household", visibilityLabel: "Whole household" });
     render(<SavedItemsSurface hasHousehold items={[item]} shareableMembers={MEMBERS} />);
 
     // Opening the panel removes the control that was focused, so the panel has
@@ -585,7 +588,7 @@ describe("SavedItemsSurface", () => {
     render(
       <SavedItemsSurface
         hasHousehold
-        items={[fixture({ scope: "household", visibilityLabel: "Home" })]}
+        items={[fixture({ scope: "household", visibilityLabel: "Whole household" })]}
         shareableMembers={MEMBERS}
       />,
     );

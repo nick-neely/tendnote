@@ -62,7 +62,7 @@ const ARCHIVED_PLAN = assetViewFixture({
   archived: true,
   archivedLabel: "Archived Jul 10",
   scope: "household",
-  visibilityLabel: "Home",
+  visibilityLabel: "Whole household",
 });
 
 beforeEach(() => {
@@ -78,6 +78,22 @@ async function openFilters(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("AssetsSurface filters (DOM)", () => {
+  it("names a household-scoped asset Whole household on the row itself", () => {
+    render(
+      <AssetsSurface
+        assets={[
+          assetViewFixture({
+            id: "a-shared",
+            name: "Streaming plan",
+            scope: "household",
+            visibilityLabel: "Whole household",
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Whole household")).toBeDefined();
+  });
+
   it("surfaces review and due-action context with an incremental loading affordance", () => {
     render(
       <AssetsSurface
@@ -181,7 +197,7 @@ describe("AssetsSurface filters (DOM)", () => {
       id: "a-shared",
       name: "Streaming plan",
       scope: "household",
-      visibilityLabel: "Home",
+      visibilityLabel: "Whole household",
     });
     const { unmount } = render(<AssetsSurface assets={[FRIDGE, shared]} />);
     await openFilters(user);
