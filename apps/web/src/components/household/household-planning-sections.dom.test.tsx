@@ -824,4 +824,38 @@ describe("two people writing at once", () => {
     expect(screen.getByRole("button", { name: "Archive it anyway" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Leave it as it is" })).toBeTruthy();
   });
+
+  /** A lost restore fence keeps the operation the member actually chose. */
+  it("retries a conflicted restore as a restore even when the current plan is active", async () => {
+    const current = householdEventPlanFixture({
+      lastActorUserId: "ben",
+      status: "active",
+      version: 4,
+      updatedAt: new Date("2026-08-09T18:30:00Z"),
+    });
+    const restore = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        view: { outcome: "conflict", message: CONFLICT_MESSAGE, current },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        view: { outcome: "saved", plans: [record(current)] },
+      });
+    const archive = vi.fn();
+    renderShared({
+      planActions: { archive, restore },
+      plans: [record(householdEventPlanFixture({ status: "archived" }))],
+      viewerUserId: "ana",
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(await screen.findAllByText(/your restore didn.t go through/i)).toHaveLength(2);
+    await userEvent.click(await screen.findByRole("button", { name: "Restore it anyway" }));
+
+    await waitFor(() => expect(restore).toHaveBeenCalledTimes(2));
+    expect(restore).toHaveBeenLastCalledWith({ planId: "plan-1", expectedVersion: 4 });
+    expect(archive).not.toHaveBeenCalled();
+  });
 });

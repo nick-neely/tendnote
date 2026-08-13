@@ -36,6 +36,14 @@ type PlanCardProps = {
   onAnnounce: (message: string) => void;
 };
 
+type LifecycleOperation = "archive" | "restore";
+
+type LifecycleConflictState = {
+  current: HouseholdEventPlan;
+  operation: LifecycleOperation;
+  view: HouseholdEventPlanConflictView;
+};
+
 function PlanCalendarReference({ reference }: { reference: HouseholdEventPlanCalendarReference }) {
   if (reference.state === "none") return null;
   if (reference.state === "unavailable") {
@@ -85,42 +93,53 @@ function usePlanLifecycle({
   onPlanRefreshed,
   onAnnounce,
 }: PlanCardProps) {
-  const [conflict, setConflict] = useState<HouseholdEventPlanConflictView | null>(null);
+  const [conflict, setConflict] = useState<LifecycleConflictState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const archived = plan.status === "archived";
 
-  function handleResult(result: HouseholdEventPlanResult) {
+  function handleResult(result: HouseholdEventPlanResult, operation: LifecycleOperation) {
     handleHouseholdEventPlanResult(
       result,
       { viewerUserId, memberNames },
       {
         onError: setError,
         onConflict: ({ conflict: nextConflict, current }) => {
-          onPlanRefreshed(current);
-          setConflict(nextConflict);
-          onAnnounce("Someone else changed this plan just now. Nothing was archived.");
+          // Keep a status-changing conflict mounted in its current collection
+          // until the member chooses. Moving it between Active and Archived
+          // here would unmount the card and erase both the explanation and the
+          // original operation. Same-status refreshes stay visible behind it.
+          if (current.status === plan.status) onPlanRefreshed(current);
+          setConflict({ current, operation, view: nextConflict });
+          onAnnounce(
+            `Someone else changed this plan just now. Your ${operation} didn’t go through.`,
+          );
         },
         onSaved: (plans) => {
           setConflict(null);
           onPlansChange(plans);
           onAnnounce(
-            archived ? `${plan.title} is back on the list.` : `${plan.title} was archived.`,
+            operation === "restore"
+              ? `${plan.title} is back on the list.`
+              : `${plan.title} was archived.`,
           );
         },
       },
     );
   }
 
-  function move(expectedVersion: number) {
+  function move(
+    expectedVersion: number,
+    operation: LifecycleOperation = archived ? "restore" : "archive",
+  ) {
     if (pending) return;
     setError(null);
     const archive = actions.archive ?? defaultArchiveAction;
     const restore = actions.restore ?? defaultRestoreAction;
-    const lifecycleAction = archived ? restore : archive;
+    const lifecycleAction = operation === "restore" ? restore : archive;
     startTransition(async () => {
       try {
-        handleResult(await lifecycleAction({ planId: plan.id, expectedVersion }));
+        handleResult(await lifecycleAction({ planId: plan.id, expectedVersion }), operation);
       } catch {
         setError(HOUSEHOLD_GENERIC_ERROR);
       }
@@ -129,10 +148,16 @@ function usePlanLifecycle({
 
   function continueAfterConflict() {
     if (!conflict) return;
-    move(conflict.version);
+    move(conflict.view.version, conflict.operation);
   }
 
-  return { archived, conflict, continueAfterConflict, error, move, pending, setConflict };
+  function leaveConflict() {
+    if (!conflict) return;
+    onPlanRefreshed(conflict.current);
+    setConflict(null);
+  }
+
+  return { archived, conflict, continueAfterConflict, error, leaveConflict, move, pending };
 }
 
 function lifecycleLabel(archived: boolean, pending: boolean) {
@@ -194,13 +219,13 @@ function PlanHeader({
 
 function LifecycleConflict({
   conflict,
-  archived,
+  operation,
   pending,
   onContinue,
   onCancel,
 }: {
   conflict: HouseholdEventPlanConflictView;
-  archived: boolean;
+  operation: LifecycleOperation;
   pending: boolean;
   onContinue: () => void;
   onCancel: () => void;
@@ -209,8 +234,8 @@ function LifecycleConflict({
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-accent/25 bg-accent-soft/45 px-3.5 py-3">
       <p className="max-w-[65ch] text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty">
-        {changedBy} changed this plan a moment ago, so nothing was archived. It now reads &ldquo;
-        {conflict.title}&rdquo;.
+        {changedBy} changed this plan a moment ago, so your {operation} didn&rsquo;t go through. It
+        now reads &ldquo;{conflict.title}&rdquo;.
       </p>
       <p className="font-mono text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
         {conflict.atLabel}
@@ -224,7 +249,7 @@ function LifecycleConflict({
           type="button"
           variant="outline"
         >
-          {archived ? "Restore it anyway" : "Archive it anyway"}
+          {operation === "restore" ? "Restore it anyway" : "Archive it anyway"}
         </Button>
         <Button
           className="min-h-11 sm:min-h-8"
@@ -289,10 +314,10 @@ export function HouseholdEventPlanCard(props: PlanCardProps) {
       <PlanCalendarReference reference={props.plan.calendar} />
       {lifecycle.conflict ? (
         <LifecycleConflict
-          archived={lifecycle.archived}
-          conflict={lifecycle.conflict}
-          onCancel={() => lifecycle.setConflict(null)}
+          conflict={lifecycle.conflict.view}
+          onCancel={lifecycle.leaveConflict}
           onContinue={lifecycle.continueAfterConflict}
+          operation={lifecycle.conflict.operation}
           pending={lifecycle.pending}
         />
       ) : null}
