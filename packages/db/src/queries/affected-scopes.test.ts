@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  affectedScopeSchema,
   affectedScopesForAccount,
   affectedScopesForBriefs,
   affectedScopesForContextFact,
@@ -8,6 +9,20 @@ import {
 } from "./affected-scopes";
 
 describe("remaining affected-scope contracts", () => {
+  it("accepts the viewer-scoped Household planning collection on the wire", () => {
+    expect(
+      affectedScopeSchema.parse({
+        kind: "owner-collection",
+        collection: "household-planning",
+        ownerUserId: "owner-1",
+      }),
+    ).toEqual({
+      kind: "owner-collection",
+      collection: "household-planning",
+      ownerUserId: "owner-1",
+    });
+  });
+
   it("names the Context Fact projections that a mutation invalidates", () => {
     expect(affectedScopesForContextFact({ ownerUserId: "owner-1" })).toEqual([
       { kind: "owner-collection", collection: "context-facts", ownerUserId: "owner-1" },

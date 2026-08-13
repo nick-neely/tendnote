@@ -232,4 +232,14 @@ describe("affected-scope tag coverage", () => {
       }),
     ).toEqual(["context-facts:household:household-1:collection"]);
   });
+
+  it("keys the Household planning projection by admitted viewer", () => {
+    expect(
+      tagsForAffectedScope({
+        kind: "owner-collection",
+        collection: "household-planning",
+        ownerUserId: "member-1",
+      }),
+    ).toEqual(["household-planning:viewer:member-1"]);
+  });
 });

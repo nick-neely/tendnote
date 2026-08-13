@@ -1,6 +1,10 @@
 import { HouseholdValidationError } from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { requireAdmittedOwnerForActionSpy, updateTagSpy } from "@/test/action-adapter-mocks";
+import {
+  requireAdmittedOwnerForActionSpy,
+  revalidatePathSpy,
+  updateTagSpy,
+} from "@/test/action-adapter-mocks";
 
 const calendars = vi.hoisted(() => ({
   connectHouseholdCalendar: vi.fn(),
@@ -74,7 +78,9 @@ describe("connectHouseholdCalendarAction", () => {
       connectorHasCalendarAccess: true,
     });
     expect(result.ok).toBe(true);
-    expect(updateTagSpy).toHaveBeenCalled();
+    expect(updateTagSpy).toHaveBeenCalledWith("household-planning:viewer:owner-1");
+    expect(revalidatePathSpy).toHaveBeenCalledWith("/household");
+    expect(revalidatePathSpy).not.toHaveBeenCalledWith("/account");
   });
 
   /**
@@ -159,6 +165,7 @@ describe("disconnectHouseholdCalendarAction", () => {
       connectionId: "connection-1",
     });
     expect(result).toEqual({ ok: true, view: { connections: [], read: { families: [] } } });
-    expect(updateTagSpy).toHaveBeenCalled();
+    expect(updateTagSpy).toHaveBeenCalledWith("household-planning:viewer:owner-1");
+    expect(revalidatePathSpy).toHaveBeenCalledWith("/household");
   });
 });

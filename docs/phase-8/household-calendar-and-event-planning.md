@@ -85,11 +85,24 @@ whole-household visibility.
 
 ## Household, Today, reminders, and assisted surfaces
 
-The shared **Household** home is the read-first place for a bounded chronological
-view of upcoming Household Calendar Events and active Event Plans, composed
-inside the already-settled deterministic caps and domain links. A Calendar event
-is visibly provider-derived; a Plan is visibly household-native. One failing
-Calendar family cannot hide successful Calendar families or Plans.
+The shared **Household** home is the canonical working surface for this domain.
+Its two capped primary lists, **Ready now** and **Coming up**, remain first.
+Immediately afterwards, bounded **Shared calendars** followed by the uncapped
+**Event plans** collection form one distinct secondary coordination region; the
+current member's private Household Check-in and the footer come after it. The
+region is neither a third primary list nor content folded into the primary caps.
+Plans remain uncapped because this is their canonical collection rather than a
+preview with another complete surface elsewhere.
+
+Every active Household Member reads both sections. Calendar events remain
+visibly provider-derived and read-only, while a Plan is visibly
+household-native and collaboratively editable under its own authority contract.
+Only Household Owners may connect or disconnect a designated Calendar. One
+failing Calendar family cannot hide successful Calendar families or Plans.
+
+**Account > Household** keeps membership, Household Context, roles,
+invitations, departure, recovery, and dissolution. It does not duplicate the
+shared Calendar or Event Plan working surface.
 
 Private **Today** may surface a same-day or preparation-window shared Calendar
 event or Event Plan only when deterministic policy makes it relevant to that

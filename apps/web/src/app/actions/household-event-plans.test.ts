@@ -4,7 +4,11 @@ import {
   HouseholdValidationError,
 } from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { requireAdmittedOwnerForActionSpy, updateTagSpy } from "@/test/action-adapter-mocks";
+import {
+  requireAdmittedOwnerForActionSpy,
+  revalidatePathSpy,
+  updateTagSpy,
+} from "@/test/action-adapter-mocks";
 
 const plans = vi.hoisted(() => ({
   createHouseholdEventPlan: vi.fn(),
@@ -105,7 +109,9 @@ describe("createHouseholdEventPlanAction", () => {
       },
     });
     expect(result).toEqual({ ok: true, view: { outcome: "saved", plans: REFRESHED } });
-    expect(updateTagSpy).toHaveBeenCalled();
+    expect(updateTagSpy).toHaveBeenCalledWith("household-planning:viewer:owner-1");
+    expect(revalidatePathSpy).toHaveBeenCalledWith("/household");
+    expect(revalidatePathSpy).not.toHaveBeenCalledWith("/account");
   });
 
   /**
@@ -216,6 +222,7 @@ describe("updateHouseholdEventPlanAction", () => {
       },
     });
     expect(updateTagSpy).not.toHaveBeenCalled();
+    expect(revalidatePathSpy).not.toHaveBeenCalled();
   });
 
   /**
@@ -265,6 +272,7 @@ describe("archive and restore", () => {
     expect(result.ok).toBe(true);
     expect(result.ok && result.view.outcome).toBe("conflict");
     expect(updateTagSpy).not.toHaveBeenCalled();
+    expect(revalidatePathSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -288,7 +296,8 @@ describe("linking and unlinking records", () => {
       recordId: "action-1",
     });
     expect(result).toEqual({ ok: true, view: { outcome: "saved", plans: REFRESHED } });
-    expect(updateTagSpy).toHaveBeenCalled();
+    expect(updateTagSpy).toHaveBeenCalledWith("household-planning:viewer:owner-1");
+    expect(revalidatePathSpy).toHaveBeenCalledWith("/household");
   });
 
   it("unlinks against the link, never against the record it pointed at", async () => {

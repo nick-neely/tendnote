@@ -59,6 +59,12 @@ function tagsForOwnerCollection(
   if (scope.collection === "global-recall") {
     return [`global-recall:owner:${ownerUserId}`];
   }
+  if (scope.collection === "household-planning") {
+    // The planning surface contains viewer-specific provider state and link
+    // candidates even though its Calendars and Plans are shared. Keep its cache
+    // projection keyed by the admitted viewer rather than by household.
+    return [`household-planning:viewer:${ownerUserId}`];
+  }
   if (scope.collection === "gift-plans") {
     return giftPlanCollectionTags(ownerUserId);
   }

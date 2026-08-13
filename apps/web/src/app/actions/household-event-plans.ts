@@ -129,10 +129,14 @@ function draftFor(draft: ParsedDraft) {
   };
 }
 
-const accountScope = (mutation: HouseholdEventPlanMutation, ownerUserId: string) =>
+const householdScope = (mutation: HouseholdEventPlanMutation, ownerUserId: string) =>
   mutation.outcome === "saved"
     ? ([
-        { kind: "owner-collection" as const, collection: "account" as const, ownerUserId },
+        {
+          kind: "owner-collection" as const,
+          collection: "household-planning" as const,
+          ownerUserId,
+        },
       ] as const)
     : ([] as const);
 
@@ -177,7 +181,7 @@ export async function createHouseholdEventPlanAction(input: {
       writePlan(ownerUserId, () =>
         createHouseholdEventPlan({ callerUserId: ownerUserId, draft: draftFor(parsed.draft) }),
       ),
-    affectedScopes: accountScope,
+    affectedScopes: householdScope,
     result: (mutation) => mutation,
   });
 }
@@ -207,7 +211,7 @@ export async function updateHouseholdEventPlanAction(input: {
           draft: draftFor(parsed.draft),
         }),
       ),
-    affectedScopes: accountScope,
+    affectedScopes: householdScope,
     result: (mutation) => mutation,
   });
 }
@@ -229,7 +233,7 @@ export async function archiveHouseholdEventPlanAction(input: {
           expectedVersion: parsed.expectedVersion,
         }),
       ),
-    affectedScopes: accountScope,
+    affectedScopes: householdScope,
     result: (mutation) => mutation,
   });
 }
@@ -251,7 +255,7 @@ export async function restoreHouseholdEventPlanAction(input: {
           expectedVersion: parsed.expectedVersion,
         }),
       ),
-    affectedScopes: accountScope,
+    affectedScopes: householdScope,
     result: (mutation) => mutation,
   });
 }
@@ -287,7 +291,7 @@ export async function linkHouseholdEventPlanRecordAction(input: {
           recordId: parsed.recordId,
         }),
       ),
-    affectedScopes: accountScope,
+    affectedScopes: householdScope,
     result: (mutation) => mutation,
   });
 }
@@ -309,7 +313,7 @@ export async function unlinkHouseholdEventPlanRecordAction(input: {
           linkId: parsed.linkId,
         }),
       ),
-    affectedScopes: accountScope,
+    affectedScopes: householdScope,
     result: (mutation) => mutation,
   });
 }

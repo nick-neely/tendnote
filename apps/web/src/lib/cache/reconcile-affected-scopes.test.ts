@@ -46,6 +46,7 @@ const scopes: AffectedScope[] = [
   { kind: "linked-entity", entity: "asset", entityId: "asset-1" },
   { kind: "owner-collection", collection: "saved-items", ownerUserId: "owner-1" },
   { kind: "owner-collection", collection: "account", ownerUserId: "owner-1" },
+  { kind: "owner-collection", collection: "household-planning", ownerUserId: "owner-1" },
   { kind: "owner-collection", collection: "context-facts", ownerUserId: "owner-1" },
   { kind: "owner-collection", collection: "orientation", ownerUserId: "owner-1" },
   { kind: "owner-collection", collection: "global-recall", ownerUserId: "owner-1" },
@@ -87,12 +88,14 @@ describe("affected-scope reconciliation", () => {
     expect(updateTag).toHaveBeenCalledWith("saved-item:viewer:owner-1:item:saved-1");
     expect(updateTag).toHaveBeenCalledWith("saved-item:visible:item:saved-1");
     expect(updateTag).toHaveBeenCalledWith("account:owner:owner-1");
+    expect(updateTag).toHaveBeenCalledWith("household-planning:viewer:owner-1");
     expect(updateTag).toHaveBeenCalledWith("briefs:owner:owner-1");
     expect(revalidatePath).toHaveBeenCalledWith("/account");
     expect(revalidatePath).toHaveBeenCalledWith("/account/contacts/import");
     expect(revalidatePath).toHaveBeenCalledWith("/account/discord");
     expect(revalidatePath).toHaveBeenCalledWith("/account/about-you");
-    expect(revalidatePath).toHaveBeenCalledTimes(4);
+    expect(revalidatePath).toHaveBeenCalledWith("/household");
+    expect(revalidatePath).toHaveBeenCalledTimes(5);
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
@@ -103,12 +106,14 @@ describe("affected-scope reconciliation", () => {
     expect(revalidateTag).toHaveBeenCalledWith("action:owner:owner-1:action:action-1", "max");
     expect(revalidateTag).toHaveBeenCalledWith("people:visible-person:person-1", "max");
     expect(revalidateTag).toHaveBeenCalledWith("account:owner:owner-1", "max");
+    expect(revalidateTag).toHaveBeenCalledWith("household-planning:viewer:owner-1", "max");
     expect(revalidateTag).toHaveBeenCalledWith("briefs:owner:owner-1", "max");
     expect(updateTag).not.toHaveBeenCalled();
     expect(revalidatePath).toHaveBeenCalledWith("/account");
     expect(revalidatePath).toHaveBeenCalledWith("/account/contacts/import");
     expect(revalidatePath).toHaveBeenCalledWith("/account/discord");
     expect(revalidatePath).toHaveBeenCalledWith("/account/about-you");
-    expect(revalidatePath).toHaveBeenCalledTimes(4);
+    expect(revalidatePath).toHaveBeenCalledWith("/household");
+    expect(revalidatePath).toHaveBeenCalledTimes(5);
   });
 });

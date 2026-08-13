@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getHouseholdOverviewForUser,
+  getHouseholdSharedContext,
   listHouseholdContextActors,
   listHouseholdContextFacts,
   requireAdmittedOwner,
   unstable_rethrow,
 } = vi.hoisted(() => ({
   getHouseholdOverviewForUser: vi.fn(),
+  getHouseholdSharedContext: vi.fn(),
   listHouseholdContextActors: vi.fn(),
   listHouseholdContextFacts: vi.fn(),
   requireAdmittedOwner: vi.fn(),
@@ -22,26 +24,14 @@ vi.mock("@tendnote/db/queries/context-facts", () => ({ listHouseholdContextFacts
 vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwner }));
 vi.mock("next/navigation", () => ({ unstable_rethrow }));
 vi.mock("@/components/account/household-surface", () => ({
-  HouseholdSurface: ({
-    initialOverview,
-    sharedSections,
-  }: {
-    initialOverview: { name: string } | null;
-    sharedSections?: unknown;
-  }) => (
+  HouseholdSurface: ({ initialOverview }: { initialOverview: { name: string } | null }) => (
     <div data-testid="household-surface">
       {initialOverview ? `active: ${initialOverview.name}` : "no active household"}
-      {sharedSections ? " with shared sections" : " without shared sections"}
     </div>
   ),
 }));
-// The shared Calendar and Event Plan sections read on the server and render as
-// their own client subtree; this route's own contract is the gate above them.
 vi.mock("@/lib/household/household-shared-data", () => ({
-  getHouseholdSharedContext: vi.fn(),
-}));
-vi.mock("@/components/household/household-planning-sections", () => ({
-  HouseholdPlanningSections: () => null,
+  getHouseholdSharedContext,
 }));
 
 import { renderToStaticMarkup } from "react-dom/server";
@@ -103,16 +93,12 @@ describe("Household route", () => {
     expect(renderToStaticMarkup(await HouseholdContent())).toContain("active: The Neely house");
   });
 
-  /**
-   * The shared calendars and Event Plans are read through the same active
-   * membership the Overview is read through, so a caller who has no household
-   * is never handed a subtree that would go looking for one.
-   */
-  it("offers the shared sections only alongside an active household", async () => {
-    expect(renderToStaticMarkup(await HouseholdContent())).toContain("without shared sections");
-
+  it("keeps shared work off Account whether or not the caller has a household", async () => {
+    renderToStaticMarkup(await HouseholdContent());
     getHouseholdOverviewForUser.mockResolvedValue(OVERVIEW);
-    expect(renderToStaticMarkup(await HouseholdContent())).toContain("with shared sections");
+    renderToStaticMarkup(await HouseholdContent());
+
+    expect(getHouseholdSharedContext).not.toHaveBeenCalled();
   });
 
   it("reads only the caller's household, never another account's", async () => {

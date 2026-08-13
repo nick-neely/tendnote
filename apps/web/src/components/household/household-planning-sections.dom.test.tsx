@@ -2,7 +2,6 @@
 import type { CalendarEventSummary } from "@tendnote/domain";
 import type { HouseholdCalendarRead } from "@tendnote/domain/household-calendar";
 import type { HouseholdEventPlan } from "@tendnote/domain/household-event-plans";
-import type { HouseholdOverview } from "@tendnote/domain/household-overview";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, userEvent, waitFor, within } from "@/test/dom";
 
@@ -41,15 +40,13 @@ vi.mock("@/app/actions/household-event-plans", () => ({
   unlinkHouseholdEventPlanRecordAction: vi.fn(),
 }));
 
+import type { HouseholdCalendarActions } from "@/components/household/household-calendars-panel";
+import type { HouseholdEventPlanActions } from "@/components/household/household-event-plans-panel";
+import { HouseholdPlanningSections } from "@/components/household/household-planning-sections";
 import type {
   HouseholdEventPlanLinkCandidate,
   HouseholdEventPlanRecord,
 } from "@/lib/household/household-event-plan-view";
-import type { HouseholdCalendarActions } from "@/components/household/household-calendars-panel";
-import type { HouseholdEventPlanActions } from "@/components/household/household-event-plans-panel";
-import { HouseholdPlanningSections } from "@/components/household/household-planning-sections";
-import { HouseholdSurface } from "./household-surface";
-import { governanceDefaults, member } from "./household-test-overview";
 
 const NOW = new Date("2026-08-09T09:00:00Z");
 
@@ -166,22 +163,6 @@ function renderShared(
   );
 }
 
-function overview(viewerRole: "owner" | "member"): HouseholdOverview {
-  return {
-    householdId: "household-1",
-    name: "The Neely house",
-    viewerRole,
-    isSoleMember: false,
-    invitations: [],
-    seats: { limit: 8, occupied: 2, remaining: 6, isFull: false },
-    members: [
-      member({ userId: "ana", name: "Ana", email: "ana@example.com", role: "owner" }),
-      member({ userId: "ben", name: "Ben", email: "ben@example.com", isViewer: false }),
-    ],
-    ...governanceDefaults({ viewerRole }),
-  };
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -193,12 +174,7 @@ beforeEach(() => {
  */
 describe("the multi-member matrix", () => {
   it("gives an owner the household's shared content and the controls over it", () => {
-    render(
-      <HouseholdSurface
-        initialOverview={overview("owner")}
-        sharedSections={renderSharedSections("owner")}
-      />,
-    );
+    renderShared({ viewerRole: "owner" });
 
     expect(screen.getByRole("heading", { name: /Shared calendars/ })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /Event plans/ })).toBeTruthy();
@@ -214,12 +190,7 @@ describe("the multi-member matrix", () => {
    * the whole household can read.
    */
   it("gives a member the same reading and the same plan authority, minus the governance", () => {
-    render(
-      <HouseholdSurface
-        initialOverview={overview("member")}
-        sharedSections={renderSharedSections("member")}
-      />,
-    );
+    renderShared({ viewerRole: "member" });
 
     expect(screen.getByText("School concert")).toBeTruthy();
     expect(screen.getByText("School night supper")).toBeTruthy();
@@ -229,30 +200,7 @@ describe("the multi-member matrix", () => {
     expect(screen.queryByRole("button", { name: "Share a calendar" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Stop sharing" })).toBeNull();
   });
-
-  /** No active household, no shared workspace to read. */
-  it("shows someone with no active household none of it", () => {
-    render(<HouseholdSurface initialOverview={null} />);
-
-    expect(screen.queryByRole("heading", { name: /Shared calendars/ })).toBeNull();
-    expect(screen.queryByRole("heading", { name: /Event plans/ })).toBeNull();
-  });
 });
-
-function renderSharedSections(viewerRole: "owner" | "member") {
-  return (
-    <HouseholdPlanningSections
-      calendars={{ connections: [CONNECTION], read: read() }}
-      linkCandidates={CANDIDATES}
-      members={MEMBERS}
-      now={NOW}
-      plans={[record(plan())]}
-      viewerHasCalendarAccess
-      viewerRole={viewerRole}
-      viewerUserId="ana"
-    />
-  );
-}
 
 describe("shared calendars", () => {
   /** Provider-derived context carries no affordance that could change it. */
