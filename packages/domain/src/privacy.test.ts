@@ -3,6 +3,7 @@ import {
   canViewScopedRecord,
   scopedRecordVisibility,
   scopeForVisibilityChoice,
+  visibilityStatusLabel,
   VISIBILITY_CONTROL_OPTIONS,
 } from "./privacy";
 
@@ -28,6 +29,18 @@ describe("household visibility policy", () => {
     expect(scopeForVisibilityChoice("only_me")).toBe("private");
     expect(scopeForVisibilityChoice("selected_members")).toBe("shared");
     expect(scopeForVisibilityChoice("whole_household")).toBe("household");
+  });
+
+  it("names a read-only audience in the same language as the editor, with an explicit count", () => {
+    expect(visibilityStatusLabel({ scope: "private" })).toBe("Only me");
+    expect(visibilityStatusLabel({ scope: "shared", selectedCount: 0 })).toBe("Specific people");
+    expect(visibilityStatusLabel({ scope: "shared", selectedCount: 1 })).toBe(
+      "Shared with 1 person",
+    );
+    expect(visibilityStatusLabel({ scope: "shared", selectedCount: 2 })).toBe(
+      "Shared with 2 people",
+    );
+    expect(visibilityStatusLabel({ scope: "household" })).toBe("Whole household");
   });
 
   it("keeps private records visible only to the owner, not household owners by role", () => {

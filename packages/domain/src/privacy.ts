@@ -44,6 +44,23 @@ export function visibilityLabelForScope(scope: PrivacyScope): string {
   return visibilityOptionForScope(scope).label;
 }
 
+/**
+ * The read-only audience sentence. Editor choices stay `Only me` / `Specific
+ * people` / `Whole household`; a selected-member status names the count so the
+ * chip can stand without a tooltip.
+ */
+export function visibilityStatusLabel(input: {
+  scope: PrivacyScope;
+  selectedCount?: number;
+}): string {
+  if (input.scope === "shared") {
+    const count = input.selectedCount ?? 0;
+    if (count <= 0) return visibilityLabelForScope("shared");
+    return count === 1 ? "Shared with 1 person" : `Shared with ${count} people`;
+  }
+  return visibilityLabelForScope(input.scope);
+}
+
 function visibilityOptionForScope(scope: PrivacyScope) {
   const fallback = VISIBILITY_CONTROL_OPTIONS[0];
   if (!fallback) {
