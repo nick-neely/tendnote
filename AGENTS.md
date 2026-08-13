@@ -23,7 +23,7 @@ Five canonical roles with default label names (`needs-triage`, `needs-info`, `re
 
 ### Domain docs
 
-Domain modeling docs are created lazily when terms or decisions need to be resolved. See `docs/agents/domain.md`.
+Single-context domain docs use root `CONTEXT.md` and `docs/adr/`; create them lazily when terms or decisions need resolution. See `docs/agents/domain.md`.
 
 ### Next.js
 
