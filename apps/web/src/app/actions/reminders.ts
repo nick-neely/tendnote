@@ -87,6 +87,7 @@ export async function reconcileReminderTimeZoneAction(input: {
 function reminderScheduleResult(result: Awaited<ReturnType<typeof saveReminder>>["result"]) {
   return {
     optIn: result.optIn,
+    occurrenceIntentCreated: result.occurrenceIntent !== null,
     nextValidChoice: result.nextValidChoice,
     schedule: {
       kind: result.schedule.kind,

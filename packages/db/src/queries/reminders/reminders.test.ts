@@ -610,6 +610,66 @@ describe("Reminder product function", () => {
     });
   });
 
+  it("schedules a future exact alert later on the current local day", async () => {
+    const store = createInMemoryReminderStore();
+    const service = createReminderService({
+      store,
+      loadGeneralAction: vi.fn(async () => ({
+        id: ACTION,
+        ownerUserId: OWNER,
+        title: "Replace the refrigerator water filter",
+        status: "open",
+        dueAt: new Date("2026-08-14T00:00:00.000Z"),
+        recurrence: null,
+        sensitivity: "normal" as const,
+        scope: "private" as const,
+      })),
+    });
+
+    const result = await service.saveGeneralActionReminder({
+      ownerUserId: OWNER,
+      generalActionId: ACTION,
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      schedule: { kind: "exact", localTime: "15:30" },
+      now: new Date("2026-08-14T20:00:00.000Z"),
+    });
+
+    expect(result.occurrenceIntent).toMatchObject({
+      intendedAt: new Date("2026-08-14T20:30:00.000Z"),
+      status: "pending_installation",
+    });
+  });
+
+  it("reports a past exact alert without creating a catch-up intent", async () => {
+    const store = createInMemoryReminderStore();
+    const service = createReminderService({
+      store,
+      loadGeneralAction: vi.fn(async () => ({
+        id: ACTION,
+        ownerUserId: OWNER,
+        title: "Replace the refrigerator water filter",
+        status: "open",
+        dueAt: new Date("2026-08-14T00:00:00.000Z"),
+        recurrence: null,
+        sensitivity: "normal" as const,
+        scope: "private" as const,
+      })),
+    });
+
+    const result = await service.saveGeneralActionReminder({
+      ownerUserId: OWNER,
+      generalActionId: ACTION,
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      schedule: { kind: "exact", localTime: "15:30" },
+      now: new Date("2026-08-14T21:00:00.000Z"),
+    });
+
+    expect(result.occurrenceIntent).toBeNull();
+    expect(result.nextValidChoice).toBeNull();
+  });
+
   it("bounds timezone reconciliation fan-out across an owner's schedules", async () => {
     const store = createInMemoryReminderStore();
     let activeLoads = 0;

@@ -67,6 +67,16 @@ export const reminderScheduleChoiceSchema = z.discriminatedUnion("kind", [
 ]);
 export type ReminderScheduleChoice = z.infer<typeof reminderScheduleChoiceSchema>;
 
+export function reminderScheduleChoiceFromStored(schedule: {
+  kind: ReminderScheduleChoice["kind"];
+  localTime: string | null;
+  leadMinutes: number | null;
+}): ReminderScheduleChoice {
+  return schedule.kind === "exact"
+    ? { kind: "exact", localTime: schedule.localTime ?? "09:00" }
+    : { kind: "relative", leadMinutes: schedule.leadMinutes ?? 0 };
+}
+
 export type ReminderSchedule = {
   id: string;
   ownerUserId: string;
