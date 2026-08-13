@@ -17,7 +17,6 @@ import { CreateAssetForm } from "@/components/asset-create-form";
 import { AssetAttributionLine } from "@/components/asset-household";
 import { AssetSearchPanel, type AssetSearchRunner } from "@/components/asset-search-panel";
 import { AssetArchivedBadge, AssetKindBadge } from "@/components/asset-shared";
-import { ActionScopeChip } from "@/components/general-action-shared";
 import type { ShareableActionMember } from "@/components/general-action-visibility-field";
 import { ChevronRightIcon } from "@/components/icons";
 import { LedgerList } from "@/components/person-ledger";
@@ -25,6 +24,7 @@ import { RecordTimingChip } from "@/components/record-timing-chip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { VisibilityStatus } from "@/components/visibility-affordance";
 import type { AssetBrowseRunner, AssetView } from "@/lib/asset-view";
 import { useServerSyncedList } from "@/lib/use-server-synced-list";
 import { cn } from "@/lib/utils";
@@ -260,7 +260,7 @@ function AssetRow({ asset, members }: { asset: AssetView; members: ShareableActi
           {/* A household-native Asset has no audience anyone chose, so a scope chip
               would name the household as people this member shared with (ADR 0214). */}
           {asset.ownership === "household_native" ? null : (
-            <ActionScopeChip label={asset.visibilityLabel} scope={asset.scope} />
+            <VisibilityStatus scope={asset.scope} selectedCount={asset.sharedWithCount} />
           )}
           {/* Whose it is, in the metadata line rather than beside the name: it
               is context for the row, not part of what the thing is called. */}

@@ -40,14 +40,14 @@ describe("toAssetView", () => {
     expect(view.archivedLabel).toBeNull();
   });
 
-  it("labels a household asset with the household's name and non-ownership", () => {
+  it("labels a household asset as whole-household audience and non-ownership", () => {
     const view = toAssetView(
       asset({ scope: "household", householdId: "hh-1", householdName: "Home" }),
       { callerUserId: "member-2", now: NOW },
     );
 
     expect(view.owned).toBe(false);
-    expect(view.visibilityLabel).toBe("Home");
+    expect(view.visibilityLabel).toBe("Whole household");
   });
 
   it("labels a shared asset with its audience count", () => {
@@ -56,7 +56,7 @@ describe("toAssetView", () => {
       { callerUserId: "owner-1", now: NOW },
     );
 
-    expect(view.visibilityLabel).toBe("Specific people · 2");
+    expect(view.visibilityLabel).toBe("Shared with 2 people");
   });
 
   it("marks an archived asset with an archive date", () => {

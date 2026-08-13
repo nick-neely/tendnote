@@ -17,7 +17,6 @@ import {
 import { MemoryEditForm } from "@/components/asset-memory-edit-form";
 import { AssetReviewEvidenceBlock, DismissGroupButton } from "@/components/asset-review-evidence";
 import { AssetKindBadge } from "@/components/asset-shared";
-import { ActionScopeChip } from "@/components/general-action-shared";
 import { CheckIcon, Link2Icon, PencilIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { VisibilityStatus } from "@/components/visibility-affordance";
 import type { AssetReviewGroupView, AssetReviewMemoryView } from "@/lib/asset-review-view";
 import { ReversibleMutationProvider, useReversibleMutation } from "@/lib/reversible-mutation";
 import { sourceLabel } from "@/lib/source-labels";
@@ -163,7 +163,7 @@ function AssetReviewGroupCardContent({
         {/* A household-native anchor has no audience anyone chose: the record is the
             household's, which is not a sharing decision to name here (ADR 0214). */}
         {review.asset.scope !== "private" && review.asset.ownership !== "household_native" ? (
-          <ActionScopeChip label={review.asset.visibilityLabel} scope={review.asset.scope} />
+          <VisibilityStatus scope={review.asset.scope} />
         ) : null}
       </div>
 

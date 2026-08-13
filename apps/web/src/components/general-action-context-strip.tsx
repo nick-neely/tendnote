@@ -8,12 +8,12 @@ import {
   ActionLinkedAssetChip,
   ActionPendingAssetChip,
   ActionRoutineChip,
-  ActionScopeChip,
   ErrorText,
   GENERIC_ERROR,
 } from "@/components/general-action-shared";
 import { PlusIcon } from "@/components/icons";
 import { Spinner } from "@/components/ui/spinner";
+import { VisibilityStatus } from "@/components/visibility-affordance";
 import type { GeneralActionView } from "@/lib/general-action-view";
 
 /** The linked Asset a hint became, if any — matched by the hint label it was promoted from. */
@@ -125,7 +125,7 @@ export function ActionContextStrip({
             truth is simply that the record is the household's — which the row's
             attribution line says instead (ADR 0214). */}
         {action.ownership === "household_native" ? null : (
-          <ActionScopeChip label={action.visibilityLabel} scope={action.scope} />
+          <VisibilityStatus scope={action.scope} selectedCount={action.sharedWithCount} />
         )}
         {action.linkedPeople.map((person) => (
           <ActionContextChip key={person.id} kind="person">

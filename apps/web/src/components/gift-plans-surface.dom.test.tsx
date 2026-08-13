@@ -50,7 +50,7 @@ function plan(overrides: Partial<GiftPlanView> = {}): GiftPlanView {
     acceptsCommitments: true,
     closedReason: null,
     scope: "shared",
-    visibilityLabel: "1 co-planner",
+    visibilityLabel: "Shared with 1 person",
     householdName: "The Neely house",
     subjectPersonId: null,
     surprise: false,
@@ -113,9 +113,19 @@ describe("the gift plan list", () => {
     render(<GiftPlansSurface plans={[plan()]} />);
     expect(screen.getByText("Rowan")).toBeTruthy();
     expect(screen.getByText("Fortieth birthday")).toBeTruthy();
+    expect(screen.getByText("Shared with 1 person")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Rowan/ }).getAttribute("href")).toBe(
       "/gift-plans/11111111-1111-4111-8111-111111111111",
     );
+  });
+
+  it("shows Only me on a private plan, because who is included is the fact the row is for", () => {
+    render(
+      <GiftPlansSurface
+        plans={[plan({ scope: "private", coPlannerCount: 0, visibilityLabel: "Only me" })]}
+      />,
+    );
+    expect(screen.getByText("Only me")).toBeTruthy();
   });
 
   it("marks a protected plan with a word, not only a colour", () => {
@@ -186,6 +196,11 @@ describe("the surprise promise", () => {
 });
 
 describe("the gift plan detail", () => {
+  it("names who can see the plan with the shared visibility chip", () => {
+    render(<GiftPlanDetailSurface detail={detail()} />);
+    expect(screen.getByText("Shared with 1 person")).toBeTruthy();
+  });
+
   it("offers the claim to anyone who can see an unclaimed idea", async () => {
     const user = userEvent.setup();
     actions.claimGiftIdeaAction.mockResolvedValue({

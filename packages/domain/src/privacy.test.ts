@@ -3,8 +3,8 @@ import {
   canViewScopedRecord,
   scopedRecordVisibility,
   scopeForVisibilityChoice,
-  visibilityStatusLabel,
   VISIBILITY_CONTROL_OPTIONS,
+  visibilityStatusLabel,
 } from "./privacy";
 
 describe("household visibility policy", () => {

@@ -20,7 +20,7 @@ import {
   restoreHouseholdSavedItemAction,
 } from "@/app/actions/saved-items";
 import { GeneralActionReminderField } from "@/components/general-action-reminder";
-import { ActionScopeChip, ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import {
   ActionVisibilityField,
   AudiencePreview,
@@ -56,6 +56,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { VisibilityStatus } from "@/components/visibility-affordance";
 import { captureFocusAfterRemoval } from "@/lib/focus-after-removal";
 import {
   type ReversibleMutationApplyPhase,
@@ -832,6 +833,25 @@ function runSavedItemLifecycle(intent: "archive" | "reopen", item: SavedItemView
     : reopenSavedItemAction({ savedItemId: item.id });
 }
 
+function SavedItemAudience({ item }: { item: SavedItemView }) {
+  if (item.ownership === "household_native") {
+    return (
+      <span className="inline-flex w-fit items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
+        <HomeIcon aria-hidden className="size-3 shrink-0" />
+        Household
+      </span>
+    );
+  }
+  if (!item.owned) {
+    return (
+      <span className="inline-flex w-fit items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
+        {item.visibilityLabel}
+      </span>
+    );
+  }
+  return <VisibilityStatus scope={item.scope} selectedCount={item.sharedWithCount} />;
+}
+
 function SavedItemSummary({ item }: { item: SavedItemView }) {
   const Icon =
     item.kind === "link" ? LinkIcon : item.kind === "open_question" ? CircleHelpIcon : BookmarkIcon;
@@ -846,7 +866,7 @@ function SavedItemSummary({ item }: { item: SavedItemView }) {
           <span className="rounded-full border px-2 py-0.5 text-[length:var(--text-caption)] text-muted-foreground">
             {item.kindLabel}
           </span>
-          <ActionScopeChip label={item.visibilityLabel} scope={item.scope} />
+          <SavedItemAudience item={item} />
         </div>
         {item.content ? (
           <p className="mt-1 max-w-[68ch] text-sm text-muted-foreground">{item.content}</p>

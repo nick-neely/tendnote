@@ -9,11 +9,7 @@ import {
   ignoreSuggestedGeneralActionAction,
   restoreDismissedSuggestedGeneralActionAction,
 } from "@/app/actions/suggested-general-actions";
-import {
-  ActionContextChip,
-  ActionRoutineChip,
-  ActionScopeChip,
-} from "@/components/general-action-shared";
+import { ActionContextChip, ActionRoutineChip } from "@/components/general-action-shared";
 import { CheckIcon, FolderIcon, MoonIcon } from "@/components/icons";
 import { RecordTimingChip } from "@/components/record-timing-chip";
 import {
@@ -25,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { VisibilityStatus } from "@/components/visibility-affordance";
 import { captureFocusAfterRemoval } from "@/lib/focus-after-removal";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 import {
@@ -297,7 +294,7 @@ function SuggestedGeneralActionReviewCardContent({
               {/* A household-native record has no audience anyone chose, so naming
                   one would invent a sharing decision nobody made (ADR 0214). */}
               {action.ownership === "household_native" ? null : (
-                <ActionScopeChip label={action.visibilityLabel} scope={action.scope} />
+                <VisibilityStatus scope={action.scope} selectedCount={action.sharedWithCount} />
               )}
             </div>
             {action.linkedPeople.length > 0 || action.assetHints.length > 0 ? (

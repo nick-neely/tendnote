@@ -1,7 +1,6 @@
-import type { PrivacyScope } from "@tendnote/domain";
 import Link from "next/link";
 import { ASSET_KIND_ICONS } from "@/components/asset-shared";
-import { HomeIcon, RepeatIcon, TagIcon, UserIcon, UsersIcon } from "@/components/icons";
+import { RepeatIcon, TagIcon, UserIcon } from "@/components/icons";
 import type { GeneralActionLinkedAssetView } from "@/lib/general-action-view";
 
 /** Fallback message when an Action mutation fails for an unknown reason. */
@@ -25,25 +24,6 @@ export function ErrorText({ message }: { message: string }) {
     <p className="text-[length:var(--text-small)] text-destructive" role="alert">
       {message}
     </p>
-  );
-}
-
-/**
- * A quiet visibility indicator for a shared or household Action. Scope is conveyed by
- * icon *and* word, never color — a private Action carries no indicator at all so the
- * private-first surface stays uncluttered (DESIGN.md §8; ADR 0153).
- */
-export function ActionScopeChip({ scope, label }: { scope: PrivacyScope; label: string }) {
-  if (scope === "private") {
-    return null;
-  }
-  const Icon = scope === "household" ? HomeIcon : UsersIcon;
-
-  return (
-    <span className="inline-flex w-fit items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[length:var(--text-caption)] text-muted-foreground">
-      <Icon aria-hidden className="size-3" />
-      {label}
-    </span>
   );
 }
 

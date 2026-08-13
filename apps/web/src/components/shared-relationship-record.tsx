@@ -1,6 +1,7 @@
 import type { SharedRelationshipRecordView } from "@tendnote/domain";
 import { RELATIONSHIP_RECORD_NOUN } from "@tendnote/domain";
-import { HomeIcon, UsersIcon } from "@/components/icons";
+import { visibilityStatusLabel } from "@tendnote/domain/privacy";
+import { EyeIcon } from "@/components/icons";
 import { formatShortDate } from "@/lib/person-format";
 
 /** Sentence-case the record's own noun for a heading. */
@@ -23,7 +24,9 @@ function recordHeading(view: SharedRelationshipRecordView): string {
  * component has nothing to withhold — it renders every field it is given.
  */
 export function SharedRelationshipRecord({ view }: { view: SharedRelationshipRecordView }) {
-  const AudienceIcon = view.audience === "whole_household" ? HomeIcon : UsersIcon;
+  const audienceLabel = visibilityStatusLabel({
+    scope: view.audience === "whole_household" ? "household" : "shared",
+  });
 
   return (
     <article className="flex flex-col gap-5">
@@ -37,18 +40,24 @@ export function SharedRelationshipRecord({ view }: { view: SharedRelationshipRec
           it is stated as fact rather than as an invitation to reply: nobody is
           asking the reader for anything.
         */}
-        <p className="flex items-center gap-1.5 text-[length:var(--text-small)] text-muted-foreground">
-          {/* The audience glyph is for the audience. An owner reaching their own
-              record here may be reaching a still-private one, and a household
-              glyph beside it would state something untrue. */}
-          {view.viewerIsOwner ? null : <AudienceIcon aria-hidden className="size-3.5 shrink-0" />}
-          {view.viewerIsOwner ? "Shared by you" : `Shared by ${view.sharedByName}`}
-          {/*
-            The read-only contract, where a first-time reader actually arrives.
-            The fuller statement is in the footer, but a short record on a phone
-            can be read and left without ever scrolling that far.
-          */}
-          {view.viewerIsOwner ? null : <span> · Yours to read, not to change.</span>}
+        <p className="flex flex-wrap items-center gap-1.5 text-[length:var(--text-small)] text-muted-foreground">
+          {/* An owner reaching their own record here may be reaching a still-private
+              one; naming an audience beside it would state something untrue. */}
+          {view.viewerIsOwner ? null : <EyeIcon aria-hidden className="size-3.5 shrink-0" />}
+          <span>{view.viewerIsOwner ? "Shared by you" : `Shared by ${view.sharedByName}`}</span>
+          {view.viewerIsOwner ? null : (
+            <>
+              <span aria-hidden>·</span>
+              <span>{audienceLabel}</span>
+              {/*
+                The read-only contract, where a first-time reader actually arrives.
+                The fuller statement is in the footer, but a short record on a phone
+                can be read and left without ever scrolling that far.
+              */}
+              <span aria-hidden>·</span>
+              <span>Yours to read, not to change.</span>
+            </>
+          )}
         </p>
       </header>
 

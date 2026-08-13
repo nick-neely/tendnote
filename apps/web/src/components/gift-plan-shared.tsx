@@ -1,11 +1,5 @@
-import {
-  CalendarIcon,
-  CircleCheckIcon,
-  EyeSlashIcon,
-  HomeIcon,
-  LockIcon,
-  UsersIcon,
-} from "@/components/icons";
+import { CalendarIcon, CircleCheckIcon, EyeSlashIcon } from "@/components/icons";
+import { VisibilityStatus } from "@/components/visibility-affordance";
 import type { GiftPlanView } from "@/lib/gift-plan-view";
 
 /** Fallback when a Gift Plan mutation fails for an unknown reason. */
@@ -23,13 +17,8 @@ const CHIP =
  * ambiguous rather than quiet.
  */
 export function GiftPlanAudienceChip({ plan }: { plan: GiftPlanView }) {
-  const Icon =
-    plan.scope === "household" ? HomeIcon : plan.scope === "shared" ? UsersIcon : LockIcon;
   return (
-    <span className={CHIP}>
-      <Icon aria-hidden className="size-3 shrink-0" />
-      {plan.visibilityLabel}
-    </span>
+    <VisibilityStatus privatePolicy="show" scope={plan.scope} selectedCount={plan.coPlannerCount} />
   );
 }
 

@@ -93,7 +93,7 @@ describe("record surfacing", () => {
     ).toMatchObject({ state: "unscheduled", timingLabel: "No date" });
   });
 
-  it("names selected members or the Household Workspace and derives ownership and revision", () => {
+  it("names a selected-member or whole-household audience and derives ownership and revision", () => {
     expect(
       resolveRecordSurfacing(
         {
@@ -110,7 +110,7 @@ describe("record surfacing", () => {
         NOW,
       ),
     ).toEqual({
-      audienceLabel: "Specific people · 2",
+      audienceLabel: "Shared with 2 people",
       owned: false,
       revision: UPDATED_AT.toISOString(),
       state: "today",
@@ -133,7 +133,7 @@ describe("record surfacing", () => {
         NOW,
       ),
     ).toMatchObject({
-      audienceLabel: "Home",
+      audienceLabel: "Whole household",
       state: "upcoming",
       timingLabel: "Due Mar 20",
     });

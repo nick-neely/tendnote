@@ -45,6 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { VisibilityControl } from "@/components/visibility-affordance";
 import type { GiftIdeaView, GiftPlanDetailView, GiftPlanView } from "@/lib/gift-plan-view";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 import { useServerSyncedList } from "@/lib/use-server-synced-list";
@@ -690,7 +691,7 @@ function GiftPlanOwnerControls({
             selectedUserIds={selectedUserIds}
             value={choice}
           />
-          <Button
+          <VisibilityControl
             className="w-fit"
             disabled={pending}
             onClick={() =>
@@ -704,8 +705,8 @@ function GiftPlanOwnerControls({
             }
             variant="outline"
           >
-            {pending ? "Saving…" : "Update who can see this"}
-          </Button>
+            {pending ? "Saving…" : "Save visibility"}
+          </VisibilityControl>
         </div>
       ) : null}
 

@@ -32,7 +32,6 @@ import { AssetRelatedLinks } from "@/components/asset-related-links";
 import { AssetRemove } from "@/components/asset-remove";
 import { ASSET_KIND_ICONS, AssetArchivedBadge } from "@/components/asset-shared";
 import { AssetSnapshotCard, type AssetSnapshotCardProps } from "@/components/asset-snapshot-card";
-import { ActionScopeChip } from "@/components/general-action-shared";
 import type { ShareableActionMember } from "@/components/general-action-visibility-field";
 import { ArrowLeftIcon } from "@/components/icons";
 import { LedgerList } from "@/components/person-ledger";
@@ -40,6 +39,7 @@ import { TabCount } from "@/components/tab-count";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TabsTrigger } from "@/components/ui/tabs";
+import { VisibilityStatus } from "@/components/visibility-affordance";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { toPendingAssetActionProposalView } from "@/lib/asset-action-proposal-view";
 import { toAssetEvidenceView } from "@/lib/asset-evidence-view";
@@ -593,7 +593,7 @@ async function AssetPeopleStream({ request, view }: { request: AssetRequest; vie
     ]);
     return (
       <PanelSection
-        description="Who recommended it, borrowed it, or services it. Linking a person never changes who can see this."
+        description="Who recommended it, borrowed it, or services it. Linking a person never changes visibility."
         id="people"
         title="People"
       >
@@ -728,7 +728,7 @@ function AssetProfileHeader({
             {/* A household-native Asset has no audience anyone chose; the attribution
                 line beside this says whose it is instead (ADR 0214). */}
             {view.ownership === "household_native" ? null : (
-              <ActionScopeChip label={view.visibilityLabel} scope={view.scope} />
+              <VisibilityStatus scope={view.scope} selectedCount={view.sharedWithCount} />
             )}
             {view.archived ? <AssetArchivedBadge /> : null}
             <AssetAttributionLine asset={view} members={members} />

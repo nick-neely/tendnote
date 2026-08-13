@@ -1,7 +1,7 @@
 import type { GiftPlanDetail, GiftPlanWithContext } from "@tendnote/db/queries/gift-plans";
 import type { GiftIdea, GiftPlanEvent, GiftPlanStatus, PrivacyScope } from "@tendnote/domain";
 import { giftPlanAcceptsCommitments } from "@tendnote/domain";
-import { visibilityLabelForScope } from "@tendnote/domain/privacy";
+import { visibilityStatusLabel } from "@tendnote/domain/privacy";
 import type { OwnerActionResult } from "@/lib/owner-action";
 
 export type GiftPlanView = {
@@ -155,10 +155,10 @@ export function toGiftPlanView(
     acceptsCommitments: giftPlanAcceptsCommitments(plan),
     closedReason: GIFT_PLAN_CLOSED_REASONS[plan.status],
     scope: plan.scope,
-    visibilityLabel:
-      plan.scope === "shared" && plan.sharedWithUserIds.length > 0
-        ? `${plan.sharedWithUserIds.length} co-planner${plan.sharedWithUserIds.length === 1 ? "" : "s"}`
-        : visibilityLabelForScope(plan.scope),
+    visibilityLabel: visibilityStatusLabel({
+      scope: plan.scope,
+      selectedCount: plan.sharedWithUserIds.length,
+    }),
     householdName: plan.householdName,
     subjectPersonId: plan.subjectPersonId,
     surprise: plan.surpriseSubjectUserId !== null,
@@ -214,7 +214,7 @@ const GIFT_PLAN_EVENT_CLAUSES: Record<
 > = {
   created: () => "started this plan",
   edited: () => "updated the details",
-  audience_changed: () => "changed who can see this",
+  audience_changed: () => "changed visibility",
   surprise_protected: () => "turned on surprise protection",
   surprise_lifted: () => "turned off surprise protection",
   idea_added: () => "added an idea",

@@ -19,6 +19,7 @@ export function assetViewFixture(overrides: Partial<AssetView> = {}): AssetView 
     archived: false,
     scope: "private",
     visibilityLabel: "Only me",
+    sharedWithCount: 0,
     owned,
     ownerUserId: "owner-1",
     ownership,

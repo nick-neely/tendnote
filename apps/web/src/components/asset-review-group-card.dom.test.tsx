@@ -122,15 +122,31 @@ describe("AssetReviewGroupCard", () => {
   it("names a chosen audience, but never invents one for a household-native anchor", () => {
     // Shared *with* the household is a decision worth stating; being the household's own
     // record is not one anybody made, so the chip stays off (ADR 0214).
-    const anchor = { scope: "household" as const, visibilityLabel: "The Shahs" };
+    const anchor = { scope: "household" as const, visibilityLabel: "Whole household" };
     const { unmount } = render(
       <AssetReviewGroupCard
         onResolve={vi.fn()}
         review={reviewFixture({ asset: { ...reviewFixture().asset, ...anchor } })}
       />,
     );
-    expect(screen.getByText("The Shahs")).toBeDefined();
+    expect(screen.getByText("Whole household")).toBeDefined();
     unmount();
+
+    const { unmount: unmountShared } = render(
+      <AssetReviewGroupCard
+        onResolve={vi.fn()}
+        review={reviewFixture({
+          asset: {
+            ...reviewFixture().asset,
+            scope: "shared",
+            visibilityLabel: "Specific people",
+          },
+        })}
+      />,
+    );
+    // Review payloads do not carry a share count; Specific people is the honest unknown.
+    expect(screen.getByText("Specific people")).toBeDefined();
+    unmountShared();
 
     render(
       <AssetReviewGroupCard
@@ -140,7 +156,7 @@ describe("AssetReviewGroupCard", () => {
         })}
       />,
     );
-    expect(screen.queryByText("The Shahs")).toBeNull();
+    expect(screen.queryByText("Whole household")).toBeNull();
   });
 
   it("names the originating action for a promoted hint, even without a source record", () => {

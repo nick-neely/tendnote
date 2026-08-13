@@ -56,7 +56,7 @@ describe("toSavedItemView", () => {
 
     expect(view.kindLabel).toBe("Note");
     expect(view.bringBackAt).toBe(new Date(2026, 2, 12).toISOString());
-    expect(view.visibilityLabel).toBe("Specific people · 2");
+    expect(view.visibilityLabel).toBe("Shared with 2 people");
     expect(view.owned).toBe(true);
     expect(view.ownerUserId).toBe("owner-1");
     expect(view.ownership).toBe("member_owned");
