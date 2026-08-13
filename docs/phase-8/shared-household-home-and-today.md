@@ -20,7 +20,9 @@ Phase Eight has three deliberately separate destinations:
 
 Household management therefore remains Account-local as previously decided.
 The global Household destination is a later working surface, not a relocation
-or duplication of the Household Overview.
+or duplication of the Household Overview. Conversely, day-to-day shared
+coordination does not remain duplicated under Account once a domain has a
+canonical Household surface.
 
 ## Activation and navigation
 
@@ -55,6 +57,17 @@ Below the two sections, compact entry links may lead to supported shared domain
 surfaces. Tendnote does not introduce configurable widgets, a collective
 "Household Today," an activity stream, member-status panels, or a second task
 backlog.
+
+The later Household Calendar and Event Plan contract applies this shell without
+changing that two-section hierarchy. Immediately after **Coming up**, bounded
+read-only **Shared calendars** followed by the uncapped household-native
+**Event plans** collection form one distinct secondary coordination region.
+They are not a third primary list and their records are not mixed into or
+truncated by the primary caps. The Calendar-to-Plan order preserves the explicit
+**Plan this event** hand-off. The current member's private Household Check-in
+and the footer follow that shared region; membership, Household Context, roles,
+invitations, departure, recovery, and dissolution remain in **Account >
+Household**.
 
 Only authoritative records intentionally visible to the current member qualify.
 Suggested records remain in Review until accepted. Household Context may orient
@@ -128,7 +141,10 @@ progress, empty widgets, or a blank activity feed.
 Navigation and the household name render only inside a currently admitted
 Household frame. **Ready now** and **Coming up** stream independently with
 truthful shaped reserves. One failed domain family does not erase successful
-families or produce a misleading global empty state.
+families or produce a misleading global empty state. The later Calendar/Event
+Plan region has its own truthful reserve and preserves the same isolation: an
+unreadable Calendar cannot hide another Calendar or an existing Event Plan, and
+an unreadable Plan collection does not turn the Calendar view into an empty one.
 
 The surface is online-required. It never substitutes cached shared data after
 authorization becomes uncertain. Membership changes fail closed. A conflicting
@@ -138,8 +154,9 @@ changed or access ended, and reconciles to authoritative state.
 ## Responsive and accessibility contract
 
 Phones retain the same single-column order: **Ready now**, **Coming up**,
-then supported domain links. The surface does not collapse into a horizontal
-dashboard grid, carousel, or sidebar.
+**Shared calendars**, **Event plans**, the member-private Household Check-in,
+then supported domain and governance links. The surface does not collapse into
+a horizontal dashboard grid, carousel, or sidebar.
 
 Sections and record collections use semantic headings and lists. Record type,
 scope, timing, and state appear in text rather than color alone. Every card has a
@@ -157,6 +174,11 @@ other Personal OS domain. Those later decisions must define their supported
 ownership forms, member authority, responsibility, conflicts, notification
 eligibility, restricted visibility, and lifecycle behavior before their records
 can safely compose into Household.
+
+The later [Household Calendar and event planning](household-calendar-and-event-planning.md)
+decision supplies that domain contract and the secondary-region placement above;
+it does not retroactively make Calendar or Event Plan authority part of this
+earlier shell decision.
 
 No new glossary entry or ADR is warranted. **Today**, **Household Workspace**,
 visibility scope, and record ownership already have precise domain meanings. The

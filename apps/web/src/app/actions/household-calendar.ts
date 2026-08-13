@@ -36,8 +36,14 @@ const connectSchema = z
   .strict();
 const disconnectSchema = z.object({ connectionId: z.string().min(1).max(200) }).strict();
 
-const accountScope = (_result: unknown, ownerUserId: string) =>
-  [{ kind: "owner-collection" as const, collection: "account" as const, ownerUserId }] as const;
+const householdScope = (_result: unknown, ownerUserId: string) =>
+  [
+    {
+      kind: "owner-collection" as const,
+      collection: "household-planning" as const,
+      ownerUserId,
+    },
+  ] as const;
 
 /**
  * Designates one of the caller's own calendars as readable by the whole
@@ -66,7 +72,7 @@ export async function connectHouseholdCalendarAction(input: {
       });
       return readHouseholdCalendarSurface(ownerUserId);
     },
-    affectedScopes: accountScope,
+    affectedScopes: householdScope,
     result: (surface) => surface,
   });
 }
@@ -88,7 +94,7 @@ export async function disconnectHouseholdCalendarAction(input: {
       await disconnectHouseholdCalendar({ ownerUserId, connectionId: parsed.connectionId });
       return readHouseholdCalendarSurface(ownerUserId);
     },
-    affectedScopes: accountScope,
+    affectedScopes: householdScope,
     result: (surface) => surface,
   });
 }

@@ -1,5 +1,8 @@
 import { getHouseholdCheckin, getHouseholdHome } from "@tendnote/db/queries/household-home";
-import { getAdmittedHouseholdForUser } from "@tendnote/db/queries/households";
+import {
+  getHouseholdPlanningFrameForUser,
+  type HouseholdPlanningFrame,
+} from "@tendnote/db/queries/households";
 import { getOwnerTodayContext } from "@tendnote/db/queries/today";
 import { householdCheckinIsWorthShowing } from "@tendnote/domain/household-checkin";
 import { householdHomeSectionHeadings } from "@tendnote/domain/household-home";
@@ -19,8 +22,10 @@ import {
   type HouseholdHomeSectionKey,
   HouseholdHomeSectionReserve,
 } from "@/components/household/household-home-section";
+import { HouseholdPlanningSections } from "@/components/household/household-planning-sections";
 import { HOUSEHOLD_SECTION_HEADING_CLASS } from "@/components/household/household-record-row";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { getHouseholdSharedContext } from "@/lib/household/household-shared-data";
 
 export default function HouseholdHomePage() {
   return (
@@ -56,7 +61,7 @@ export async function HouseholdHomeContent() {
    * of a page they can no longer be on. Account already holds the neutral
    * explanation of what happened and the way back in.
    */
-  const household = await getAdmittedHouseholdForUser({ userId: ownerUserId });
+  const household = await getHouseholdPlanningFrameForUser({ userId: ownerUserId });
   if (!household) {
     redirect(appDestination("account-household").route);
   }
@@ -72,8 +77,9 @@ export async function HouseholdHomeContent() {
         </p>
       </header>
 
-      {/* One column, in this order, at every width. The two sections stream
-          behind their own reserves so a slow one never holds up the other. */}
+      {/* One column, in this order, at every width. The primary sections and
+          secondary planning region stream behind their own reserves so a slow
+          read never holds up work that is already ready. */}
       <Suspense
         fallback={
           <HouseholdHomeSectionReserve heading={householdHomeSectionHeadings.needs_attention} />
@@ -87,14 +93,54 @@ export async function HouseholdHomeContent() {
         <HouseholdHomeStream ownerUserId={ownerUserId} sectionKey="comingUp" />
       </Suspense>
 
-      {/* Not a third collection on the home, and deliberately below the fold of
-          the two that are: the check-in is one member's private read, offered
-          from the household rather than composed into it (ADR 0220). */}
+      {/* Calendars and Plans are one secondary coordination region: the
+          Calendar gesture hands an event address directly to the Plan form, so
+          keeping them adjacent is a product boundary rather than visual
+          grouping. This stream proves standing again and never delays the two
+          capped primary lists above it. */}
+      <Suspense fallback={<HouseholdPlanningReserve />}>
+        <HouseholdPlanningStream frame={household} ownerUserId={ownerUserId} />
+      </Suspense>
+
+      {/* The check-in remains one member's private read, offered after shared
+          household work rather than composed into it (ADR 0220). */}
       <Suspense fallback={<HouseholdCheckinReserve />}>
         <HouseholdCheckinStream householdName={household.name} ownerUserId={ownerUserId} />
       </Suspense>
 
       <HouseholdHomeFooter />
+    </div>
+  );
+}
+
+/** The canonical Calendar/Event Plan region for one currently admitted member. */
+export async function HouseholdPlanningStream({
+  frame,
+  ownerUserId,
+}: {
+  frame: HouseholdPlanningFrame;
+  ownerUserId: string;
+}) {
+  const planning = await getHouseholdSharedContext(ownerUserId);
+  return (
+    <HouseholdPlanningSections
+      calendars={planning.calendars}
+      linkCandidates={planning.linkCandidates}
+      members={frame.members}
+      now={planning.now}
+      plans={planning.plans}
+      viewerHasCalendarAccess={planning.viewerHasCalendarAccess}
+      viewerRole={frame.viewerRole}
+      viewerUserId={ownerUserId}
+    />
+  );
+}
+
+function HouseholdPlanningReserve() {
+  return (
+    <div aria-busy="true" aria-label="Shared calendars and event plans" role="status">
+      <section className="h-24 animate-pulse rounded-lg border bg-muted/40" />
+      <span className="sr-only">Shared calendars and event plans</span>
     </div>
   );
 }

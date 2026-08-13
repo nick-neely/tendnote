@@ -19,6 +19,7 @@ export type AffectedScope =
         | "context-facts"
         | "gift-plans"
         | "global-recall"
+        | "household-planning"
         | "orientation"
         | "people"
         | "review"
@@ -67,6 +68,7 @@ export const affectedScopeSchema = z.discriminatedUnion("kind", [
         "context-facts",
         "gift-plans",
         "global-recall",
+        "household-planning",
         "orientation",
         "people",
         "review",

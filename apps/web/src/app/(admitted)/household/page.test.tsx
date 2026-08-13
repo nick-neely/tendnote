@@ -2,17 +2,19 @@ import type { HouseholdHomeSectionView } from "@tendnote/domain/household-home";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  getAdmittedHouseholdForUser,
+  getHouseholdPlanningFrameForUser,
   getHouseholdCheckin,
   getHouseholdHome,
+  getHouseholdSharedContext,
   getOwnerTodayContext,
   redirect,
   requireAdmittedOwner,
   unstable_rethrow,
 } = vi.hoisted(() => ({
-  getAdmittedHouseholdForUser: vi.fn(),
+  getHouseholdPlanningFrameForUser: vi.fn(),
   getHouseholdCheckin: vi.fn(),
   getHouseholdHome: vi.fn(),
+  getHouseholdSharedContext: vi.fn(),
   getOwnerTodayContext: vi.fn(),
   redirect: vi.fn(() => {
     throw new Error("NEXT_REDIRECT");
@@ -21,7 +23,7 @@ const {
   unstable_rethrow: vi.fn(),
 }));
 
-vi.mock("@tendnote/db/queries/households", () => ({ getAdmittedHouseholdForUser }));
+vi.mock("@tendnote/db/queries/households", () => ({ getHouseholdPlanningFrameForUser }));
 vi.mock("@tendnote/db/queries/household-home", () => ({ getHouseholdCheckin, getHouseholdHome }));
 vi.mock("@tendnote/db/queries/today", () => ({ getOwnerTodayContext }));
 vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwner }));
@@ -45,6 +47,24 @@ vi.mock("@/components/household/household-home-section", () => ({
   ),
   HouseholdHomeSectionReserve: ({ heading }: { heading: string }) => <h2>{heading}</h2>,
 }));
+vi.mock("@/lib/household/household-shared-data", () => ({ getHouseholdSharedContext }));
+vi.mock("@/components/household/household-planning-sections", () => ({
+  HouseholdPlanningSections: ({
+    members,
+    viewerRole,
+  }: {
+    members: { name: string }[];
+    viewerRole: string;
+  }) => (
+    <div>
+      <h2>Shared calendars</h2>
+      <h2>Event plans</h2>
+      <p>
+        {viewerRole}: {members.map((member) => member.name).join(", ")}
+      </p>
+    </div>
+  ),
+}));
 
 import { renderToStaticMarkup } from "react-dom/server";
 import { RouteReserve } from "@/components/route-reserve";
@@ -52,7 +72,18 @@ import HouseholdHomePage, {
   HouseholdCheckinStream,
   HouseholdHomeContent,
   HouseholdHomeStream,
+  HouseholdPlanningStream,
 } from "./page";
+
+const PLANNING_FRAME = {
+  householdId: "household-1",
+  name: "Ash Lane",
+  viewerRole: "owner" as const,
+  members: [
+    { userId: "owner-1", name: "Ana" },
+    { userId: "member-1", name: "Ben" },
+  ],
+};
 
 function emptySection(
   section: "needs_attention" | "coming_up",
@@ -69,7 +100,7 @@ beforeEach(() => {
     timeZone: "UTC",
     now: new Date("2026-07-21T15:00:00.000Z"),
   });
-  getAdmittedHouseholdForUser.mockResolvedValue({ id: "household-1", name: "Ash Lane" });
+  getHouseholdPlanningFrameForUser.mockResolvedValue(PLANNING_FRAME);
   getHouseholdHome.mockResolvedValue({
     household: { id: "household-1", name: "Ash Lane" },
     needsAttention: emptySection("needs_attention", "Ready now"),
@@ -80,6 +111,13 @@ beforeEach(() => {
     optedIn: false,
     records: [],
     limitations: [],
+  });
+  getHouseholdSharedContext.mockResolvedValue({
+    calendars: null,
+    linkCandidates: [],
+    now: new Date("2026-07-21T15:00:00.000Z"),
+    plans: [],
+    viewerHasCalendarAccess: false,
   });
 });
 
@@ -106,19 +144,28 @@ describe("the Household destination", () => {
    * than a rearranged one. Asserted by position because the requirement is the
    * order itself, not that the headings exist.
    */
-  it("keeps one column in the same order: Ready now, Coming up, then links", async () => {
+  it("keeps one column in the same order: primary lists, planning, check-in, then links", async () => {
     const markup = renderToStaticMarkup(await HouseholdHomeContent());
 
     expect(markup.indexOf("Ready now")).toBeLessThan(markup.indexOf("Coming up"));
-    expect(markup.indexOf("Coming up")).toBeLessThan(markup.indexOf("Actions and Routines"));
+    expect(markup.indexOf("Coming up")).toBeLessThan(
+      markup.indexOf("Shared calendars and event plans"),
+    );
+    expect(markup.indexOf("Shared calendars and event plans")).toBeLessThan(
+      markup.indexOf("check-in"),
+    );
+    expect(markup.indexOf("check-in")).toBeLessThan(markup.indexOf("Actions and Routines"));
   });
 
-  it("offers the check-in below both sections rather than as a third one", async () => {
-    const markup = renderToStaticMarkup(await HouseholdHomeContent());
+  it("reads planning through the caller's admitted role and active roster", async () => {
+    const markup = renderToStaticMarkup(
+      await HouseholdPlanningStream({ frame: PLANNING_FRAME, ownerUserId: "owner-1" }),
+    );
 
-    // The home answers one question in two sections. The check-in is a member's
-    // own private read offered from here, so it sits under them (ADR 0220).
-    expect(markup.indexOf("Coming up")).toBeLessThan(markup.indexOf("check-in"));
+    expect(getHouseholdSharedContext).toHaveBeenCalledWith("owner-1");
+    expect(markup).toContain("Shared calendars");
+    expect(markup).toContain("Event plans");
+    expect(markup).toContain("owner: Ana, Ben");
   });
 
   it("offers the way back to governance without putting it in the page's work", async () => {
@@ -225,11 +272,12 @@ describe("the Household destination", () => {
   });
 
   it("returns a member who no longer has a household to Account", async () => {
-    getAdmittedHouseholdForUser.mockResolvedValue(null);
+    getHouseholdPlanningFrameForUser.mockResolvedValue(null);
 
     await expect(HouseholdHomeContent()).rejects.toThrow("NEXT_REDIRECT");
     expect(redirect).toHaveBeenCalledWith("/account/household");
     expect(getHouseholdHome).not.toHaveBeenCalled();
+    expect(getHouseholdSharedContext).not.toHaveBeenCalled();
   });
 
   /**

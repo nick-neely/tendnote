@@ -22,8 +22,8 @@ import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
 import type { HouseholdEventPlanLinkCandidate } from "@/lib/household/household-event-plan-view";
 
 /**
- * The server reads behind Account > Household's shared Calendar and Event Plan
- * sections (issue #387).
+ * The server reads behind the Household's Calendar and Event Plan planning
+ * region (issue #387).
  *
  * Every read here is authorized inside its own domain seam - none of these
  * entry points takes a household id, and each obtains its own Household

@@ -439,25 +439,7 @@ function ConnectCalendar({
   onSurfaceChange: (surface: HouseholdCalendarSurface) => void;
   onAnnounce: (message: string) => void;
 }) {
-  const connect = actions.connect ?? defaultConnectAction;
-  const labelId = useId();
-  const hintId = useId();
-  const confirmId = useId();
   const [open, setOpen] = useState(false);
-  const [label, setLabel] = useState("");
-  const [confirmed, setConfirmed] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  const labelRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    // The press that opens this form destroys the button that was focused, so
-    // without this the caret lands on the document body at the moment there is
-    // something to type. Same treatment as the new-Plan form.
-    if (open) labelRef.current?.focus();
-  }, [open]);
-
-  const trimmed = label.trim();
 
   if (!viewerHasCalendarAccess) {
     return (
@@ -488,10 +470,7 @@ function ConnectCalendar({
     return (
       <Button
         className="min-h-11 self-start sm:min-h-8"
-        onClick={() => {
-          setError(null);
-          setOpen(true);
-        }}
+        onClick={() => setOpen(true)}
         size="sm"
         type="button"
         variant="outline"
@@ -500,6 +479,47 @@ function ConnectCalendar({
       </Button>
     );
   }
+
+  return (
+    <ConnectCalendarForm
+      actions={actions}
+      onAnnounce={onAnnounce}
+      onClose={() => setOpen(false)}
+      onSurfaceChange={onSurfaceChange}
+    />
+  );
+}
+
+function ConnectCalendarForm({
+  actions,
+  onSurfaceChange,
+  onAnnounce,
+  onClose,
+}: {
+  actions: HouseholdCalendarActions;
+  onSurfaceChange: (surface: HouseholdCalendarSurface) => void;
+  onAnnounce: (message: string) => void;
+  onClose: () => void;
+}) {
+  const connect = actions.connect ?? defaultConnectAction;
+  const id = useId();
+  const labelId = `${id}-label`;
+  const hintId = `${id}-hint`;
+  const confirmId = `${id}-confirm`;
+  const [label, setLabel] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const labelRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // The press that opens this form destroys the button that was focused, so
+    // without this the caret lands on the document body at the moment there is
+    // something to type. Same treatment as the new-Plan form.
+    labelRef.current?.focus();
+  }, []);
+
+  const trimmed = label.trim();
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -514,7 +534,7 @@ function ConnectCalendar({
         }
         setLabel("");
         setConfirmed(false);
-        setOpen(false);
+        onClose();
         onSurfaceChange(result.view);
         onAnnounce(`${trimmed} is now shared with everyone in the household.`);
       } catch {
@@ -579,7 +599,7 @@ function ConnectCalendar({
           className="min-h-11 sm:min-h-8"
           disabled={pending}
           onClick={() => {
-            setOpen(false);
+            onClose();
             setConfirmed(false);
             setError(null);
           }}

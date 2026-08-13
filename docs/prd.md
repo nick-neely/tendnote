@@ -2081,6 +2081,15 @@ Deliverables:
   than five, with domain links for overflow. Suggestions remain in Review and
   Household Context remains orientation and Account-managed context rather than
   feed content.
+- **Household** is also the canonical working surface for shared Calendar and
+  Event Plan coordination. After **Coming up**, a distinct secondary region
+  shows bounded, read-only **Shared calendars** immediately followed by the
+  household-native **Event plans** collection; it sits before the current
+  member's private Household Check-in and the footer. This region does not
+  become a third primary list and is not folded into the caps above. Event Plans
+  remain uncapped here because this is their canonical surface, while
+  **Account > Household** retains membership, Household Context, and governance
+  rather than duplicating day-to-day coordination.
 - Members with the same record access see the same Household composition.
   Selected-member visibility may produce legitimate differences, while a
   member's **Not today** action affects only private Today and never hides or
@@ -2100,12 +2109,13 @@ Deliverables:
   admitted Household frame, fails closed on membership uncertainty, and never
   substitutes stale shared data. Departure or removal immediately removes the
   destination; dissolution routes eligible Owners to recovery.
-- Mobile preserves a single-column **Ready now**, **Coming up**, and
-  domain-link hierarchy. Semantic headings and lists, textual type/scope/state,
-  canonical links, keyboard and focus behavior, reduced-motion-safe
-  reconciliation, and 200% text support are required; dashboard grids,
-  carousels, drag-only ranking, swipe-only actions, hover-only provenance, and
-  auto-advancing content are excluded.
+- Mobile preserves one column in the same order: **Ready now**, **Coming up**,
+  **Shared calendars**, **Event plans**, the member-private Household Check-in,
+  then domain and governance links. Semantic headings and lists, textual
+  type/scope/state, canonical links, keyboard and focus behavior,
+  reduced-motion-safe reconciliation, and 200% text support are required;
+  dashboard grids, carousels, drag-only ranking, swipe-only actions, hover-only
+  provenance, and auto-advancing content are excluded.
 - Actions and Routines are the first Personal OS domain with a full collaboration
   contract. Phase Eight separates ownership from visibility with two forms: a
   household-native record owned by the Household Workspace, and a member-owned
@@ -2323,11 +2333,13 @@ Deliverables:
   stale-write reconciliation, while only Owners govern Calendar connections.
 - Household reads are labeled as Calendar-derived and live or stale; provider
   failure or disconnection is explicit and cannot fall back to a member's private
-  Calendar, create a Plan or reminder, or hide other successful families. The
-  Household home provides a bounded chronological shared view; Today may surface
-  deterministic individually relevant events. Google owns Calendar alerts, and
-  Tendnote reminders remain explicit member-owned schedules on linked Actions or
-  Follow-Ups only.
+  Calendar, create a Plan or reminder, or hide other successful families. Every
+  active member reads the authorized Calendar summaries and Event Plans; only
+  Owners govern which Calendars are designated. On the Household home the
+  bounded Calendar view is followed immediately by the uncapped canonical Event
+  Plan collection. Today may surface deterministic individually relevant events.
+  Google owns Calendar alerts, and Tendnote reminders remain explicit
+  member-owned schedules on linked Actions or Follow-Ups only.
 - Eve, Capture, Review, and Search preserve the same boundary: explicit shared
   intent may create an Event Plan, inference only proposes one for Review, and
   private/provider-raw/inaccessible data neither crosses the Household boundary

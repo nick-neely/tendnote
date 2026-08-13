@@ -59,6 +59,13 @@ function tagsForOwnerCollection(
   if (scope.collection === "global-recall") {
     return [`global-recall:owner:${ownerUserId}`];
   }
+  if (scope.collection === "household-planning") {
+    // This projection is intentionally online-required: provider state,
+    // authorization, and link candidates are read at request time. Its scope is
+    // consumed only by path reconciliation, so inventing a tag here would
+    // create a write-only invalidation contract with no cache entry to expire.
+    return [];
+  }
   if (scope.collection === "gift-plans") {
     return giftPlanCollectionTags(ownerUserId);
   }

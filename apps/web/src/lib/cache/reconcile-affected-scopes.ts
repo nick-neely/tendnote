@@ -30,6 +30,17 @@ export function reconcileAffectedScopes(
 
   if (
     scopes.some(
+      (scope) => scope.kind === "owner-collection" && scope.collection === "household-planning",
+    )
+  ) {
+    // Household planning reads are online-required and include request-time
+    // provider state. The viewer tag covers cacheable dependants; the path
+    // refresh covers the intentionally untaggable route-owned projection.
+    revalidatePath("/household");
+  }
+
+  if (
+    scopes.some(
       (scope) => scope.kind === "owner-collection" && scope.collection === "context-facts",
     )
   ) {

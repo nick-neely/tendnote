@@ -2,6 +2,7 @@ import type { CalendarEventSummary } from "@tendnote/domain";
 import type { HouseholdCalendarRead } from "@tendnote/domain/household-calendar";
 import type { HouseholdEventPlan } from "@tendnote/domain/household-event-plans";
 import { describe, expect, it } from "vitest";
+import { householdEventPlanFixture } from "@/test/household-event-plan-fixtures";
 import {
   buildHouseholdEventPlanConflictView,
   buildHouseholdEventPlanLinkChoices,
@@ -17,27 +18,6 @@ const NAMES = new Map([
   ["ana", "Ana"],
   ["ben", "Ben"],
 ]);
-
-function plan(overrides: Partial<HouseholdEventPlan> = {}): HouseholdEventPlan {
-  return {
-    id: "plan-1",
-    householdId: "household-1",
-    createdByUserId: "ana",
-    lastActorUserId: "ana",
-    title: "School night supper",
-    details: null,
-    plannedFor: null,
-    status: "active",
-    archivedAt: null,
-    calendarConnectionId: null,
-    calendarId: null,
-    calendarProviderEventId: null,
-    version: 1,
-    createdAt: new Date("2026-08-01T09:00:00Z"),
-    updatedAt: new Date("2026-08-01T09:00:00Z"),
-    ...overrides,
-  };
-}
 
 /** A Plan as the read layer hands it over, with whatever links survived the proof. */
 function record(
@@ -108,14 +88,19 @@ describe("householdActorName", () => {
 
 describe("resolveHouseholdEventPlanCalendarReference", () => {
   it("says a plan refers to nothing when it never did", () => {
-    expect(resolveHouseholdEventPlanCalendarReference(plan(), readWith([event()]))).toEqual({
+    expect(
+      resolveHouseholdEventPlanCalendarReference(householdEventPlanFixture(), readWith([event()])),
+    ).toEqual({
       state: "none",
     });
   });
 
   it("resolves a live reference and carries its calendar's freshness", () => {
     expect(
-      resolveHouseholdEventPlanCalendarReference(plan(REFERRING), readWith([event()], true)),
+      resolveHouseholdEventPlanCalendarReference(
+        householdEventPlanFixture(REFERRING),
+        readWith([event()], true),
+      ),
     ).toEqual({
       state: "event",
       connectionId: "connection-1",
@@ -133,11 +118,13 @@ describe("resolveHouseholdEventPlanCalendarReference", () => {
    * in every case rather than falling back to cached provider content.
    */
   it("says the calendar is unavailable for every way a reference fails to resolve", () => {
-    expect(resolveHouseholdEventPlanCalendarReference(plan(REFERRING), null)).toEqual({
+    expect(
+      resolveHouseholdEventPlanCalendarReference(householdEventPlanFixture(REFERRING), null),
+    ).toEqual({
       state: "unavailable",
     });
     expect(
-      resolveHouseholdEventPlanCalendarReference(plan(REFERRING), {
+      resolveHouseholdEventPlanCalendarReference(householdEventPlanFixture(REFERRING), {
         families: [
           { connectionId: "connection-1", label: "Family calendar", state: "unavailable" },
         ],
@@ -145,7 +132,7 @@ describe("resolveHouseholdEventPlanCalendarReference", () => {
     ).toEqual({ state: "unavailable" });
     expect(
       resolveHouseholdEventPlanCalendarReference(
-        plan(REFERRING),
+        householdEventPlanFixture(REFERRING),
         readWith([event({ providerEventId: "event-9" })]),
       ),
     ).toEqual({ state: "unavailable" });
@@ -158,7 +145,7 @@ describe("buildHouseholdEventPlanViews", () => {
       memberNames: NAMES,
       plans: [
         record(
-          plan({
+          householdEventPlanFixture({
             lastActorUserId: "ben",
             version: 3,
             updatedAt: new Date("2026-08-09T18:30:00Z"),
@@ -180,7 +167,7 @@ describe("buildHouseholdEventPlanViews", () => {
   it("says only who started a plan nobody has changed", () => {
     const { active } = buildHouseholdEventPlanViews({
       memberNames: NAMES,
-      plans: [record(plan())],
+      plans: [record(householdEventPlanFixture())],
       read: null,
       viewerUserId: "ben",
     });
@@ -195,7 +182,7 @@ describe("buildHouseholdEventPlanViews", () => {
   it("round-trips the household's own date for both reading and editing", () => {
     const { active } = buildHouseholdEventPlanViews({
       memberNames: NAMES,
-      plans: [record(plan({ plannedFor: new Date("2026-08-15T00:00:00Z") }))],
+      plans: [record(householdEventPlanFixture({ plannedFor: new Date("2026-08-15T00:00:00Z") }))],
       read: null,
       viewerUserId: "ana",
     });
@@ -211,7 +198,7 @@ describe("buildHouseholdEventPlanViews", () => {
   it("keeps the stored address beside a reference that cannot resolve", () => {
     const { active } = buildHouseholdEventPlanViews({
       memberNames: NAMES,
-      plans: [record(plan(REFERRING))],
+      plans: [record(householdEventPlanFixture(REFERRING))],
       read: null,
       viewerUserId: "ana",
     });
@@ -229,15 +216,21 @@ describe("buildHouseholdEventPlanViews", () => {
       memberNames: NAMES,
       plans: [
         record(
-          plan({
+          householdEventPlanFixture({
             id: "undated-old",
             title: "Older idea",
             createdAt: new Date("2026-07-01T09:00:00Z"),
           }),
         ),
-        record(plan({ id: "later", title: "Later", plannedFor: new Date("2026-09-01T00:00:00Z") })),
         record(
-          plan({
+          householdEventPlanFixture({
+            id: "later",
+            title: "Later",
+            plannedFor: new Date("2026-09-01T00:00:00Z"),
+          }),
+        ),
+        record(
+          householdEventPlanFixture({
             id: "gone",
             title: "Last year's concert",
             status: "archived",
@@ -245,13 +238,19 @@ describe("buildHouseholdEventPlanViews", () => {
           }),
         ),
         record(
-          plan({
+          householdEventPlanFixture({
             id: "undated-new",
             title: "Newer idea",
             createdAt: new Date("2026-08-08T09:00:00Z"),
           }),
         ),
-        record(plan({ id: "soon", title: "Soon", plannedFor: new Date("2026-08-12T00:00:00Z") })),
+        record(
+          householdEventPlanFixture({
+            id: "soon",
+            title: "Soon",
+            plannedFor: new Date("2026-08-12T00:00:00Z"),
+          }),
+        ),
       ],
       read: null,
       viewerUserId: "ana",
@@ -268,7 +267,7 @@ describe("a plan's links", () => {
     const { active } = buildHouseholdEventPlanViews({
       memberNames: NAMES,
       plans: [
-        record(plan(), [
+        record(householdEventPlanFixture(), [
           {
             id: "link-1",
             linkKind: "general_action",
@@ -312,7 +311,7 @@ describe("a plan's links", () => {
   it("carries an empty list when the proof left nothing behind", () => {
     const { active } = buildHouseholdEventPlanViews({
       memberNames: NAMES,
-      plans: [record(plan())],
+      plans: [record(householdEventPlanFixture())],
       read: null,
       viewerUserId: "ana",
     });
@@ -407,14 +406,14 @@ describe("plannedHouseholdCalendarEventKeys", () => {
    */
   it("counts only the events an active plan still refers to", () => {
     const keys = plannedHouseholdCalendarEventKeys([
-      plan(REFERRING),
-      plan({
+      householdEventPlanFixture(REFERRING),
+      householdEventPlanFixture({
         ...REFERRING,
         id: "plan-2",
         calendarProviderEventId: "event-2",
         status: "archived",
       }),
-      plan({ id: "plan-3" }),
+      householdEventPlanFixture({ id: "plan-3" }),
     ]);
 
     expect(keys.size).toBe(1);
@@ -426,7 +425,7 @@ describe("buildHouseholdEventPlanConflictView", () => {
   it("states the value that won, who wrote it, and the version to write against", () => {
     expect(
       buildHouseholdEventPlanConflictView({
-        current: plan({
+        current: householdEventPlanFixture({
           title: "Supper at Ana's",
           details: "Bring the good plates",
           plannedFor: new Date("2026-08-15T00:00:00Z"),

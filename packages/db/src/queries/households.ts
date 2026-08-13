@@ -15,6 +15,7 @@ import {
   createDrizzleHouseholdIdentityStore,
   createHouseholdOverviewReader,
 } from "./households/overview";
+import { createHouseholdPlanningFrameReader } from "./households/planning-frame";
 import type {
   CanViewHouseholdRecordInput,
   CreateHouseholdInput,
@@ -57,6 +58,10 @@ export {
   createHouseholdOverviewReader,
   type HouseholdIdentityStore,
 } from "./households/overview";
+export {
+  createHouseholdPlanningFrameReader,
+  type HouseholdPlanningFrame,
+} from "./households/planning-frame";
 export {
   eraseHousehold,
   HOUSEHOLD_PURGE_DISPOSAL_ORDER,
@@ -105,6 +110,10 @@ const defaultHouseholdOverviewReader = createHouseholdOverviewReader(
   createDrizzleHouseholdIdentityStore(),
   defaultHouseholdInvitations,
 );
+const defaultHouseholdPlanningFrameReader = createHouseholdPlanningFrameReader(
+  defaultHouseholdStore,
+  createDrizzleHouseholdIdentityStore(),
+);
 
 const defaultHouseholdAuthorizationProver =
   createHouseholdAuthorizationProver(defaultHouseholdStore);
@@ -142,6 +151,11 @@ export function proveVisibleHouseholdRecords(
 /** The caller's own Household Overview, or `null` when they have no active household. */
 export function getHouseholdOverviewForUser(input: { userId: string }) {
   return defaultHouseholdOverviewReader(input);
+}
+
+/** The admitted member frame needed by shared work on the Household home. */
+export function getHouseholdPlanningFrameForUser(input: { userId: string }) {
+  return defaultHouseholdPlanningFrameReader(input);
 }
 
 const defaultHouseholdContextActorReader = createHouseholdContextActorReader(
@@ -341,7 +355,7 @@ export async function getAdmittedHouseholdForUser(input: {
   }
 
   const household = await defaultHouseholdStore.getHouseholdWorkspace({ householdId });
-  if (!household || household.status !== "active") {
+  if (household?.status !== "active") {
     return null;
   }
   return { id: household.id, name: household.name };

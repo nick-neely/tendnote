@@ -2,7 +2,6 @@
 import type { CalendarEventSummary } from "@tendnote/domain";
 import type { HouseholdCalendarRead } from "@tendnote/domain/household-calendar";
 import type { HouseholdEventPlan } from "@tendnote/domain/household-event-plans";
-import type { HouseholdOverview } from "@tendnote/domain/household-overview";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, userEvent, waitFor, within } from "@/test/dom";
 
@@ -11,23 +10,6 @@ const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 // Every panel imports its server actions as defaults and every test injects its
 // own, so the real (server-only) modules must never be pulled in.
-vi.mock("@/app/actions/households", () => ({ createHouseholdAction: vi.fn() }));
-vi.mock("@/app/actions/household-invitations", () => ({
-  sendHouseholdInvitationAction: vi.fn(),
-  resendHouseholdInvitationAction: vi.fn(),
-  cancelHouseholdInvitationAction: vi.fn(),
-}));
-vi.mock("@/app/actions/household-governance", () => ({
-  offerHouseholdOwnerRoleAction: vi.fn(),
-  withdrawHouseholdOwnerOfferAction: vi.fn(),
-  acceptHouseholdOwnerRoleAction: vi.fn(),
-  declineHouseholdOwnerRoleAction: vi.fn(),
-  stepDownFromHouseholdOwnerAction: vi.fn(),
-  removeHouseholdMemberAction: vi.fn(),
-  leaveHouseholdAction: vi.fn(),
-  confirmHouseholdDissolutionAction: vi.fn(),
-  cancelHouseholdDissolutionAction: vi.fn(),
-}));
 vi.mock("@/app/actions/household-calendar", () => ({
   connectHouseholdCalendarAction: vi.fn(),
   disconnectHouseholdCalendarAction: vi.fn(),
@@ -41,15 +23,14 @@ vi.mock("@/app/actions/household-event-plans", () => ({
   unlinkHouseholdEventPlanRecordAction: vi.fn(),
 }));
 
+import type { HouseholdCalendarActions } from "@/components/household/household-calendars-panel";
+import type { HouseholdEventPlanActions } from "@/components/household/household-event-plans-panel";
+import { HouseholdPlanningSections } from "@/components/household/household-planning-sections";
 import type {
   HouseholdEventPlanLinkCandidate,
   HouseholdEventPlanRecord,
 } from "@/lib/household/household-event-plan-view";
-import type { HouseholdCalendarActions } from "./household-calendars-panel";
-import type { HouseholdEventPlanActions } from "./household-event-plans-panel";
-import { HouseholdSharedSections } from "./household-shared-sections";
-import { HouseholdSurface } from "./household-surface";
-import { governanceDefaults, member } from "./household-test-overview";
+import { householdEventPlanFixture } from "@/test/household-event-plan-fixtures";
 
 const NOW = new Date("2026-08-09T09:00:00Z");
 
@@ -71,27 +52,6 @@ function event(overrides: Partial<CalendarEventSummary> = {}): CalendarEventSumm
     location: null,
     description: null,
     updatedAt: null,
-    ...overrides,
-  };
-}
-
-function plan(overrides: Partial<HouseholdEventPlan> = {}): HouseholdEventPlan {
-  return {
-    id: "plan-1",
-    householdId: "household-1",
-    createdByUserId: "ana",
-    lastActorUserId: "ana",
-    title: "School night supper",
-    details: null,
-    plannedFor: null,
-    status: "active",
-    archivedAt: null,
-    calendarConnectionId: null,
-    calendarId: null,
-    calendarProviderEventId: null,
-    version: 1,
-    createdAt: new Date("2026-08-01T09:00:00Z"),
-    updatedAt: new Date("2026-08-01T09:00:00Z"),
     ...overrides,
   };
 }
@@ -147,7 +107,7 @@ function renderShared(
   } = {},
 ) {
   return render(
-    <HouseholdSharedSections
+    <HouseholdPlanningSections
       calendarActions={overrides.calendarActions}
       calendars={
         overrides.calendars === undefined
@@ -158,28 +118,14 @@ function renderShared(
       members={MEMBERS}
       now={NOW}
       planActions={overrides.planActions}
-      plans={overrides.plans === undefined ? [record(plan())] : overrides.plans}
+      plans={
+        overrides.plans === undefined ? [record(householdEventPlanFixture())] : overrides.plans
+      }
       viewerHasCalendarAccess={overrides.viewerHasCalendarAccess ?? true}
       viewerRole={overrides.viewerRole ?? "owner"}
       viewerUserId={overrides.viewerUserId ?? "ana"}
     />,
   );
-}
-
-function overview(viewerRole: "owner" | "member"): HouseholdOverview {
-  return {
-    householdId: "household-1",
-    name: "The Neely house",
-    viewerRole,
-    isSoleMember: false,
-    invitations: [],
-    seats: { limit: 8, occupied: 2, remaining: 6, isFull: false },
-    members: [
-      member({ userId: "ana", name: "Ana", email: "ana@example.com", role: "owner" }),
-      member({ userId: "ben", name: "Ben", email: "ben@example.com", isViewer: false }),
-    ],
-    ...governanceDefaults({ viewerRole }),
-  };
 }
 
 beforeEach(() => {
@@ -193,12 +139,7 @@ beforeEach(() => {
  */
 describe("the multi-member matrix", () => {
   it("gives an owner the household's shared content and the controls over it", () => {
-    render(
-      <HouseholdSurface
-        initialOverview={overview("owner")}
-        sharedSections={renderSharedSections("owner")}
-      />,
-    );
+    renderShared({ viewerRole: "owner" });
 
     expect(screen.getByRole("heading", { name: /Shared calendars/ })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /Event plans/ })).toBeTruthy();
@@ -214,12 +155,7 @@ describe("the multi-member matrix", () => {
    * the whole household can read.
    */
   it("gives a member the same reading and the same plan authority, minus the governance", () => {
-    render(
-      <HouseholdSurface
-        initialOverview={overview("member")}
-        sharedSections={renderSharedSections("member")}
-      />,
-    );
+    renderShared({ viewerRole: "member" });
 
     expect(screen.getByText("School concert")).toBeTruthy();
     expect(screen.getByText("School night supper")).toBeTruthy();
@@ -229,30 +165,7 @@ describe("the multi-member matrix", () => {
     expect(screen.queryByRole("button", { name: "Share a calendar" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Stop sharing" })).toBeNull();
   });
-
-  /** No active household, no shared workspace to read. */
-  it("shows someone with no active household none of it", () => {
-    render(<HouseholdSurface initialOverview={null} />);
-
-    expect(screen.queryByRole("heading", { name: /Shared calendars/ })).toBeNull();
-    expect(screen.queryByRole("heading", { name: /Event plans/ })).toBeNull();
-  });
 });
-
-function renderSharedSections(viewerRole: "owner" | "member") {
-  return (
-    <HouseholdSharedSections
-      calendars={{ connections: [CONNECTION], read: read() }}
-      linkCandidates={CANDIDATES}
-      members={MEMBERS}
-      now={NOW}
-      plans={[record(plan())]}
-      viewerHasCalendarAccess
-      viewerRole={viewerRole}
-      viewerUserId="ana"
-    />
-  );
-}
 
 describe("shared calendars", () => {
   /** Provider-derived context carries no affordance that could change it. */
@@ -430,7 +343,7 @@ describe("event plans", () => {
     renderShared({
       plans: [
         record(
-          plan({
+          householdEventPlanFixture({
             lastActorUserId: "ben",
             version: 2,
             updatedAt: new Date("2026-08-09T18:30:00Z"),
@@ -457,7 +370,7 @@ describe("event plans", () => {
         outcome: "saved",
         plans: [
           record(
-            plan({
+            householdEventPlanFixture({
               title: "Bring a dish",
               calendarConnectionId: "connection-1",
               calendarId: "primary",
@@ -502,14 +415,14 @@ describe("event plans", () => {
     renderShared({
       plans: [
         record(
-          plan({
+          householdEventPlanFixture({
             calendarConnectionId: "connection-1",
             calendarId: "primary",
             calendarProviderEventId: "event-1",
           }),
         ),
         record(
-          plan({
+          householdEventPlanFixture({
             id: "plan-2",
             title: "Cousins visiting",
             calendarConnectionId: "connection-9",
@@ -531,9 +444,10 @@ describe("event plans", () => {
   });
 
   it("keeps the household's own date apart from the provider's", async () => {
-    const create = vi
-      .fn()
-      .mockResolvedValue({ ok: true, view: { outcome: "saved", plans: [record(plan())] } });
+    const create = vi.fn().mockResolvedValue({
+      ok: true,
+      view: { outcome: "saved", plans: [record(householdEventPlanFixture())] },
+    });
     renderShared({ planActions: { create }, plans: [] });
 
     await userEvent.click(screen.getByRole("button", { name: "New plan" }));
@@ -559,11 +473,14 @@ describe("event plans", () => {
   it("puts a plan away and brings it back, with no way to delete one", async () => {
     const archive = vi.fn().mockResolvedValue({
       ok: true,
-      view: { outcome: "saved", plans: [record(plan({ status: "archived", version: 2 }))] },
+      view: {
+        outcome: "saved",
+        plans: [record(householdEventPlanFixture({ status: "archived", version: 2 }))],
+      },
     });
     const restore = vi.fn().mockResolvedValue({
       ok: true,
-      view: { outcome: "saved", plans: [record(plan({ version: 3 }))] },
+      view: { outcome: "saved", plans: [record(householdEventPlanFixture({ version: 3 }))] },
     });
     renderShared({ planActions: { archive, restore } });
 
@@ -616,7 +533,7 @@ describe("linking existing records to a plan", () => {
 
   /** A link reads as the record it points at, with its family said quietly beside it. */
   it("shows a linked record by name, and never by id", () => {
-    renderShared({ plans: [record(plan(), [LINKED])] });
+    renderShared({ plans: [record(householdEventPlanFixture(), [LINKED])] });
 
     const card = planCard();
     expect(within(card).getByText("Bring the folding chairs")).toBeTruthy();
@@ -627,7 +544,7 @@ describe("linking existing records to a plan", () => {
   it("opens the picker in place, puts the reader in it, and links what they press", async () => {
     const link = vi.fn().mockResolvedValue({
       ok: true,
-      view: { outcome: "saved", plans: [record(plan(), [LINKED])] },
+      view: { outcome: "saved", plans: [record(householdEventPlanFixture(), [LINKED])] },
     });
     renderShared({ planActions: { link } });
 
@@ -657,7 +574,7 @@ describe("linking existing records to a plan", () => {
 
   /** Offering a record the Plan already holds would be offering a press that does nothing. */
   it("leaves out what the plan already links, and the family it empties", async () => {
-    renderShared({ plans: [record(plan(), [LINKED])] });
+    renderShared({ plans: [record(householdEventPlanFixture(), [LINKED])] });
 
     await userEvent.click(screen.getByRole("button", { name: "Link a record" }));
 
@@ -668,10 +585,14 @@ describe("linking existing records to a plan", () => {
   });
 
   it("removes a link without touching the record it pointed at", async () => {
-    const unlink = vi
-      .fn()
-      .mockResolvedValue({ ok: true, view: { outcome: "saved", plans: [record(plan())] } });
-    renderShared({ planActions: { unlink }, plans: [record(plan(), [LINKED])] });
+    const unlink = vi.fn().mockResolvedValue({
+      ok: true,
+      view: { outcome: "saved", plans: [record(householdEventPlanFixture())] },
+    });
+    renderShared({
+      planActions: { unlink },
+      plans: [record(householdEventPlanFixture(), [LINKED])],
+    });
 
     await userEvent.click(screen.getByRole("button", { name: "Remove Bring the folding chairs" }));
 
@@ -692,7 +613,7 @@ describe("linking existing records to a plan", () => {
       recordId: `action-${index}`,
       title: `Job ${index}`,
     }));
-    renderShared({ plans: [record(plan(), links)] });
+    renderShared({ plans: [record(householdEventPlanFixture(), links)] });
 
     expect(screen.queryByRole("button", { name: "Link a record" })).toBeNull();
     expect(screen.getByText(/holding all the records it can/i).textContent).toMatch(
@@ -728,7 +649,7 @@ describe("linking existing records to a plan", () => {
 
   /** Archived is read-only, so its links stay legible and its controls go away. */
   it("keeps an archived plan's links readable and offers nothing to change them", () => {
-    renderShared({ plans: [record(plan({ status: "archived" }), [LINKED])] });
+    renderShared({ plans: [record(householdEventPlanFixture({ status: "archived" }), [LINKED])] });
 
     const card = screen.getByText("School night supper").closest("li") as HTMLElement;
     expect(within(card).getByText("Bring the folding chairs")).toBeTruthy();
@@ -746,7 +667,7 @@ describe("two people writing at once", () => {
   const CONFLICT_MESSAGE =
     "Someone else changed this plan while you were writing. Your draft is kept below.";
 
-  const beatenBy = plan({
+  const beatenBy = householdEventPlanFixture({
     title: "Supper at Ana's",
     details: "Bring the good plates",
     lastActorUserId: "ben",
@@ -808,7 +729,10 @@ describe("two people writing at once", () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        view: { outcome: "saved", plans: [record(plan({ title: "Supper here", version: 5 }))] },
+        view: {
+          outcome: "saved",
+          plans: [record(householdEventPlanFixture({ title: "Supper here", version: 5 }))],
+        },
       });
     await openEditAndSave(update);
 
@@ -899,5 +823,39 @@ describe("two people writing at once", () => {
     expect(screen.queryByRole("heading", { name: "Archived" })).toBeNull();
     expect(screen.getByRole("button", { name: "Archive it anyway" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Leave it as it is" })).toBeTruthy();
+  });
+
+  /** A lost restore fence keeps the operation the member actually chose. */
+  it("retries a conflicted restore as a restore even when the current plan is active", async () => {
+    const current = householdEventPlanFixture({
+      lastActorUserId: "ben",
+      status: "active",
+      version: 4,
+      updatedAt: new Date("2026-08-09T18:30:00Z"),
+    });
+    const restore = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        view: { outcome: "conflict", message: CONFLICT_MESSAGE, current },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        view: { outcome: "saved", plans: [record(current)] },
+      });
+    const archive = vi.fn();
+    renderShared({
+      planActions: { archive, restore },
+      plans: [record(householdEventPlanFixture({ status: "archived" }))],
+      viewerUserId: "ana",
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(await screen.findAllByText(/your restore didn.t go through/i)).toHaveLength(2);
+    await userEvent.click(await screen.findByRole("button", { name: "Restore it anyway" }));
+
+    await waitFor(() => expect(restore).toHaveBeenCalledTimes(2));
+    expect(restore).toHaveBeenLastCalledWith({ planId: "plan-1", expectedVersion: 4 });
+    expect(archive).not.toHaveBeenCalled();
   });
 });
