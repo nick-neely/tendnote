@@ -7,6 +7,9 @@ export function pastReminderLeadTimeMessage(nextChoiceLabel: string) {
   return `That alert time has passed. No catch-up alert was sent. Save again to use ${nextChoiceLabel}.`;
 }
 
+export const pastExactReminderTimeMessage =
+  "That alert time has passed. Choose a future due date or alert time.";
+
 export function ReminderPastLeadRecovery({
   label,
   onRecover,

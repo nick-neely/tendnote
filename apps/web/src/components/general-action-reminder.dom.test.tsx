@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, userEvent } from "@/test/dom";
+import { fireEvent, render, screen, userEvent } from "@/test/dom";
 
 vi.mock("@/app/actions/reminders", () => ({
   registerReminderInstallationAction: vi.fn(),
@@ -80,6 +80,42 @@ describe("GeneralActionReminderField", () => {
     // Not "09": the option's payload is an hh:mm time, and the schedule schema
     // requires both halves.
     expect(onChoiceChange).toHaveBeenCalledWith({ kind: "exact", localTime: "09:00" });
+  });
+
+  it("lets a one-time Action choose any exact local alert time", () => {
+    const onChoiceChange = vi.fn();
+    render(
+      <GeneralActionReminderField
+        allowCustomExactTime
+        choice={{ kind: "exact", localTime: "09:00" }}
+        enabled
+        onChoiceChange={onChoiceChange}
+        onEnabledChange={vi.fn()}
+      />,
+    );
+
+    const time = screen.getByLabelText("Exact reminder time");
+    fireEvent.change(time, { target: { value: "15:30" } });
+
+    expect(onChoiceChange).toHaveBeenLastCalledWith({ kind: "exact", localTime: "15:30" });
+  });
+
+  it("does not emit an empty or invalid exact local time", () => {
+    const onChoiceChange = vi.fn();
+    render(
+      <GeneralActionReminderField
+        allowCustomExactTime
+        choice={{ kind: "exact", localTime: "15:30" }}
+        enabled
+        onChoiceChange={onChoiceChange}
+        onEnabledChange={vi.fn()}
+      />,
+    );
+
+    const time = screen.getByLabelText("Exact reminder time");
+    fireEvent.change(time, { target: { value: "" } });
+
+    expect(onChoiceChange).not.toHaveBeenCalled();
   });
 
   it("drops the fixed-time option when only occurrence-relative rules apply", async () => {

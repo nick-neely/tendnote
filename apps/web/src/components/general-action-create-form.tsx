@@ -163,6 +163,9 @@ export function CreateActionForm({
                 recordKind: recurrence ? "routine" : "general_action",
                 label: result.nextValidChoice.label,
               });
+            } else if (!result.occurrenceIntentCreated) {
+              reminderError =
+                "The action was saved, but that alert time has passed. Edit it to choose a future date or alert time.";
             } else {
               onCreate({
                 ...view,
@@ -374,6 +377,7 @@ function CreateActionDetails({
         <RecurrenceField onChange={onRecurrenceChange} value={recurrence} />
         {dueDate ? (
           <GeneralActionReminderField
+            allowCustomExactTime={!recurrence}
             choice={reminderChoice}
             enabled={reminderEnabled}
             onChoiceChange={onReminderChoiceChange}

@@ -22,6 +22,7 @@ import {
 } from "@/components/general-action-shared";
 import type { ShareableActionMember } from "@/components/general-action-visibility-field";
 import { CheckIcon, HomeIcon } from "@/components/icons";
+import { pastExactReminderTimeMessage } from "@/components/reminder-past-lead-recovery";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -154,6 +155,7 @@ function holderOptions(action: GeneralActionView, members: ShareableActionMember
  * asserting whose turn it is, which is a claim about the past it cannot observe
  * (ADR 0215).
  */
+// fallow-ignore-next-line complexity -- The form keeps authority, holder choice, and one reversible submit boundary together so partial household ownership state cannot escape.
 export function ResponsibilityHolderForm({
   action,
   members,
@@ -523,6 +525,7 @@ export function HolderReminderOffer({
 
   function accept() {
     setError(null);
+    // fallow-ignore-next-line complexity -- The reminder offer handles the two explicit recovery outcomes beside its single save boundary.
     startTransition(async () => {
       try {
         const result = await reminderWriter.save(
@@ -533,6 +536,10 @@ export function HolderReminderOffer({
         if (result.nextValidChoice) {
           setChoice({ kind: "relative", leadMinutes: 0 });
           setError(`That time has passed. ${result.nextValidChoice.label} is the next one.`);
+          return;
+        }
+        if (!result.occurrenceIntentCreated) {
+          setError(pastExactReminderTimeMessage);
           return;
         }
         onUpdate({ ...action, reminderSchedule: toReminderScheduleView(result.schedule) });
@@ -565,6 +572,7 @@ export function HolderReminderOffer({
         You're looking after this. Want a reminder on your own devices?
       </p>
       <ReminderAlertTimeField
+        allowCustomExactTime={!action.isRoutine}
         choice={choice}
         onChoiceChange={setChoice}
         relativeOnly={action.isRoutine}

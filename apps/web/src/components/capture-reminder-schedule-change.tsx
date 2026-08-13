@@ -14,20 +14,44 @@ import {
   reminderInstallationIdentity,
   useReminderInstallation,
 } from "@/components/reminder-installation-context";
+import {
+  pastExactReminderTimeMessage,
+  pastReminderLeadTimeMessage,
+} from "@/components/reminder-past-lead-recovery";
 import { Button } from "@/components/ui/button";
 import { type OwnerActionResult, unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
-type ChangeReminder = (input: {
+export type CaptureReminderChangeResult = {
+  reminderSchedule: string;
+  reminderScheduleChoice: GeneralActionReminderChoice;
+  reminderOptInOffered?: boolean;
+  occurrenceIntentCreated: boolean;
+  nextValidChoice: { label: string } | null;
+};
+
+export type CaptureReminderChange = (input: {
   target: ConversationalCaptureChangeTarget;
   clientInstallationId: string;
   timeZone: string;
   schedule: GeneralActionReminderChoice;
-}) => Promise<OwnerActionResult<{ reminderSchedule: string; reminderOptInOffered?: boolean }>>;
+}) => Promise<OwnerActionResult<CaptureReminderChangeResult>>;
+
+function initialReminderChoice(
+  outcome: ConversationalCaptureOutcomeConfirmation,
+): GeneralActionReminderChoice {
+  if (outcome.destination === "Routines" || outcome.destination === "Saved Items") {
+    return { kind: "relative", leadMinutes: 0 };
+  }
+  return outcome.destination === "Actions" && outcome.interpreted.reminderScheduleChoice
+    ? outcome.interpreted.reminderScheduleChoice
+    : { kind: "exact", localTime: "09:00" };
+}
 
 function replaceOutcomeReminderSchedule(
   confirmation: ConversationalCaptureConfirmation,
   index: number,
   reminderSchedule: string,
+  reminderScheduleChoice: GeneralActionReminderChoice,
 ): ConversationalCaptureConfirmation {
   const updateOutcome = (
     outcome: ConversationalCaptureOutcomeConfirmation,
@@ -37,7 +61,7 @@ function replaceOutcomeReminderSchedule(
     }
     return {
       ...outcome,
-      interpreted: { ...outcome.interpreted, reminderSchedule },
+      interpreted: { ...outcome.interpreted, reminderSchedule, reminderScheduleChoice },
     } as ConversationalCaptureOutcomeConfirmation;
   };
   return confirmation.destination === "Grouped"
@@ -57,7 +81,7 @@ export function CaptureReminderScheduleChange({
   onConfirmationChange,
   outcome,
 }: {
-  changeReminder?: ChangeReminder;
+  changeReminder?: CaptureReminderChange;
   confirmation: ConversationalCaptureConfirmation;
   index: number;
   onConfirmationChange: (confirmation: ConversationalCaptureConfirmation) => void;
@@ -67,10 +91,8 @@ export function CaptureReminderScheduleChange({
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [choice, setChoice] = useState<GeneralActionReminderChoice>(
-    outcome.destination === "Routines" || outcome.destination === "Saved Items"
-      ? { kind: "relative", leadMinutes: 0 }
-      : { kind: "exact", localTime: "09:00" },
+  const [choice, setChoice] = useState<GeneralActionReminderChoice>(() =>
+    initialReminderChoice(outcome),
   );
   if (!open) {
     return (
@@ -89,6 +111,7 @@ export function CaptureReminderScheduleChange({
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-background p-3">
       <GeneralActionReminderField
+        allowCustomExactTime={outcome.destination === "Actions"}
         choice={choice}
         enabled
         instantRelative={outcome.destination === "Saved Items"}
@@ -117,8 +140,22 @@ export function CaptureReminderScheduleChange({
                 }),
               );
               if (result.reminderOptInOffered) installation.offerReminderOptIn();
+              if (result.nextValidChoice) {
+                setChoice({ kind: "relative", leadMinutes: 0 });
+                setError(pastReminderLeadTimeMessage(result.nextValidChoice.label));
+                return;
+              }
+              if (result.occurrenceIntentCreated === false) {
+                setError(pastExactReminderTimeMessage);
+                return;
+              }
               onConfirmationChange(
-                replaceOutcomeReminderSchedule(confirmation, index, result.reminderSchedule),
+                replaceOutcomeReminderSchedule(
+                  confirmation,
+                  index,
+                  result.reminderSchedule,
+                  result.reminderScheduleChoice,
+                ),
               );
               setOpen(false);
             } catch {

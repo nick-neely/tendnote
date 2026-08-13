@@ -69,7 +69,10 @@ import {
   XIcon,
 } from "@/components/icons";
 import { RecordTimingChip } from "@/components/record-timing-chip";
-import { pastReminderLeadTimeMessage } from "@/components/reminder-past-lead-recovery";
+import {
+  pastExactReminderTimeMessage,
+  pastReminderLeadTimeMessage,
+} from "@/components/reminder-past-lead-recovery";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -345,6 +348,12 @@ function ActionEditForm({
                   error: pastReminderLeadTimeMessage(scheduleResult.nextValidChoice.label),
                 };
               }
+              if (!scheduleResult.occurrenceIntentCreated) {
+                return {
+                  ok: false,
+                  error: pastExactReminderTimeMessage,
+                };
+              }
               const view = result?.ok ? result.view : action;
               result = {
                 ok: true,
@@ -401,6 +410,7 @@ function ActionEditForm({
       />
       {dueDate ? (
         <GeneralActionReminderField
+          allowCustomExactTime={!recurrence}
           choice={reminderChoice}
           enabled={reminderEnabled}
           onChoiceChange={setReminderChoice}

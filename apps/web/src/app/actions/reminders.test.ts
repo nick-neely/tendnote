@@ -64,6 +64,7 @@ beforeEach(() => {
   saveReminder.mockResolvedValue({
     result: {
       optIn: { state: "none", clientInstallationId: "browser-installation-1" },
+      occurrenceIntent: null,
       nextValidChoice: null,
       schedule: {
         kind: "relative",
@@ -110,7 +111,7 @@ describe("generic Reminder server adapters", () => {
     "routine",
     "saved_item",
   ] as const)("derives the authenticated owner and saves a %s schedule", async (recordKind) => {
-    await saveReminderAction({
+    const result = await saveReminderAction({
       recordKind,
       recordId: RECORD_ID,
       clientInstallationId: "browser-installation-1",
@@ -121,6 +122,7 @@ describe("generic Reminder server adapters", () => {
     expect(saveReminder).toHaveBeenCalledWith(
       expect.objectContaining({ ownerUserId: "owner-1", recordKind, recordId: RECORD_ID }),
     );
+    expect(result).toMatchObject({ ok: true, view: { occurrenceIntentCreated: false } });
     if (recordKind === "general_action" || recordKind === "routine") {
       expect(revalidatePathSpy).toHaveBeenCalledWith("/account");
     }

@@ -265,6 +265,8 @@ describe("conversational Capture web adapters", () => {
     saveReminder.mockResolvedValueOnce({
       result: {
         optIn: { state: "offer", clientInstallationId: "browser-installation-1" },
+        occurrenceIntent: { id: "intent-1" },
+        nextValidChoice: null,
         schedule: {
           kind: "relative",
           localTime: null,
@@ -293,6 +295,8 @@ describe("conversational Capture web adapters", () => {
       }),
     );
     expect(result.reminderSchedule).toContain("one day before");
+    expect(result.reminderScheduleChoice).toEqual({ kind: "relative", leadMinutes: 1_440 });
+    expect(result.occurrenceIntentCreated).toBe(true);
     expect(result.reminderOptInOffered).toBe(true);
   });
 

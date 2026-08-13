@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, userEvent, waitFor, within } from "@/test/dom";
+import { fireEvent, render, screen, userEvent, waitFor, within } from "@/test/dom";
 
 const navigationState = vi.hoisted(() => ({
   pathname: "/",
@@ -627,6 +627,9 @@ describe("AppShell Phase Seven mobile navigation", () => {
     const changeReminder = vi.fn().mockResolvedValue(
       success({
         reminderSchedule: "Reminder one day before at 9:00 AM · America/Chicago",
+        reminderScheduleChoice: { kind: "exact", localTime: "15:45" },
+        occurrenceIntentCreated: true,
+        nextValidChoice: null,
       }),
     );
     const confirmation = {
@@ -638,6 +641,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
         cadence: null,
         scope: "Only me",
         reminderSchedule: "Reminder at 09:00 · America/Chicago",
+        reminderScheduleChoice: { kind: "exact" as const, localTime: "13:20" },
       },
       change: { kind: "edit_general_action" as const, generalActionId: "action-1" },
       undo: { kind: "archive_general_action" as const, generalActionId: "action-1" },
@@ -663,15 +667,16 @@ describe("AppShell Phase Seven mobile navigation", () => {
     );
     await user.click(screen.getByRole("button", { name: "Save capture" }));
     await user.click(await screen.findByRole("button", { name: "Change reminder schedule" }));
-    await user.click(screen.getByRole("combobox", { name: "Reminder alert time" }));
-    await user.click(await screen.findByRole("option", { name: "One day before at 9:00 AM" }));
+    const exactTime = screen.getByLabelText("Exact reminder time") as HTMLInputElement;
+    expect(exactTime.value).toBe("13:20");
+    fireEvent.change(exactTime, { target: { value: "15:45" } });
     await user.click(screen.getByRole("button", { name: "Save schedule" }));
 
     await waitFor(() =>
       expect(changeReminder).toHaveBeenCalledWith(
         expect.objectContaining({
           target: confirmation.change,
-          schedule: { kind: "relative", leadMinutes: 1_440 },
+          schedule: { kind: "exact", localTime: "15:45" },
         }),
       ),
     );

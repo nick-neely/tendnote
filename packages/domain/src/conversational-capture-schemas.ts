@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { selfContextFactCategorySchema } from "./context-facts";
 import { sensitivitySchema } from "./privacy";
+import { reminderScheduleChoiceSchema } from "./reminders";
 export const conversationalCaptureInputModeSchema = z.enum(["typed", "dictated"]);
 export const conversationalCaptureSurfaceSchema = z.enum(["global_capture", "eve"]);
 export const conversationalCaptureVisibilitySchema = z.discriminatedUnion("scope", [
@@ -175,6 +176,7 @@ export const conversationalSavedItemCaptureConfirmationSchema = z
       kind: z.enum(["Note", "Link", "Open question"]),
       visibility: z.string().min(1),
       reminderSchedule: z.string().min(1).nullable().optional(),
+      reminderScheduleChoice: reminderScheduleChoiceSchema.optional(),
     }),
     change: z.object({
       kind: z.literal("edit_saved_item"),
@@ -197,6 +199,7 @@ export const conversationalActionCaptureConfirmationSchema = z
       cadence: z.string().nullable(),
       scope: z.string().min(1),
       reminderSchedule: z.string().min(1).nullable().optional(),
+      reminderScheduleChoice: reminderScheduleChoiceSchema.optional(),
     }),
     change: z.object({
       kind: z.literal("edit_general_action"),
@@ -218,6 +221,7 @@ export const conversationalFollowupCaptureConfirmationSchema = z
       dueAt: z.iso.datetime(),
       scope: z.string().min(1),
       reminderSchedule: z.string().min(1).nullable().optional(),
+      reminderScheduleChoice: reminderScheduleChoiceSchema.optional(),
     }),
     change: z.object({
       kind: z.literal("edit_followup"),

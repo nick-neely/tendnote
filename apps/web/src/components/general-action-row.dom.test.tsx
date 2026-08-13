@@ -4,7 +4,7 @@ import { generalActionViewFixture } from "@/components/general-action-fixtures";
 import { toDateValue } from "@/components/ui/date-picker";
 import type { GeneralActionView } from "@/lib/general-action-view";
 import { ReversibleMutationProvider } from "@/lib/reversible-mutation";
-import { render, screen, userEvent, waitFor } from "@/test/dom";
+import { fireEvent, render, screen, userEvent, waitFor } from "@/test/dom";
 
 vi.stubGlobal(
   "ResizeObserver",
@@ -22,6 +22,7 @@ vi.stubGlobal(
  * hint that became a real Asset renders as a deep link into its profile.
  */
 
+// fallow-ignore-next-line code-duplication -- Row and household suites deliberately declare their full server-action boundaries independently.
 vi.mock("@/app/actions/general-actions", () => ({
   archiveGeneralActionAction: vi.fn(),
   completeGeneralActionAction: vi.fn(),
@@ -61,6 +62,7 @@ import {
   undeferGeneralActionAction,
   undoRoutineOccurrenceAction,
 } from "@/app/actions/general-actions";
+import { saveReminderAction } from "@/app/actions/reminders";
 import { ActionRow } from "./general-action-row";
 
 const HINT = "refrigerator water filter";
@@ -197,6 +199,61 @@ describe("asset hints on an Action row (#199)", () => {
     expect(chip.getAttribute("href")).toBe("/assets/22222222-2222-2222-2222-222222222222");
     // The hint's plain read-only chip is replaced by the linked one — no duplicate label.
     expect(screen.queryByRole("button", { name: `Track "${HINT}" as an asset` })).toBeNull();
+  });
+});
+
+describe("Action reminder editing", () => {
+  it("restores and saves an existing exact local alert time", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveReminderAction).mockResolvedValue({
+      ok: true,
+      view: {
+        optIn: { state: "none", clientInstallationId: "browser-installation-1" },
+        occurrenceIntentCreated: true,
+        nextValidChoice: null,
+        schedule: {
+          kind: "exact",
+          localTime: "16:45",
+          leadMinutes: null,
+          timeZone: "America/Chicago",
+          intendedAtISO: "2026-08-14T21:45:00.000Z",
+        },
+      },
+    });
+    renderRow(
+      actionWithHint({
+        dueAtDate: "2026-08-14",
+        dueAtISO: "2026-08-14T00:00:00.000Z",
+        reminderSchedule: {
+          kind: "exact",
+          localTime: "15:30",
+          leadMinutes: null,
+          timeZone: "America/Chicago",
+          label: "Reminder at 15:30 · America/Chicago",
+        },
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Edit details" }));
+    const time = await screen.findByLabelText("Exact reminder time");
+    expect((time as HTMLInputElement).value).toBe("15:30");
+    fireEvent.change(time, { target: { value: "16:45" } });
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Reminder alert time" }).textContent).toContain(
+        "4:45 PM",
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(saveReminderAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recordKind: "general_action",
+          schedule: { kind: "exact", localTime: "16:45" },
+        }),
+      ),
+    );
   });
 });
 

@@ -8,8 +8,10 @@ import type {
   ConversationalCaptureUndoTarget,
 } from "@tendnote/domain/conversational-capture";
 import { type RefObject, useEffect, useRef, useState } from "react";
-import { CaptureReminderScheduleChange } from "@/components/capture-reminder-schedule-change";
-import type { GeneralActionReminderChoice } from "@/components/general-action-reminder";
+import {
+  type CaptureReminderChange,
+  CaptureReminderScheduleChange,
+} from "@/components/capture-reminder-schedule-change";
 import { MobileFailureState } from "@/components/mobile-failure-state";
 import {
   reminderInstallationIdentity,
@@ -56,12 +58,7 @@ export type CaptureHandlers = {
     target: ConversationalCaptureChangeTarget;
     originalText: string;
   }) => Promise<OwnerActionResult<CaptureChangeResult>>;
-  changeReminder?: (input: {
-    target: ConversationalCaptureChangeTarget;
-    clientInstallationId: string;
-    timeZone: string;
-    schedule: GeneralActionReminderChoice;
-  }) => Promise<OwnerActionResult<{ reminderSchedule: string; reminderOptInOffered?: boolean }>>;
+  changeReminder?: CaptureReminderChange;
   submit: (input: CaptureSubmitInput) => Promise<OwnerActionResult<CaptureSubmitResult>>;
   undo: (input: { target: ConversationalCaptureUndoTarget }) => Promise<OwnerActionResult<unknown>>;
 };

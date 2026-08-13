@@ -17,6 +17,7 @@ import {
   conversationalCaptureUndoTargetSchema,
 } from "@tendnote/domain/conversational-capture";
 import {
+  reminderScheduleChoiceFromStored,
   reminderScheduleChoiceSchema,
   reminderTimeSemanticsForRecordKind,
 } from "@tendnote/domain/reminders";
@@ -110,7 +111,10 @@ export async function changeExplicitCaptureReminderAction(
     affectedScopes: ({ outcome }) => outcome.affectedScopes,
     result: ({ outcome, target }) => ({
       reminderSchedule: toReminderScheduleView(outcome.result.schedule, target.timeSemantics).label,
+      reminderScheduleChoice: reminderScheduleChoiceFromStored(outcome.result.schedule),
       reminderOptInOffered: outcome.result.optIn.state === "offer",
+      occurrenceIntentCreated: outcome.result.occurrenceIntent !== null,
+      nextValidChoice: outcome.result.nextValidChoice,
     }),
   });
 }

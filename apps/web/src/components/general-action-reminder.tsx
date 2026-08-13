@@ -3,6 +3,7 @@
 import type { ReminderScheduleChoice } from "@tendnote/domain/reminders";
 import { BellIcon } from "@/components/icons";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -14,9 +15,11 @@ import {
 export type GeneralActionReminderChoice = ReminderScheduleChoice;
 
 function ReminderAlertOptions({
+  exactLocalTime,
   instantRelative,
   relativeOnly,
 }: {
+  exactLocalTime: string;
   instantRelative: boolean;
   relativeOnly: boolean;
 }) {
@@ -32,7 +35,9 @@ function ReminderAlertOptions({
   return (
     <>
       {relativeOnly ? null : (
-        <SelectItem value="exact:09:00">At 9:00 AM on the due date</SelectItem>
+        <SelectItem value="exact">
+          At {formatExactLocalTime(exactLocalTime)} on the due date
+        </SelectItem>
       )}
       <SelectItem value="relative:0">{occurrenceLabel}</SelectItem>
       {instantRelative ? (
@@ -42,6 +47,12 @@ function ReminderAlertOptions({
       <SelectItem value="relative:10080">{weekLabel}</SelectItem>
     </>
   );
+}
+
+function formatExactLocalTime(localTime: string) {
+  const [hour, minute] = localTime.split(":").map(Number) as [number, number];
+  const period = hour >= 12 ? "PM" : "AM";
+  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${period}`;
 }
 
 /**
@@ -54,18 +65,19 @@ function ReminderAlertOptions({
  * this so the alert-time vocabulary and its one-alert promise never drift.
  */
 export function ReminderAlertTimeField({
+  allowCustomExactTime = false,
   choice,
   relativeOnly = false,
   instantRelative = false,
   onChoiceChange,
 }: {
+  allowCustomExactTime?: boolean;
   choice: GeneralActionReminderChoice;
   relativeOnly?: boolean;
   instantRelative?: boolean;
   onChoiceChange: (choice: GeneralActionReminderChoice) => void;
 }) {
-  const value =
-    choice.kind === "exact" ? `exact:${choice.localTime}` : `relative:${choice.leadMinutes}`;
+  const value = choice.kind === "exact" ? "exact" : `relative:${choice.leadMinutes}`;
   return (
     // The caption is a plain span, not a label: the trigger is a button carrying its
     // own accessible name, so a wrapping label would only add a second click target.
@@ -73,15 +85,17 @@ export function ReminderAlertTimeField({
       Alert time
       <Select
         onValueChange={(next) => {
-          // Split on the first colon only: an exact rule's payload is itself an
-          // "hh:mm" time, and splitting on every colon truncated it to the hour,
-          // which the schedule schema rejects.
+          // Relative choices carry their lead after a colon. Exact uses a stable
+          // option identity so editing its time cannot make Radix select a fallback.
           const separator = next.indexOf(":");
-          const kind = next.slice(0, separator);
-          const raw = next.slice(separator + 1);
+          const kind = separator === -1 ? next : next.slice(0, separator);
+          const raw = separator === -1 ? "" : next.slice(separator + 1);
           onChoiceChange(
             kind === "exact"
-              ? { kind: "exact", localTime: raw || "09:00" }
+              ? {
+                  kind: "exact",
+                  localTime: choice.kind === "exact" ? choice.localTime : raw || "09:00",
+                }
               : { kind: "relative", leadMinutes: Number(raw) },
           );
         }}
@@ -91,9 +105,26 @@ export function ReminderAlertTimeField({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <ReminderAlertOptions instantRelative={instantRelative} relativeOnly={relativeOnly} />
+          <ReminderAlertOptions
+            exactLocalTime={choice.kind === "exact" ? choice.localTime : "09:00"}
+            instantRelative={instantRelative}
+            relativeOnly={relativeOnly}
+          />
         </SelectContent>
       </Select>
+      {allowCustomExactTime && choice.kind === "exact" ? (
+        <Input
+          aria-label="Exact reminder time"
+          className="w-full text-foreground sm:w-40"
+          onChange={(event) => {
+            if (/^([01]\d|2[0-3]):[0-5]\d$/.test(event.target.value)) {
+              onChoiceChange({ kind: "exact", localTime: event.target.value });
+            }
+          }}
+          type="time"
+          value={choice.localTime}
+        />
+      ) : null}
       <span>
         One alert. Changing the {instantRelative ? "bring-back time" : "due date"} or this schedule
         replaces it.
@@ -103,6 +134,7 @@ export function ReminderAlertTimeField({
 }
 
 export function GeneralActionReminderField({
+  allowCustomExactTime = false,
   enabled,
   choice,
   relativeOnly = false,
@@ -110,6 +142,7 @@ export function GeneralActionReminderField({
   onEnabledChange,
   onChoiceChange,
 }: {
+  allowCustomExactTime?: boolean;
   enabled: boolean;
   choice: GeneralActionReminderChoice;
   relativeOnly?: boolean;
@@ -136,6 +169,7 @@ export function GeneralActionReminderField({
       </div>
       {enabled ? (
         <ReminderAlertTimeField
+          allowCustomExactTime={allowCustomExactTime}
           choice={choice}
           instantRelative={instantRelative}
           onChoiceChange={onChoiceChange}

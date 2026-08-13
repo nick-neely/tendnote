@@ -2,6 +2,7 @@ import type { ConversationalCaptureConfirmation } from "@tendnote/domain";
 import { conversationalCaptureOutcomeConfirmationSchema } from "@tendnote/domain/conversational-capture";
 import {
   formatReminderScheduleLabel,
+  reminderScheduleChoiceFromStored,
   reminderTimeSemanticsForRecordKind,
 } from "@tendnote/domain/reminders";
 import {
@@ -23,7 +24,6 @@ import { scheduleReminderDeliveryOutbox } from "./reminders/outbox";
 import { createReminderRecordLoader } from "./reminders/record-loaders";
 import { createReminderService } from "./reminders/service";
 import { createReminderSubscriptionAuthorizer } from "./reminders/subscription-authorization";
-import type { ReminderRecord } from "./reminders/types";
 import { createDrizzleSavedItemStore } from "./saved-items/drizzle-store";
 import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
 
@@ -404,6 +404,7 @@ export function createExplicitCaptureReminderScheduler(saveReminderImpl: typeof 
                 reminder.result.schedule,
                 target.timeSemantics,
               ),
+              reminderScheduleChoice: reminderScheduleChoiceFromStored(reminder.result.schedule),
             },
           }),
           reminderOptInOffered: reminder.result.optIn.state === "offer",
