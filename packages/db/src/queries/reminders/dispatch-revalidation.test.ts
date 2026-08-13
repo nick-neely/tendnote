@@ -152,13 +152,13 @@ async function queueAlert(
   return jobId as string;
 }
 
-function dispatch(stack: Stack, jobId: string) {
+function dispatch(stack: Stack, jobId: string, now = DISPATCH_AT) {
   const sends: unknown[] = [];
   return stack.service
     .dispatchReminder({
       deepLink,
       jobId,
-      now: DISPATCH_AT,
+      now,
       sender: async (payload) => {
         sends.push(payload);
         return { status: "accepted" as const, providerId: "push-1" };
@@ -167,7 +167,80 @@ function dispatch(stack: Stack, jobId: string) {
     .then((result) => ({ result, sends }));
 }
 
+// fallow-ignore-next-line code-duplication -- Each record-kind dispatch contract keeps its complete independent standing fixture visible.
 describe("dispatch re-proves standing for every reminder-capable kind", () => {
+  it("delivers only the replacement alert after a one-time Action is set aside", async () => {
+    const stack = await seedStack();
+    const action = await stack.actions.createGeneralAction({
+      ownerUserId: ANA,
+      title: "Put the bins out",
+      dueAt: DUE_AT,
+      recurrence: null,
+    });
+    const originalJobId = await queueAlert(stack, {
+      subscriberUserId: ANA,
+      recordKind: "general_action",
+      recordId: action.id,
+    });
+
+    await stack.actions.deferGeneralAction({
+      actorUserId: ANA,
+      generalActionId: action.id,
+      deferUntil: new Date("2026-08-21T00:00:00.000Z"),
+    });
+    await stack.service.reconcileReminderRecordForSubscribers({
+      recordKind: "general_action",
+      recordId: action.id,
+      now: new Date("2026-07-22T15:00:00.000Z"),
+    });
+
+    await expect(dispatch(stack, originalJobId).then((value) => value.result)).resolves.toEqual({
+      status: "suppressed",
+      reason: "suppressed_ineligible",
+    });
+    const replacement = (await stack.reminders.listDeliveryJobs({ ownerUserId: ANA })).find(
+      (job) => job.intendedAt.toISOString() === "2026-08-21T14:00:00.000Z",
+    );
+    expect(replacement, "expected a replacement Set Aside delivery job").toBeDefined();
+    const delivered = await dispatch(
+      stack,
+      replacement?.id ?? "missing",
+      new Date("2026-08-21T14:00:05.000Z"),
+    );
+    expect(delivered.result).toMatchObject({ status: "accepted" });
+    expect(delivered.sends).toHaveLength(1);
+  });
+
+  it("does not create a reminder when an unscheduled Action is set aside", async () => {
+    const stack = await seedStack();
+    const action = await stack.actions.createGeneralAction({
+      ownerUserId: ANA,
+      title: "Put the bins out",
+      dueAt: DUE_AT,
+      recurrence: null,
+    });
+
+    await stack.actions.deferGeneralAction({
+      actorUserId: ANA,
+      generalActionId: action.id,
+      deferUntil: new Date("2026-08-21T00:00:00.000Z"),
+    });
+    await stack.service.reconcileReminderRecordForSubscribers({
+      recordKind: "general_action",
+      recordId: action.id,
+      now: new Date("2026-07-22T15:00:00.000Z"),
+    });
+
+    await expect(stack.reminders.listDeliveryJobs({ ownerUserId: ANA })).resolves.toEqual([]);
+    await expect(
+      stack.reminders.listSchedules({
+        ownerUserId: ANA,
+        recordKind: "general_action",
+        recordId: action.id,
+      }),
+    ).resolves.toEqual([]);
+  });
+
   it.each([
     ["general_action", null],
     ["routine", { interval: 1, unit: "week" as const }],

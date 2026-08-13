@@ -130,18 +130,28 @@ export function createReminderService(input: {
         "Only an eligible explicit time-bound record you can act on can have a reminder.",
       );
     }
+    if (
+      record.kind === "general_action" &&
+      record.status === "deferred" &&
+      (await input.store.listSchedules(values)).length === 0
+    ) {
+      throw new Error(
+        "Only an eligible explicit time-bound record you can act on can have a reminder.",
+      );
+    }
     const choice = reminderScheduleChoiceSchema.parse(values.schedule);
     if (record.kind === "routine" && choice.kind !== "relative") {
       throw new Error("A Routine Reminder Schedule must be relative to each occurrence.");
     }
     const occurrenceDate = record.occursAt.toISOString().slice(0, 10);
     const occurrenceKey = reminderOccurrenceKey(record);
+    const effectiveChoice = resolveSetAsideAlertChoice(record, choice);
     const intendedAt = resolveIntendedAt({
       occursAt: record.occursAt,
       timeSemantics: record.timeSemantics,
       occurrenceDate,
       timeZone: values.timeZone,
-      choice,
+      choice: effectiveChoice,
     });
     const freshUntil = resolveFreshUntil({
       intendedAt,
@@ -153,7 +163,7 @@ export function createReminderService(input: {
       ownerUserId: values.ownerUserId,
       recordKind: record.kind,
       recordId: record.id,
-      choice,
+      choice: effectiveChoice,
       timeZone: values.timeZone,
       occurrenceKey,
       intendedAt,
@@ -237,12 +247,13 @@ export function createReminderService(input: {
     const occurrenceDate = record.occursAt.toISOString().slice(0, 10);
     const occurrenceKey = reminderOccurrenceKey(record);
     const timeZone = values.timeZone ?? currentSchedule.timeZone;
+    const effectiveChoice = resolveSetAsideAlertChoice(record, choice);
     const intendedAt = resolveIntendedAt({
       occursAt: record.occursAt,
       timeSemantics: record.timeSemantics,
       occurrenceDate,
       timeZone,
-      choice,
+      choice: effectiveChoice,
     });
     const freshUntil = resolveFreshUntil({
       intendedAt,
@@ -254,7 +265,7 @@ export function createReminderService(input: {
       ownerUserId: values.ownerUserId,
       recordKind: record.kind,
       recordId: record.id,
-      choice,
+      choice: effectiveChoice,
       timeZone,
       occurrenceKey,
       intendedAt,
@@ -419,6 +430,20 @@ export function createReminderService(input: {
 
     dispatchReminder: dispatcher,
   };
+}
+
+function resolveSetAsideAlertChoice(
+  record: ReminderRecord,
+  choice: { kind: "exact"; localTime: string } | { kind: "relative"; leadMinutes: number },
+) {
+  if (
+    record.kind === "general_action" &&
+    record.status === "deferred" &&
+    choice.kind === "relative"
+  ) {
+    return { kind: "exact" as const, localTime: "09:00" };
+  }
+  return choice;
 }
 
 function resolveIntendedAt(input: {

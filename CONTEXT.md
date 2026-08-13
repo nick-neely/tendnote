@@ -93,7 +93,7 @@ A user-visible reminder to reconnect with a person for a specific reason at a sp
 _Avoid_: Task, deal, lead activity
 
 **Reminder Schedule**:
-The single owner-chosen alert moment for one eligible record occurrence, expressed as an exact local time or one lead time relative to the record's due or bring-back time. It controls ambient delivery without changing when the backing record is actually due.
+The single owner-chosen alert moment for one eligible record occurrence, expressed as an exact local time or one lead time relative to the record's due, bring-back, or set-aside time. It controls ambient delivery without changing when the backing record is actually due.
 _Avoid_: Due date, notification preference, alarm sequence
 
 **Reminder Preview**:
@@ -115,6 +115,10 @@ _Avoid_: Notification onboarding, account-wide permission, automatic alerts
 **General Action**:
 A non-person action or reminder for the owner's broader Personal OS context, such as replacing a water filter or renewing a subscription. A general action has its own domain model with source grounding, lifecycle state, due dates or cadence, visibility scope, optional person links, and later links to assets; product UI may label one-time general actions as Actions and recurring general actions as Routines.
 _Avoid_: Follow-up, task, project, todo
+
+**Set Aside**:
+A reversible General Action deferral to a concrete time when the Action resurfaces. An existing Reminder Schedule follows that new surfacing time rather than being disabled or remaining attached to the stale due time.
+_Avoid_: Complete, dismiss, remove reminder
 
 **Suggested General Action**:
 A review-gated proposal for a non-person General Action, grounded in a source record or other visible Tendnote context. A suggested general action can be accepted, edited, dismissed, or ignored before it becomes an active General Action.

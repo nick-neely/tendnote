@@ -29,6 +29,9 @@ export function isReminderRecordEligible(record: {
 }) {
   if (!record.occursAt || record.sensitivity === "restricted") return false;
   if (record.kind === "saved_item") return record.status === "active";
+  if (record.kind === "general_action") {
+    return record.recurrence === null && (record.status === "open" || record.status === "deferred");
+  }
   if (record.status !== "open") return false;
   return record.kind === "routine" ? record.recurrence !== null : record.recurrence === null;
 }

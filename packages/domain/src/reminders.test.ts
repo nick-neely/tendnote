@@ -34,6 +34,12 @@ describe("Reminder record policy", () => {
     expect(isReminderRecordEligible({ ...base, kind: "general_action", status: "open" })).toBe(
       true,
     );
+    expect(isReminderRecordEligible({ ...base, kind: "general_action", status: "deferred" })).toBe(
+      true,
+    );
+    expect(isReminderRecordEligible({ ...base, kind: "general_action", status: "completed" })).toBe(
+      false,
+    );
     expect(isReminderRecordEligible({ ...base, kind: "saved_item", status: "active" })).toBe(true);
     expect(isReminderRecordEligible({ ...base, kind: "saved_item", status: "archived" })).toBe(
       false,
@@ -41,5 +47,8 @@ describe("Reminder record policy", () => {
     expect(
       isReminderRecordEligible({ ...base, kind: "routine", status: "open", recurrence: {} }),
     ).toBe(true);
+    expect(
+      isReminderRecordEligible({ ...base, kind: "routine", status: "deferred", recurrence: {} }),
+    ).toBe(false);
   });
 });

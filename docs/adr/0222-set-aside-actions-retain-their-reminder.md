@@ -1,0 +1,3 @@
+# Set Aside Actions Retain Their Reminder
+
+Setting aside a one-time General Action invalidates any stale pending reminder intent but does not make the Action notification-ineligible. When the Action already has a Reminder Schedule, Tendnote creates one replacement alert for the new set-aside time, preserving the schedule's local alert time; setting aside an Action without a Reminder Schedule does not opt it into notifications. This narrows the earlier Phase Seven rule that all deferred Actions suppress alerts because Set Aside is a request to resurface later, not a request to remove the reminder.
