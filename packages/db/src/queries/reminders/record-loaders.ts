@@ -178,7 +178,10 @@ export function createReminderRecordLoader(stores: ReminderRecordStores) {
       householdId: action.householdId,
       title: action.title,
       status: action.status,
-      occursAt: action.dueAt,
+      occursAt:
+        kind === "general_action" && action.status === "deferred"
+          ? action.deferUntil
+          : action.dueAt,
       timeSemantics: reminderTimeSemanticsForRecordKind(kind),
       recurrence: action.recurrence,
       sensitivity,

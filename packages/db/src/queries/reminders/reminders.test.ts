@@ -12,6 +12,7 @@ const ROUTINE = "33333333-3333-3333-3333-333333333333";
 const SAVED_ITEM = "44444444-4444-4444-4444-444444444444";
 const reminderDeepLink = (kind: string, id: string) => `/reminders/open?kind=${kind}&id=${id}`;
 
+// fallow-ignore-next-line code-duplication -- Reminder scenarios intentionally repeat complete record/store setup so each scheduling lifecycle assertion remains isolated and readable.
 describe("Reminder product function", () => {
   it("schedules one explicit alert for an owner's open Follow-Up", async () => {
     const store = createInMemoryReminderStore();
@@ -220,6 +221,125 @@ describe("Reminder product function", () => {
       intendedAt: new Date("2026-11-02T16:00:00.000Z"),
     });
     expect(replacement?.occurrenceIntent?.id).not.toBe(first.occurrenceIntent?.id);
+  });
+
+  it("moves an exact Action reminder each time Set Aside changes its surfacing date", async () => {
+    const store = createInMemoryReminderStore();
+    const record = {
+      id: ACTION,
+      kind: "general_action" as const,
+      ownerUserId: OWNER,
+      title: "Replace the filter",
+      status: "open",
+      occursAt: new Date("2026-08-14T00:00:00.000Z"),
+      timeSemantics: "date_only" as const,
+      recurrence: null,
+      sensitivity: "normal" as const,
+      scope: "private" as const,
+      personId: null,
+    };
+    const service = createReminderService({
+      store,
+      loadReminderRecord: vi.fn(async () => record),
+    });
+    const original = await service.saveReminder({
+      ownerUserId: OWNER,
+      recordKind: "general_action",
+      recordId: ACTION,
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      schedule: { kind: "exact", localTime: "15:30" },
+      now: new Date("2026-07-21T15:00:00.000Z"),
+    });
+
+    record.status = "deferred";
+    record.occursAt = new Date("2026-08-21T00:00:00.000Z");
+    const firstDeferral = await service.reconcileReminderRecord({
+      ownerUserId: OWNER,
+      recordKind: "general_action",
+      recordId: ACTION,
+      now: new Date("2026-07-22T15:00:00.000Z"),
+    });
+    record.occursAt = new Date("2026-08-28T00:00:00.000Z");
+    const secondDeferral = await service.reconcileReminderRecord({
+      ownerUserId: OWNER,
+      recordKind: "general_action",
+      recordId: ACTION,
+      now: new Date("2026-07-23T15:00:00.000Z"),
+    });
+
+    expect(firstDeferral?.schedule).toMatchObject({
+      kind: "exact",
+      localTime: "15:30",
+      occurrenceKey: `general_action:${ACTION}:2026-08-21`,
+      intendedAt: new Date("2026-08-21T20:30:00.000Z"),
+    });
+    expect(secondDeferral?.schedule).toMatchObject({
+      occurrenceKey: `general_action:${ACTION}:2026-08-28`,
+      intendedAt: new Date("2026-08-28T20:30:00.000Z"),
+    });
+    expect(secondDeferral?.occurrenceIntent).toMatchObject({ status: "pending_installation" });
+    await expect(
+      store.listOccurrenceIntents({
+        ownerUserId: OWNER,
+        recordKind: "general_action",
+        recordId: ACTION,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: original.occurrenceIntent?.id, status: "superseded" }),
+      expect.objectContaining({ id: firstDeferral?.occurrenceIntent?.id, status: "superseded" }),
+      expect.objectContaining({
+        id: secondDeferral?.occurrenceIntent?.id,
+        status: "pending_installation",
+      }),
+    ]);
+  });
+
+  it("moves a relative Action reminder to 9:00 AM on the Set Aside date", async () => {
+    const store = createInMemoryReminderStore();
+    const record = {
+      id: ACTION,
+      kind: "general_action" as const,
+      ownerUserId: OWNER,
+      title: "Replace the filter",
+      status: "open",
+      occursAt: new Date("2026-08-14T00:00:00.000Z"),
+      timeSemantics: "date_only" as const,
+      recurrence: null,
+      sensitivity: "normal" as const,
+      scope: "private" as const,
+      personId: null,
+    };
+    const service = createReminderService({
+      store,
+      loadReminderRecord: vi.fn(async () => record),
+    });
+    await service.saveReminder({
+      ownerUserId: OWNER,
+      recordKind: "general_action",
+      recordId: ACTION,
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      schedule: { kind: "relative", leadMinutes: 1_440 },
+      now: new Date("2026-07-21T15:00:00.000Z"),
+    });
+
+    record.status = "deferred";
+    record.occursAt = new Date("2026-08-21T00:00:00.000Z");
+    const replacement = await service.reconcileReminderRecord({
+      ownerUserId: OWNER,
+      recordKind: "general_action",
+      recordId: ACTION,
+      now: new Date("2026-07-22T15:00:00.000Z"),
+    });
+
+    expect(replacement?.schedule).toMatchObject({
+      kind: "exact",
+      localTime: "09:00",
+      leadMinutes: null,
+      occurrenceKey: `general_action:${ACTION}:2026-08-21`,
+      intendedAt: new Date("2026-08-21T14:00:00.000Z"),
+    });
   });
 
   it("replaces a Saved Item intent when bring-back changes and suppresses it on archive", async () => {
