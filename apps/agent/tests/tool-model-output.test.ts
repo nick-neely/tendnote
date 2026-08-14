@@ -463,7 +463,16 @@ describe("general action tools toModelOutput keep tool-call ids private from pro
     {
       name: "list_general_actions",
       tool: listGeneralActionsTool,
-      output: { found: true, ledger: "active", window: null, count: 1, actions: [gaRef()] },
+      output: {
+        found: true,
+        ledger: "active",
+        window: null,
+        count: 1,
+        actions: [gaRef()],
+        // The owner's Areas, resolved by `execute` so the projection can name the one an
+        // action is filed under instead of dropping an id nobody could explain.
+        areaNames: {},
+      },
     },
     {
       name: "list_suggested_general_action_reviews",

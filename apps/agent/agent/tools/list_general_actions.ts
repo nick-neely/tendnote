@@ -1,3 +1,4 @@
+import { listGeneralActionAreas } from "@tendnote/db/queries/general-action-areas";
 import type { GeneralActionWithContext } from "@tendnote/db/queries/general-actions";
 import {
   listActiveGeneralActions,
@@ -161,7 +162,7 @@ export default defineTool({
     const postFilters = activeWindow !== undefined || Boolean(input.routinesOnly);
 
     const read = readerForLedger(ledger);
-    const [fetched, window] = await withModelSafeStoreErrors(() =>
+    const [fetched, window, areas] = await withModelSafeStoreErrors(() =>
       Promise.all([
         read({ ownerUserId, limit: postFilters ? undefined : input.limit }),
         // The owner's own calendar day, so a window is measured against their
@@ -169,6 +170,11 @@ export default defineTool({
         activeWindow === undefined
           ? null
           : getOwnerTodayContext({ ownerUserId }).then((day) => ({ window: activeWindow, day })),
+        // The owner's Areas, archived included: an action filed under an Area the
+        // owner later archived is still filed there, and saying "Home" is more use
+        // than saying nothing. One small flat read (ADR 0146), so the ledger can be
+        // described by the name the user gave it rather than by an unnamed id.
+        listGeneralActionAreas({ ownerUserId, includeArchived: true }),
       ]),
     );
     const actions = applyActiveListFilters(fetched, input, { window, postFilters });
@@ -179,21 +185,23 @@ export default defineTool({
       window: input.window ?? null,
       count: actions.length,
       actions: actions.map(toGeneralActionRef),
+      areaNames: Object.fromEntries(areas.map((area) => [area.id, area.name])),
     };
   },
   // Ids are for the model's follow-up tool calls, not the reply. Project the list down
   // to id-free refs; the chat renders the matches as an expandable list, so the model
   // summarizes rather than reprinting every row.
   toModelOutput(output) {
+    const areaNames = new Map(Object.entries(output.areaNames));
     return {
       type: "json" as const,
       value: {
         ledger: output.ledger,
         window: output.window,
         count: output.count,
-        actions: output.actions.map(toGeneralActionModelRef),
+        actions: output.actions.map((action) => toGeneralActionModelRef(action, areaNames)),
         guidance:
-          "A plain ledger list (not priority ranking), shown to the user as an expandable list. Summarize briefly — how many, the gist — rather than reprinting each row; act on a specific action (complete, defer, edit) only on the user's explicit say-so.",
+          "A plain ledger list (not priority ranking), shown to the user as an expandable list. Summarize briefly — how many, the gist — rather than reprinting each row; act on a specific action (complete, defer, edit) only on the user's explicit say-so. `area` is the Area an action is filed under: say its name, never its id, and reuse that id only to re-file the action when the user asks.",
       },
     };
   },

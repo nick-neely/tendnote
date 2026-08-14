@@ -38,6 +38,7 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   suggest_general_action: "Drafting a suggested action…",
   plan_suggested_general_actions: "Sketching a few steps…",
   list_general_actions: "Checking your actions…",
+  list_general_action_areas: "Checking your areas…",
   get_suggested_general_action_review: "Pulling up the suggested action…",
   list_suggested_general_action_reviews: "Gathering actions to review…",
   propose_asset_actions: "Checking what this asset needs…",
@@ -54,6 +55,8 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   // "checking on the household" would read as checking up on whoever is in it.
   household_check_in: "Checking what your household is coordinating…",
   capture_saved_item: "Saving…",
+  list_saved_items: "Checking what you saved…",
+  list_message_drafts: "Checking your drafts…",
   search_gift_plans: "Checking your gift plans…",
   add_gift_idea: "Adding the idea to the plan…",
 };

@@ -373,10 +373,16 @@ describe("Phase 5 boundary — Action surfaces are built mobile-usable (ADR 0161
 });
 
 describe("Phase 5 boundary — Eve exposes a bounded, single-record General Action tool surface (ADR 0159)", () => {
-  it("exposes exactly the ten General Action tools — no bulk, assignment, prioritization, or ranking tool", () => {
-    // The ten explicit-instruction tools and nothing else. A bulk/sweep, assign, prioritize,
+  it("exposes exactly the eleven General Action tools — no bulk, assignment, prioritization, or ranking tool", () => {
+    // The explicit-instruction tools and nothing else. A bulk/sweep, assign, prioritize,
     // rank, or reorder tool would break the explicit, single-record mutation boundary
     // (ADRs 0159, 0163), so the tool surface is pinned as an exact set.
+    //
+    // `list_general_action_areas` is the eleventh and is a pure read: it lists the flat
+    // Areas the other tools' `areaId` names. It exists because that argument was
+    // otherwise unfillable — nothing could list Areas, so the only way to produce an id
+    // was to invent one — and it grants no new authority, since Areas are created,
+    // renamed, and archived in the app alone (ADR 0146).
     expect([...GENERAL_ACTION_TOOL_FILES].map((path) => path.split("/").pop()).sort()).toEqual(
       [
         "accept_suggested_general_action.ts",
@@ -384,6 +390,7 @@ describe("Phase 5 boundary — Eve exposes a bounded, single-record General Acti
         "dismiss_suggested_general_action.ts",
         "edit_general_action.ts",
         "get_suggested_general_action_review.ts",
+        "list_general_action_areas.ts",
         "list_general_actions.ts",
         "list_suggested_general_action_reviews.ts",
         "plan_suggested_general_actions.ts",

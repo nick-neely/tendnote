@@ -114,6 +114,21 @@ export function listDraftsForPerson(input: {
   return defaultDraftStore.listDraftsForPerson(input);
 }
 
+/**
+ * The owner's drafts across everyone, newest first, optionally filtered by status.
+ *
+ * The person-keyed read above answers a person surface's question; this one answers
+ * "what have I got in progress?", which no surface could ask before. Same store, same
+ * owner key, same ordering — a caller that wants a bounded slice takes one from the
+ * front rather than getting a different read.
+ */
+export function listDraftsForOwner(input: {
+  ownerUserId: string;
+  statuses?: MessageDraftStatus[];
+}) {
+  return defaultDraftStore.listDraftsForOwner(input);
+}
+
 export function approveDraft(input: DraftActionInput) {
   return defaultDraftLifecycle.approveDraft(input);
 }

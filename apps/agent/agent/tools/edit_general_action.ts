@@ -37,7 +37,9 @@ const inputSchema = z.object({
     .uuid()
     .nullable()
     .optional()
-    .describe("New Area to file under; pass null to unfile, omit to leave unchanged."),
+    .describe(
+      "New Area to file under, taken from list_general_action_areas (or from an action's own `area` in list_general_actions) — never an invented id. Pass null to unfile, omit to leave unchanged.",
+    ),
   links: z
     .array(generalActionLinkSchema)
     .optional()

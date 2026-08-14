@@ -28,7 +28,12 @@ const stepSchema = z.object({
   recurrence: generalActionRecurrenceSchema
     .nullish()
     .describe("Optional simple cadence if this step is a recurring Routine. Usually omitted."),
-  areaId: z.uuid().optional().describe("Optional Area to file this step under."),
+  areaId: z
+    .uuid()
+    .optional()
+    .describe(
+      "Optional Area to file this step under, taken from list_general_action_areas — never an invented id.",
+    ),
   personIds: z
     .array(z.uuid())
     .optional()

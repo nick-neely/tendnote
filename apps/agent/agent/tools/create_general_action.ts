@@ -30,7 +30,9 @@ const inputSchema = z.object({
   areaId: z
     .uuid()
     .optional()
-    .describe("Optional Area (a flat life category) to file this under. Omit to leave it unfiled."),
+    .describe(
+      "Optional Area (a flat life category) to file this under. Take the id from list_general_action_areas — never invent or retype one. Omit to leave it unfiled, which is the norm unless the user named a category.",
+    ),
   personIds: z
     .array(z.uuid())
     .optional()
