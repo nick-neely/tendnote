@@ -54,21 +54,136 @@ The first Eve-native harness uses a stable local eval database:
 - Override with `TENDNOTE_EVAL_DATABASE_URL` when needed.
 - `pnpm --filter @tendnote/agent eval:prepare` recreates the eval database, applies committed Drizzle migrations, and seeds the existing synthetic demo data.
 - `pnpm --filter @tendnote/agent eval:list` lists discovered Eve evals without running the model.
-- `pnpm --filter @tendnote/agent eval:deterministic` runs the full deterministic tag once. Any failing eval is retried twice against a freshly prepared database and must pass both retries (two of three samples overall) to recover. The wrapper keeps the existing strict assertions and writes the aggregate result to `.eve/evals/junit.xml`.
+- `pnpm --filter @tendnote/agent eval:deterministic` runs the full deterministic tag once, then resamples each failing eval twice against a freshly prepared database. The wrapper keeps the existing strict assertions and writes the aggregate result to `.eve/evals/junit.xml`.
 
 The reset script refuses to reset any database whose name does not begin with
 `tendnote_eval`, keeping the normal local `tendnote` database out of the eval
 path.
 
-The bounded retry addresses live-model sampling variance without weakening an
-eval run: one retry failure remains a suite failure, and passing evals are never
-rerun. Because these evaluations make real model calls, they are intentionally
-outside normal PR and production CI. Run the **Run Eve model evaluations**
-workflow manually when changing Eve behavior, prompts, tools, or model routing.
-The workflow uses Postgres only, passes `AI_GATEWAY_API_KEY` for the agent model,
-does not run judge-backed or model-comparison tags, writes
-`.eve/evals/junit.xml`, and uploads `apps/agent/.eve/evals/` when the evaluation
-job fails.
+### What a retry may recover, and what it must report
+
+`scripts/deterministic-eval-retry.mjs` grades three outcomes rather than two:
+
+| Outcome | Rule | Exit code | JUnit |
+| --- | --- | --- | --- |
+| Clean | Every sample passed. | `0` | plain `<testcase>` |
+| Flaky | Failed its first sample and passed **every** retry. | `3` | `<flakyFailure>` |
+| Failed | Any retry sample still failed. | `1` | `<failure>` |
+
+A retry may recover one failure, because these evals drive a live model and a
+single sampling wobble should not fail a run on its own. It may not make that
+failure disappear: a recovered eval exits non-zero, is named on stderr, and is
+marked flaky in the report. The previous policy scored "two of three samples" as
+a plain pass, so an eval failing a third of the time was indistinguishable from
+one that had never failed.
+
+`skipped` is its own outcome and is **not** a pass. An eval that calls
+`t.skip(reason)` is reported as skipped, never retried (resampling an intentional
+skip only reproduces it), and excluded from the passing tally.
+
+Because these evaluations make real model calls, they are intentionally outside
+normal PR and production CI. Run the **Run Eve model evaluations** workflow
+manually when changing Eve behavior, prompts, tools, or model routing. It is
+`workflow_dispatch` only. The workflow runs Postgres and Redis services (the
+agent builds its Better Auth and rate-limit clients against `REDIS_URL`, lazily,
+so the declaration has to be true), passes `AI_GATEWAY_API_KEY` for the agent
+model, bounds the job at 90 minutes, does not run judge-backed or
+model-comparison tags, writes `.eve/evals/junit.xml`, and always uploads
+`apps/agent/.eve/evals/` — including on the flaky exit, which is the run whose
+artifacts are most worth reading.
+
+## Suite shape: tags, files, helpers
+
+Identity is the file path (`evals/policy/external-send-refusal.eval.ts` →
+`policy/external-send-refusal`), and a file that default-exports an *array* of
+evals fans out over indexed ids (`behavior/capture-precedence/0000`). Directories
+group; **tags select what runs**.
+
+| Tag | What runs it | What it means |
+| --- | --- | --- |
+| `deterministic` | `eval:deterministic` (the graded gate) | No judge. The agent is still a live model, so it still needs a gateway credential. |
+| `judged` | `eval:judged` | Scored by the judge model as well as by gates. |
+| everything else (`policy`, `behavior`, `assets`, `capture`, …) | `eve eval --tag <name>` ad hoc | Topical filters for a focused run. They gate nothing on their own. |
+
+A tag no command runs is a file that never executes. There used to be an
+`architecture` tag with four evals under it and no gate anywhere; three were
+duplicates of `behavior` evals and were deleted, and the one unique eval
+(`behavior/privacy-guard-wording-review`) moved into the deterministic gate.
+Before adding a tag, decide which command runs it.
+
+Two shared helper files sit beside the evals (any file not ending in `.eval.ts`
+is not discovered as one):
+
+- `evals/expectations.ts` — value-level matchers `eve/evals/expect` does not
+  provide: `without(pattern)` for a negated match, `NO_RAW_IDS`, and
+  `toolOutputs(events, toolName)` for asserting on what a tool actually
+  *returned*.
+- `evals/helpers.ts` — stream-level predicates, most importantly the subagent
+  ones. eve 0.32 has `calledSubagent` but **no `notCalledSubagent`**, and
+  `derived.toolCalls` holds authored tool calls only — so
+  `notCalledTool("privacy_guard")` was true of every run ever recorded, including
+  the ones that delegated to Privacy Guard on every step. `notCalledSubagent(t,
+  name)`, `usedNoSubagents(t)`, and `usedNoToolsOrSubagents(t)` read the raw
+  stream (`subagent.called` / `.started` / `.event` / `.completed`, which carry
+  the name under `name` or `subagentName` depending on how the delegation ran).
+  Replace them with the framework assertion if a later eve version grows one.
+  `evals/judged/helpers.ts` holds `subagentOutput(turn, name)` for judged evals.
+
+### Writing an eval that can fail
+
+Every one of these was a real eval in this repo that could not fail:
+
+- **A gate must be able to see what it forbids.** `notCalledTool` cannot see a
+  subagent, and it cannot see a tool that does not exist — a ban on an
+  unreachable tool proves nothing.
+- **Text gates must not be satisfiable by echoing the prompt.** A refusal eval
+  asserting `/send|email|draft|review|approval/` on a turn that says "Send an
+  email" passes on "Sent the email to Alex."
+- **A refusal asserts refusal language AND the absence of success language.**
+  Bans are shaped like *claims* ("I'll pull the total off it once you upload"),
+  never like topics ("OCR") — a refusal has to stay free to name what it refuses.
+- **Prefer tool-call sequences and store effects to prose.** `toolOrder`,
+  `calledTool({ input, count })`, and `eventsSatisfy` over tool *outputs* survive
+  phrasing drift; a list of accepted sentences does not.
+- **A negative-only eval passes when the feature is entirely broken.** Pair a
+  "does not mutate on its own initiative" eval with one that proves the explicit
+  mutation still works, or a regression that refuses everything ships green.
+- **A judged eval grades what you hand it.** Pass the records as `on:`.
+
+### Multi-turn evals and shared state
+
+The eval database is prepared once per run and shared by every eval, and
+`maxConcurrency` is 1 for that reason. An eval that writes should bring its own
+subject rather than mutating a seeded row its neighbours read — completing the
+seeded fridge-filter Routine, for instance, would quietly change what the asset
+evals see. Multi-turn evals set their own `timeoutMs` (roughly the single-turn
+budget per turn) instead of raising the default for the whole suite.
+
+### Known coverage gaps
+
+Two families cannot be evaluated from a live session as the harness stands, and
+are covered by Vitest instead. Both are gaps in the *fixture*, not in the intent:
+
+- **Gift Plan positive paths** (`get_gift_plan`, `add_gift_idea`,
+  `edit_gift_idea`, `remove_gift_idea`). Every one of them needs a plan id from
+  `search_gift_plans`, Eve cannot create a plan by design, and the demo seed has
+  no Gift Plans. Seeding one would also destroy
+  `policy/gift-plan-surprise-boundary`, which depends on the empty result reading
+  as plain absence. The exclusion itself is proved exhaustively in
+  `gift-plans/exclusion.test.ts`.
+- **Eve mode narrowing.** The eval client authenticates through the web
+  channel's own `AuthFn`, which stamps `channel: "eve"` → `web_chat`, where
+  nothing is withheld; and the Discord route is a deterministic handler that
+  never starts a model session. There is no way to obtain a `discord_capture`
+  session from an eval, which is the point — a mode a caller could select would
+  not be a boundary. `tests/eve-mode-gate.test.ts` covers the table, the
+  withholding, and the stub's refusal reply.
+
+The hosted-access boundary is a third: an eval session is always authenticated,
+so a pending-access principal is unreachable. Its eval used to "prove" the rule
+by comparing a hand-written literal to itself; it was deleted in favour of
+`tests/eve-auth.test.ts`, which covers pending access, the forged owner header,
+and the fail-closed ingress budget.
 
 ## Judge-Backed Quality Evals
 
@@ -76,11 +191,17 @@ Judge-backed quality evals are explicit and outside normal CI:
 
 - `pnpm --filter @tendnote/agent eval:judged` runs `eve eval --tag judged --skip-report --junit .eve/evals/judged-junit.xml`.
 - The command first prepares the isolated `tendnote_eval` database, then runs only evals tagged `judged`.
-- It skips with a clear message when neither `AI_GATEWAY_API_KEY` nor `VERCEL_OIDC_TOKEN` is available.
+- It gates on `scripts/require-model-credentials.mjs` like `eval:deterministic`: a loud local skip, a hard CI failure.
 - The default judge model is `openai/gpt-5.4-mini`; override it with `TENDNOTE_JUDGE_MODEL`.
 
-Current judged evals cover recall tone/factuality/grounded summarization, private
-draft usefulness, relationship brief usefulness, and instruction-style quality.
+Six judged evals cover recall groundedness, private draft usefulness,
+relationship brief usefulness, relationship strategy quality, Cleanup Preview
+usefulness, and Memory Curator usefulness.
+
+Every judged eval passes the records the answer came from as the graded value
+(`{ on: JSON.stringify({ reply, ...context }) }`). A judge handed only the reply
+can grade prose and nothing else, so a criterion like "scoped to existing
+Tendnote records" is unfalsifiable without the records beside it.
 
 ## Model Comparison
 
