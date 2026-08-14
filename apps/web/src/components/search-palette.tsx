@@ -752,8 +752,17 @@ const FAMILY_ICONS: Record<GlobalRecallFamily, Icon> = {
   gift_plan: GiftIcon,
 };
 
-/** Families in reading order: who first, then what was said, then what is owed. */
-const FAMILY_ORDER: GlobalRecallFamily[] = [
+/**
+ * Families in reading order: who first, then what was said, then what is owed.
+ *
+ * `groupResultsByFamily` walks this array rather than the results, so a family
+ * missing from it is not merely ordered last, it is dropped from the desktop
+ * palette with nothing to show it happened. `satisfies` keeps a typo out;
+ * search-palette.dom.test.tsx pins the set against
+ * `globalRecallFamilySchema.options` so a family added to the domain enum
+ * cannot stay unlisted here.
+ */
+export const FAMILY_ORDER = [
   "person",
   "self_context",
   "household_context",
@@ -768,7 +777,7 @@ const FAMILY_ORDER: GlobalRecallFamily[] = [
   // the one family whose heading appearing at all is a small disclosure. Keeping
   // it below the everyday families means an ordinary search never leads with it.
   "gift_plan",
-];
+] as const satisfies readonly GlobalRecallFamily[];
 
 /**
  * One group per record family, exact matches ahead of related ones inside each.

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { globalRecallFamilySchema } from "@tendnote/domain/global-recall";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   render,
@@ -45,7 +46,7 @@ HTMLElement.prototype.scrollIntoView ??= vi.fn();
 HTMLElement.prototype.hasPointerCapture ??= vi.fn();
 HTMLElement.prototype.releasePointerCapture ??= vi.fn();
 
-import { SearchPalette } from "./search-palette";
+import { FAMILY_ORDER, SearchPalette } from "./search-palette";
 
 const success = <T,>(view: T) => ({ ok: true as const, view });
 
@@ -464,5 +465,15 @@ describe("SearchPalette", () => {
     const quickActions = within(await screen.findByRole("group", { name: "Quick actions" }));
     expect(quickActions.getByRole("option", { name: "Capture a note" })).toBeDefined();
     expect(quickActions.queryByRole("option", { name: "Add an asset" })).toBeNull();
+  });
+
+  it("orders every recall family, so none is dropped from the grouped results", () => {
+    // The palette groups by walking FAMILY_ORDER, not the response, so a family
+    // added to the domain enum and forgotten here would return zero rows on
+    // desktop while the phone flow showed it - a silent hole rather than a
+    // misordered heading. Set equality both ways: nothing missing, nothing
+    // stale, no duplicate heading.
+    expect([...FAMILY_ORDER].sort()).toEqual([...globalRecallFamilySchema.options].sort());
+    expect(new Set(FAMILY_ORDER).size).toBe(FAMILY_ORDER.length);
   });
 });
