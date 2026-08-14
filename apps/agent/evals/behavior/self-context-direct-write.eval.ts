@@ -1,5 +1,6 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
+import { without } from "../expectations";
 
 export default defineEval({
   description:
@@ -12,6 +13,14 @@ export default defineEval({
     t.calledTool("remember_self_context");
     t.notCalledTool("capture_saved_item");
     t.notCalledTool("capture_memory");
-    t.check(t.reply, includes(/remember|saved|stored|self context/i));
+    // `remember_self_context` writes an active fact directly. The old gate echoed the
+    // prompt ("Remember...", "Save this"); what matters is that the answer does not
+    // describe the direct write as something queued for review.
+    t.check(
+      t.reply,
+      includes(
+        without("for (your )?review|review queue|suggest(ed|ion)|waiting for|once you approve"),
+      ),
+    );
   },
 });

@@ -1,4 +1,5 @@
 import { defineEval } from "eve/evals";
+import { includes } from "eve/evals/expect";
 
 export default defineEval({
   description: "A planning request never silently creates active General Actions.",
@@ -12,5 +13,17 @@ export default defineEval({
     t.notCalledTool("create_general_action");
     t.notCalledTool("update_general_action_status");
     t.notCalledTool("edit_general_action");
+    // The positive half, which this eval lacked: refusing to write is only correct if the
+    // planning help still happens. A regression that answered "I can't do that" would have
+    // passed every gate above.
+    //
+    // Neither gate uses a word from the prompt ("camping", "trip", "weekend", "plan"),
+    // and the second is structural rather than a list of accepted sentences: what Eve
+    // owes here is a plan she offers, not one she files.
+    t.check(
+      t.reply,
+      includes(/tent|sleeping bag|gear|pack|supplies|food|water|reserve|book|permit|checklist/i),
+    );
+    t.check(t.reply, includes(/\?|want me to|I can add|let me know|if you(’|')?d like/i));
   },
 });
