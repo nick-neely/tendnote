@@ -1,8 +1,70 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const agentRoot = join(import.meta.dirname, "../agent");
+
+/**
+ * Framework defaults no agent node may have. Eve enables its whole default
+ * harness unless a file at the tool's own slug exports `disableTool()`, so every
+ * one of these was live while `base.md` promised the user the opposite: the
+ * agent asserts it never reads file contents and answers only from returned
+ * records, and `bash`, `read_file`, `write_file`, `glob`, `grep`, `web_fetch`,
+ * and `web_search` each contradict that in a different direction.
+ */
+const DISABLED_FRAMEWORK_TOOLS = [
+  "bash",
+  "glob",
+  "grep",
+  "read_file",
+  "web_fetch",
+  "web_search",
+  "write_file",
+];
+
+/**
+ * Plus, at the root only, the built-in self-copy: `agent` spawns the root agent
+ * with the root instructions and all 52 root tools, which is every narrowing the
+ * four declared subagents exist to impose, undone in one call.
+ */
+const ROOT_DISABLED_FRAMEWORK_TOOLS = [...DISABLED_FRAMEWORK_TOOLS, "agent"].sort();
+
+/**
+ * The framework defaults Tendnote keeps. `ask_question` is the clarification
+ * path, `load_skill` is the only way a skill loads at all, and `todo` is
+ * in-session scratch state that touches no record.
+ */
+const KEPT_FRAMEWORK_TOOLS = ["ask_question", "load_skill", "todo"];
+
+/**
+ * The framework tool names as the installed eve build defines them, read from
+ * eve's own registry rather than copied. An eve upgrade that adds a default tool
+ * changes this set, which fails the pinning assertion below and forces the new
+ * capability to be disabled or kept deliberately instead of arriving silently.
+ */
+async function frameworkToolNames(): Promise<string[]> {
+  const eveRoot = dirname(createRequire(import.meta.url).resolve("eve/package.json"));
+  const registryPath = join(eveRoot, "dist/src/runtime/framework-tools/index.js");
+  const registry: { getAllFrameworkToolNames(): Set<string> } = await import(
+    pathToFileURL(registryPath).href
+  );
+  return [...registry.getAllFrameworkToolNames()].sort();
+}
+
+/** Whether an `agent/**\/tools/` file turns off a framework default instead of authoring a tool. */
+function disablesFrameworkTool(relativePath: string): boolean {
+  return /export default disableTool\(\)/.test(readFileSync(join(agentRoot, relativePath), "utf8"));
+}
+
+/** The framework tools one agent node turns off, by tool name. */
+function disabledFrameworkToolsIn(toolsDir: string): string[] {
+  return readdirSync(join(agentRoot, toolsDir))
+    .filter((file) => file.endsWith(".ts") && disablesFrameworkTool(join(toolsDir, file)))
+    .map((file) => file.replace(/\.ts$/, ""))
+    .sort();
+}
 
 function listAuthoredFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -23,7 +85,11 @@ describe("active Eve tree", () => {
     // subagent, Memory Curator (#149). No inactive placeholders are allowed.
     const scheduleFiles = files.filter((file) => file.startsWith("schedules/"));
     expect(scheduleFiles).toEqual(["schedules/brief-dispatcher.ts"]);
-    const subagentFiles = files.filter((file) => file.startsWith("subagents/"));
+    // Framework-default disables are an absence, not a subagent surface; the
+    // lockdown test below owns them.
+    const subagentFiles = files.filter(
+      (file) => file.startsWith("subagents/") && !disablesFrameworkTool(file),
+    );
     expect(subagentFiles).toEqual([
       "subagents/memory_curator/agent.ts",
       "subagents/memory_curator/instructions.md",
@@ -44,6 +110,30 @@ describe("active Eve tree", () => {
     expect(files.filter((file) => file.startsWith("sandbox/"))).toEqual([]);
     expect(files.some((file) => file.startsWith("connections/"))).toBe(false);
     expect(files.some((file) => /placeholder|stub|future/i.test(file))).toBe(false);
+  });
+
+  it("disables the framework defaults on every agent node, root and subagent alike", async () => {
+    // Deleting one of these files, or turning it back into a real tool, hands the
+    // capability straight back; nothing else in the tree would notice.
+    expect(disabledFrameworkToolsIn("tools")).toEqual(ROOT_DISABLED_FRAMEWORK_TOOLS);
+
+    // Eve resolves the default harness per agent node, so a declared subagent
+    // carries its own bash and its own web_fetch unless it says otherwise. Their
+    // curated toolsets are only as narrow as this loop keeps them, and the loop
+    // reads the directory rather than a list so a fifth subagent cannot arrive
+    // with the defaults intact.
+    for (const subagent of readdirSync(join(agentRoot, "subagents"))) {
+      expect(disabledFrameworkToolsIn(join("subagents", subagent, "tools")), subagent).toEqual(
+        DISABLED_FRAMEWORK_TOOLS,
+      );
+    }
+
+    // Eve rejects a disableTool() file whose slug is not a framework tool at
+    // build time, so this is the other direction: every framework tool is either
+    // disabled above or kept on purpose, and none is merely unconsidered.
+    expect(await frameworkToolNames()).toEqual(
+      [...ROOT_DISABLED_FRAMEWORK_TOOLS, ...KEPT_FRAMEWORK_TOOLS].sort(),
+    );
   });
 
   it("dispatches scheduled workflows without a chat session and gates Discord delivery", () => {
