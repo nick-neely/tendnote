@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   followupId: z.uuid().describe("The persisted suggested follow-up id to accept."),
@@ -30,17 +31,19 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const outcome = await acceptSuggestedFollowup({
-      actorUserId: ownerUserId,
-      followupId: input.followupId,
-      // Parse the proposed date here; the shared layer validates it is concrete.
-      edit: input.edit
-        ? {
-            ...(input.edit.reason !== undefined ? { reason: input.edit.reason } : {}),
-            ...(input.edit.dueAt !== undefined ? { dueAt: new Date(input.edit.dueAt) } : {}),
-          }
-        : undefined,
-    });
+    const outcome = await withModelSafeStoreErrors(() =>
+      acceptSuggestedFollowup({
+        actorUserId: ownerUserId,
+        followupId: input.followupId,
+        // Parse the proposed date here; the shared layer validates it is concrete.
+        edit: input.edit
+          ? {
+              ...(input.edit.reason !== undefined ? { reason: input.edit.reason } : {}),
+              ...(input.edit.dueAt !== undefined ? { dueAt: new Date(input.edit.dueAt) } : {}),
+            }
+          : undefined,
+      }),
+    );
     await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
     const result = outcome.result;
 

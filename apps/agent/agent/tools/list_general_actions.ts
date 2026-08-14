@@ -4,10 +4,12 @@ import {
   listPausedGeneralActions,
   listResolvedGeneralActions,
 } from "@tendnote/db/queries/general-actions";
+import { getOwnerTodayContext } from "@tendnote/db/queries/today";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { type OwnerDay, ownerLocalDayStart } from "../lib/owner-day";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
@@ -58,13 +60,15 @@ function readerForLedger(ledger: ListLedger) {
 function applyActiveListFilters(
   actions: GeneralActionWithContext[],
   input: { window?: ListWindow; routinesOnly?: boolean; limit?: number },
-  flags: { windowsActive: boolean; postFilters: boolean },
+  // `day` travels with the window rather than beside it: a window is the only thing
+  // that needs the owner's calendar, and pairing them makes it impossible to filter
+  // on a date without having read whose day it is.
+  flags: { window: { window: ListWindow; day: OwnerDay } | null; postFilters: boolean },
 ): GeneralActionWithContext[] {
   let result = actions;
-  if (flags.windowsActive && input.window) {
-    const now = new Date();
-    const { window } = input;
-    result = result.filter((action) => matchesWindow(action, window, now));
+  if (flags.window) {
+    const { window, day } = flags.window;
+    result = result.filter((action) => matchesWindow(action, window, day));
   }
   if (input.routinesOnly) {
     result = result.filter((action) => action.recurrence !== null);
@@ -73,12 +77,6 @@ function applyActiveListFilters(
     result = result.slice(0, input.limit);
   }
   return result;
-}
-
-/** Local midnight of `daysAhead` from today, for exclusive end-of-window cutoffs. */
-function startOfDay(daysAhead: number): Date {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysAhead);
 }
 
 /**
@@ -90,10 +88,21 @@ function surfacingTime(action: GeneralActionWithContext): Date | null {
   return action.deferUntil ?? action.dueAt;
 }
 
-/** Whether an action's surfacing instant falls before local midnight `daysAhead` from today. */
-function surfacesBefore(action: GeneralActionWithContext, daysAhead: number): boolean {
+/**
+ * Whether an action's surfacing instant falls before the start of the OWNER's
+ * local day `daysAhead` from their today.
+ *
+ * The cutoff has to be the owner's midnight, not the server's: this service runs
+ * in UTC, so a server-day boundary hides an evening action from a Pacific owner
+ * asking "what's due today?" and starts calling tomorrow's work overdue.
+ */
+function surfacesBefore(
+  action: GeneralActionWithContext,
+  day: OwnerDay,
+  daysAhead: number,
+): boolean {
   const surfacing = surfacingTime(action);
-  return surfacing !== null && surfacing.getTime() < startOfDay(daysAhead).getTime();
+  return surfacing !== null && surfacing.getTime() < ownerLocalDayStart(day, daysAhead).getTime();
 }
 
 /** Whether a deferred action's resurface date has arrived (as of `now`). */
@@ -106,20 +115,24 @@ function isResurfaced(action: GeneralActionWithContext, now: Date): boolean {
 }
 
 /** Applies one date/state window to the active ledger. A plain filter, never ranking. */
-function matchesWindow(action: GeneralActionWithContext, window: ListWindow, now: Date): boolean {
+function matchesWindow(
+  action: GeneralActionWithContext,
+  window: ListWindow,
+  day: OwnerDay,
+): boolean {
   switch (window) {
     case "unscheduled":
       return action.dueAt === null && action.deferUntil === null;
     case "deferred":
       return action.status === "deferred";
     case "resurfaced":
-      return isResurfaced(action, now);
+      return isResurfaced(action, day.now);
     case "overdue":
-      return surfacesBefore(action, 0);
+      return surfacesBefore(action, day, 0);
     case "today":
-      return surfacesBefore(action, 1);
+      return surfacesBefore(action, day, 1);
     case "this_week":
-      return surfacesBefore(action, 7);
+      return surfacesBefore(action, day, 7);
   }
 }
 
@@ -144,14 +157,21 @@ export default defineTool({
     // result — windows like 'unscheduled' sort last, so a store LIMIT would truncate
     // them away before the filter runs. Fetch unbounded when we post-filter, then apply
     // the caller's limit after filtering; otherwise push the limit down to the store.
-    const windowsActive = input.window !== undefined && ledger === "active";
-    const postFilters = windowsActive || Boolean(input.routinesOnly);
+    const activeWindow = ledger === "active" ? input.window : undefined;
+    const postFilters = activeWindow !== undefined || Boolean(input.routinesOnly);
 
     const read = readerForLedger(ledger);
-    const fetched = await withModelSafeStoreErrors(() =>
-      read({ ownerUserId, limit: postFilters ? undefined : input.limit }),
+    const [fetched, window] = await withModelSafeStoreErrors(() =>
+      Promise.all([
+        read({ ownerUserId, limit: postFilters ? undefined : input.limit }),
+        // The owner's own calendar day, so a window is measured against their
+        // midnight and not the server's. Read only when a window asks for it.
+        activeWindow === undefined
+          ? null
+          : getOwnerTodayContext({ ownerUserId }).then((day) => ({ window: activeWindow, day })),
+      ]),
     );
-    const actions = applyActiveListFilters(fetched, input, { windowsActive, postFilters });
+    const actions = applyActiveListFilters(fetched, input, { window, postFilters });
 
     return {
       found: true as const,

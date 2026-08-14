@@ -4,6 +4,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z
   .object({
@@ -80,7 +81,9 @@ export default defineTool({
     const ownerUserId = resolveOwnerUserId(ctx);
     const { personId, ...patch } = input;
 
-    const outcome = await updatePerson({ ownerUserId, personId, ...patch });
+    const outcome = await withModelSafeStoreErrors(() =>
+      updatePerson({ ownerUserId, personId, ...patch }),
+    );
     await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
     const person = outcome.result;
 

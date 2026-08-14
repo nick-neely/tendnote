@@ -1,8 +1,22 @@
 import { listActiveFollowups } from "@tendnote/db/queries/followups";
+import { getOwnerTodayContext } from "@tendnote/db/queries/today";
 import { visibilityChoiceForScope, visibilityLabelForScope } from "@tendnote/domain/privacy";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { type OwnerDay, ownerLocalDayStart } from "../lib/owner-day";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
+
+/**
+ * How many reminders one unbounded ask returns.
+ *
+ * The shared store applies no limit when the caller omits one, so "what's due?"
+ * used to pull the owner's entire open ledger into a chat turn while the tool's
+ * own description promised "a small set". Twenty matches the memories list
+ * (`memories/drizzle-store.ts`), and it is a default rather than a cap the model
+ * cannot see: an explicit `limit` up to the schema's maximum still works.
+ */
+const DEFAULT_FOLLOWUP_LIST_LIMIT = 20;
 
 const inputSchema = z.object({
   personId: z
@@ -22,24 +36,23 @@ const inputSchema = z.object({
     .int()
     .min(1)
     .max(50)
-    .optional()
-    .describe("Max reminders to return, soonest due first. Defaults to a small set."),
+    .default(DEFAULT_FOLLOWUP_LIST_LIMIT)
+    .describe(
+      `Max reminders to return, soonest due first. Defaults to ${DEFAULT_FOLLOWUP_LIST_LIMIT}.`,
+    ),
 });
 
 /**
- * Exclusive end-of-window cutoff in local time: start of tomorrow for "today",
- * seven days out for "this_week". A plain due-date filter — never agenda ranking.
+ * Exclusive end-of-window cutoff on the OWNER's calendar: the start of their
+ * tomorrow for "today", seven of their days out for "this_week". A plain due-date
+ * filter — never agenda ranking.
  */
-function dueBeforeFor(window?: "today" | "this_week"): Date | undefined {
+function dueBeforeFor(day: OwnerDay, window?: "today" | "this_week"): Date | undefined {
   if (!window) {
     return undefined;
   }
 
-  const now = new Date();
-  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  cutoff.setDate(cutoff.getDate() + (window === "today" ? 1 : 7));
-
-  return cutoff;
+  return ownerLocalDayStart(day, window === "today" ? 1 : 7);
 }
 
 /**
@@ -56,11 +69,20 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const summaries = await listActiveFollowups({
-      ownerUserId,
-      personId: input.personId,
-      dueBefore: dueBeforeFor(input.window),
-      limit: input.limit,
+    const summaries = await withModelSafeStoreErrors(async () => {
+      // "Today" is a question about the owner's calendar, not the server's: the
+      // service runs in UTC, so a server-day cutoff drops a Pacific owner's whole
+      // evening and, after 4pm, starts folding tomorrow in (ADR 0220 pattern). The
+      // day is read only when a window actually needs it.
+      const dueBefore = input.window
+        ? dueBeforeFor(await getOwnerTodayContext({ ownerUserId }), input.window)
+        : undefined;
+      return listActiveFollowups({
+        ownerUserId,
+        personId: input.personId,
+        dueBefore,
+        limit: input.limit,
+      });
     });
 
     return {

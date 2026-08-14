@@ -8,6 +8,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   clarificationAnswer: z
@@ -57,20 +58,22 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    const result = await captureExplicitOutcome({
-      authority: "explicit",
-      ...(input.clarificationAnswer ? { clarificationAnswer: input.clarificationAnswer } : {}),
-      interactionId: input.interactionId,
-      inputMode: input.inputMode,
-      ...(input.inferredSuggestions ? { inferredSuggestions: input.inferredSuggestions } : {}),
-      originalText: input.originalText,
-      // The word only. The household it resolves to is read from this caller's
-      // own active memberships inside the seam, so no model turn can name a
-      // workspace or widen an audience (ADR 0219).
-      ...(input.requestedScope ? { requestedScope: input.requestedScope } : {}),
-      ownerUserId,
-      surface: "eve",
-    });
+    const result = await withModelSafeStoreErrors(() =>
+      captureExplicitOutcome({
+        authority: "explicit",
+        ...(input.clarificationAnswer ? { clarificationAnswer: input.clarificationAnswer } : {}),
+        interactionId: input.interactionId,
+        inputMode: input.inputMode,
+        ...(input.inferredSuggestions ? { inferredSuggestions: input.inferredSuggestions } : {}),
+        originalText: input.originalText,
+        // The word only. The household it resolves to is read from this caller's
+        // own active memberships inside the seam, so no model turn can name a
+        // workspace or widen an audience (ADR 0219).
+        ...(input.requestedScope ? { requestedScope: input.requestedScope } : {}),
+        ownerUserId,
+        surface: "eve",
+      }),
+    );
     await requestBackgroundAffectedScopeReconciliation(result.affectedScopes ?? []);
 
     if (result.clarification) {

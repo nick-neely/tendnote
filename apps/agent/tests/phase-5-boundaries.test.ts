@@ -249,6 +249,19 @@ const GENERAL_ACTION_TOOL_FILES = walk("apps/agent/agent/tools", (name) =>
   /general_action/.test(name),
 );
 
+/**
+ * Every tool file in the tree — root and subagent — that actually runs an `execute`.
+ *
+ * The framework-tool disable sentinels are filtered out by content rather than by
+ * name: they export `disableTool()` and define no executor, so there is nothing for
+ * a store-error wrapper to guard, and hardcoding their filenames here would need
+ * updating every time layer 1's list changes.
+ */
+const EXECUTING_TOOL_FILES = [
+  ...walk("apps/agent/agent/tools", isSource),
+  ...walk("apps/agent/agent/subagents", isSource),
+].filter((path) => /async\s+\*?execute\s*\(/.test(read(path)));
+
 const ACTIONS_PATH_SOURCES = [
   ...walk("packages/db/src/queries/general-actions", isSource),
   ...walk("packages/db/src/queries/general-action-areas", isSource),
@@ -429,8 +442,24 @@ describe("Phase 5 boundary — Eve exposes a bounded, single-record General Acti
     }
   });
 
-  it("curates store failures before every General Action tool can return them to the model", () => {
-    for (const path of GENERAL_ACTION_TOOL_FILES) {
+  it("curates store failures before ANY Eve tool can return them to the model", () => {
+    // Widened from the General Action tools to every tool in the tree. A thrown tool
+    // error is model-visible content: Drizzle's message carries the SQL, the schema,
+    // and the user's own bound values, and an unwrapped tool hands all of it to the
+    // model (see `agent/lib/store-errors.ts`). The scan is a whole-directory walk, not
+    // a list, so a tool added tomorrow is in scope the moment its file lands.
+    //
+    // The only exemptions are the framework-tool disable sentinels: they export
+    // `disableTool()` and have no `execute`, so there is no store call to curate.
+    expect(EXECUTING_TOOL_FILES.length).toBeGreaterThan(GENERAL_ACTION_TOOL_FILES.length);
+    // Subagent tools are the easiest half of the tree to forget: they live three
+    // directories away and are never imported by the root agent.
+    expect(EXECUTING_TOOL_FILES).toContain(
+      "apps/agent/agent/subagents/memory_curator/tools/propose_memory_cleanup.ts",
+    );
+    // ...and the sentinels stay out, because they have nothing to wrap.
+    expect(EXECUTING_TOOL_FILES).not.toContain("apps/agent/agent/tools/bash.ts");
+    for (const path of EXECUTING_TOOL_FILES) {
       expect(stripComments(read(path)), `${path} wraps its store calls`).toMatch(
         /withModelSafeStoreErrors/,
       );

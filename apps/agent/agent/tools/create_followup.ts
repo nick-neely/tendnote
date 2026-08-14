@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   personId: z
@@ -36,13 +37,15 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const outcome = await createFollowup({
-      ownerUserId,
-      personId: input.personId,
-      reason: input.reason,
-      // Parsed here; the shared layer rejects anything that isn't a concrete date.
-      dueAt: new Date(input.dueAt),
-    });
+    const outcome = await withModelSafeStoreErrors(() =>
+      createFollowup({
+        ownerUserId,
+        personId: input.personId,
+        reason: input.reason,
+        // Parsed here; the shared layer rejects anything that isn't a concrete date.
+        dueAt: new Date(input.dueAt),
+      }),
+    );
     await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
     const followup = outcome.result;
 

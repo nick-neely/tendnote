@@ -23,6 +23,10 @@ export function createConversationalCapture(
 }
 
 export type {
+  CaptureOutcomeUndoOutcome,
+  CaptureOutcomeUndoResult,
+} from "./conversational-capture/lifecycle-operations";
+export type {
   ConversationalCaptureDeps,
   ConversationalCaptureInput,
 } from "./conversational-capture/types";

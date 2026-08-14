@@ -387,6 +387,31 @@ export const conversationalCaptureClarificationSchema = z
   })
   .strict();
 
+/**
+ * Why a capture Undo could not be applied.
+ *
+ * `not_found` is "the record this Undo target names is gone"; `refused` is "the
+ * record is there and Tendnote will not invert it this way" (a Person created by
+ * capture, a Self Context fact whose evidence does not match, an inverse the
+ * confirmation never carried). Callers that only need to fail — the web Undo
+ * control — see an ordinary throw with a curated sentence. Callers that have to
+ * *say* what happened, like the Eve tool, branch on `reason` instead of matching
+ * the wording, which would silently stop matching the first time it improves.
+ */
+export type ConversationalCaptureUndoRefusal = "not_found" | "refused";
+
+/** A capture Undo that did not happen, with a sentence a person may be shown. */
+export class ConversationalCaptureUndoError extends Error {
+  override name = "ConversationalCaptureUndoError";
+
+  constructor(
+    readonly reason: ConversationalCaptureUndoRefusal,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 export type ConversationalCaptureRequest = z.infer<typeof conversationalCaptureRequestSchema>;
 export type ConversationalCaptureVisibility = z.infer<typeof conversationalCaptureVisibilitySchema>;
 export type ConversationalCaptureInferredSuggestion = z.infer<

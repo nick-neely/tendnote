@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { captureExplicitMemoryWithEmbeddingDelivery } from "../lib/background-jobs/embedding-schedulers";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   personId: z
@@ -29,12 +30,14 @@ export default defineTool({
 
     const { content } = parseExplicitMemoryRequest(input.request);
 
-    const { memory, sourceRecord, person } = await captureExplicitMemoryWithEmbeddingDelivery({
-      ownerUserId,
-      personId: input.personId,
-      content,
-      sensitivity: input.sensitivity,
-    });
+    const { memory, sourceRecord, person } = await withModelSafeStoreErrors(() =>
+      captureExplicitMemoryWithEmbeddingDelivery({
+        ownerUserId,
+        personId: input.personId,
+        content,
+        sensitivity: input.sensitivity,
+      }),
+    );
 
     return {
       memory: {

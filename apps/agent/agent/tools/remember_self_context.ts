@@ -6,6 +6,7 @@ import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { toSelfContextFactToolView } from "../lib/self-context-fact-view";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   category: selfContextFactCategorySchema.describe(
@@ -31,15 +32,17 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    const outcome = await createSelfContextFact(
-      {
-        callerUserId: ownerUserId,
-        category: input.category,
-        content: input.content,
-        sensitivity: input.sensitivity,
-        provenance: { channel: "eve", origin: "direct", sourceRecordId: null },
-      },
-      async () => ownerUserId,
+    const outcome = await withModelSafeStoreErrors(() =>
+      createSelfContextFact(
+        {
+          callerUserId: ownerUserId,
+          category: input.category,
+          content: input.content,
+          sensitivity: input.sensitivity,
+          provenance: { channel: "eve", origin: "direct", sourceRecordId: null },
+        },
+        async () => ownerUserId,
+      ),
     );
     await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
 

@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { runCleanupPreviewSandbox } from "../lib/cleanup-preview-sandbox";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   inputText: z
@@ -22,12 +23,18 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    return runCleanupPreviewSandbox({
-      ownerUserId,
-      inputText: input.inputText,
-      inputKind: input.inputKind ?? "auto",
-      source: "sandbox",
-    });
+    // The only synchronous entry point behind a tool, and still wrapped: it parses
+    // whatever the owner pasted, so a malformed CSV or vCard throwing out of the
+    // parser would put its message — and the owner's own text with it — straight in
+    // front of the model.
+    return withModelSafeStoreErrors(async () =>
+      runCleanupPreviewSandbox({
+        ownerUserId,
+        inputText: input.inputText,
+        inputKind: input.inputKind ?? "auto",
+        source: "sandbox",
+      }),
+    );
   },
   toModelOutput(output) {
     return {

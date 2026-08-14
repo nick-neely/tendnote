@@ -3,6 +3,7 @@ import { messageDraftChannelSchema, messageDraftPurposeSchema } from "@tendnote/
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../../../lib/owner";
+import { withModelSafeStoreErrors } from "../../../lib/store-errors";
 
 const inputSchema = z.object({
   personId: z.uuid().describe("The resolved Tendnote person to propose message wording for."),
@@ -58,18 +59,20 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    return proposeDraft({
-      ownerUserId,
-      personId: input.personId,
-      purpose: input.purpose,
-      channel: input.channel,
-      toneInstruction: input.toneInstruction,
-      toneVariants: input.toneVariants,
-      directlyRequested: input.includeRestricted ?? false,
-      revisionContext: input.revisionContext,
-      followupContext: input.followupContext,
-      briefItemContext: input.briefItemContext,
-    });
+    return withModelSafeStoreErrors(() =>
+      proposeDraft({
+        ownerUserId,
+        personId: input.personId,
+        purpose: input.purpose,
+        channel: input.channel,
+        toneInstruction: input.toneInstruction,
+        toneVariants: input.toneVariants,
+        directlyRequested: input.includeRestricted ?? false,
+        revisionContext: input.revisionContext,
+        followupContext: input.followupContext,
+        briefItemContext: input.briefItemContext,
+      }),
+    );
   },
   toModelOutput(output) {
     if (!output.proposal) {

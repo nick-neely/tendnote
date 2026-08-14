@@ -6,6 +6,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { toSelfContextFactToolView } from "../lib/self-context-fact-view";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   includeArchived: z
@@ -21,13 +22,15 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    const facts = await listSelfContextFacts(
-      {
-        callerUserId: ownerUserId,
-        includeRestricted: false,
-        includeArchived: input.includeArchived ?? false,
-      },
-      async () => ownerUserId,
+    const facts = await withModelSafeStoreErrors(() =>
+      listSelfContextFacts(
+        {
+          callerUserId: ownerUserId,
+          includeRestricted: false,
+          includeArchived: input.includeArchived ?? false,
+        },
+        async () => ownerUserId,
+      ),
     );
     const exactFacts = facts.map(toSelfContextFactToolView);
     const recallFacts = facts.filter(

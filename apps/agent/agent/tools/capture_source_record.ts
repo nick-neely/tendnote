@@ -8,6 +8,7 @@ import {
   enqueueAndPublishExtractionJob,
 } from "../lib/background-jobs/extraction-queue";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   retainedContent: z
@@ -45,20 +46,22 @@ export default defineTool({
     // The shared capture→extract sequence (branch on person, capture, best-effort
     // enqueue) lives in @tendnote/db; this tool injects Eve's wiring and keeps only
     // its own presentation framing.
-    const { sourceRecord, component } = await captureLoggedContext(
-      {
-        ownerUserId,
-        retainedContent: input.retainedContent,
-        personId: input.personId,
-        sensitivity: input.sensitivity,
-        captureSurface: "eve",
-      },
-      {
-        captureForPerson: captureSourceRecordForPersonWithEmbeddingDelivery,
-        captureGlobal: captureSourceRecord,
-        enqueueExtraction: enqueueAndPublishExtractionJob,
-        enqueueActionExtraction: enqueueAndPublishActionExtractionJob,
-      },
+    const { sourceRecord, component } = await withModelSafeStoreErrors(() =>
+      captureLoggedContext(
+        {
+          ownerUserId,
+          retainedContent: input.retainedContent,
+          personId: input.personId,
+          sensitivity: input.sensitivity,
+          captureSurface: "eve",
+        },
+        {
+          captureForPerson: captureSourceRecordForPersonWithEmbeddingDelivery,
+          captureGlobal: captureSourceRecord,
+          enqueueExtraction: enqueueAndPublishExtractionJob,
+          enqueueActionExtraction: enqueueAndPublishActionExtractionJob,
+        },
+      ),
     );
 
     return {

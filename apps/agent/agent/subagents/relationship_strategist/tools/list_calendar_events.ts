@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createOwnerCalendarReader } from "../../../lib/calendar";
 import { runCalendarRead } from "../../../lib/calendar-read";
 import { resolveOwnerUserId } from "../../../lib/owner";
+import { withModelSafeStoreErrors } from "../../../lib/store-errors";
 
 const inputSchema = z.object({
   daysAhead: z.number().int().min(0).max(30).optional().describe("Days ahead to include."),
@@ -26,9 +27,11 @@ export default defineTool({
     const ownerUserId = resolveOwnerUserId(ctx);
     const reader = createOwnerCalendarReader(ownerUserId);
 
-    return runCalendarRead(
-      { ownerUserId, input, now: new Date() },
-      { read: (request) => readConnectedOwnerCalendar(request, { reader }) },
+    return withModelSafeStoreErrors(() =>
+      runCalendarRead(
+        { ownerUserId, input, now: new Date() },
+        { read: (request) => readConnectedOwnerCalendar(request, { reader }) },
+      ),
     );
   },
   toModelOutput(output) {

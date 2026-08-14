@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   memoryId: z.uuid().describe("The persisted suggested-memory id to dismiss."),
@@ -20,7 +21,9 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const outcome = await dismissSuggestedMemory({ ownerUserId, memoryId: input.memoryId });
+    const outcome = await withModelSafeStoreErrors(() =>
+      dismissSuggestedMemory({ ownerUserId, memoryId: input.memoryId }),
+    );
     await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
     const memory = outcome.result;
 

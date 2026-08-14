@@ -1,3 +1,4 @@
+import { ConversationalCaptureUndoError } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
 import { createContextFactQueries, createInMemoryContextFactStore } from "../context-facts";
 import { createInMemorySavedItemLifecycleStore, createSavedItemLifecycle } from "../saved-items";
@@ -1425,7 +1426,11 @@ describe("conversational Capture", () => {
       actorUserId: "owner-1",
       target: { kind: "archive_saved_item", savedItemId: savedItemFrom(created).id },
     });
+    // Undo says which of the two success shapes happened. Both end archived, so a
+    // caller that has to report the result cannot tell "I undid that" from "that was
+    // already undone" by looking at the record.
     expect(undone).toMatchObject({
+      outcome: "undone",
       result: { status: "archived" },
       affectedScopes: expect.any(Array),
     });
@@ -1434,7 +1439,20 @@ describe("conversational Capture", () => {
       actorUserId: "owner-1",
       target: { kind: "archive_saved_item", savedItemId: savedItemFrom(created).id },
     });
-    expect(retriedUndo).toMatchObject({ result: { status: "archived" }, affectedScopes: [] });
+    expect(retriedUndo).toMatchObject({
+      outcome: "already_undone",
+      result: { status: "archived" },
+      affectedScopes: [],
+    });
+
+    // A target that names nothing is a typed refusal carrying its own curated
+    // sentence, so a caller branches on `reason` instead of matching wording.
+    const missing = capture.undoOutcome({
+      actorUserId: "owner-1",
+      target: { kind: "archive_saved_item", savedItemId: "99999999-9999-4999-8999-999999999999" },
+    });
+    await expect(missing).rejects.toBeInstanceOf(ConversationalCaptureUndoError);
+    await expect(missing).rejects.toMatchObject({ reason: "not_found" });
     expect(
       (
         await store.listSavedItemEvents({

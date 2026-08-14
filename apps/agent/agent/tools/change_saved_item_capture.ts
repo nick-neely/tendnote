@@ -8,6 +8,31 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
+
+/**
+ * What the shared correction can hand back.
+ *
+ * Exactly one of these is true of every completed call: it asked one focused
+ * question and wrote nothing, or it applied the correction and described it. The
+ * tool used to compute `changed: !clarification`, which made a *failed* parse of
+ * either field indistinguishable from a successful change — so a correction that
+ * never landed was reported to the model as done.
+ */
+type ChangeResult =
+  | { changed: false; clarification: ChangeClarification; target: ChangeTarget }
+  | { changed: true; confirmation: ChangeConfirmation | null; target: ChangeTarget };
+
+type ChangeTarget = z.infer<typeof conversationalCaptureChangeTargetSchema>;
+type ChangeClarification = z.infer<typeof conversationalCaptureClarificationSchema>;
+type ChangeConfirmation = z.infer<typeof conversationalCaptureConfirmationSchema>;
+
+/** Reads one field off the shared correction's loosely-typed result. */
+function field(result: unknown, name: "clarification" | "confirmation"): unknown {
+  return result && typeof result === "object" && name in result
+    ? (result as Record<string, unknown>)[name]
+    : undefined;
+}
 
 export default defineTool({
   description:
@@ -19,32 +44,53 @@ export default defineTool({
       "The exact changeTarget returned by capture_saved_item.",
     ),
   }),
-  async execute(input, ctx) {
+  async execute(input, ctx): Promise<ChangeResult> {
     const actorUserId = resolveOwnerUserId(ctx);
-    const result = await changeExplicitCaptureOutcome({ actorUserId, ...input });
+    const result = await withModelSafeStoreErrors(() =>
+      changeExplicitCaptureOutcome({ actorUserId, ...input }),
+    );
     if (result && typeof result === "object" && "affectedScopes" in result) {
       const affectedScopes = result.affectedScopes;
       if (Array.isArray(affectedScopes)) {
         await requestBackgroundAffectedScopeReconciliation(affectedScopes);
       }
     }
-    const rawConfirmation =
-      result && typeof result === "object" && "confirmation" in result
-        ? result.confirmation
-        : undefined;
-    const parsedConfirmation = conversationalCaptureConfirmationSchema.safeParse(rawConfirmation);
-    const confirmation = parsedConfirmation.success ? parsedConfirmation.data : undefined;
-    const rawClarification =
-      result && typeof result === "object" && "clarification" in result
-        ? result.clarification
-        : undefined;
-    const parsedClarification =
-      conversationalCaptureClarificationSchema.safeParse(rawClarification);
-    const clarification = parsedClarification.success ? parsedClarification.data : undefined;
-    return { changed: !clarification, clarification, confirmation, target: input.target };
+
+    // The clarification branch writes nothing, so an unreadable question means the
+    // correction did not happen and there is no question to ask either. That is a
+    // real failure, and it is raised before anything can be reported as changed.
+    const rawClarification = field(result, "clarification");
+    if (rawClarification !== undefined) {
+      const parsed = conversationalCaptureClarificationSchema.safeParse(rawClarification);
+      if (!parsed.success) {
+        throw new Error(
+          "The correction was not applied and Tendnote could not say what it needs. Tell the " +
+            "user it did not go through and ask them to restate the correction; do not retry " +
+            "this call unchanged.",
+        );
+      }
+      return { changed: false, clarification: parsed.data, target: input.target };
+    }
+
+    // Every applied correction carries a confirmation, so its absence means nothing
+    // landed. A confirmation that is present but unreadable is the opposite case:
+    // the write committed, and only its description is unusable.
+    const rawConfirmation = field(result, "confirmation");
+    if (rawConfirmation === undefined) {
+      throw new Error(
+        "The correction did not complete and nothing was changed. Tell the user plainly and " +
+          "do not retry this call.",
+      );
+    }
+    const parsed = conversationalCaptureConfirmationSchema.safeParse(rawConfirmation);
+    return {
+      changed: true,
+      confirmation: parsed.success ? parsed.data : null,
+      target: input.target,
+    };
   },
   toModelOutput(output) {
-    if (output.clarification) {
+    if (!output.changed) {
       return {
         type: "json" as const,
         value: {
@@ -58,7 +104,20 @@ export default defineTool({
       };
     }
     const confirmation = output.confirmation;
-    const outcome = confirmation?.destination === "Grouped" ? undefined : confirmation;
+    if (!confirmation) {
+      // The correction is committed; only the description of it is missing. Say the
+      // true minimum rather than inventing a destination or re-running the write.
+      return {
+        type: "json" as const,
+        value: {
+          changed: true,
+          target: output.target,
+          guidance:
+            "The correction was applied, but Tendnote returned no readable description of it. Confirm only that the capture was corrected — do not name a destination, do not repeat the saved text, and do not call this tool again.",
+        },
+      };
+    }
+    const outcome = confirmation.destination === "Grouped" ? undefined : confirmation;
     return {
       type: "json" as const,
       value: {

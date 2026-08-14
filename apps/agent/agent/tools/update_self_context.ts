@@ -6,6 +6,7 @@ import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { toSelfContextFactToolView } from "../lib/self-context-fact-view";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   contextFactId: z
@@ -28,16 +29,20 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    const outcome = await updateSelfContextFact(
-      {
-        callerUserId: ownerUserId,
-        contextFactId: input.contextFactId,
-        category: input.category,
-        content: input.content,
-        sensitivity: input.sensitivity,
-        expectedUpdatedAt: input.expectedUpdatedAt ? new Date(input.expectedUpdatedAt) : undefined,
-      },
-      async () => ownerUserId,
+    const outcome = await withModelSafeStoreErrors(() =>
+      updateSelfContextFact(
+        {
+          callerUserId: ownerUserId,
+          contextFactId: input.contextFactId,
+          category: input.category,
+          content: input.content,
+          sensitivity: input.sensitivity,
+          expectedUpdatedAt: input.expectedUpdatedAt
+            ? new Date(input.expectedUpdatedAt)
+            : undefined,
+        },
+        async () => ownerUserId,
+      ),
     );
     await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
 

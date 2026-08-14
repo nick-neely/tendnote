@@ -17,9 +17,15 @@ const mocks = vi.hoisted(() => ({
   resumeGeneralAction: vi.fn(),
   editGeneralAction: vi.fn(),
   requestBackgroundAffectedScopeReconciliation: vi.fn(),
+  getOwnerTodayContext: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/general-actions", () => mocks);
+// The ledger's date windows are measured against the OWNER's day, so the list tool
+// reads it. Mocked here so this suite stays a pure unit test of the filters.
+vi.mock("@tendnote/db/queries/today", () => ({
+  getOwnerTodayContext: mocks.getOwnerTodayContext,
+}));
 vi.mock("../agent/lib/request-affected-scope-reconciliation", () => ({
   requestBackgroundAffectedScopeReconciliation: mocks.requestBackgroundAffectedScopeReconciliation,
 }));
@@ -82,6 +88,11 @@ function mutationOutcome<TResult>(result: TResult) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.getOwnerTodayContext.mockResolvedValue({
+    localDate: new Intl.DateTimeFormat("en-CA", { timeZone: "UTC" }).format(new Date()),
+    timeZone: "UTC",
+    now: new Date(),
+  });
 });
 
 describe("create_general_action — explicit active creation", () => {

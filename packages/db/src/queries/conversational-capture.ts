@@ -46,7 +46,11 @@ import {
   unlinkSourceRecordFromPerson,
 } from "./source-records";
 
-export type { ConversationalCaptureInput } from "./capture/conversational-capture";
+export type {
+  CaptureOutcomeUndoOutcome,
+  CaptureOutcomeUndoResult,
+  ConversationalCaptureInput,
+} from "./capture/conversational-capture";
 export { createConversationalCapture } from "./capture/conversational-capture";
 
 const briefScheduleStore = createDrizzleBriefScheduleStore();

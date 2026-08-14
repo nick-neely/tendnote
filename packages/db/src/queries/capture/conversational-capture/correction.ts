@@ -20,6 +20,7 @@ import type { SavedItemLifecycleStore, SavedItemWithContext } from "../../saved-
 import { createCaptureDestination } from "./destinations";
 import {
   type CaptureOutcomeReference,
+  type CaptureOutcomeUndoResult,
   changeTargetReference,
   createCaptureOutcomeLifecycleOperations,
   undoTargetReference,
@@ -189,10 +190,19 @@ export function createCorrectionOperations(
     return lifecycle.archiveSavedItem(parsed);
   }
 
-  async function undoOutcome(input: {
+  /**
+   * Applies the authoritative inverse of one captured outcome.
+   *
+   * Returns which of the two success shapes happened — the inverse ran now, or
+   * the record already held it — and throws a
+   * {@link ConversationalCaptureUndoError} when it did not happen at all, so a
+   * caller that has to *report* the result (Eve) can say the true one of the
+   * four things without inspecting the record or matching on wording.
+   */
+  function undoOutcome(input: {
     actorUserId: string;
     target: ConversationalCaptureUndoTarget;
-  }) {
+  }): Promise<CaptureOutcomeUndoResult> {
     const parsed = conversationalCaptureDestinationUndoRequestSchema.parse(input);
     const target = undoTargetReference(parsed.target);
     return outcomeLifecycle[target.kind].undo(parsed.actorUserId, target.id, target);

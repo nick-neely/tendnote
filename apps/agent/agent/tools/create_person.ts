@@ -4,6 +4,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   displayName: z
@@ -37,12 +38,14 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const outcome = await createPerson({
-      ownerUserId,
-      displayName: input.displayName,
-      relationshipType: input.relationshipType,
-      profileBlurb: input.profileBlurb,
-    });
+    const outcome = await withModelSafeStoreErrors(() =>
+      createPerson({
+        ownerUserId,
+        displayName: input.displayName,
+        relationshipType: input.relationshipType,
+        profileBlurb: input.profileBlurb,
+      }),
+    );
     await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
     const person = outcome.result;
 

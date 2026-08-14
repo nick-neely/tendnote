@@ -11,6 +11,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   followupId: z.uuid().describe("The persisted follow-up id to update."),
@@ -72,7 +73,7 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    const outcome = await applyTransition(input, ownerUserId);
+    const outcome = await withModelSafeStoreErrors(() => applyTransition(input, ownerUserId));
     await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
     const followup = outcome.result;
 

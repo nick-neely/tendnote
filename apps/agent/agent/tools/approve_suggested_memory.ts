@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { saveSuggestedMemoryWithEmbeddingDelivery } from "../lib/background-jobs/embedding-schedulers";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   memoryId: z.uuid().describe("The persisted suggested-memory id to approve."),
@@ -25,11 +26,13 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const result = await saveSuggestedMemoryWithEmbeddingDelivery({
-      ownerUserId,
-      memoryId: input.memoryId,
-      edit: input.edit,
-    });
+    const result = await withModelSafeStoreErrors(() =>
+      saveSuggestedMemoryWithEmbeddingDelivery({
+        ownerUserId,
+        memoryId: input.memoryId,
+        edit: input.edit,
+      }),
+    );
 
     return {
       component: result.component,
