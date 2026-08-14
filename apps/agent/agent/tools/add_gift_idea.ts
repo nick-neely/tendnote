@@ -19,6 +19,14 @@ import { withModelSafeStoreErrors } from "../lib/store-errors";
  * rests on being in its audience, never on authority over it — and refuses the
  * Surprise Subject at the same gate as a read, so someone adding an idea to their
  * own surprise gets the identical single sentence a stranger does (ADR 0216).
+ *
+ * The one thing a retry must not do is add the idea twice. Reconciliation runs
+ * *after* the write commits (see below), so a transport failure there looks exactly
+ * like a failed add from where the model is standing - and the model's response to a
+ * failed add is to try again, which used to leave "Wool scarf, Wool scarf" on the
+ * plan for a co-planner to clean up. The turn plus the title is the key: the same
+ * call repeated is one idea, while a genuine second idea in the same turn has a
+ * different title and is a different key.
  */
 export default defineTool({
   description:
@@ -51,6 +59,10 @@ export default defineTool({
         title: input.title,
         note: input.note,
         url: input.url,
+        // Session, turn, and the idea's own words. Derived here rather than asked
+        // for: a key the model supplies is a key the model can vary on the retry it
+        // is meant to suppress.
+        idempotencyKey: `eve:${ctx.session.id}:${ctx.session.turn.id}:${input.title.toLowerCase()}`,
       }),
     );
 
@@ -64,18 +76,30 @@ export default defineTool({
       giftIdeaId: outcome.result.id,
       giftPlanId: input.giftPlanId,
       title: outcome.result.title,
+      // Whether this call is the one that wrote it. A repeat is still an idea on the
+      // plan, so the card and the confirmation are the same either way.
+      decision: outcome.decision,
       component: { type: "gift_idea_added", title: outcome.result.title },
     };
   },
+  /**
+   * `giftIdeaId` travels for the same reason `search_gift_plans` sends `giftPlanId`:
+   * `edit_gift_idea` and `remove_gift_idea` take one, and this is the only place the
+   * model can get it - an idea the user asks to correct a moment later is otherwise
+   * unreachable. Still nothing about the audience travels.
+   */
   toModelOutput(output) {
     return {
       type: "json",
       value: {
         added: true,
+        giftIdeaId: output.giftIdeaId,
         title: output.title,
         guidance:
           "Confirm the idea was added to the plan, by its title. Do not name the other " +
-          "co-planners, do not say who else has claimed anything, and never write a raw id.",
+          "co-planners, do not say who else has claimed anything, and never write a raw id. " +
+          "`giftIdeaId` is the handle `edit_gift_idea` and `remove_gift_idea` take if the " +
+          "user corrects or retracts this idea; copy it exactly and keep it out of your reply.",
       },
     };
   },

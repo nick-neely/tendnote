@@ -13,6 +13,10 @@ export default defineEval({
     t.calledTool("capture_saved_item", {
       input: { originalText: /remember.*track asset/is },
     });
+    // Both refusals are about a reachable tool. "Use Capture" names the path explicitly,
+    // and the two clauses inside it would each otherwise have a home: `capture_memory`
+    // for the approved memory, `create_asset` for the asset the user names outright.
+    // Capture owns the turn and routes the asset clause through its own review gate.
     t.notCalledTool("capture_memory");
     t.notCalledTool("create_asset");
   },

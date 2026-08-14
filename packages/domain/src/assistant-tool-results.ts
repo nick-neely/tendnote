@@ -545,6 +545,10 @@ export const assistantToolResultSchemas = {
   get_person_context: personContextToolResult,
   create_message_draft: messageDraftToolResult,
   get_suggested_memory_review: suggestedMemoryToolResult,
+  // The producer of the same review card. A proposal the user cannot accept or
+  // dismiss where it appears is a proposal in name only, so it renders as the card
+  // the queue already owns rather than as a line of Eve's prose about it.
+  propose_suggested_memory: suggestedMemoryToolResult,
   list_suggested_memory_reviews: suggestedMemoryListToolResult,
   propose_followup: suggestedFollowupToolResult,
   get_suggested_followup_review: suggestedFollowupToolResult,

@@ -1722,14 +1722,26 @@ describe("activeToolLabel (in-flight tool → working copy)", () => {
     }
   });
 
-  it("has an explicit working label for the prose General Action mutation tools", () => {
-    // These four render no card, so they are absent from RENDERED_TOOL_NAMES — but they
+  it("has an explicit working label for the prose mutation tools", () => {
+    // These render no card, so they are absent from RENDERED_TOOL_NAMES - but they
     // still run and shimmer, and must not fall back to a slugified tool name mid-flight.
+    //
+    // The list grew past the General Action four when Eve gained explicit-instruction
+    // writes for assets, gift ideas, memories, and drafts. None of them earns a card: a
+    // rename, a correction, an archive, and a draft revision are each a confirmation in
+    // one sentence, and the record's own surface is where the result belongs.
     const proseMutationTools = [
       "accept_suggested_general_action",
       "dismiss_suggested_general_action",
       "edit_general_action",
       "update_general_action_status",
+      "create_asset",
+      "edit_asset",
+      "edit_gift_idea",
+      "remove_gift_idea",
+      "archive_memory",
+      "edit_draft_body",
+      "dismiss_draft",
     ];
     for (const toolName of proseMutationTools) {
       const fallback = `${toolName.replace(/_/g, " ")}…`;

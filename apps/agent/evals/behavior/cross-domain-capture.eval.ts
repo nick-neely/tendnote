@@ -15,6 +15,13 @@ export default defineEval({
         originalText: /Add Priya.*remember.*track asset/is,
       },
     });
+    // Each clause has a tool that could plausibly serve it, and Capture's precedence is
+    // that none of them does when the clauses arrive together. `create_asset` is the
+    // sharpest of the three now that it exists: "track asset refrigerator water filter"
+    // IS an explicit asset instruction, so the assertion is no longer about a tool the
+    // model could not reach - it is about a tool it could reach and must not, because
+    // `capture_saved_item` owns a multi-clause turn and produces the review-gated Asset
+    // outcome itself.
     t.notCalledTool("create_person");
     t.notCalledTool("capture_memory");
     t.notCalledTool("create_asset");

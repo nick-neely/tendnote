@@ -35,6 +35,15 @@ import type { GiftPlanDetail, GiftPlanLifecycleStore, GiftPlanWithContext } from
 
 export type GiftPlanLifecycleOptions = { now?: () => Date };
 
+/**
+ * How far back an idea's idempotency key is honoured, in plan events.
+ *
+ * A retry arrives seconds after the call it repeats, so a handful of events is
+ * already generous; the bound exists so the check stays one small read on a plan
+ * with years of history rather than a growing scan.
+ */
+const IDEA_IDEMPOTENCY_EVENT_WINDOW = 20;
+
 const VISIBILITY_WORDING = {
   recordNoun: "plan",
   recordNounWithArticle: "a plan",
@@ -223,6 +232,32 @@ export function createGiftPlanLifecycle(
     detailJson: Record<string, unknown> = {},
   ) {
     await store.plans.createGiftPlanEvent({ giftPlanId, kind, actorUserId, detailJson });
+  }
+
+  /**
+   * The idea a previous `addGiftIdea` with this key produced, if it is still there.
+   *
+   * Reads the plan's own recent trail and re-reads the idea it names, so an idea
+   * that was added and then removed is *not* resurrected - the key answers "did
+   * this call already happen?", never "what should be on the plan?".
+   */
+  async function findIdeaAddedWithKey(
+    giftPlanId: string,
+    idempotencyKey: string,
+  ): Promise<GiftIdea | null> {
+    const events = await store.plans.listGiftPlanEvents({
+      giftPlanId,
+      limit: IDEA_IDEMPOTENCY_EVENT_WINDOW,
+    });
+    for (const event of events) {
+      if (event.kind !== "idea_added") continue;
+      if (event.detailJson.idempotencyKey !== idempotencyKey) continue;
+      const giftIdeaId = event.detailJson.giftIdeaId;
+      if (typeof giftIdeaId !== "string") continue;
+      const idea = await store.plans.getGiftIdeaById({ giftIdeaId });
+      if (idea?.giftPlanId === giftPlanId) return idea;
+    }
+    return null;
   }
 
   async function outcome(
@@ -698,14 +733,53 @@ export function createGiftPlanLifecycle(
       };
     },
 
+    /**
+     * Adds one idea, at most once per `idempotencyKey`.
+     *
+     * An idea is the one Gift Plan write whose retry is silently wrong. Every
+     * other mutation here is either a lifecycle transition (re-applying it is a
+     * no-op or a refused transition) or a fenced edit, but a second `createGiftIdea`
+     * with the same words succeeds and leaves the plan reading "Wool scarf, Wool
+     * scarf" - which nobody diagnoses as a retry, and which the contributor has to
+     * clean up by hand. The window is real: the caller reconciles co-planners'
+     * caches *after* the write commits, so a transport failure there is
+     * indistinguishable from a failed add to whoever is deciding whether to try
+     * again (Eve does exactly this, and its sibling `editGiftIdea` already carries
+     * an `expectedRevision` fence against the same class of problem).
+     *
+     * The key lives in the `idea_added` event's detail rather than in a column:
+     * the plan's own event trail is already the record of what happened to it, it
+     * is written in the same call as the idea, and a bounded read of it answers
+     * "did I already do this?" without a schema change. Bounded is the honest
+     * limit - a key that has scrolled past {@link IDEA_IDEMPOTENCY_EVENT_WINDOW}
+     * events is treated as new, which for a retry (seconds later, same plan) it
+     * never has.
+     *
+     * A deduplicated add still returns the plan's scopes. Nothing changed, but the
+     * likeliest reason a caller is here twice is that the first reconciliation did
+     * not land, so repeating it repairs that rather than leaving stale views behind.
+     */
     async addGiftIdea(input: {
       actorUserId: string;
       giftPlanId: string;
       title: string;
       note?: string | null;
       url?: string | null;
-    }): Promise<MutationOutcome<GiftIdea>> {
+      /**
+       * Caller-supplied retry key. Omit it and every call adds an idea, which is
+       * what a person clicking "Add" a second time means.
+       */
+      idempotencyKey?: string | null;
+    }): Promise<MutationOutcome<GiftIdea> & { decision: "created" | "existing" }> {
       const plan = await requireContributablePlan({ ...input, intent: "commitment" });
+
+      if (input.idempotencyKey) {
+        const existing = await findIdeaAddedWithKey(plan.id, input.idempotencyKey);
+        if (existing) {
+          return { result: existing, decision: "existing", affectedScopes: await ideaScopes(plan) };
+        }
+      }
+
       const idea = await store.plans.createGiftIdea(
         createGiftIdeaSchema.parse({
           giftPlanId: plan.id,
@@ -715,8 +789,11 @@ export function createGiftPlanLifecycle(
           url: input.url ?? null,
         }),
       );
-      await record(plan.id, "idea_added", input.actorUserId, { giftIdeaId: idea.id });
-      return { result: idea, affectedScopes: await ideaScopes(plan) };
+      await record(plan.id, "idea_added", input.actorUserId, {
+        giftIdeaId: idea.id,
+        ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+      });
+      return { result: idea, decision: "created", affectedScopes: await ideaScopes(plan) };
     },
 
     async editGiftIdea(input: {

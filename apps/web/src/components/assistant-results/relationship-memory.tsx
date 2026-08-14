@@ -486,6 +486,14 @@ export const suggestedMemoryReviewModule = defineModule<"suggested_memory_review
       if (!parsed.success) return null;
       return { kind: "suggested_memory_review", ...toReviewItem(parsed.data) };
     },
+    // A proposal Eve made in conversation reads the same contract, so it lands on the
+    // same card with the same accept and dismiss controls - a suggestion the user can
+    // only act on somewhere else is one they will not act on.
+    propose_suggested_memory: (output) => {
+      const parsed = assistantToolResultSchemas.propose_suggested_memory.safeParse(output);
+      if (!parsed.success) return null;
+      return { kind: "suggested_memory_review", ...toReviewItem(parsed.data) };
+    },
   },
   negativeOutcome: {
     matches: (output) => flagIsFalse(output, "found"),
