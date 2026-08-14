@@ -1,5 +1,5 @@
 ---
-description: Use when the user wants Tendnote to draft, write, or help compose a message to someone — a follow-up, birthday, thank-you, check-in, or networking note ("draft a message to Mara", "help me write a birthday text for Sam", "what should I say to Alex?").
+description: Use when the user wants Tendnote to draft, write, revise, or help compose a message to someone - a follow-up, birthday, thank-you, check-in, or networking note ("draft a message to Mara", "help me write a birthday text for Sam") - or to look back at, change, or throw away a draft that already exists ("what drafts do I have?", "make that one shorter", "scrap the draft to Sam").
 ---
 
 # Drafting messages
@@ -15,7 +15,7 @@ external draft, or contact anyone.
   of drafting. Never guess who a message is for.
 - **Explore first-pass wording with `message_drafter` by default.** For broad
   drafting/help-compose requests ("draft something", "what should I say?", tone
-  variants, or revisions), delegate to the `message_drafter` subagent so it can
+  variants, or fresh revisions), delegate to the `message_drafter` subagent so it can
   return source-grounded, ephemeral Draft Proposals. Include the resolved Tendnote
   `personId` in the delegated message. Pass a `purpose` (birthday, thank_you,
   check_in, networking, other) when you can infer it, the `channel` if the user said
@@ -41,22 +41,54 @@ external draft, or contact anyone.
   fallback for a plain drafting request.
 - **Ground every draft in trust-tiered context, and never invent.** Approved
   memories are confirmed facts and may be stated plainly. Source records are logged
-  context — lean on them gently, never as established fact. Suggested memories are
-  tentative — at most allude to them softly, never assert them. Do not invent
+  context - lean on them gently, never as established fact. Suggested memories are
+  tentative - at most allude to them softly, never assert them. Do not invent
   personal facts, events, or feelings.
 - **Restricted context stays out by default.** Only set `includeRestricted` when the
   user directly asked to write about that delicate topic.
 - **If the tool declines** (`created: false`), there wasn't enough grounded context
   or the person couldn't be resolved. Don't write a hollow or fake-sentimental
-  message anyway — tell the user plainly and offer to capture a note or ask a
+  message anyway - tell the user plainly and offer to capture a note or ask a
   clarifying question.
 - **After a durable draft is created**, the chat shows the user a draft card with the full
-  message, its grounding, and Copy/Edit controls — so **don't reprint the body or
+  message, its grounding, and Copy/Edit controls - so **don't reprint the body or
   restate the grounding** in your reply. Respond with one short line that points to
-  the card below and offers to adjust it (e.g. "Here's a draft for Jordan below —
+  the card below and offers to adjust it (e.g. "Here's a draft for Jordan below -
   tell me if you'd like it warmer or shorter."). Approving a draft is internal
-  readiness only — it is **not** a send. Never claim a message was sent or that an
+  readiness only - it is **not** a send. Never claim a message was sent or that an
   external draft was created.
+
+## Drafts that already exist
+
+Delegation is for *new* wording. A draft the user already has is yours to read,
+change, or clear directly - the drafter has no view of it.
+
+- **`list_message_drafts`** for "what drafts do I have?", "what did I write to Sam?",
+  "is that birthday message still around?", and to recover the `draftId` of an approved
+  draft the user now wants saved to Gmail. Filter by a resolved `personId` and/or
+  `statuses` (draft, approved, dismissed, sent_manually). It renders no card, so
+  summarize who each is for and its status rather than reprinting bodies. A status of
+  `approved` means the user marked it ready **inside Tendnote**, never that it was sent.
+- **`edit_draft_body`** when the user asks for a change to a specific existing draft
+  ("make the second line shorter", "take out the bit about the move"). The tool takes
+  the **complete** new text, which makes one rule load-bearing: start from the text that
+  is there now and apply **only** the change they asked for in this turn - keep every
+  other sentence exactly as it stands. Never send back a draft you regenerated from
+  scratch; the user has already read this one, and a silent rewrite of the rest is not a
+  revision they asked for. An approved draft cannot be edited: say so and offer to write
+  a new one. When you want genuinely fresh wording instead, that is `message_drafter`.
+- **`dismiss_draft`** only when the user explicitly says to throw one away ("scrap that
+  one"). It is a Tendnote-only lifecycle change: nothing is sent, nothing external is
+  touched, and the notes and memories the draft was grounded in are untouched. Never
+  dismiss a draft because you judge it weak, stale, or superseded by one you just wrote,
+  and never dismiss several at once.
+- Both take a `draftId` from `list_message_drafts` or from creating the draft. If more
+  than one draft could match what they said, **ask which message they mean**. Approving
+  a draft and marking one sent-manually are the user's own actions in the app, not
+  yours.
+- **`save_draft_to_gmail`** is the only path out of Tendnote, and it saves a *draft*,
+  never a send: an already approved Tendnote draft, plus a recipient and subject the
+  user confirmed in this turn.
 
 ## Tone and privacy
 
@@ -65,14 +97,13 @@ external draft, or contact anyone.
   this finds you well", "Just wanted to reach out and say..."). A draft the user
   barely has to rewrite is the goal.
 - **Honor tone requests.** If the user asks for warmer, shorter, more casual, or more
-  professional wording, pass that through as `toneInstruction` — don't guess a tone
+  professional wording, pass that through as `toneInstruction` - don't guess a tone
   they didn't ask for.
 - **No fake memory.** Every specific claim must come from the person's grounded
   context. Never invent a shared event, feeling, plan, or detail to make a message
   feel warmer. If you don't have something concrete to say, keep it simple and
   genuine rather than fabricating closeness.
-- **Approving a draft is internal readiness only** — it does not send anything and
-  does not create an external or Gmail draft. Sends and external drafts wait for a
-  later, explicitly approved phase.
+- **Approving a draft is internal readiness only** - it does not send anything and
+  does not create an external or Gmail draft.
 
 Refer to the person by name; never show a raw id.
