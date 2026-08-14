@@ -90,21 +90,29 @@ describe("active Eve tree", () => {
     const subagentFiles = files.filter(
       (file) => file.startsWith("subagents/") && !disablesFrameworkTool(file),
     );
+    // Every subagent carries its own `instructions/` slot: a declared subagent
+    // inherits nothing from the root, so the date anchor the root has is a file each
+    // of them needs of its own or does without entirely.
     expect(subagentFiles).toEqual([
       "subagents/memory_curator/agent.ts",
-      "subagents/memory_curator/instructions.md",
+      "subagents/memory_curator/instructions/base.md",
+      "subagents/memory_curator/instructions/current-date.ts",
       "subagents/memory_curator/tools/propose_memory_cleanup.ts",
       "subagents/message_drafter/agent.ts",
-      "subagents/message_drafter/instructions.md",
+      "subagents/message_drafter/instructions/base.md",
+      "subagents/message_drafter/instructions/current-date.ts",
       "subagents/message_drafter/tools/propose_message_draft.ts",
       "subagents/privacy_guard/agent.ts",
-      "subagents/privacy_guard/instructions.md",
+      "subagents/privacy_guard/instructions/base.md",
+      "subagents/privacy_guard/instructions/current-date.ts",
       "subagents/relationship_strategist/agent.ts",
-      "subagents/relationship_strategist/instructions.md",
+      "subagents/relationship_strategist/instructions/base.md",
+      "subagents/relationship_strategist/instructions/current-date.ts",
       "subagents/relationship_strategist/tools/get_relationship_agenda.ts",
       "subagents/relationship_strategist/tools/list_calendar_events.ts",
       "subagents/relationship_strategist/tools/list_message_drafts.ts",
       "subagents/relationship_strategist/tools/propose_followup.ts",
+      "subagents/relationship_strategist/tools/search_people.ts",
     ]);
 
     expect(files.filter((file) => file.startsWith("sandbox/"))).toEqual([]);

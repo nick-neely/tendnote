@@ -110,6 +110,36 @@ describe("Orientation Context", () => {
     expect(first.context.omittedFactCount).toBeGreaterThan(0);
   });
 
+  /**
+   * Household Context Facts could already reach orientation, but nothing said whether
+   * the caller had a household at all - so an agent seeing none could not tell a solo
+   * user from a member who simply has no household facts, and guessed.
+   */
+  it("says whether the caller is in a household, and nothing else about it", () => {
+    const solo = buildOrientationContext({ callerUserId: OWNER, facts: [fact()] });
+    const member = buildOrientationContext({
+      callerUserId: OWNER,
+      facts: [fact()],
+      activeHouseholdIds: ["household-1", "household-2"],
+    });
+
+    expect(solo.context.household).toEqual({ isMember: false });
+    expect(member.context.household).toEqual({ isMember: true });
+    // No household id, no name, and no trace of anyone else.
+    expect(member.serialized).not.toContain("household-1");
+    expect(member.serializedBytes).toBeLessThanOrEqual(DEFAULT_ORIENTATION_CONTEXT_BUDGET_BYTES);
+    // The flag is part of the envelope the budget is measured against, so a pack
+    // under pressure drops a fact rather than the signal.
+    const pressured = buildOrientationContext({
+      callerUserId: OWNER,
+      facts: [fact({ id: "fact-1" }), fact({ id: "fact-2" })],
+      activeHouseholdIds: ["household-1"],
+      maxBytes: 700,
+    });
+    expect(pressured.context.household).toEqual({ isMember: true });
+    expect(pressured.context.omittedFactCount).toBeGreaterThan(0);
+  });
+
   it("does not silently accept a non-positive budget", () => {
     expect(() => buildOrientationContext({ callerUserId: OWNER, facts: [], maxBytes: 0 })).toThrow(
       "Orientation Context budget must be positive",

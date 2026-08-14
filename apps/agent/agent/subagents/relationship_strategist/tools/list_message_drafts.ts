@@ -1,75 +1,18 @@
-import { listDraftsForPerson } from "@tendnote/db/queries/drafts";
-import { messageDraftStatusSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
-import { z } from "zod";
-import { resolveOwnerUserId } from "../../../lib/owner";
-import { withModelSafeStoreErrors } from "../../../lib/store-errors";
+import { messageDraftsTool } from "../../../lib/tools/message-drafts";
 
-const inputSchema = z.object({
-  personId: z
-    .uuid()
-    .describe("The resolved person whose existing Tendnote drafts should inform strategy."),
-  statuses: z
-    .array(messageDraftStatusSchema)
-    .optional()
-    .describe("Optional draft status filter. Omit to read all drafts for the person."),
-});
-
-export default defineTool({
-  description:
-    "Read existing owner-scoped Tendnote Message Drafts for one resolved person so strategy can account for already-started outreach. This is read-only and must not create, edit, approve, externalize, or send drafts.",
-  inputSchema,
-  async execute(input, ctx) {
-    const ownerUserId = resolveOwnerUserId(ctx);
-    const drafts = await withModelSafeStoreErrors(() =>
-      listDraftsForPerson({
-        ownerUserId,
-        personId: input.personId,
-        statuses: input.statuses,
-      }),
-    );
-
-    return {
-      drafts: drafts.map((draft) => ({
-        id: draft.id,
-        personId: draft.personId,
-        channel: draft.channel,
-        purpose: draft.purpose,
-        status: draft.status,
-        body: draft.body,
-        sourceRefs: draft.sourceRefs.map((sourceRef) => ({
-          kind: sourceRef.kind,
-          id: sourceRef.id,
-          label: sourceRef.label,
-          trust: sourceRef.trust,
-        })),
-        createdAt: draft.createdAt.toISOString(),
-        updatedAt: draft.updatedAt.toISOString(),
-      })),
-      guidance:
-        "These are existing Tendnote drafts only. Do not claim they were sent or saved externally; durable draft changes require the root draft tools and explicit owner intent.",
-    };
-  },
-  toModelOutput(output) {
-    return {
-      type: "json" as const,
-      value: {
-        count: output.drafts.length,
-        drafts: output.drafts.map((draft) => ({
-          id: draft.id,
-          channel: draft.channel,
-          purpose: draft.purpose,
-          status: draft.status,
-          body: draft.body,
-          sourceRefs: draft.sourceRefs.map((sourceRef) => ({
-            kind: sourceRef.kind,
-            id: sourceRef.id,
-            label: sourceRef.label,
-            trust: sourceRef.trust,
-          })),
-        })),
-        guidance: output.guidance,
-      },
-    };
-  },
-});
+/**
+ * The strategist's registration of the shared draft read, narrowed to one person:
+ * outreach that has already been started changes what is worth recommending next,
+ * and nothing beyond that person is in scope for the recommendation.
+ */
+export default defineTool(
+  messageDraftsTool({
+    opening:
+      "Read the existing Tendnote message drafts for one resolved person so a recommendation can account for outreach the user has already started. Resolve the person with search_people when the delegated message did not carry a personId.",
+    onward:
+      "This read is where drafts stop for you: creating, editing, approving, dismissing, externalizing, and sending all require the parent agent and the user's explicit instruction. Hand a durable change back rather than describing one as done.",
+    personIdOptional: false,
+    draftHandles: false,
+  }),
+);

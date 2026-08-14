@@ -7,6 +7,24 @@ type OrientationContextSession = {
 };
 
 /**
+ * The authenticated human whose own session this is, child sessions included.
+ *
+ * This is the identity test only: runtime, provider-only, and unauthenticated
+ * sessions still resolve to nothing. It exists because a declared subagent runs
+ * under the owner's own principal - `resolveOwnerUserId` scopes every subagent tool
+ * read by exactly this id - so a per-turn fact *about the caller's own session*, such
+ * as which day it is where they live, is resolvable there too. Self Context is not
+ * such a fact, and keeps the stricter rule below.
+ */
+export function resolveAuthenticatedCaller(ctx: OrientationContextSession): string | null {
+  const caller = ctx.session.auth.current;
+  if (caller?.principalType !== "user") return null;
+
+  const principalId = caller.principalId.trim();
+  return principalId || null;
+}
+
+/**
  * Only a directly authenticated human caller can receive Self Context. Runtime,
  * provider-only, unauthenticated, and child-agent sessions are intentionally
  * fail-closed even when they happen to carry a principal id.
@@ -14,11 +32,7 @@ type OrientationContextSession = {
 export function resolveOrientationCaller(ctx: OrientationContextSession): string | null {
   if (ctx.session.parent) return null;
 
-  const caller = ctx.session.auth.current;
-  if (caller?.principalType !== "user") return null;
-
-  const principalId = caller.principalId.trim();
-  return principalId || null;
+  return resolveAuthenticatedCaller(ctx);
 }
 
 /**
@@ -38,6 +52,12 @@ export function buildSelfContextInstructionsMarkdown(serializedContext: string):
     "BEGIN_TENDNOTE_ORIENTATION_CONTEXT",
     serializedContext,
     "END_TENDNOTE_ORIENTATION_CONTEXT",
+    "",
+    "`household.isMember` says only whether the user currently belongs to a shared",
+    "household workspace. It carries no other member's data, names nobody, and grants",
+    "no access; use it to avoid guessing whether sharing applies, never as evidence",
+    "about who else is there or what they can see. When it is absent, assume neither",
+    "answer and ask.",
     "",
     "Use an accepted active fact quietly only when it is relevant to the current",
     "answer. Normal facts may inform relevant answers. Sensitive facts require",

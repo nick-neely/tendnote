@@ -51,6 +51,25 @@ export const orientationContextFactSchema = z
 
 export type OrientationContextFact = z.infer<typeof orientationContextFactSchema>;
 
+/**
+ * Whether the caller is currently in a shared household workspace, and nothing else.
+ *
+ * Household Context Facts could already reach orientation, but nothing said whether
+ * the caller *has* a household - so an agent seeing no household facts could not tell
+ * a solo user apart from a household member who simply has none, and answered "is
+ * this shared?" by guessing. The membership ids are already in hand for the fact
+ * policy filter, so this costs one boolean and no extra read.
+ *
+ * Deliberately just the boolean. A household name is another read on the first-token
+ * path, and every other household field would be a fact about people who are not the
+ * caller; orientation carries no other member's data.
+ */
+const orientationHouseholdSchema = z
+  .object({
+    isMember: z.boolean(),
+  })
+  .strict();
+
 export const orientationContextSchema = z
   .object({
     identity: z
@@ -59,6 +78,7 @@ export const orientationContextSchema = z
         userId: nonEmptyIdentifier,
       })
       .strict(),
+    household: orientationHouseholdSchema,
     facts: z.array(orientationContextFactSchema),
     eligibleFactCount: z.number().int().nonnegative(),
     omittedFactCount: z.number().int().nonnegative(),
@@ -126,11 +146,13 @@ function toOrientationFact(fact: ContextFact): OrientationContextFact {
 function serializeContext(input: {
   callerUserId: string;
   facts: readonly ContextFact[];
+  inHousehold: boolean;
   eligibleFactCount: number;
   budgetBytes: number;
 }): { context: OrientationContext; serialized: string; serializedBytes: number } {
   const context = orientationContextSchema.parse({
     identity: { kind: "authenticated_user", userId: input.callerUserId },
+    household: { isMember: input.inHousehold },
     facts: input.facts.map(toOrientationFact),
     eligibleFactCount: input.eligibleFactCount,
     omittedFactCount: input.eligibleFactCount - input.facts.length,
@@ -165,6 +187,7 @@ function eligibleOrientationFacts(input: {
 function selectBoundedOrientationFacts(input: {
   callerUserId: string;
   eligibleFacts: readonly ContextFact[];
+  inHousehold: boolean;
   maxBytes: number;
 }): ContextFact[] {
   const selected = new Map<string, ContextFact>();
@@ -174,6 +197,7 @@ function selectBoundedOrientationFacts(input: {
     const serialized = serializeContext({
       callerUserId: input.callerUserId,
       facts: next,
+      inHousehold: input.inHousehold,
       eligibleFactCount: input.eligibleFacts.length,
       budgetBytes: input.maxBytes,
     });
@@ -223,10 +247,12 @@ export function buildOrientationContext(
     facts: input.facts,
     activeHouseholdIds: input.activeHouseholdIds,
   });
+  const inHousehold = (input.activeHouseholdIds?.length ?? 0) > 0;
 
   const empty = serializeContext({
     callerUserId,
     facts: [],
+    inHousehold,
     eligibleFactCount: eligibleFacts.length,
     budgetBytes: maxBytes,
   });
@@ -237,6 +263,7 @@ export function buildOrientationContext(
   const all = serializeContext({
     callerUserId,
     facts: eligibleFacts,
+    inHousehold,
     eligibleFactCount: eligibleFacts.length,
     budgetBytes: maxBytes,
   });
@@ -244,7 +271,8 @@ export function buildOrientationContext(
 
   return serializeContext({
     callerUserId,
-    facts: selectBoundedOrientationFacts({ callerUserId, eligibleFacts, maxBytes }),
+    facts: selectBoundedOrientationFacts({ callerUserId, eligibleFacts, inHousehold, maxBytes }),
+    inHousehold,
     eligibleFactCount: eligibleFacts.length,
     budgetBytes: maxBytes,
   });

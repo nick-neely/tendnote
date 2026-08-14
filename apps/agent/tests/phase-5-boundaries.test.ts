@@ -260,7 +260,28 @@ const GENERAL_ACTION_TOOL_FILES = walk("apps/agent/agent/tools", (name) =>
 const EXECUTING_TOOL_FILES = [
   ...walk("apps/agent/agent/tools", isSource),
   ...walk("apps/agent/agent/subagents", isSource),
+  // The shared tool definitions the root agent and relationship_strategist both
+  // register. The `execute` a wrapper has to guard moved here when the hand-copied
+  // duplicates were deduped, and the registration files that call them have none of
+  // their own - so a scan that walked only the two tool directories would now walk
+  // past four store calls without noticing.
+  ...walk("apps/agent/agent/lib/tools", isSource),
 ].filter((path) => /async\s+\*?execute\s*\(/.test(read(path)));
+
+/**
+ * Tool files that define no `execute` of their own, and so are exempt from the scan
+ * above only because something else answers for them.
+ */
+const REGISTRATION_ONLY_TOOL_FILES = [
+  ...walk("apps/agent/agent/tools", isSource),
+  ...walk("apps/agent/agent/subagents", isSource),
+]
+  .filter((path) => /\/tools\//.test(path))
+  .filter(
+    (path) =>
+      !/async\s+\*?execute\s*\(/.test(read(path)) &&
+      !/export default disableTool\(\)/.test(read(path)),
+  );
 
 const ACTIONS_PATH_SOURCES = [
   ...walk("packages/db/src/queries/general-actions", isSource),
@@ -466,6 +487,17 @@ describe("Phase 5 boundary — Eve exposes a bounded, single-record General Acti
     );
     // ...and the sentinels stay out, because they have nothing to wrap.
     expect(EXECUTING_TOOL_FILES).not.toContain("apps/agent/agent/tools/bash.ts");
+    // The shared definitions are in scope by the same rule, not by being listed.
+    expect(EXECUTING_TOOL_FILES).toContain("apps/agent/agent/lib/tools/propose-followup.ts");
+    // A tool file with no `execute` is exempt from the loop below, so it has to be a
+    // registration of a definition that is *in* the loop. Otherwise a tool could dodge
+    // the whole scan by keeping its store call in a file nothing walks.
+    expect(REGISTRATION_ONLY_TOOL_FILES.length).toBeGreaterThan(0);
+    for (const path of REGISTRATION_ONLY_TOOL_FILES) {
+      expect(read(path), `${path} registers a shared tool definition`).toMatch(
+        /from "[^"]*\/lib\/tools\/[\w-]+"/,
+      );
+    }
     for (const path of EXECUTING_TOOL_FILES) {
       expect(stripComments(read(path)), `${path} wraps its store calls`).toMatch(
         /withModelSafeStoreErrors/,

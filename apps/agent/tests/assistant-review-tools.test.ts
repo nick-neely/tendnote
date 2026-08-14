@@ -3,11 +3,12 @@ import { join } from "node:path";
 import { RENDERED_TOOL_NAMES } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import { authoredInstructions } from "./instructions-source";
+import { effectiveToolSource } from "./tool-source";
 
 const toolsDir = join(process.cwd(), "agent/tools");
 
 function readTool(name: string): string {
-  return readFileSync(join(toolsDir, `${name}.ts`), "utf8");
+  return effectiveToolSource(join(toolsDir, `${name}.ts`));
 }
 
 // Authored tools only. `agent/tools/` also holds the files that disable Eve's
@@ -22,7 +23,7 @@ const toolFiles = readdirSync(toolsDir).filter(
 const renderedToolFiles = new Set(toolFiles);
 /** Every authored tool's source, keyed by tool name — root tools and subagent tools alike. */
 const toolSources = new Map<string, string>(
-  toolFiles.map((file) => [file.replace(/\.ts$/, ""), readFileSync(join(toolsDir, file), "utf8")]),
+  toolFiles.map((file) => [file.replace(/\.ts$/, ""), effectiveToolSource(join(toolsDir, file))]),
 );
 const subagentsDir = join(process.cwd(), "agent/subagents");
 if (existsSync(subagentsDir)) {
@@ -31,10 +32,7 @@ if (existsSync(subagentsDir)) {
     if (!existsSync(subagentToolsDir)) continue;
     for (const file of readdirSync(subagentToolsDir).filter((file) => file.endsWith(".ts"))) {
       renderedToolFiles.add(file);
-      toolSources.set(
-        file.replace(/\.ts$/, ""),
-        readFileSync(join(subagentToolsDir, file), "utf8"),
-      );
+      toolSources.set(file.replace(/\.ts$/, ""), effectiveToolSource(join(subagentToolsDir, file)));
     }
   }
 }
@@ -322,7 +320,7 @@ describe("tools do not bypass owner scoping or scope/sensitivity rules", () => {
 
   for (const file of ownerScopedTools) {
     it(`${file} resolves the owner via the shared helper instead of trusting input`, () => {
-      const source = readFileSync(join(toolsDir, file), "utf8");
+      const source = effectiveToolSource(join(toolsDir, file));
       expect(source).toContain("resolveOwnerUserId(ctx)");
       // Owner id is never accepted from tool input.
       expect(source).not.toMatch(/ownerUserId:\s*input\./);
@@ -331,7 +329,7 @@ describe("tools do not bypass owner scoping or scope/sensitivity rules", () => {
 
   for (const file of toolFiles) {
     it(`${file} does not set a non-private scope (defers to the shared private default)`, () => {
-      const source = readFileSync(join(toolsDir, file), "utf8");
+      const source = effectiveToolSource(join(toolsDir, file));
       expect(source).not.toMatch(/scope:\s*["']?(shared|household)/);
     });
   }

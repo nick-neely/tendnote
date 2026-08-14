@@ -6,6 +6,7 @@ import {
   modeAllowsCapability,
   modeAllowsTool,
 } from "../agent/lib/eve-modes";
+import { effectiveToolSource } from "./tool-source";
 
 const repoRoot = join(import.meta.dirname, "../../..");
 
@@ -23,6 +24,7 @@ const PHASE_3_IMPLEMENTATION_FILES = [
   "apps/agent/agent/subagents/relationship_strategist/tools/list_calendar_events.ts",
   "apps/agent/agent/subagents/relationship_strategist/tools/list_message_drafts.ts",
   "apps/agent/agent/subagents/relationship_strategist/tools/propose_followup.ts",
+  "apps/agent/agent/subagents/relationship_strategist/tools/search_people.ts",
   "apps/agent/agent/tools/cleanup_preview.ts",
   "packages/db/src/queries/birthday-gift-planning.ts",
   "packages/db/src/queries/brief-schedules.ts",
@@ -95,7 +97,9 @@ describe("Phase 3 boundary hardening", () => {
             file,
           ),
         )
-        .filter((file) => !file.endsWith("instructions.md"))
+        // Each subagent's `instructions/` slot is prose plus its date anchor, not a
+        // policy surface these scans read; the per-subagent tests own it.
+        .filter((file) => !/\/instructions\//.test(file))
         // A file that only exports disableTool() turns off an Eve framework
         // default. It implements nothing, so it is not a surface these scans
         // have anything to say about; the active-tree lockdown test pins it.
@@ -189,8 +193,14 @@ describe("Phase 3 boundary hardening", () => {
     expect(curatorSource).not.toMatch(/\.insert\(|\.update\(|\.delete\(/);
     expect(curatorSource).not.toContain("approveSuggestedMemory");
 
-    const strategistTool = read(
-      "apps/agent/agent/subagents/relationship_strategist/tools/propose_followup.ts",
+    // The registration plus the shared definition it registers: the strategist's
+    // copy of this tool is gone, so the boundary now has to hold in the file both
+    // agents share.
+    const strategistTool = effectiveToolSource(
+      join(
+        repoRoot,
+        "apps/agent/agent/subagents/relationship_strategist/tools/propose_followup.ts",
+      ),
     );
     expect(strategistTool).toContain("@tendnote/db/queries/followups");
     expect(strategistTool).toContain("suggestFollowup");

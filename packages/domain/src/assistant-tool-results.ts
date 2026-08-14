@@ -6,7 +6,7 @@ import { draftProposalResultSchema } from "./draft-proposals";
 import { exactRecallRecordKindSchema, exactRecallTrustLevelSchema } from "./exact-recall";
 import { globalRecallResponseSchema } from "./global-recall";
 import { householdCoordinationFamilySchema } from "./household-home";
-import { memoryCuratorProposalResultSchema } from "./memory-curator";
+import { memoryCuratorProposalResultSchema, memoryCuratorProposalSchema } from "./memory-curator";
 import { privacyScopeSchema } from "./privacy";
 import {
   relationshipSemanticRecordKindSchema,
@@ -323,7 +323,18 @@ export const generalActionListToolResult = z.object({
   actions: z.array(generalActionRef),
 });
 
-export const memoryCuratorToolResult = memoryCuratorProposalResultSchema;
+/**
+ * The rendered contract for `propose_memory_cleanup`.
+ *
+ * The owner id the shared read echoes back identifies the caller to the caller, so
+ * the tool stops it rather than sending it out to the channel with every card; the
+ * card never read it. Omitting it here keeps the parse honest in both directions -
+ * nothing new is required, and a message persisted while the id still travelled
+ * still parses, because the object is not strict.
+ */
+export const memoryCuratorToolResult = memoryCuratorProposalResultSchema
+  .omit({ ownerUserId: true })
+  .extend({ proposals: z.array(memoryCuratorProposalSchema.omit({ ownerUserId: true })) });
 export const draftProposalToolResult = draftProposalResultSchema;
 
 /**

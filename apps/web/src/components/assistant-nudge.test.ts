@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { selectedPersonClientContext } from "@/lib/eve/selected-person-context";
 import { sendNudgeToAgent } from "./assistant-nudge";
 
 /**
@@ -14,7 +15,7 @@ describe("sendNudgeToAgent", () => {
     expect(send).toHaveBeenCalledWith("Follow up with Maya", { clientContext: undefined });
   });
 
-  it("includes one-turn person context when scoped", () => {
+  it("includes one-turn person context when scoped, in its untrusted-data frame", () => {
     const send = vi.fn().mockResolvedValue(undefined);
     sendNudgeToAgent(
       { status: "ready", send },
@@ -22,9 +23,14 @@ describe("sendNudgeToAgent", () => {
       "Follow up with Maya",
     );
 
+    // The framing itself is covered by lib/eve/selected-person-context; what matters
+    // here is that the nudge path sends the framed context rather than raw JSON.
     expect(send).toHaveBeenCalledWith("Follow up with Maya", {
-      clientContext: { person: { id: "p1", displayName: "Maya" } },
+      clientContext: selectedPersonClientContext({ personId: "p1", personName: "Maya" }),
     });
+    expect(send.mock.calls[0]?.[1]?.clientContext).toContain(
+      "BEGIN_TENDNOTE_SELECTED_PERSON_CONTEXT",
+    );
   });
 
   it("does nothing when the agent is not ready (no send, no mutation)", () => {

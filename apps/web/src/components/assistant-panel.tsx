@@ -47,25 +47,19 @@ import {
   messageToolViews,
 } from "@/lib/eve/message-views";
 import {
+  type SelectedPersonContext,
+  selectedPersonClientContext,
+} from "@/lib/eve/selected-person-context";
+import {
   consumeLocalEveDraftSubmission,
   loadLocalComposerDraft,
   saveLocalComposerDraft,
 } from "@/lib/local-composer-draft";
 import { cn } from "@/lib/utils";
 
-export type AssistantPersonContext = {
-  personId: string;
-  personName: string;
-};
+export type AssistantPersonContext = SelectedPersonContext;
 
 type AgentStatus = ReturnType<typeof useEveAgent>["status"];
-
-/** Owner-safe one-turn client context for the agent, or none when unscoped. */
-function clientContextFor(context?: AssistantPersonContext) {
-  return context
-    ? { person: { id: context.personId, displayName: context.personName } }
-    : undefined;
-}
 
 export function AssistantPanel({
   context,
@@ -130,7 +124,7 @@ export function AssistantPanel({
     // store retires its own `error` at the same moment.
     turnFailure.current = null;
 
-    await agent.send(text, { clientContext: clientContextFor(context) });
+    await agent.send(text, { clientContext: selectedPersonClientContext(context) });
 
     // `send` resolved, which says nothing about whether the turn worked. If it
     // failed, `onError` already ran - the store calls it before settling - so
