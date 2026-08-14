@@ -26,7 +26,7 @@ const DISABLED_FRAMEWORK_TOOLS = [
 
 /**
  * Plus, at the root only, the built-in self-copy: `agent` spawns the root agent
- * with the root instructions and all 52 root tools, which is every narrowing the
+ * with the root instructions and every root tool, which is every narrowing the
  * four declared subagents exist to impose, undone in one call.
  */
 const ROOT_DISABLED_FRAMEWORK_TOOLS = [...DISABLED_FRAMEWORK_TOOLS, "agent"].sort();
