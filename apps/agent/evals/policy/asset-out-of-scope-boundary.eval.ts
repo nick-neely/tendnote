@@ -1,6 +1,7 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
 import { without } from "../expectations";
+import { usedNoToolsOrSubagents } from "../helpers";
 
 /**
  * What Asset Memory deliberately is not (#196 Out of Scope, AGENTS.md guardrails, #205).
@@ -22,7 +23,7 @@ export default defineEval({
 
     t.succeeded();
     // Nothing to reach for, and nothing reached for.
-    t.usedNoTools();
+    usedNoToolsOrSubagents(t);
     // It says no — plainly, about the things asked.
     t.check(
       t.reply,

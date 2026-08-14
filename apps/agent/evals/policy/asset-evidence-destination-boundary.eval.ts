@@ -1,5 +1,6 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
+import { usedNoToolsOrSubagents } from "../helpers";
 
 /**
  * Evidence lands on an Asset the user confirms (#196 stories 25-26, #205).
@@ -18,7 +19,7 @@ export default defineEval({
     await t.send("I want to attach a photo of an appliance label. Where does it go?");
 
     t.succeeded();
-    t.usedNoTools();
+    usedNoToolsOrSubagents(t);
     // The capture entry point, as it appears on screen.
     t.check(t.reply, includes(/plus|\+ ?menu|camera|photo library|file/i));
     // And the destination: an Asset, chosen or confirmed by the user.

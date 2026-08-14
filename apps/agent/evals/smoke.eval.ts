@@ -1,12 +1,15 @@
 import { defineEval } from "eve/evals";
+import { usedNoToolsOrSubagents } from "./helpers";
+
 export default defineEval({
-  description: "Eve boots, accepts a basic Tendnote session turn, and replies without tools.",
+  description:
+    "Eve boots, accepts a basic Tendnote session turn, and replies without tools or delegation.",
   tags: ["deterministic", "smoke"],
   async test(t) {
     await t.send("Say hello in one short sentence.");
 
     t.succeeded();
-    t.usedNoTools();
+    usedNoToolsOrSubagents(t);
     t.messageIncludes(/\S/);
   },
 });

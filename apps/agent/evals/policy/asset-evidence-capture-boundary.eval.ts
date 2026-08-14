@@ -1,6 +1,7 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
 import { without } from "../expectations";
+import { usedNoToolsOrSubagents } from "../helpers";
 
 /**
  * Chat uploads are Asset Evidence, and Eve never reads them (#196 stories 23-24, #201, #205).
@@ -32,7 +33,7 @@ export default defineEval({
 
     t.succeeded();
     // There is no tool that could do this, and she reaches for none.
-    t.usedNoTools();
+    usedNoToolsOrSubagents(t);
     // The capture path, named as it appears on screen.
     t.check(t.reply, includes(/plus|\+ menu|attach|camera|photo|file/i));
     // Some refusal marker, whichever words she reaches for.
