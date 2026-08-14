@@ -286,10 +286,20 @@ export function discordApiPayloadToCaptureInteraction(
   return null;
 }
 
-/** Whether a `/capture` command arrived with any resolved attachment. */
+/**
+ * Whether a `/capture` command arrived with any resolved attachment.
+ *
+ * The payload is a `JSON.parse` result wearing a declared type, so the type says
+ * nothing about what actually arrived. An explicit `"attachments": null` is
+ * valid JSON that passes the signature check and would make `Object.keys` throw
+ * a TypeError inside the parse step, which the route can only answer with its
+ * generic failure. Anything that is not an object of attachments is treated as
+ * no attachments, which is the same answer the field being absent gives.
+ */
 function hasResolvedAttachments(payload: DiscordApiInteraction): boolean {
   const resolved = payload.data?.resolved?.attachments;
-  return resolved !== undefined && Object.keys(resolved).length > 0;
+  if (typeof resolved !== "object" || resolved === null) return false;
+  return Object.keys(resolved).length > 0;
 }
 
 /** Build a component / modal-submit interaction, failing closed on an undecodable custom id. */

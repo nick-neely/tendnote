@@ -196,6 +196,28 @@ describe("Discord interaction channel", () => {
         },
       }),
     ).toEqual({ type: "rejected", reason: "attachments_not_supported" });
+
+    // An explicit null is valid signed JSON that the declared payload type does
+    // not describe, and reading its keys used to throw inside the parse. It
+    // means the same thing the field being absent means: capture the message.
+    expect(
+      discordApiPayloadToCaptureInteraction({
+        type: 2,
+        user: { id: "discord-1" },
+        data: {
+          name: "capture",
+          options: [{ name: "message", type: 3, value: "Lunch with Sam" }],
+          resolved: { attachments: null as unknown as Record<string, unknown> },
+        },
+      }),
+    ).toEqual({
+      type: "slash_command",
+      commandName: "capture",
+      discordUserId: "discord-1",
+      content: "Lunch with Sam",
+      guildId: null,
+      channelId: null,
+    });
   });
 
   it("answers an attached /capture with the attachment rejection, capturing nothing", async () => {

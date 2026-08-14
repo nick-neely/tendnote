@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createRedisDiscordHitlSessionStore,
-  DISCORD_HITL_SESSION_TTL_SECONDS,
   type DiscordHitlSession,
   discordHitlSessionKey,
 } from "../agent/lib/discord-hitl-sessions";
@@ -40,7 +39,12 @@ describe("durable Discord HITL sessions", () => {
       "tendnote:discord:hitl:owner-1:session-1",
       JSON.stringify(session),
       "EX",
-      DISCORD_HITL_SESSION_TTL_SECONDS,
+      // The literal, not the module's own constant: an assertion that reads the
+      // value under test back proves only that it equals itself. 900 seconds is
+      // Discord's 15-minute interaction token lifetime, so a parked session
+      // outlives every modal that could still be submitted against it and no
+      // longer.
+      900,
     );
     // Only what a resume needs: no Discord token, signature, or payload, and no
     // clarification text (that arrives with the submit).
