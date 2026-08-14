@@ -12,6 +12,7 @@ import {
   CalendarDotsIcon,
   CheckIcon,
   ClipboardTextIcon,
+  ListTodoIcon,
   NotebookPenIcon,
   SearchIcon,
   UserIcon,
@@ -109,20 +110,58 @@ export function relationshipAgendaCandidateKey(candidate: RelationshipAgendaCand
 
 type SearchResultView = RelationshipContextSearchResultView | SemanticContextSearchResultView;
 
+/**
+ * The record families recall can return, in the words the product uses for them.
+ * A General Action is an ordinary recall result (ADR 0150) and belongs here beside
+ * People and Memories rather than being a kind the card cannot name.
+ */
+const RECORD_KIND_LABELS: Record<SearchResultView["recordKind"], string> = {
+  person: "Person",
+  memory: "Memory",
+  source_record: "Source record",
+  general_action: "Action",
+};
+
 function labelRecordKind(kind: SearchResultView["recordKind"]): string {
-  if (kind === "source_record") return "Source record";
-  return kind === "memory" ? "Memory" : "Person";
+  return RECORD_KIND_LABELS[kind];
 }
 
+/**
+ * The trust register a row was found under. `action_item` is its own register: an
+ * Action is something the user meant to do, not a confirmed fact about a person and
+ * not logged context, so it reads as what it is rather than borrowing either.
+ */
+const TRUST_LABELS: Record<SearchResultView["trustLevel"], string> = {
+  identity_reference: "Identity reference",
+  confirmed_fact: "Confirmed fact",
+  logged_context: "Logged context",
+  action_item: "On your list",
+};
+
 function labelTrust(result: SearchResultView): string {
-  const trust =
-    result.trustLevel === "confirmed_fact"
-      ? "Confirmed fact"
-      : result.trustLevel === "logged_context"
-        ? "Logged context"
-        : "Identity reference";
+  const trust = TRUST_LABELS[result.trustLevel];
 
   return result.relatedPersonDisplayName ? `${trust} · ${result.relatedPersonDisplayName}` : trust;
+}
+
+/**
+ * Where a row opens. An Action deep-links to its own ledger row — the same
+ * destination Global Recall and the created-action card send it to — because a
+ * person link would open the wrong record for an action that merely names someone.
+ */
+function searchResultHref(result: SearchResultView): string | null {
+  if (result.recordKind === "general_action") return `/actions#action-${result.recordId}`;
+  return result.relatedPersonId ? `/people/${result.relatedPersonId}` : null;
+}
+
+function searchResultIcon(kind: SearchResultView["recordKind"]) {
+  if (kind === "person") {
+    return <UserIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />;
+  }
+  if (kind === "general_action") {
+    return <ListTodoIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />;
+  }
+  return <NotebookPenIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />;
 }
 
 function SearchResultRow({
@@ -132,18 +171,14 @@ function SearchResultRow({
   result: SearchResultView;
   mode: "exact" | "semantic";
 }) {
-  const href = result.relatedPersonId ? `/people/${result.relatedPersonId}` : null;
+  const href = searchResultHref(result);
   const label =
     "label" in result
       ? result.label
       : (result.relatedPersonDisplayName ?? labelRecordKind(result.recordKind));
   const title = (
     <span className="inline-flex min-w-0 items-center gap-1.5">
-      {"recordKind" in result && result.recordKind === "person" ? (
-        <UserIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-      ) : (
-        <NotebookPenIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-      )}
+      {searchResultIcon(result.recordKind)}
       <span className="truncate font-medium text-foreground">{label}</span>
     </span>
   );

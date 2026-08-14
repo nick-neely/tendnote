@@ -3,7 +3,14 @@ import {
   assistantToolResultSchemas,
   isRenderedToolName,
   RENDERED_TOOL_NAMES,
+  relationshipContextSearchToolResult,
+  semanticContextSearchToolResult,
 } from "./assistant-tool-results";
+import { exactRecallRecordKindSchema, exactRecallTrustLevelSchema } from "./exact-recall";
+import {
+  relationshipSemanticRecordKindSchema,
+  relationshipSemanticTrustLevelSchema,
+} from "./semantic-retrieval";
 
 describe("assistant tool-result contract", () => {
   it("registers a schema for every rendered tool name", () => {
@@ -327,5 +334,127 @@ describe("assistant tool-result contract", () => {
     });
 
     expect(parsed.success).toBe(true);
+  });
+
+  /**
+   * The card contract used to be a hand-written subset of the search contract that
+   * predated General Actions. So the moment either search matched an Action, the row
+   * failed the card schema, the web's parser returned null, and the *whole* result
+   * set collapsed to "didn't return a readable result" — one unrenderable row cost
+   * the user every row beside it (ADR 0150).
+   *
+   * These assert the structural fix rather than the symptom: the card accepts every
+   * value its producing contract can emit, so it can never again be the narrower of
+   * the two.
+   */
+  describe("the recall cards accept everything their search contract can return", () => {
+    function exactRow(recordKind: string, trustLevel: string) {
+      return {
+        recordKind,
+        recordId: "record-1",
+        visibilityChoice: "only_me",
+        visibilityLabel: "Only me",
+        relatedPersonId: null,
+        relatedPersonDisplayName: null,
+        label: "Replace the fridge water filter",
+        snippet: "Replace the fridge water filter",
+        matchedFields: ["title"],
+        trustLevel,
+        sensitivity: "normal",
+      };
+    }
+
+    function semanticRow(recordKind: string, trustLevel: string) {
+      return {
+        recordKind,
+        recordId: "record-1",
+        visibilityChoice: "only_me",
+        visibilityLabel: "Only me",
+        snippet: "Replace the fridge water filter",
+        similarity: 0.82,
+        trustLevel,
+        sensitivity: "normal",
+      };
+    }
+
+    it.each(exactRecallRecordKindSchema.options)("accepts an exact %s result", (recordKind) => {
+      const parsed = relationshipContextSearchToolResult.safeParse({
+        results: [exactRow(recordKind, "confirmed_fact")],
+      });
+      expect(parsed.success).toBe(true);
+    });
+
+    it.each(exactRecallTrustLevelSchema.options)("accepts the exact %s register", (trustLevel) => {
+      const parsed = relationshipContextSearchToolResult.safeParse({
+        results: [exactRow("general_action", trustLevel)],
+      });
+      expect(parsed.success).toBe(true);
+    });
+
+    it.each(
+      relationshipSemanticRecordKindSchema.options,
+    )("accepts a semantic %s result", (recordKind) => {
+      const parsed = semanticContextSearchToolResult.safeParse({
+        results: [semanticRow(recordKind, "confirmed_fact")],
+      });
+      expect(parsed.success).toBe(true);
+    });
+
+    it.each(
+      relationshipSemanticTrustLevelSchema.options,
+    )("accepts the semantic %s register", (trustLevel) => {
+      const parsed = semanticContextSearchToolResult.safeParse({
+        results: [semanticRow("general_action", trustLevel)],
+      });
+      expect(parsed.success).toBe(true);
+    });
+
+    it("keeps one General Action from costing the rest of the result set", () => {
+      const parsed = relationshipContextSearchToolResult.safeParse({
+        results: [
+          exactRow("memory", "confirmed_fact"),
+          exactRow("general_action", "action_item"),
+          exactRow("person", "identity_reference"),
+        ],
+      });
+      expect(parsed.success).toBe(true);
+      expect(parsed.success && parsed.data.results).toHaveLength(3);
+    });
+  });
+
+  it("renders Global Recall as its own card rather than a generic line", () => {
+    // `search_global_recall` emitted `component: { type: "global_recall" }` with no
+    // schema behind it, so Eve's one cross-domain answer arrived unnamed (ADR 0199).
+    expect(isRenderedToolName("search_global_recall")).toBe(true);
+
+    const parsed = assistantToolResultSchemas.search_global_recall.safeParse({
+      query: "fridge filter",
+      results: [
+        {
+          family: "general_action",
+          canonical: { kind: "general_action", id: "ga-1" },
+          label: "Replace the fridge water filter",
+          supportingText: "Open",
+          lifecycle: "open",
+          match: { kind: "exact", reason: "Matched title", excerpt: "fridge filter" },
+          trust: "action_item",
+          sensitivity: "normal",
+          visibility: { choice: "only_me", label: "Only me" },
+          grounding: [{ kind: "general_action", id: "ga-1" }],
+          href: "/actions#action-ga-1",
+          parent: null,
+          details: { status: "open", isRoutine: false, isSuggested: false, areaId: null },
+        },
+      ],
+      limitations: [{ source: "calendar", message: "Calendar results are unavailable." }],
+      hasMore: true,
+    });
+
+    expect(parsed.success).toBe(true);
+    // The deep link survives the seam: a row opened from chat lands where the same
+    // row opened from the search palette lands.
+    expect(parsed.success && parsed.data.results[0]?.href).toBe("/actions#action-ga-1");
+    expect(parsed.success && parsed.data.limitations).toHaveLength(1);
+    expect(parsed.success && parsed.data.hasMore).toBe(true);
   });
 });

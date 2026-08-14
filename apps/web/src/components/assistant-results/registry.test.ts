@@ -39,6 +39,7 @@ const EXPECTED_KINDS: AssistantToolView["kind"][] = [
   "suggested_memory_review_list",
   "relationship_context_search",
   "semantic_context_search",
+  "global_recall",
   "relationship_agenda",
   "memory_curator_proposals",
   "suggested_followup_review",

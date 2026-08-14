@@ -194,6 +194,9 @@ export const createEmbeddingJobSchema = embeddingJobSchema.omit(JOB_CREATE_OMIT)
 
 export type SemanticRecordKind = z.infer<typeof semanticRecordKindSchema>;
 export type SemanticTrustLevel = z.infer<typeof semanticTrustLevelSchema>;
+/** The narrowed kinds and registers relationship retrieval can actually return. */
+export type RelationshipSemanticRecordKind = z.infer<typeof relationshipSemanticRecordKindSchema>;
+export type RelationshipSemanticTrustLevel = z.infer<typeof relationshipSemanticTrustLevelSchema>;
 export type RelationshipContextEmbedding = z.infer<typeof relationshipContextEmbeddingSchema>;
 export type SearchSemanticContextInput = z.input<typeof searchSemanticContextSchema>;
 export type ParsedSearchSemanticContextInput = z.output<typeof searchSemanticContextSchema>;

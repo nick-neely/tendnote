@@ -1,4 +1,29 @@
-import type { GlobalRecallResult } from "@tendnote/domain/global-recall";
+import type { GlobalRecallFamily, GlobalRecallResult } from "@tendnote/domain/global-recall";
+
+/**
+ * What each record family is called on a recall surface.
+ *
+ * One map for every surface that shows recall rows: the desktop palette's group
+ * headings, the phone's Search flow, and Eve's chat card. A family named two ways
+ * would be the same record described differently depending on where it was found.
+ */
+export const RECALL_FAMILY_LABELS: Record<GlobalRecallFamily, string> = {
+  person: "People",
+  self_context: "Self Context",
+  // Named in full beside "Self Context" rather than shortened to "Household":
+  // the two headings sit one above the other whenever a search touches both,
+  // and a member reading a shared statement has to be able to tell at a glance
+  // that it is not something they wrote about themselves.
+  household_context: "Household Context",
+  relationship_context: "Memories",
+  follow_up: "Follow-Ups",
+  general_action: "Actions",
+  asset: "Assets",
+  asset_memory: "Asset details",
+  saved_item: "Saved Items",
+  calendar_event: "Calendar",
+  gift_plan: "Gift plans",
+};
 
 /**
  * The two lines a Global Recall result row shows: what it leads with, and what

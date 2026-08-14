@@ -480,6 +480,161 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     expect(JSON.stringify(view)).not.toContain("generatedAnswer");
   });
 
+  it("keeps a General Action row from costing the rest of an exact recall card", () => {
+    // The card contract excluded `general_action`/`action_item`, so one Action in a
+    // result set failed the parse and the *whole* card degraded to a malformed line
+    // — every other row lost with it (ADR 0150).
+    const row = (recordKind: string, recordId: string, trustLevel: string, label: string) => ({
+      recordKind,
+      recordId,
+      visibilityChoice: "only_me",
+      visibilityLabel: "Only me",
+      relatedPersonId: null,
+      relatedPersonDisplayName: null,
+      label,
+      snippet: label,
+      matchedFields: ["title"],
+      rank: 1,
+      trustLevel,
+      sensitivity: "normal",
+    });
+
+    const view = toAssistantToolView({
+      toolName: "search_relationship_context",
+      output: {
+        results: [
+          row("memory", "memory-1", "confirmed_fact", "Mara prefers backend work."),
+          row("general_action", "ga-1", "action_item", "Replace the fridge water filter"),
+        ],
+      },
+    });
+
+    expect(view.kind).toBe("relationship_context_search");
+    expect(view.kind === "relationship_context_search" && view.results).toHaveLength(2);
+    expect(view.kind === "relationship_context_search" && view.results[1]).toMatchObject({
+      recordKind: "general_action",
+      recordId: "ga-1",
+      trustLevel: "action_item",
+    });
+  });
+
+  it("keeps a General Action row from costing the rest of a semantic recall card", () => {
+    const view = toAssistantToolView({
+      toolName: "search_semantic_context",
+      output: {
+        results: [
+          {
+            recordKind: "general_action",
+            recordId: "ga-1",
+            visibilityChoice: "only_me",
+            visibilityLabel: "Only me",
+            relatedPersonId: null,
+            relatedPersonDisplayName: null,
+            snippet: "Replace the fridge water filter",
+            similarity: 0.71,
+            trustLevel: "action_item",
+            sensitivity: "normal",
+          },
+        ],
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "semantic_context_search",
+      results: [
+        {
+          recordKind: "general_action",
+          recordId: "ga-1",
+          visibilityChoice: "only_me",
+          visibilityLabel: "Only me",
+          relatedPersonId: null,
+          relatedPersonDisplayName: null,
+          snippet: "Replace the fridge water filter",
+          similarity: 0.71,
+          trustLevel: "action_item",
+          sensitivity: "normal",
+        },
+      ],
+    });
+  });
+
+  it("renders Global Recall on its own rows, keeping each result's deep link and caveats", () => {
+    const view = toAssistantToolView({
+      toolName: "search_global_recall",
+      output: {
+        query: "fridge filter",
+        results: [
+          {
+            family: "general_action",
+            canonical: { kind: "general_action", id: "ga-1" },
+            label: "Replace the fridge water filter",
+            supportingText: "Open",
+            lifecycle: "open",
+            match: { kind: "exact", reason: "Matched title", excerpt: "fridge filter" },
+            trust: "action_item",
+            sensitivity: "normal",
+            visibility: { choice: "only_me", label: "Only me" },
+            grounding: [{ kind: "general_action", id: "ga-1" }],
+            href: "/actions#action-ga-1",
+            parent: null,
+            details: { status: "open", isRoutine: false, isSuggested: false, areaId: null },
+          },
+          {
+            family: "relationship_context",
+            canonical: { kind: "memory", id: "memory-1" },
+            label: "Mara Lin",
+            supportingText: "Mara replaced her own filter last spring.",
+            lifecycle: "active",
+            match: { kind: "related", reason: "Related by meaning", excerpt: null },
+            trust: "confirmed_fact",
+            sensitivity: "sensitive",
+            visibility: { choice: "only_me", label: "Only me" },
+            grounding: [{ kind: "memory", id: "memory-1" }],
+            href: "/people/person-1#memory-memory-1",
+            parent: { kind: "person", id: "person-1" },
+            details: { contextKind: "memory", personDisplayName: "Mara Lin" },
+          },
+        ],
+        limitations: [{ source: "calendar", message: "Calendar results are unavailable." }],
+        hasMore: true,
+        component: { type: "global_recall", resultCount: 2 },
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "global_recall",
+      query: "fridge filter",
+      results: [
+        {
+          family: "general_action",
+          canonicalKind: "general_action",
+          canonicalId: "ga-1",
+          href: "/actions#action-ga-1",
+          primary: "Replace the fridge water filter",
+          secondary: "Open",
+          matchKind: "exact",
+          visibilityLabel: "Only me",
+          sensitivity: "normal",
+        },
+        {
+          family: "relationship_context",
+          canonicalKind: "memory",
+          canonicalId: "memory-1",
+          href: "/people/person-1#memory-memory-1",
+          // A memory row leads with what was remembered and lets the person be the
+          // context beneath it — the same rule the palette and phone flow read.
+          primary: "Mara replaced her own filter last spring.",
+          secondary: "Mara Lin",
+          matchKind: "related",
+          visibilityLabel: "Only me",
+          sensitivity: "sensitive",
+        },
+      ],
+      limitations: ["Calendar results are unavailable."],
+      hasMore: true,
+    });
+  });
+
   it("renders relationship agenda results as compact typed candidates", () => {
     const view = toAssistantToolView({
       toolName: "get_relationship_agenda",

@@ -57,7 +57,7 @@ import {
   markGlobalRecallReturn,
   readGlobalRecallState,
 } from "@/lib/global-recall-navigation";
-import { recallResultLines } from "@/lib/recall-result-lines";
+import { RECALL_FAMILY_LABELS, recallResultLines } from "@/lib/recall-result-lines";
 import {
   GLOBAL_RECALL_FAMILY_OPTIONS,
   GLOBAL_RECALL_MATCH_OPTIONS,
@@ -736,24 +736,6 @@ type RecallGroup = {
   results: GlobalRecallResponse["results"];
 };
 
-const FAMILY_HEADINGS: Record<GlobalRecallFamily, string> = {
-  person: "People",
-  self_context: "Self Context",
-  // Named in full beside "Self Context" rather than shortened to "Household":
-  // the two headings sit one above the other whenever a search touches both,
-  // and a member reading a shared statement has to be able to tell at a glance
-  // that it is not something they wrote about themselves.
-  household_context: "Household Context",
-  relationship_context: "Memories",
-  follow_up: "Follow-Ups",
-  general_action: "Actions",
-  asset: "Assets",
-  asset_memory: "Asset details",
-  saved_item: "Saved Items",
-  calendar_event: "Calendar",
-  gift_plan: "Gift plans",
-};
-
 const FAMILY_ICONS: Record<GlobalRecallFamily, Icon> = {
   person: BookUserIcon,
   self_context: CircleUserRoundIcon,
@@ -802,7 +784,7 @@ function groupResultsByFamily(response: GlobalRecallResponse | null): RecallGrou
     return [
       {
         family,
-        heading: FAMILY_HEADINGS[family],
+        heading: RECALL_FAMILY_LABELS[family],
         results: [
           ...inFamily.filter((result) => result.match.kind === "exact"),
           ...inFamily.filter((result) => result.match.kind === "related"),
