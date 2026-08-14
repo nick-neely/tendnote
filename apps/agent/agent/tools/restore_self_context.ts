@@ -9,11 +9,15 @@ import { withModelSafeStoreErrors } from "../lib/store-errors";
 const inputSchema = z.object({
   contextFactId: z
     .uuid()
-    .describe("The exact archived Self Context fact id returned by a prior tool call."),
+    .describe(
+      "The exact archived Self Context fact id, copied from the `archive_self_context` result you are undoing, or from `get_self_context_fact` / `list_self_context` read with includeArchived. Never guess one.",
+    ),
   expectedArchivedAt: z.iso
     .datetime()
     .optional()
-    .describe("The archivedAt returned by the archive result for an authoritative Undo."),
+    .describe(
+      "The `archivedAt` on the fact the `archive_self_context` call returned in THIS conversation (or on a `get_self_context_fact` result read with includeArchived) - copy it verbatim, never compose a timestamp. It makes an Undo fail loudly if the fact changed since it was archived, rather than restoring over a later decision. Omit it only when you genuinely have no such result; read the fact first instead.",
+    ),
 });
 
 /**

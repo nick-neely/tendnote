@@ -68,6 +68,7 @@ export const EVE_TOOL_NAMES = [
   "edit_general_action",
   "edit_gift_idea",
   "get_asset_context",
+  "get_gift_plan",
   "get_person_context",
   "get_relationship_agenda",
   "get_self_context_fact",
@@ -154,6 +155,7 @@ export type EveModeDefinition = {
  */
 const SCHEDULED_WORKFLOW_READS = [
   "get_asset_context",
+  "get_gift_plan",
   "get_person_context",
   "get_relationship_agenda",
   "get_self_context_fact",

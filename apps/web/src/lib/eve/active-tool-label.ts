@@ -64,6 +64,7 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   list_saved_items: "Checking what you saved…",
   list_message_drafts: "Checking your drafts…",
   search_gift_plans: "Checking your gift plans…",
+  get_gift_plan: "Opening the gift plan…",
   add_gift_idea: "Adding the idea to the plan…",
   edit_gift_idea: "Updating the idea…",
   remove_gift_idea: "Taking the idea off the plan…",

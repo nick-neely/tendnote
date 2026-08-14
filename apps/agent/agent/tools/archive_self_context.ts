@@ -9,12 +9,14 @@ import { withModelSafeStoreErrors } from "../lib/store-errors";
 const inputSchema = z.object({
   contextFactId: z
     .uuid()
-    .describe("The exact active Self Context fact id returned by a prior tool call."),
+    .describe(
+      "The exact active Self Context fact id, copied from a `list_self_context` or `get_self_context_fact` result in this conversation. Never guess one.",
+    ),
   expectedUpdatedAt: z.iso
     .datetime()
     .optional()
     .describe(
-      "The last updatedAt returned by a prior tool call when protecting against stale intent.",
+      "The `updatedAt` this same fact carried in the `list_self_context` or `get_self_context_fact` result you read it from in THIS conversation - copy it verbatim, never compose a timestamp. It makes the archive fail loudly if the user changed the fact elsewhere since you read it. Omit it only when you genuinely have no such result (an id carried over from an earlier session); read the fact first instead.",
     ),
 });
 

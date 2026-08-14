@@ -69,13 +69,61 @@ export const relationshipSemanticTrustLevelSchema = z.enum([
 ]);
 
 export const searchSemanticContextSchema = z.object({
-  query: z.string().trim().min(1).max(400),
-  personId: z.uuid().optional(),
-  recordKinds: z.array(relationshipSemanticRecordKindSchema).min(1).max(3).optional(),
-  limit: z.number().int().min(1).max(20).default(8),
-  minimumSimilarity: z.number().min(0).max(1).default(0),
-  directlyRequested: z.boolean().default(false),
-  includeArchived: z.boolean().default(false),
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .max(400)
+    .describe(
+      "What to look for, by meaning rather than wording - the user's phrasing need not " +
+        "match what was stored. Describe the thing ('gift ideas for Ana', 'career worries').",
+    ),
+  personId: z
+    .uuid()
+    .optional()
+    .describe(
+      "Narrow to one person, using an id resolved with `search_people` - never a guessed " +
+        "one. Omit to search across everyone.",
+    ),
+  recordKinds: z
+    .array(relationshipSemanticRecordKindSchema)
+    .min(1)
+    .max(3)
+    .optional()
+    .describe("Restrict to particular record kinds. Omit for all of them, which is usually right."),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(8)
+    .describe("Max records to return, closest match first. Omit for the ordinary small set."),
+  minimumSimilarity: z
+    .number()
+    .min(0)
+    .max(1)
+    .default(0)
+    .describe(
+      "Similarity floor from 0 to 1: results scoring below it are dropped. Leave at 0 " +
+        "(the default) and judge the returned `similarity` yourself - a floor set too high " +
+        "returns nothing and reads as 'the user has no such context', which is a different " +
+        "and false claim.",
+    ),
+  directlyRequested: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Reveal restricted-sensitivity records, which every ordinary search withholds. Set " +
+        "true ONLY when the user explicitly asked about that delicate context in this turn " +
+        "and the query names it - never speculatively, and never to widen a thin result.",
+    ),
+  includeArchived: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Include records the user archived. Leave false unless they explicitly ask for " +
+        "archived or older context.",
+    ),
   // Owner-only review context: when true, the caller's own `suggested` General Actions
   // may participate in retrieval so a review surface can find grounded proposals. A
   // suggested proposal is never scope-visible to a household member regardless of this

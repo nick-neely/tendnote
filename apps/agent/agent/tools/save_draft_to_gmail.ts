@@ -19,11 +19,14 @@ const inputSchema = z.object({
     .describe(
       "The existing, APPROVED Tendnote message draft to externalize. This tool never drafts from raw relationship context — create a Tendnote draft with create_message_draft first and have the user approve it. If no such draft exists, do not call this tool.",
     ),
+  // An actual address, not merely three characters. This is the one field on the one
+  // tool that reaches outside Tendnote, and `min(3)` accepted "Alex" - which then
+  // travelled all the way to the Gmail adapter to be rejected there, or worse, to
+  // land a draft addressed to nobody in the user's Gmail.
   recipientEmail: z
-    .string()
-    .min(3)
+    .email()
     .describe(
-      "The email address the user explicitly confirmed as the recipient. Never guess an address — ask the user for it (or offer a saved one) and pass exactly what they confirmed.",
+      "The email address the user explicitly confirmed as the recipient, as a real address (name@example.com). Never guess an address - ask the user for it (or offer a saved one) and pass exactly what they confirmed.",
     ),
   subject: z
     .string()

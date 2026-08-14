@@ -36,4 +36,21 @@ export default defineTool({
       },
     };
   },
+  // Strip the raw ids from the model's view, exactly as the twin
+  // `dismiss_suggested_followup` does; keep the new status so the model can confirm the
+  // dismissal in prose. The memory id, person id, and source-record id stay on the raw
+  // result for channels - there is no follow-up call to make, because the suggestion is
+  // resolved and dismissed suggestions are never reintroduced.
+  toModelOutput(output) {
+    return {
+      type: "json" as const,
+      value: {
+        dismissed: true,
+        status: output.memory.status,
+        guidance:
+          "Confirm briefly that the suggested memory was dismissed and will not come back; " +
+          "name the person from context, never an id.",
+      },
+    };
+  },
 });

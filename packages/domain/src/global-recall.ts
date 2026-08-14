@@ -104,19 +104,75 @@ export function isMeaningfulRecallQuery(query: string): boolean {
   return /[\p{L}\p{N}]{2,}/u.test(query.trim());
 }
 
+/**
+ * The restricted unlock, said once so both the field and the refusal can quote it.
+ *
+ * Restricted context is revealed one record family at a time: a caller who has
+ * asked for something delicate has asked about *something*, and a whole-surface
+ * reveal is a sweep rather than an answer. The rule is enforced below and stated
+ * on `includeRestricted` and `family` so a caller learns it before the call
+ * rather than from the rejection (T11, T12).
+ */
+const RESTRICTED_UNLOCK_RULE =
+  "Restricted matches are revealed one record family at a time, so `family` must name " +
+  'a specific family (never "all") whenever `includeRestricted` is true.';
+
 const globalRecallInputObjectSchema = z.object({
   query: z
     .string()
     .trim()
     .min(1)
     .max(400)
-    .refine(isMeaningfulRecallQuery, "Enter a meaningful search term."),
-  family: globalRecallFilterSchema.default("all"),
-  includeArchived: z.boolean().default(false),
-  includeRestricted: z.boolean().default(false),
-  matchKinds: z.array(globalRecallMatchKindSchema).min(1).max(2).optional(),
-  offset: z.number().int().min(0).default(0),
-  limit: z.number().int().min(1).max(12).default(12),
+    .refine(isMeaningfulRecallQuery, "Enter a meaningful search term.")
+    .describe(
+      "What to look for, in the user's own words. Needs at least two letters or digits " +
+        "together: punctuation and a single initial are not a search and are rejected.",
+    ),
+  family: globalRecallFilterSchema
+    .default("all")
+    .describe(
+      'Narrow to one record family, or "all" (the default) to look across every family. ' +
+        RESTRICTED_UNLOCK_RULE,
+    ),
+  includeArchived: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Include records the user archived. Leave false unless they explicitly ask about " +
+        "something archived or old.",
+    ),
+  includeRestricted: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Reveal restricted-sensitivity records, which are withheld from every ordinary " +
+        "search. Set true ONLY when the user explicitly asks to see the delicate context " +
+        "AND the query itself names the target - never speculatively, never to widen a " +
+        "search that came back thin. " +
+        RESTRICTED_UNLOCK_RULE,
+    ),
+  matchKinds: z
+    .array(globalRecallMatchKindSchema)
+    .min(1)
+    .max(2)
+    .optional()
+    .describe(
+      'Restrict results to "exact" matches, "related" (semantically similar) matches, or ' +
+        "both. Omit for both, which is almost always right.",
+    ),
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .default(0)
+    .describe("How many results to skip, for a paged surface. Callers that do not page omit it."),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(12)
+    .default(12)
+    .describe("Max results to return across all families. Omit for the full page."),
 });
 
 function requireRestrictedFamily(
@@ -126,7 +182,9 @@ function requireRestrictedFamily(
   if (input.includeRestricted && input.family === "all") {
     context.addIssue({
       code: "custom",
-      message: "Choose one record family before revealing restricted matches.",
+      // Names the field to set and the value that is wrong, because this message is
+      // the only thing a rejected caller (the model included) gets to read.
+      message: `Set \`family\` to one specific record family before revealing restricted matches: ${RESTRICTED_UNLOCK_RULE} Pick the family the user's question is about, or drop \`includeRestricted\`.`,
       path: ["family"],
     });
   }

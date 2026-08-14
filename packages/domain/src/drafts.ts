@@ -13,6 +13,29 @@ export const messageDraftPurposeSchema = z.enum([
 export const messageDraftStatusSchema = z.enum(["draft", "approved", "dismissed", "sent_manually"]);
 
 /**
+ * A message-draft refusal the caller can act on, written for a person.
+ *
+ * The lifecycle's state refusals - editing a draft the user already dismissed or
+ * sent, approving one that is no longer a draft, saving an empty or unchanged
+ * body - are all facts about the user's own record and all fixable by the user.
+ * They threw a bare `Error` until now, which the surfaces that guard against
+ * leaking infrastructure text (`apps/agent/agent/lib/store-errors.ts`) correctly
+ * cannot tell apart from a Drizzle failure, so Eve answered "could not read the
+ * user's records right now" for "you already sent that one". This class is the
+ * signal those allowlists read.
+ *
+ * Deliberately NOT used for "Message draft not found": a missing record is
+ * exactly the failure that taught Eve to guess a different id and call again, and
+ * the opaque store sentence is the one that terminates that loop.
+ */
+export class MessageDraftValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MessageDraftValidationError";
+  }
+}
+
+/**
  * Source grounding kinds preserved on every generated Tendnote draft (PRD #75,
  * issue #76, ADR-0040). These mirror the context trust tiers (ADR-0004): approved
  * memories are confirmed facts, source records are logged context, suggested
@@ -134,7 +157,7 @@ export function resolveMessageDraftTransition(
   const rule = MESSAGE_DRAFT_TRANSITIONS[action];
 
   if (!rule.from.has(current)) {
-    throw new Error(`Cannot ${action} a draft that is ${current}.`);
+    throw new MessageDraftValidationError(`Cannot ${action} a draft that is ${current}.`);
   }
 
   return rule.to;
@@ -143,6 +166,6 @@ export function resolveMessageDraftTransition(
 /** A draft body is editable only while it is still active (draft or approved). */
 export function assertMessageDraftEditable(status: MessageDraftStatus): void {
   if (status !== "draft" && status !== "approved") {
-    throw new Error(`Cannot edit a draft that is ${status}.`);
+    throw new MessageDraftValidationError(`Cannot edit a draft that is ${status}.`);
   }
 }

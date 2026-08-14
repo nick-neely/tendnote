@@ -3,6 +3,7 @@ import {
   assertMessageDraftEditable,
   draftSourceRefSchema,
   draftSourceRefTrustForKind,
+  MessageDraftValidationError,
   resolveMessageDraftTransition,
 } from "./drafts";
 
@@ -66,5 +67,31 @@ describe("assertMessageDraftEditable", () => {
     expect(() => assertMessageDraftEditable("approved")).not.toThrow();
     expect(() => assertMessageDraftEditable("dismissed")).toThrow();
     expect(() => assertMessageDraftEditable("sent_manually")).toThrow();
+  });
+});
+
+/**
+ * The state refusals are facts about the user's own record, fixable by the user.
+ * They threw a bare `Error`, which the surfaces that guard against leaking
+ * infrastructure text cannot tell apart from a failed query - so Eve answered
+ * "could not read the user's records right now" for "you already sent that one".
+ */
+describe("MessageDraftValidationError", () => {
+  it("carries the state refusals, so a caller can relay them verbatim", () => {
+    expect(() => assertMessageDraftEditable("dismissed")).toThrow(MessageDraftValidationError);
+    expect(() => resolveMessageDraftTransition("approved", "approve")).toThrow(
+      MessageDraftValidationError,
+    );
+    expect(() => resolveMessageDraftTransition("sent_manually", "dismiss")).toThrow(
+      MessageDraftValidationError,
+    );
+  });
+
+  it("is an ordinary Error subclass with a stable name", () => {
+    const error = new MessageDraftValidationError("Cannot edit a draft that is dismissed.");
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.name).toBe("MessageDraftValidationError");
+    expect(error.message).toBe("Cannot edit a draft that is dismissed.");
   });
 });

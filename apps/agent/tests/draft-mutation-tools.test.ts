@@ -1,3 +1,4 @@
+import { MessageDraftValidationError } from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { asTestTool, toolModelValue } from "./test-tool";
 
@@ -85,14 +86,25 @@ describe("edit_draft_body", () => {
     expect(requestBackgroundAffectedScopeReconciliation).not.toHaveBeenCalled();
   });
 
-  it("gives the model the opaque sentence for a refused edit, not the domain's wording", async () => {
-    // Approved text is the text the user approved, and the shared lifecycle refuses to
-    // edit it - with a plain `Error`, because the drafts domain has no curated error
-    // class of its own. So the refusal reads as the opaque store sentence rather than as
-    // "this draft is approved". That is the fail-closed side of the store-error rule and
-    // the honest state of this seam today; a curated `MessageDraftValidationError` would
-    // be what changes it.
-    editDraftBody.mockRejectedValue(new Error("An approved draft cannot be edited."));
+  it("passes a curated draft refusal through in the domain's own words", async () => {
+    // A draft the user dismissed or already sent is finished with, and the shared
+    // lifecycle refuses to edit it. That refusal is a fact about the user's own record
+    // and fixable by them, so it now travels as a `MessageDraftValidationError` and
+    // reaches the model as itself - where it used to be flattened into the opaque store
+    // sentence and Eve could only say "that didn't work".
+    editDraftBody.mockRejectedValue(
+      new MessageDraftValidationError("Cannot edit a draft that is sent_manually."),
+    );
+
+    await expect(
+      editTool.execute({ draftId: DRAFT_ID, body: "Shorter version" }, ctx),
+    ).rejects.toThrow(/cannot edit a draft that is sent_manually/i);
+  });
+
+  it("still swallows a missing draft, so a bad id cannot start a guessing loop", async () => {
+    // Deliberately NOT curated: a missing record is the failure that taught Eve to try
+    // another id, and the opaque sentence is the one that terminates it.
+    editDraftBody.mockRejectedValue(new Error("Message draft not found."));
 
     await expect(
       editTool.execute({ draftId: DRAFT_ID, body: "Shorter version" }, ctx),

@@ -86,6 +86,9 @@ describe("Eve mode registry", () => {
   it("holds Scheduled Workflow Mode to reads and review-gated proposals", () => {
     expect(eveModeDefinition("scheduled_workflow").tools, REGISTRY_DRIFT).toEqual([
       "get_asset_context",
+      // Reads one plan the caller is already allowed to see, through the same `view`
+      // proof `search_gift_plans` runs, so it belongs to the same modes that one does.
+      "get_gift_plan",
       "get_person_context",
       "get_relationship_agenda",
       "get_self_context_fact",

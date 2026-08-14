@@ -20,6 +20,24 @@ const mocks = vi.hoisted(() => ({
   getOwnerTodayContext: vi.fn(),
 }));
 
+/**
+ * The commit boundary, recorded rather than opened.
+ *
+ * `plan_suggested_general_actions` writes every step inside one
+ * `withDatabaseTransaction`. Unmocked, that reaches the real `getDb()` - which
+ * falls back to the local dev database URL, so this suite would quietly stop
+ * being a unit test and start depending on a running Postgres.
+ */
+const { withDatabaseTransaction } = vi.hoisted(() => ({
+  withDatabaseTransaction: vi.fn(<T>(run: () => Promise<T>) => run()),
+}));
+
+// Partial: `list_general_actions` reaches the real client through the Areas store, so
+// only the boundary is replaced.
+vi.mock("@tendnote/db/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tendnote/db/client")>()),
+  withDatabaseTransaction,
+}));
 vi.mock("@tendnote/db/queries/general-actions", () => mocks);
 // The ledger's date windows are measured against the OWNER's day, so the list tool
 // reads it. Mocked here so this suite stays a pure unit test of the filters.
@@ -245,6 +263,68 @@ describe("plan_suggested_general_actions — shallow planning", () => {
       schema.safeParse({ sourceRecordId: SOURCE_ID, steps: [{ title: "Only step" }] }).success,
     ).toBe(true);
   });
+
+  /**
+   * A plan is one thing, so it commits as one thing. Each step used to be its own
+   * commit: a failure at step k left k-1 suggestions in the user's review queue
+   * and told the model the whole call had failed - half a plan nobody asked for,
+   * reported as nothing at all.
+   */
+  it("writes every step inside one transaction", async () => {
+    mocks.suggestGeneralAction.mockImplementation(async (input: { title: string }) =>
+      mutationOutcome({
+        action: action({ title: input.title, status: "suggested" }),
+        sourceRecord: { id: SOURCE_ID },
+        component: { type: "suggested_general_action_review" },
+      }),
+    );
+
+    await planTool.execute(
+      {
+        sourceRecordId: SOURCE_ID,
+        steps: [{ title: "Book the campsite" }, { title: "Rent the gear" }],
+      },
+      ctx,
+    );
+
+    expect(withDatabaseTransaction).toHaveBeenCalledTimes(1);
+    const boundary = withDatabaseTransaction.mock.invocationCallOrder[0] as number;
+    for (const order of mocks.suggestGeneralAction.mock.invocationCallOrder) {
+      expect(order).toBeGreaterThan(boundary);
+    }
+  });
+
+  it("rolls the earlier steps back when a later one fails, and reconciles nothing", async () => {
+    let written = 0;
+    mocks.suggestGeneralAction.mockImplementation(async (input: { title: string }) => {
+      written += 1;
+      if (written === 3) throw new Error('Failed query: insert into "general_actions" ...');
+      return mutationOutcome({
+        action: action({ title: input.title, status: "suggested" }),
+        sourceRecord: { id: SOURCE_ID },
+        component: { type: "suggested_general_action_review" },
+      });
+    });
+
+    await expect(
+      planTool.execute(
+        {
+          sourceRecordId: SOURCE_ID,
+          steps: [{ title: "One" }, { title: "Two" }, { title: "Three" }],
+        },
+        ctx,
+      ),
+    ).rejects.toThrow(/could not read the user's records/i);
+
+    // Two steps were attempted before the third failed, and the rejection escaped the
+    // boundary - so a real transaction discards all three rather than leaving two
+    // orphans behind a "nothing happened" error.
+    expect(written).toBe(3);
+    await expect(withDatabaseTransaction.mock.results[0]?.value).rejects.toThrow();
+    // Reconciliation runs only after a commit, so a rolled-back plan never reaches
+    // the cache as if it existed.
+    expect(mocks.requestBackgroundAffectedScopeReconciliation).not.toHaveBeenCalled();
+  });
 });
 
 describe("update_general_action_status — explicit, single-record mutation", () => {
@@ -285,6 +365,56 @@ describe("update_general_action_status — explicit, single-record mutation", ()
       updateTool.execute({ generalActionId: ACTION_ID, action: "defer" }, ctx),
     ).rejects.toThrow(/resurface date/i);
     expect(mocks.deferGeneralAction).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The pairing lived only in the executor, so the model met it as a thrown error
+   * after the call rather than as a rule before it - and the other half was not
+   * checked at all: `{action:"complete", deferUntil:"…"}` parsed, dropped the date,
+   * and completed the action. "Push this to Friday" ending as "done" is the worst
+   * outcome this tool has.
+   */
+  describe("deferUntil belongs to exactly one transition", () => {
+    const schema = () =>
+      updateTool.inputSchema as unknown as {
+        safeParse: (value: unknown) => {
+          success: boolean;
+          error?: { issues: Array<{ message: string }> };
+        };
+      };
+
+    it("rejects defer with no date, naming the field to pass", () => {
+      const parsed = schema().safeParse({ generalActionId: ACTION_ID, action: "defer" });
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]?.message).toMatch(/deferUntil/);
+      expect(parsed.error?.issues[0]?.message).toMatch(/iso 8601/i);
+    });
+
+    it("rejects a date on any other transition, and says what it would have done", () => {
+      const parsed = schema().safeParse({
+        generalActionId: ACTION_ID,
+        action: "complete",
+        deferUntil: "2026-09-01",
+      });
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]?.message).toMatch(/would have applied "complete"/i);
+      expect(parsed.error?.issues[0]?.message).toMatch(/edit_general_action/);
+    });
+
+    it("accepts each transition in its one valid shape", () => {
+      expect(
+        schema().safeParse({
+          generalActionId: ACTION_ID,
+          action: "defer",
+          deferUntil: "2026-09-01",
+        }).success,
+      ).toBe(true);
+      expect(schema().safeParse({ generalActionId: ACTION_ID, action: "complete" }).success).toBe(
+        true,
+      );
+    });
   });
 });
 

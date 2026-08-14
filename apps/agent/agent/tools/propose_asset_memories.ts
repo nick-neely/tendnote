@@ -1,3 +1,4 @@
+import { withDatabaseTransaction } from "@tendnote/db/client";
 import { suggestAsset, suggestAssetMemories } from "@tendnote/db/queries/assets";
 import { captureSourceRecord } from "@tendnote/db/queries/source-records";
 import {
@@ -45,6 +46,22 @@ const detailSchema = z.object({
     .describe("Freeform context, when the fact needs a sentence rather than a value."),
 });
 
+/**
+ * The anchor rule, stated where a caller reads it and enforced before `execute`.
+ *
+ * Exactly one of `assetId` / `newAsset` is an anchor. Neither was already refused,
+ * but late, from inside the executor. Both was worse: it parsed, `assetId` silently
+ * won, and `newAsset` - the model's own statement that it had found nothing - was
+ * dropped. The two spellings disagree about whether the user already owns the
+ * thing, and the tool cannot know which one is true, so it refuses instead of
+ * picking. Expressed as a refinement over a flat object rather than a union
+ * because eve hands this schema to the provider as JSON Schema, and zod renders a
+ * top-level union as a root `oneOf` with no `"type": "object"`.
+ */
+const ANCHOR_RULE =
+  "Pass exactly one anchor: `assetId` for an Asset `search_assets` already found, or " +
+  "`newAsset` when that search found nothing.";
+
 const inputSchema = z.object({
   assetId: z
     .uuid()
@@ -52,7 +69,8 @@ const inputSchema = z.object({
     .describe(
       "The Asset these facts belong to, copied exactly from a `search_assets` result. " +
         "Search FIRST: if the user's thing is already tracked, the facts must anchor to " +
-        "it. Omit ONLY when the search found nothing — then pass `newAsset` instead.",
+        "it. Omit ONLY when the search found nothing - then pass `newAsset` instead. " +
+        "Never pass this together with `newAsset`.",
     ),
   newAsset: z
     .object({
@@ -66,7 +84,8 @@ const inputSchema = z.object({
     .optional()
     .describe(
       "Propose a NEW Asset to hang these facts on, when `search_assets` found nothing " +
-        "to anchor to. The Asset is itself only a suggestion until the user accepts it.",
+        "to anchor to. The Asset is itself only a suggestion until the user accepts it. " +
+        "Never pass this together with `assetId`.",
     ),
   saidByUser: z
     .string()
@@ -82,6 +101,24 @@ const inputSchema = z.object({
     .min(1)
     .max(MAX_ASSET_MEMORY_PROPOSALS)
     .describe("The facts to propose, one per detail. Only what the user actually told you."),
+});
+
+const proposeAssetMemoriesInputSchema = inputSchema.superRefine((input, ctx) => {
+  if (input.assetId === undefined && input.newAsset === undefined) {
+    ctx.addIssue({
+      code: "custom",
+      message: `A fact has to hang on something. ${ANCHOR_RULE} Run \`search_assets\` first if you have not.`,
+      path: ["assetId"],
+    });
+    return;
+  }
+  if (input.assetId !== undefined && input.newAsset !== undefined) {
+    ctx.addIssue({
+      code: "custom",
+      message: `${ANCHOR_RULE} Both were given, which says the thing is and is not already tracked; \`newAsset\` would have been dropped. Keep \`assetId\` if the search really found the user's thing, otherwise keep \`newAsset\`.`,
+      path: ["newAsset"],
+    });
+  }
 });
 
 /**
@@ -113,13 +150,13 @@ const inputSchema = z.object({
  */
 export default defineTool({
   description: `Propose asset facts for the user to review outside Global Capture — a filter or model number, a serial, a purchase/warranty/renewal date, a maintenance cadence, a price — when they TELL you something about a thing they own ("the filter in my kitchen fridge is EDR1RXD1", "I bought the dishwasher in March 2024", "the car warranty runs out next year"). Do not use this for "Use Capture", "capture this", or a turn with another supported explicit clause even if the word Capture is absent; \`capture_saved_item\` owns that path and creates a review-gated Asset outcome. Otherwise call \`search_assets\` first: pass the \`assetId\` it returned so the facts anchor to the asset they already have, or pass \`newAsset\` when the search found nothing. At most ${MAX_ASSET_MEMORY_PROPOSALS} facts per call, copied from the user's own words — never invented, corrected, or reformatted. This SAVES NOTHING: every fact becomes a review card the user accepts, edits, or dismisses. Say it is waiting for review; NEVER say you logged, saved, recorded, or noted it, and never repeat it back later as a stored fact. Use \`create_general_action\` for a reminder they explicitly asked for, and \`propose_asset_actions\` to turn a dated fact into a proposed reminder.`,
-  inputSchema,
+  inputSchema: proposeAssetMemoriesInputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    // A fact has to hang on something. Refusing here — before anything is written —
-    // is the honest failure: the alternative is an "Untitled" husk in the user's
-    // review queue that they have to clean up after Eve's own missing search.
+    // Unreachable through the tool: the schema refuses an anchorless call before
+    // `execute` runs. Kept because the executor is also the type narrowing, and an
+    // undefined anchor here would write an "Untitled" husk into the review queue.
     const anchor = input.assetId ?? input.newAsset;
     if (!anchor) {
       throw new AssetValidationError(
@@ -128,46 +165,62 @@ export default defineTool({
       );
     }
 
-    // The user's own sentence, captured as the proposal's grounding (see the note
-    // above). `sourceType: "agent"` is the honest provenance — the user said it, Eve
-    // wrote it down — and it renders on the review card as "assistant note". This is
-    // the raw capture, deliberately not `captureLoggedContext`: that path enqueues
-    // person-memory and action extraction, which has nothing to do with a fridge filter.
-    const { sourceRecord } = await withModelSafeStoreErrors(() =>
-      captureSourceRecord({
-        ownerUserId,
-        retainedContent: input.saidByUser,
-        sourceType: "agent",
-        metadataJson: { captureSurface: "eve", capturedFor: "asset_memory_proposal" },
-      }),
-    );
-
     const memories = input.details.map((detail) => ({
       label: detail.label,
       value: detail.value ?? null,
       notes: detail.notes ?? null,
     }));
 
-    // Anchor to the asset the user named; propose a new (suggested) asset only when
-    // there was nothing to anchor to. Scope is left to the seam's private default —
-    // widening an asset fact is the user's choice at review, never Eve's here.
+    /**
+     * The evidence and the proposal land together, or neither lands.
+     *
+     * The grounding Source Record has to be written *before* the proposal, because
+     * the grounded seam requires an id it can point at. Written as two commits, a
+     * failure in the second one left the first behind: a durable Source Record of
+     * the user's sentence, attached to nothing, in an account whose owner had just
+     * been told "this saves nothing". There is no `deleteSourceRecord` to
+     * compensate with, so the fix is the boundary rather than a cleanup pass - the
+     * shared ambient transaction, which every store call under it joins through
+     * `getDb()` without any query-layer change.
+     *
+     * What deliberately stays *outside* the commit: affected-scope reconciliation
+     * (a cache call that must not be able to roll back a write, and must not run
+     * for a write that never happened).
+     */
     const outcome = await withModelSafeStoreErrors(() =>
-      typeof anchor === "string"
-        ? suggestAssetMemories({
-            ownerUserId,
-            assetId: anchor,
-            sourceRecordId: sourceRecord.id,
-            memories,
-            source: "assistant",
-          })
-        : suggestAsset({
-            ownerUserId,
-            name: anchor.name,
-            kind: anchor.kind,
-            sourceRecordId: sourceRecord.id,
-            memories,
-            source: "assistant",
-          }),
+      withDatabaseTransaction(async () => {
+        // The user's own sentence, captured as the proposal's grounding (see the note
+        // above). `sourceType: "agent"` is the honest provenance - the user said it, Eve
+        // wrote it down - and it renders on the review card as "assistant note". This is
+        // the raw capture, deliberately not `captureLoggedContext`: that path enqueues
+        // person-memory and action extraction, which has nothing to do with a fridge filter.
+        const { sourceRecord } = await captureSourceRecord({
+          ownerUserId,
+          retainedContent: input.saidByUser,
+          sourceType: "agent",
+          metadataJson: { captureSurface: "eve", capturedFor: "asset_memory_proposal" },
+        });
+
+        // Anchor to the asset the user named; propose a new (suggested) asset only when
+        // there was nothing to anchor to. Scope is left to the seam's private default -
+        // widening an asset fact is the user's choice at review, never Eve's here.
+        return typeof anchor === "string"
+          ? suggestAssetMemories({
+              ownerUserId,
+              assetId: anchor,
+              sourceRecordId: sourceRecord.id,
+              memories,
+              source: "assistant",
+            })
+          : suggestAsset({
+              ownerUserId,
+              name: anchor.name,
+              kind: anchor.kind,
+              sourceRecordId: sourceRecord.id,
+              memories,
+              source: "assistant",
+            });
+      }),
     );
     await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
     const result = outcome.result;
