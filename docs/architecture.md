@@ -144,7 +144,7 @@ Contacts uses incremental `contacts.readonly` consent, tracked separately as `go
 
 ### Discord — capture and delivery
 
-The Discord channel verifies Ed25519 interaction signatures against `DISCORD_PUBLIC_KEY` before doing anything else. Capture writes a **source record** for review — never a memory directly — and enqueues extraction, action-extraction, and embedding jobs. Human-in-the-loop uses an ephemeral clarification modal and a "review in Tendnote" button.
+The Discord channel verifies Ed25519 interaction signatures against `DISCORD_PUBLIC_KEY` before doing anything else. Capture writes a **source record** for review — never a memory directly — and enqueues extraction, action-extraction, and embedding jobs. Human-in-the-loop uses an ephemeral clarification modal and a "review in Tendnote" button. The modal is durable rather than in-process: clicking *Clarify* parks an owner-scoped session in Redis (TTL matched to Discord's 15-minute interaction window) before the modal opens, and the submit consumes that session and captures the clarification as another source record for review, tagged with the session it clarifies. Any instance can serve either half. Attachments are refused while the interaction is parsed, and an unreachable store or an unexpected failure answers with an ephemeral message instead of a failed interaction.
 
 Proactive delivery POSTs to configured channel targets with `DISCORD_BOT_TOKEN` and returns `null` when unconfigured, so delivery is strictly opt-in. Hosted owner identity resolves through Better Auth Discord account linking; `DISCORD_OWNER_USER_MAP` is a dev/private-beta fallback only, not the hosted resolution path. See [`discord-setup.md`](discord-setup.md).
 
