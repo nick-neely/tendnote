@@ -270,6 +270,10 @@ describe("Discord private capture channel", () => {
   });
 
   it("does not expose durable-truth promotion tools in Discord Capture Mode", () => {
+    // The capture path performs exactly one capability, and the registry says
+    // so; `tests/eve-mode-gate.test.ts` proves the other 62 are withheld from a
+    // Discord-stamped session rather than merely listed as absent.
+    expect(modeAllowsTool("discord_capture", "capture_source_record")).toBe(true);
     expect(modeAllowsTool("discord_capture", "approve_suggested_memory")).toBe(false);
     expect(modeAllowsTool("discord_capture", "propose_followup")).toBe(false);
     expect(modeAllowsTool("discord_capture", "create_message_draft")).toBe(false);

@@ -13,6 +13,11 @@
  * BEGIN/END delimiters and static policy line the Self Context orientation block
  * uses, for the same reason. The data is inside a fence, the policy is outside it,
  * and no stored text can restate what the block means.
+ *
+ * This is also why ADR-0128's Selected Person Mode narrows no tools: the only
+ * signal for it is this block, which the browser writes into the turn. Eve
+ * resolves a mode from the authenticated session principal instead
+ * (`apps/agent/agent/lib/eve-modes.ts`).
  */
 
 export type SelectedPersonContext = {

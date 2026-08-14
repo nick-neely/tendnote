@@ -5,6 +5,22 @@ import { dirname, resolve } from "node:path";
 const SHARED_TOOL_IMPORT = /from\s+"([^"]*\/lib\/tools\/[\w-]+)"/g;
 
 /**
+ * Whether a file under a `tools/` directory authors a tool.
+ *
+ * The slot holds three kinds of file, and only the first is a tool a scan can
+ * read for schemas, owner scoping, or store calls:
+ * - a tool, authored with `defineTool` or registering a shared definition;
+ * - a `disableTool()` sentinel, which turns off a framework default and defines
+ *   no executor at all;
+ * - a `defineDynamic` resolver, which decides at runtime which *other* tools'
+ *   names are bound to what (`agent/tools/eve_mode_gate.ts`), and so has no
+ *   tool of its own to inspect.
+ */
+export function authorsTool(source: string): boolean {
+  return !/export default (disableTool\(\)|defineDynamic\()/.test(source);
+}
+
+/**
  * The source that actually defines a tool.
  *
  * A tool file used to be the whole implementation, so a scan could read one file and

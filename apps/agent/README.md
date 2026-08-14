@@ -43,7 +43,7 @@ Every mutation that creates durable state requires explicit user intent. Anythin
 
 ## Modes and channels
 
-`agent/lib/eve-modes.ts` defines five modes — `discord_capture`, `selected_person`, `drafting`, `scheduled_workflow`, `cleanup_preview` — and four callers/channels: `web`, `discord`, `schedule`, `sandbox`. Modes narrow what Eve may do for a given entry point; they never widen it.
+`agent/lib/eve-modes.ts` holds the mode table: `web_chat`, `discord_capture`, `scheduled_workflow`, and `restricted`. A mode narrows which authored tools a session may use and never widens it, and it is resolved per turn from `ctx.session.auth.current` alone - the principal the channel's own auth stamped - so nothing the model or the browser writes can select one. `agent/tools/eve_mode_gate.ts` enforces it: a `defineDynamic` resolver rebinds every withheld tool name to a definition that runs nothing, because eve 0.32 lets a dynamic resolver override an authored tool but not delete one. Selected Person, Drafting, and Cleanup Preview are conversation context rather than modes; see [`docs/architecture.md`](../../docs/architecture.md#eve).
 
 The `eve.ts` channel is the hosted trust boundary: it verifies the Better Auth cookie directly, requires admitted Private Beta Access, charges the Eve ingress budget, and stamps only the verified owner onto the session principal (ADR 0194).
 
