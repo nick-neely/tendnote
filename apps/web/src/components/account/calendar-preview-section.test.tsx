@@ -57,4 +57,10 @@ describe("CalendarPreviewSection", () => {
     expect(html).toContain("Couldn");
     expect(html).toContain("briefs still work");
   });
+
+  it("explains when the provider must be reconnected", () => {
+    const html = render({ state: "needs_reconnect" });
+    expect(html).toContain("needs to be reconnected");
+    expect(html).toContain("Use Connect in Integrations");
+  });
 });

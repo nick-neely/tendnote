@@ -90,4 +90,65 @@ describe("reconcileGoogleCalendarConnection", () => {
     expect(connect).not.toHaveBeenCalled();
     expect(result).toBeNull();
   });
+
+  it("preserves an authorization error until Better Auth reports a refreshed account", async () => {
+    const connect = vi.fn();
+    const errorAt = new Date("2026-06-30T12:00:00.000Z");
+    const existing = {
+      providerKey: "google",
+      capabilityKey: "calendar",
+      status: "error" as const,
+      lastErrorAt: errorAt,
+    };
+
+    const result = await reconcileGoogleCalendarConnection({
+      ownerUserId: "owner-1",
+      accounts: [
+        {
+          providerId: "google",
+          email: "owner@gmail.com",
+          scopes: ["email", CALENDAR],
+          updatedAt: new Date("2026-06-30T11:59:00.000Z"),
+        },
+      ],
+      existingConnections: [existing],
+      connect,
+    });
+
+    expect(connect).not.toHaveBeenCalled();
+    expect(result).toBe(existing);
+  });
+
+  it("clears the error when the linked account was refreshed after the failure", async () => {
+    const connect = vi.fn().mockResolvedValue({ status: "connected" });
+    const result = await reconcileGoogleCalendarConnection({
+      ownerUserId: "owner-1",
+      accounts: [
+        {
+          providerId: "google",
+          email: "owner@gmail.com",
+          scopes: [CALENDAR],
+          updatedAt: new Date("2026-06-30T12:01:00.000Z"),
+        },
+      ],
+      existingConnections: [
+        {
+          providerKey: "google",
+          capabilityKey: "calendar",
+          status: "error",
+          lastErrorAt: new Date("2026-06-30T12:00:00.000Z"),
+        },
+      ],
+      connect,
+    });
+
+    expect(connect).toHaveBeenCalledWith({
+      ownerUserId: "owner-1",
+      providerKey: "google",
+      capabilityKey: "calendar",
+      displayIdentity: "owner@gmail.com",
+      authorizedScopes: [CALENDAR],
+    });
+    expect(result).toEqual({ status: "connected" });
+  });
 });

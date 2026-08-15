@@ -4,11 +4,13 @@ import {
   type GoogleCalendarAccessTokenProvider,
 } from "./calendar/access-token";
 import { createDrizzleCalendarCacheStore } from "./calendar/drizzle-store";
+import { type CalendarAuthorizationError, isCalendarAuthorizationError } from "./calendar/errors";
 import { createGoogleCalendarAdapter } from "./calendar/google-adapter";
 import type { CalendarReader } from "./calendar/reader";
 import { CalendarUnavailableError, createCalendarReader } from "./calendar/reader";
 import type {
   CalendarCacheStore,
+  CalendarConnectionRef,
   CalendarProviderAdapter,
   CalendarReadRequest,
 } from "./calendar/types";
@@ -24,6 +26,11 @@ export {
   GoogleCalendarAccessTokenUnavailableError,
 } from "./calendar/access-token";
 export { createDrizzleCalendarCacheStore } from "./calendar/drizzle-store";
+export {
+  CalendarAuthorizationError,
+  type CalendarAuthorizationFailureKind,
+  isCalendarAuthorizationError,
+} from "./calendar/errors";
 export {
   createFailingCalendarAdapter,
   createFakeCalendarAdapter,
@@ -86,6 +93,8 @@ export type OwnerCalendarReadOutcome = {
   connected: boolean;
   /** The bounded read, or null when disconnected or temporarily unavailable. */
   result: CalendarReadResult | null;
+  /** Whether the caller should ask the owner to reconnect Calendar. */
+  requiresReauthorization?: boolean;
 };
 
 /**
@@ -101,11 +110,11 @@ export async function readConnectedOwnerCalendar(
   input: CalendarReadRequest,
   deps: {
     reader: CalendarReader;
-    isConnected?: (ref: {
-      ownerUserId: string;
-      providerKey: string;
-      capabilityKey: string;
-    }) => Promise<boolean>;
+    isConnected?: (ref: CalendarConnectionRef) => Promise<boolean>;
+    onAuthorizationFailure?: (input: {
+      ref: CalendarConnectionRef;
+      error: CalendarAuthorizationError;
+    }) => Promise<void>;
   },
 ): Promise<OwnerCalendarReadOutcome> {
   const ref = {
@@ -124,6 +133,15 @@ export async function readConnectedOwnerCalendar(
     return { connected: true, result };
   } catch (error) {
     if (error instanceof CalendarUnavailableError) {
+      const authorizationError = isCalendarAuthorizationError(error.cause) ? error.cause : null;
+      if (authorizationError) {
+        try {
+          await deps.onAuthorizationFailure?.({ ref, error: authorizationError });
+        } catch {
+          // A diagnostic/status write must not make the provider read fatal.
+        }
+        return { connected: true, result: null, requiresReauthorization: true };
+      }
       return { connected: true, result: null };
     }
     throw error;

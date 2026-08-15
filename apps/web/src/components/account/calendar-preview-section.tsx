@@ -34,7 +34,12 @@ export function CalendarPreviewSection({ view }: { view: CalendarPreviewView }) 
         </p>
       </div>
 
-      {view.state === "unavailable" ? (
+      {view.state === "needs_reconnect" ? (
+        <p className="rounded-lg border border-dashed bg-surface px-3.5 py-3 text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
+          Google Calendar needs to be reconnected. Use Connect in Integrations to restore this
+          preview.
+        </p>
+      ) : view.state === "unavailable" ? (
         <p className="rounded-lg border border-dashed bg-surface px-3.5 py-3 text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
           Couldn&rsquo;t reach Google Calendar just now. Eve and your briefs still work, and this
           will refresh on its own.

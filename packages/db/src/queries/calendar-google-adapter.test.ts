@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { CalendarAuthorizationError } from "./calendar/errors";
 import { createGoogleCalendarAdapter } from "./calendar/google-adapter";
 
 const CONNECTION = { ownerUserId: "owner-1", providerKey: "google", capabilityKey: "calendar" };
@@ -102,9 +103,29 @@ describe("createGoogleCalendarAdapter", () => {
       }),
     });
 
-    await expect(adapter.listEvents({ ...CONNECTION, ...WINDOW })).rejects.toThrow(/status 401/);
+    await expect(adapter.listEvents({ ...CONNECTION, ...WINDOW })).rejects.toMatchObject({
+      name: "CalendarAuthorizationError",
+      kind: "provider",
+      status: 401,
+    });
     await expect(adapter.listEvents({ ...CONNECTION, ...WINDOW })).rejects.not.toThrow(
       /secret-token/,
     );
+  });
+
+  it("classifies access-token retrieval failures as authorization failures", async () => {
+    const adapter = createGoogleCalendarAdapter({
+      getAccessToken: async () => {
+        throw new Error("Failed to get a valid access token");
+      },
+      fetchImpl: vi.fn(),
+    });
+
+    await expect(adapter.listEvents({ ...CONNECTION, ...WINDOW })).rejects.toBeInstanceOf(
+      CalendarAuthorizationError,
+    );
+    await expect(adapter.listEvents({ ...CONNECTION, ...WINDOW })).rejects.toMatchObject({
+      kind: "token",
+    });
   });
 });
