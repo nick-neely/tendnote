@@ -125,6 +125,7 @@ export default defineTool({
         visibleTo,
         groundedInOriginalCapture: true,
         undoTool: "undo_saved_item_capture",
+        rendered: "The capture outcome is shown to the user in a card.",
         guidance:
           "Confirm the compact outcome list once, including each returned audience and source grounding. Offer each outcome's own Change and, when returned, Undo control. Do not repeat the full saved text.",
       },

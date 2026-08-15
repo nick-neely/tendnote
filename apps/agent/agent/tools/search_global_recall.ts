@@ -43,6 +43,7 @@ export default defineTool({
         })),
         limitations: output.limitations,
         hasMore: output.hasMore,
+        rendered: "The matching records are shown to the user in a results card.",
         guidance:
           "Cite the canonical records supplied here. Exact is stronger than Related. " +
           "Grounding references support a canonical result but are not independent claims. " +

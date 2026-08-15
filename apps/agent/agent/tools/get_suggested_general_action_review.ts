@@ -57,6 +57,7 @@ export default defineTool({
       value: {
         found: true,
         action: toGeneralActionModelRef(output.action),
+        rendered: "The suggestion is shown to the user in a review card.",
         guidance:
           "TENTATIVE, not an active action — it's shown as a review card the user can accept or dismiss. Point to it in a sentence; don't restate its details.",
       },

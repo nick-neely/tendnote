@@ -126,6 +126,9 @@ export default defineTool({
           status: action.status,
           dueAt: action.dueAt,
         })),
+        rendered: "The asset and its details are shown to the user in a card.",
+        guidance:
+          "Don't relist the facts, evidence, or actions — the card shows them. Answer what was asked in a line or two; an exact stored value may be quoted when it is the answer.",
       },
     };
   },

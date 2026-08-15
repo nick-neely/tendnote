@@ -102,6 +102,9 @@ export default defineTool({
           visibility: candidate.visibilityLabel ?? null,
           visibilityChoice: candidate.visibilityChoice ?? null,
         })),
+        rendered: "The agenda candidates are shown to the user in a card.",
+        guidance:
+          "Don't relist the candidates — the card shows them. Say what stands out in a line or two; these are candidates to consider, not work anyone is behind on.",
       },
     };
   },

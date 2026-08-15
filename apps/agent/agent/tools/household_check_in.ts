@@ -24,7 +24,7 @@ import { withModelSafeStoreErrors } from "../lib/store-errors";
  */
 export default defineTool({
   description:
-    "Read the small set of shared household records the caller is currently coordinating — the same one to three timely records their own Household check-in shows. Use this only when the user deliberately asks about the household ('what are we coordinating?', 'anything shared coming up?', 'household check-in'). Do NOT use it because they said 'we', named a housemate, or mentioned something domestic: ordinary questions stay private. Returns canonical records with their type, whose they are, and their timing; report them as they are, name the household by its name, and never say a member owes work, failed to act, or is next in a turn. If nothing comes back, the household has nothing timely — do not speculate about what else might exist.",
+    "Read the small set of shared household records the caller is currently coordinating — the same one to three timely records their own Household check-in shows. Use this only when the user deliberately asks about the household ('what are we coordinating?', 'anything shared coming up?', 'household check-in'). Do NOT use it because they said 'we', named a housemate, or mentioned something domestic: ordinary questions stay private. Returns canonical records with their type, whose they are, and their timing; report them as they are, name the household by its name, and never say a member owes work, failed to act, or is next in a turn. An empty result has three different meanings: check `optedIn` and `household` before you describe it, and do not speculate about what else might exist.",
   inputSchema: z.object({}),
   async execute(_input, ctx) {
     const callerUserId = resolveOwnerUserId(ctx);
@@ -66,9 +66,12 @@ export default defineTool({
    *
    * Nothing here is a handle for a follow-up call: every action on a household
    * record opens its own canonical surface, so an id in Eve's context would buy
-   * nothing and could only end up in a reply. The guidance carries the two things
-   * a model reliably gets wrong about shared work — that a Responsibility Holder
-   * is not an assignment, and that an empty read is not a hint.
+   * nothing and could only end up in a reply. The guidance carries the things a
+   * model reliably gets wrong about shared work: that a Responsibility Holder is
+   * not an assignment, and that the three empty results are three different
+   * situations (`HouseholdCheckinView`): not opted in, no household, and opted in
+   * with a quiet week. Reporting the first as the third tells a member their
+   * household has nothing going on when nothing was ever read.
    */
   toModelOutput(output) {
     return {
@@ -85,12 +88,21 @@ export default defineTool({
           lookingAfterIt: entry.responsibility,
         })),
         limitations: output.limitations,
-        guidance:
-          "Canonical household records, already filtered to what this member may see " +
-          "and capped. Summarize them; do not rank them, add to them, or infer work " +
-          "from them. `lookingAfterIt` is a stated fact about who is looking after a " +
-          "record — never an assignment, a turn, or a reason to say someone is behind. " +
-          "An empty list means nothing is timely, not that something is hidden.",
+        rendered: "The check-in records are shown to the user in a card.",
+        guidance: output.optedIn
+          ? output.household === null
+            ? "This user is not currently in a household, so there is no check-in for " +
+              "them. Say that plainly and say nothing about a household they may have " +
+              "been in before."
+            : "Canonical household records, already filtered to what this member may " +
+              "see and capped. Summarize them; do not rank them, add to them, or infer " +
+              "work from them. `lookingAfterIt` is a stated fact about who is looking " +
+              "after a record — never an assignment, a turn, or a reason to say someone " +
+              "is behind. An empty list means nothing is timely, not that something is " +
+              "hidden."
+          : "This user has NOT turned the household check-in on, so nothing was read on " +
+            "their behalf. Do not report a quiet household: tell them the check-in is " +
+            "not switched on yet and that they can turn it on in the app.",
       },
     };
   },

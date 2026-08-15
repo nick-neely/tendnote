@@ -270,9 +270,22 @@ describe("instructions steer capture vs save vs review", () => {
 
   it("forbids background generation and cross-person agenda ranking of suggestions", () => {
     expect(instructions).toMatch(/[Nn]ever scan everyone and invent follow-ups/);
-    expect(instructions).toMatch(/no background follow-up generation/i);
     expect(instructions).toMatch(/Do not use suggested-follow-up tools to propose reminders/i);
     expect(instructions).toMatch(/read-only `get_relationship_agenda` tool/i);
+  });
+
+  it("tells the truth about the scheduled workflows that do generate follow-ups", () => {
+    // The instructions used to claim there was "no background follow-up generation in
+    // this phase". `schedules/brief-dispatcher.ts` dispatches post-meeting aftercare,
+    // which persists Calendar suggested follow-ups, so the claim was false, and a
+    // model that believes it will contradict the user about a suggestion they can see.
+    // The rule that actually matters is unchanged (Eve does not imitate it in a turn),
+    // and the correction it now carries is that those suggestions are a separate family
+    // Eve has no tool for.
+    expect(instructions).not.toMatch(/no background follow-up generation/i);
+    expect(instructions).toMatch(/post-meeting aftercare/i);
+    expect(instructions).toMatch(/Calendar suggested follow-ups/i);
+    expect(instructions).toMatch(/no tool that lists or accepts them/i);
   });
 
   it("excludes restricted context from proactive suggestion unless directly requested", () => {
@@ -285,8 +298,15 @@ describe("instructions steer capture vs save vs review", () => {
     expect(instructions).toMatch(/[Nn]ever accept or dismiss on the user's behalf/);
   });
 
-  it("never surfaces raw record ids to the user", () => {
-    expect(instructions).toMatch(/[Nn]ever show raw record ids/);
+  it("treats record ids as tool handles and keeps them out of the reply", () => {
+    // The old rule was an absolute "never show raw record ids", which read as though
+    // ids were an accident. They are not: 40-odd tools deliberately return one so the
+    // next call can name the exact record, and two tools tell the model to copy it.
+    // The rule that survives is about the *reply*, so the instructions have to say
+    // both halves: use them in calls, never write them to the user.
+    expect(instructions).toMatch(/handles for your next tool call/i);
+    expect(instructions).toMatch(/copy one exactly/i);
+    expect(instructions).toMatch(/never a raw id or a UUID/i);
   });
 
   it("treats persisted ids, not conversation, as the source of truth", () => {

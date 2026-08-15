@@ -104,6 +104,10 @@ export default defineTool({
         content: memory.content,
         sensitivity: memory.sensitivity,
       })),
+      // The web surface renders the loaded context as a card from the component
+      // above, so the records below are for grounding an answer, not for reading
+      // back out (`instructions/base.md`, the no-reprint rule).
+      rendered: "The loaded relationship context is shown to the user in a card.",
       guidance: {
         snapshot:
           "Generated cache, NOT a source of truth. Use it to orient; ground specific claims or drafts in the supporting records below.",

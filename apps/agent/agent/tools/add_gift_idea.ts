@@ -95,6 +95,7 @@ export default defineTool({
         added: true,
         giftIdeaId: output.giftIdeaId,
         title: output.title,
+        rendered: "The added idea is shown to the user in a card.",
         guidance:
           "Confirm the idea was added to the plan, by its title. Do not name the other " +
           "co-planners, do not say who else has claimed anything, and never write a raw id. " +

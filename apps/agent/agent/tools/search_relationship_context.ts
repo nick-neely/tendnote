@@ -50,6 +50,9 @@ export default defineTool({
           visibility: result.visibilityLabel,
           visibilityChoice: result.visibilityChoice,
         })),
+        rendered: "The matching records are shown to the user in a results card.",
+        guidance:
+          "Don't reprint the snippets — the card shows them. Answer the question in a line or two and add what the card does not say.",
       },
     };
   },

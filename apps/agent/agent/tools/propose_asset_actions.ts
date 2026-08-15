@@ -78,6 +78,12 @@ export default defineTool({
       value: {
         asset: output.asset.name,
         proposed: output.proposed.map((entry) => toGeneralActionModelRef(entry.action)),
+        // A pass that proposes nothing renders nothing, so the no-reprint rule has
+        // to stay off in that case: an empty pass is answered entirely in words.
+        rendered:
+          output.proposed.length > 0
+            ? "Each proposal is shown to the user as its own review card."
+            : "Nothing is shown to the user: this pass proposed no action, so there is no card.",
         guidance: resolveGuidance(output),
       },
     };

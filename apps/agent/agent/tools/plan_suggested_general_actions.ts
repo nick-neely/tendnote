@@ -119,6 +119,7 @@ export default defineTool({
         planned: true,
         count: output.count,
         steps: output.proposed.map((item) => toGeneralActionModelRef(item.action)),
+        rendered: "Each proposed step is shown to the user as its own review card.",
         guidance:
           "These are TENTATIVE suggestions, each shown as its own review card the user can accept or dismiss. Frame the plan in a sentence or two; don't relist every step. None is active until they accept it.",
       },
