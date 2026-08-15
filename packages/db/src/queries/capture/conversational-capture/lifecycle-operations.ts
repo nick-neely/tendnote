@@ -1,13 +1,15 @@
-import type {
-  AssetStatus,
-  ContextFactLifecycle,
-  ConversationalCaptureChangeTarget,
-  ConversationalCaptureUndoTarget,
-  FollowupStatus,
-  GeneralActionStatus,
-  MemoryStatus,
-  SavedItemStatus,
+import {
+  type AssetStatus,
+  type ContextFactLifecycle,
+  type ConversationalCaptureChangeTarget,
+  ConversationalCaptureUndoError,
+  type ConversationalCaptureUndoTarget,
+  type FollowupStatus,
+  type GeneralActionStatus,
+  type MemoryStatus,
+  type SavedItemStatus,
 } from "@tendnote/domain";
+import type { AffectedScope } from "../../affected-scopes";
 import { hydrateSavedItem } from "../../saved-items/context";
 import { createSavedItemLifecycle } from "../../saved-items/lifecycle";
 import { createAffectedSavedItemLifecycle } from "../../saved-items/mutation-lifecycle";
@@ -61,6 +63,43 @@ type LoadedCaptureOutcome = {
   updatedAt?: Date;
 };
 
+/**
+ * Whether the inverse ran in *this* call.
+ *
+ * Undo is idempotent — a second Undo of an already-archived outcome is a
+ * deliberate no-op, not a failure — but "I undid that" and "that was already
+ * undone" are different sentences to a person, and the caller cannot tell them
+ * apart from the record alone (both end archived). So the operation says which
+ * one happened rather than leaving every caller to guess from an empty
+ * `affectedScopes`, which is an inference, not a contract.
+ */
+export type CaptureOutcomeUndoOutcome = "undone" | "already_undone";
+
+export type CaptureOutcomeUndoResult = {
+  outcome: CaptureOutcomeUndoOutcome;
+  /** The record in its post-Undo state, unwrapped from any mutation outcome. */
+  result: unknown;
+  affectedScopes: AffectedScope[];
+};
+
+/** The inverse ran now: carry through whatever the mutation reported. */
+function appliedUndo(value: unknown): CaptureOutcomeUndoResult {
+  if (value && typeof value === "object" && "result" in value) {
+    const scopes = "affectedScopes" in value ? value.affectedScopes : undefined;
+    return {
+      outcome: "undone",
+      result: value.result,
+      affectedScopes: Array.isArray(scopes) ? (scopes as AffectedScope[]) : [],
+    };
+  }
+  return { outcome: "undone", result: value, affectedScopes: [] };
+}
+
+/** The record already held the undone state, so nothing changed and nothing is affected. */
+function alreadyUndone(result: unknown): CaptureOutcomeUndoResult {
+  return { outcome: "already_undone", result, affectedScopes: [] };
+}
+
 type CaptureOutcomeLifecycleOperation = {
   load: (actorUserId: string, id: string, sourceRecordId?: string) => Promise<LoadedCaptureOutcome>;
   archive: (
@@ -69,7 +108,11 @@ type CaptureOutcomeLifecycleOperation = {
     status: CaptureOutcomeStatus,
     reference?: CaptureOutcomeReference,
   ) => Promise<unknown>;
-  undo: (actorUserId: string, id: string, reference?: CaptureOutcomeReference) => Promise<unknown>;
+  undo: (
+    actorUserId: string,
+    id: string,
+    reference?: CaptureOutcomeReference,
+  ) => Promise<CaptureOutcomeUndoResult>;
 };
 
 export function changeTargetReference(
@@ -141,12 +184,21 @@ export function undoTargetReference(
   return { kind: "asset_review", id: target.groupId };
 }
 
+const CONTEXT_FACT_SOURCE_MISMATCH = "That Self Context fact has different source evidence.";
+
+function hasSelfContextFactSource(
+  current: CaptureContextFact,
+  sourceRecordId: string | undefined,
+): boolean {
+  return Boolean(sourceRecordId) && current.provenance.sourceRecordId === sourceRecordId;
+}
+
 function assertSelfContextFactSource(
   current: CaptureContextFact,
   sourceRecordId: string | undefined,
 ) {
-  if (!sourceRecordId || current.provenance.sourceRecordId !== sourceRecordId) {
-    throw new Error("That Self Context fact has different source evidence.");
+  if (!hasSelfContextFactSource(current, sourceRecordId)) {
+    throw new Error(CONTEXT_FACT_SOURCE_MISMATCH);
   }
 }
 
@@ -156,23 +208,30 @@ async function restoreSelfContextFactForCapture(input: {
   contextFactId: string;
   current: CaptureContextFact;
   reference: CaptureOutcomeReference;
-}) {
+}): Promise<CaptureOutcomeUndoResult> {
   if (!input.deps.updateSelfContextFact) {
-    throw new Error("Self Context Undo is unavailable.");
+    throw new ConversationalCaptureUndoError("refused", "Self Context Undo is unavailable.");
   }
   if (input.current.lifecycle !== "active") {
-    throw new Error("That Self Context fact is no longer active.");
+    throw new ConversationalCaptureUndoError(
+      "refused",
+      "That Self Context fact is no longer active.",
+    );
   }
   const inverse = input.reference.inverse;
-  if (!inverse) throw new Error("Self Context Undo is unavailable.");
-  return input.deps.updateSelfContextFact({
-    actorUserId: input.actorUserId,
-    contextFactId: input.contextFactId,
-    category: inverse.category,
-    content: inverse.content,
-    sensitivity: inverse.sensitivity,
-    expectedUpdatedAt: input.reference.expectedUpdatedAt ?? input.current.updatedAt,
-  });
+  if (!inverse) {
+    throw new ConversationalCaptureUndoError("refused", "Self Context Undo is unavailable.");
+  }
+  return appliedUndo(
+    await input.deps.updateSelfContextFact({
+      actorUserId: input.actorUserId,
+      contextFactId: input.contextFactId,
+      category: inverse.category,
+      content: inverse.content,
+      sensitivity: inverse.sensitivity,
+      expectedUpdatedAt: input.reference.expectedUpdatedAt ?? input.current.updatedAt,
+    }),
+  );
 }
 
 async function archiveSelfContextFactForCapture(input: {
@@ -181,16 +240,18 @@ async function archiveSelfContextFactForCapture(input: {
   contextFactId: string;
   current: CaptureContextFact;
   reference?: CaptureOutcomeReference;
-}) {
-  if (input.current.lifecycle === "archived") return input.current;
+}): Promise<CaptureOutcomeUndoResult> {
+  if (input.current.lifecycle === "archived") return alreadyUndone(input.current);
   if (!input.deps.archiveSelfContextFact) {
-    throw new Error("Self Context Undo is unavailable.");
+    throw new ConversationalCaptureUndoError("refused", "Self Context Undo is unavailable.");
   }
-  return input.deps.archiveSelfContextFact({
-    actorUserId: input.actorUserId,
-    contextFactId: input.contextFactId,
-    expectedUpdatedAt: input.reference?.expectedUpdatedAt ?? input.current.updatedAt,
-  });
+  return appliedUndo(
+    await input.deps.archiveSelfContextFact({
+      actorUserId: input.actorUserId,
+      contextFactId: input.contextFactId,
+      expectedUpdatedAt: input.reference?.expectedUpdatedAt ?? input.current.updatedAt,
+    }),
+  );
 }
 
 async function undoSelfContextFactForCapture(input: {
@@ -198,16 +259,23 @@ async function undoSelfContextFactForCapture(input: {
   actorUserId: string;
   contextFactId: string;
   reference?: CaptureOutcomeReference;
-}) {
+}): Promise<CaptureOutcomeUndoResult> {
   if (!input.deps.getSelfContextFact) {
-    throw new Error("Self Context Undo is unavailable.");
+    throw new ConversationalCaptureUndoError("refused", "Self Context Undo is unavailable.");
   }
   const current = await input.deps.getSelfContextFact({
     ownerUserId: input.actorUserId,
     contextFactId: input.contextFactId,
   });
-  if (!current) throw new Error("That Self Context fact is no longer available.");
-  assertSelfContextFactSource(current, input.reference?.sourceRecordId);
+  if (!current) {
+    throw new ConversationalCaptureUndoError(
+      "not_found",
+      "That Self Context fact is no longer available.",
+    );
+  }
+  if (!hasSelfContextFactSource(current, input.reference?.sourceRecordId)) {
+    throw new ConversationalCaptureUndoError("refused", CONTEXT_FACT_SOURCE_MISMATCH);
+  }
   if (input.reference?.inverse) {
     return restoreSelfContextFactForCapture({
       ...input,
@@ -247,14 +315,21 @@ export function createCaptureOutcomeLifecycleOperations(
       },
       async undo(actorUserId, savedItemId) {
         const current = await store.getSavedItem({ ownerUserId: actorUserId, savedItemId });
-        if (!current) throw new Error("That Saved Item is no longer available.");
-        if (current.status === "archived") {
-          return { result: await hydrateSavedItem(store, current), affectedScopes: [] };
+        if (!current) {
+          throw new ConversationalCaptureUndoError(
+            "not_found",
+            "That Saved Item is no longer available.",
+          );
         }
-        return (deps.archiveSavedItem ?? savedItemLifecycle.archiveSavedItem)({
-          actorUserId,
-          savedItemId,
-        });
+        if (current.status === "archived") {
+          return alreadyUndone(await hydrateSavedItem(store, current));
+        }
+        return appliedUndo(
+          await (deps.archiveSavedItem ?? savedItemLifecycle.archiveSavedItem)({
+            actorUserId,
+            savedItemId,
+          }),
+        );
       },
     },
     general_action: {
@@ -281,12 +356,17 @@ export function createCaptureOutcomeLifecycleOperations(
       },
       async undo(actorUserId, generalActionId) {
         if (!deps.archiveGeneralAction || !deps.getGeneralAction) {
-          throw new Error("Action Undo is unavailable.");
+          throw new ConversationalCaptureUndoError("refused", "Action Undo is unavailable.");
         }
         const current = await deps.getGeneralAction({ ownerUserId: actorUserId, generalActionId });
-        if (!current) throw new Error("That Action is no longer available.");
-        if (current.status === "archived") return current;
-        return deps.archiveGeneralAction({ actorUserId, generalActionId });
+        if (!current) {
+          throw new ConversationalCaptureUndoError(
+            "not_found",
+            "That Action is no longer available.",
+          );
+        }
+        if (current.status === "archived") return alreadyUndone(current);
+        return appliedUndo(await deps.archiveGeneralAction({ actorUserId, generalActionId }));
       },
     },
     followup: {
@@ -311,12 +391,17 @@ export function createCaptureOutcomeLifecycleOperations(
       },
       async undo(actorUserId, followupId) {
         if (!deps.archiveFollowup || !deps.getFollowup) {
-          throw new Error("Follow-Up Undo is unavailable.");
+          throw new ConversationalCaptureUndoError("refused", "Follow-Up Undo is unavailable.");
         }
         const current = await deps.getFollowup({ ownerUserId: actorUserId, followupId });
-        if (!current) throw new Error("That Follow-Up is no longer available.");
-        if (current.status === "archived") return current;
-        return deps.archiveFollowup({ actorUserId, followupId });
+        if (!current) {
+          throw new ConversationalCaptureUndoError(
+            "not_found",
+            "That Follow-Up is no longer available.",
+          );
+        }
+        if (current.status === "archived") return alreadyUndone(current);
+        return appliedUndo(await deps.archiveFollowup({ actorUserId, followupId }));
       },
     },
     person: {
@@ -354,8 +439,11 @@ export function createCaptureOutcomeLifecycleOperations(
         if (!outcome.result) throw new Error("That Person is no longer available.");
         return outcome;
       },
-      async undo() {
-        throw new Error("A captured Person has no safe Undo operation.");
+      async undo(): Promise<CaptureOutcomeUndoResult> {
+        throw new ConversationalCaptureUndoError(
+          "refused",
+          "A captured Person has no safe Undo operation.",
+        );
       },
     },
     memory: {
@@ -381,10 +469,17 @@ export function createCaptureOutcomeLifecycleOperations(
       },
       async undo(actorUserId, memoryId) {
         const current = await deps.getMemory?.({ ownerUserId: actorUserId, memoryId });
-        if (!current) throw new Error("That Memory is no longer available.");
-        if (current.status === "archived") return current;
-        if (!deps.archiveMemory) throw new Error("Memory Undo is unavailable.");
-        return deps.archiveMemory({ ownerUserId: actorUserId, memoryId });
+        if (!current) {
+          throw new ConversationalCaptureUndoError(
+            "not_found",
+            "That Memory is no longer available.",
+          );
+        }
+        if (current.status === "archived") return alreadyUndone(current);
+        if (!deps.archiveMemory) {
+          throw new ConversationalCaptureUndoError("refused", "Memory Undo is unavailable.");
+        }
+        return appliedUndo(await deps.archiveMemory({ ownerUserId: actorUserId, memoryId }));
       },
     },
     context_fact: {
@@ -451,10 +546,19 @@ export function createCaptureOutcomeLifecycleOperations(
       },
       async undo(actorUserId, groupId) {
         const current = await deps.getAssetReview?.({ actorUserId, groupId });
-        if (!current) throw new Error("That Asset review is no longer available.");
-        if (current.asset.status === "dismissed") return current;
-        if (!deps.dismissAssetReview) throw new Error("Asset review Undo is unavailable.");
-        return deps.dismissAssetReview({ actorUserId, groupId, source: "assistant" });
+        if (!current) {
+          throw new ConversationalCaptureUndoError(
+            "not_found",
+            "That Asset review is no longer available.",
+          );
+        }
+        if (current.asset.status === "dismissed") return alreadyUndone(current);
+        if (!deps.dismissAssetReview) {
+          throw new ConversationalCaptureUndoError("refused", "Asset review Undo is unavailable.");
+        }
+        return appliedUndo(
+          await deps.dismissAssetReview({ actorUserId, groupId, source: "assistant" }),
+        );
       },
     },
   };

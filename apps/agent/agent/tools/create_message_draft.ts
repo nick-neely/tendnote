@@ -9,6 +9,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   personId: z
@@ -96,25 +97,28 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const mutation = input.acceptedProposal
-      ? await persistAcceptedDraftProposal({
-          ownerUserId,
-          personId: input.personId,
-          purpose: input.purpose,
-          channel: input.channel,
-          body: input.acceptedProposal.body,
-          sourceRefs: input.acceptedProposal.sourceRefs,
-        })
-      : await generateDraft({
-          ownerUserId,
-          personId: input.personId,
-          purpose: input.purpose,
-          channel: input.channel,
-          toneInstruction: input.toneInstruction,
-          directlyRequested: input.includeRestricted ?? false,
-          followupContext: input.followupContext,
-          briefItemContext: input.briefItemContext,
-        });
+    const acceptedProposal = input.acceptedProposal;
+    const mutation = await withModelSafeStoreErrors(() =>
+      acceptedProposal
+        ? persistAcceptedDraftProposal({
+            ownerUserId,
+            personId: input.personId,
+            purpose: input.purpose,
+            channel: input.channel,
+            body: acceptedProposal.body,
+            sourceRefs: acceptedProposal.sourceRefs,
+          })
+        : generateDraft({
+            ownerUserId,
+            personId: input.personId,
+            purpose: input.purpose,
+            channel: input.channel,
+            toneInstruction: input.toneInstruction,
+            directlyRequested: input.includeRestricted ?? false,
+            followupContext: input.followupContext,
+            briefItemContext: input.briefItemContext,
+          }),
+    );
     await requestBackgroundAffectedScopeReconciliation(mutation.affectedScopes);
     const outcome = mutation.result;
 

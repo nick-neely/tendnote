@@ -2,6 +2,7 @@ import { getSuggestedFollowupReview } from "@tendnote/db/queries/followups";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   followupId: z.uuid().describe("The persisted suggested follow-up id to pull up."),
@@ -19,10 +20,12 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const review = await getSuggestedFollowupReview({
-      actorUserId: ownerUserId,
-      followupId: input.followupId,
-    });
+    const review = await withModelSafeStoreErrors(() =>
+      getSuggestedFollowupReview({
+        actorUserId: ownerUserId,
+        followupId: input.followupId,
+      }),
+    );
 
     if (!review) {
       return { found: false as const };

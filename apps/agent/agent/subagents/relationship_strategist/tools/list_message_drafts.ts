@@ -3,6 +3,7 @@ import { messageDraftStatusSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../../../lib/owner";
+import { withModelSafeStoreErrors } from "../../../lib/store-errors";
 
 const inputSchema = z.object({
   personId: z
@@ -20,11 +21,13 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    const drafts = await listDraftsForPerson({
-      ownerUserId,
-      personId: input.personId,
-      statuses: input.statuses,
-    });
+    const drafts = await withModelSafeStoreErrors(() =>
+      listDraftsForPerson({
+        ownerUserId,
+        personId: input.personId,
+        statuses: input.statuses,
+      }),
+    );
 
     return {
       drafts: drafts.map((draft) => ({

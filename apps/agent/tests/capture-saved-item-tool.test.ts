@@ -159,8 +159,18 @@ describe("capture_saved_item", () => {
     changeExplicitCaptureOutcome.mockResolvedValue({
       id: SAVED_ITEM_ID,
       sourceRecordId: "source-1",
+      confirmation: {
+        destination: "Saved Items",
+        groundedBySourceRecordId: "source-1",
+        interpreted: { kind: "Note", visibility: "Only me" },
+        change: { kind: "edit_saved_item", savedItemId: SAVED_ITEM_ID },
+      },
     });
-    undoExplicitCaptureOutcome.mockResolvedValue({ id: SAVED_ITEM_ID, status: "archived" });
+    undoExplicitCaptureOutcome.mockResolvedValue({
+      outcome: "undone",
+      result: { id: SAVED_ITEM_ID, status: "archived" },
+      affectedScopes: [],
+    });
 
     await changeTool.execute(
       {

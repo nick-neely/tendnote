@@ -2,6 +2,7 @@ import { getMemoryCuratorProposals } from "@tendnote/db/queries/memory-curator";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../../../lib/owner";
+import { withModelSafeStoreErrors } from "../../../lib/store-errors";
 
 const inputSchema = z.object({
   limit: z
@@ -19,7 +20,9 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    return getMemoryCuratorProposals({ ownerUserId, limit: input.limit });
+    return withModelSafeStoreErrors(() =>
+      getMemoryCuratorProposals({ ownerUserId, limit: input.limit }),
+    );
   },
   toModelOutput(output) {
     return {

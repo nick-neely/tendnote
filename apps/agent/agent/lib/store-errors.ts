@@ -1,8 +1,16 @@
 import {
+  AssetConflictError,
   AssetValidationError,
+  ContextFactValidationError,
+  ConversationalCaptureUndoError,
   GeneralActionValidationError,
+  GiftPlanConflictError,
   GiftPlanValidationError,
   HouseholdRecordUnavailableError,
+  HouseholdValidationError,
+  PersonReferenceValidationError,
+  RelationshipShareValidationError,
+  SavedItemValidationError,
 } from "@tendnote/domain";
 
 /**
@@ -16,6 +24,38 @@ const OPAQUE_STORE_FAILURE =
   "work, and do not retry the call with a different id or a guessed value.";
 
 /**
+ * The curated failures the domain wrote *for a person*, which therefore reach the model
+ * as themselves.
+ *
+ * Membership is a judgement about the sentence, not the family: each class documents
+ * that its `message` is safe to render beside the field that produced it, which is the
+ * same bar as putting it in a chat reply. Subclasses ride along by `instanceof`, so
+ * `ContextFactConflictError`, `SavedItemConflictError`,
+ * `SavedItemUnavailableDestinationError`, and `HouseholdAdmissionConflictError` are
+ * covered by their parents.
+ *
+ * Deliberately absent: `CalendarUnavailableError`,
+ * `GoogleCalendarAccessTokenUnavailableError`, `GoogleGmailAccessTokenUnavailableError`,
+ * `SupersededEmbeddingClaimError`, `HouseholdPurgeConstraintError`. Those describe a
+ * provider, a token, or an internal claim rather than the user's own record, and the
+ * tools that read connected providers already return their own gated "not connected" /
+ * "temporarily unavailable" shapes rather than relying on a thrown message.
+ */
+const CURATED_DOMAIN_FAILURES = [
+  AssetValidationError,
+  AssetConflictError,
+  ContextFactValidationError,
+  ConversationalCaptureUndoError,
+  GeneralActionValidationError,
+  GiftPlanValidationError,
+  GiftPlanConflictError,
+  HouseholdValidationError,
+  PersonReferenceValidationError,
+  RelationshipShareValidationError,
+  SavedItemValidationError,
+] as const;
+
+/**
  * Runs a store call from a tool and guarantees that whatever comes back out is safe to
  * put in front of the model.
  *
@@ -26,21 +66,17 @@ const OPAQUE_STORE_FAILURE =
  * values, and invites it to reason about the database instead of the user. That is how a
  * hallucinated `assetId` became a `22P02` transcript in chat.
  *
- * The rule mirrors the shared owner-action protocol used by web surfaces: a
- * curated {@link AssetValidationError} is a sentence the domain wrote *for a person*, so
- * it passes through; everything else is infrastructure, and infrastructure gets one
- * opaque sentence and a line in the operator's log. Fail closed on the model's side too —
- * a denial and a fault must not be told apart by the shape of the error text.
+ * The rule mirrors the shared owner-action protocol used by web surfaces: a curated
+ * domain error is a sentence the domain wrote *for a person*, so it passes through;
+ * everything else is infrastructure, and infrastructure gets one opaque sentence and a
+ * line in the operator's log. Fail closed on the model's side too — a denial and a fault
+ * must not be told apart by the shape of the error text.
  */
 export async function withModelSafeStoreErrors<T>(run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (error) {
-    if (
-      error instanceof AssetValidationError ||
-      error instanceof GeneralActionValidationError ||
-      error instanceof GiftPlanValidationError
-    ) {
+    if (CURATED_DOMAIN_FAILURES.some((curated) => error instanceof curated)) {
       throw error;
     }
 

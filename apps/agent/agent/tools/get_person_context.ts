@@ -2,6 +2,7 @@ import { getPersonContextSnapshot } from "@tendnote/db/queries/context-snapshots
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   personId: z
@@ -37,11 +38,13 @@ export default defineTool({
     // The shared read path owns generation, freshness, policy, persistence, and
     // fail-open fallback. directlyRequested surfaces restricted records live in
     // the supporting tiers without ever baking them into the cached snapshot.
-    const result = await getPersonContextSnapshot({
-      ownerUserId,
-      personId: input.personId,
-      directlyRequested: input.includeRestricted ?? false,
-    });
+    const result = await withModelSafeStoreErrors(() =>
+      getPersonContextSnapshot({
+        ownerUserId,
+        personId: input.personId,
+        directlyRequested: input.includeRestricted ?? false,
+      }),
+    );
 
     const { context, snapshot, status } = result;
 

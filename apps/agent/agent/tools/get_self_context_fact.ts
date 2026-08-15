@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { toSelfContextFactToolView } from "../lib/self-context-fact-view";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   contextFactId: z.uuid().describe("The exact Self Context fact id returned by a prior tool call."),
@@ -18,14 +19,16 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    const fact = await getSelfContextFact(
-      {
-        callerUserId: ownerUserId,
-        contextFactId: input.contextFactId,
-        includeRestricted: false,
-        includeArchived: input.includeArchived ?? false,
-      },
-      async () => ownerUserId,
+    const fact = await withModelSafeStoreErrors(() =>
+      getSelfContextFact(
+        {
+          callerUserId: ownerUserId,
+          contextFactId: input.contextFactId,
+          includeRestricted: false,
+          includeArchived: input.includeArchived ?? false,
+        },
+        async () => ownerUserId,
+      ),
     );
 
     return {

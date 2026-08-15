@@ -2,6 +2,7 @@ import { getSuggestedMemoryReview } from "@tendnote/db/queries/memories";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   memoryId: z.uuid().describe("The persisted suggested-memory id to load for review."),
@@ -20,7 +21,9 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const review = await getSuggestedMemoryReview({ ownerUserId, memoryId: input.memoryId });
+    const review = await withModelSafeStoreErrors(() =>
+      getSuggestedMemoryReview({ ownerUserId, memoryId: input.memoryId }),
+    );
 
     if (!review) {
       return { found: false as const };

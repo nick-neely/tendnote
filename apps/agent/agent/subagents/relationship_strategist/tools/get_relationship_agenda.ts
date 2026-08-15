@@ -5,6 +5,7 @@ import {
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../../../lib/owner";
+import { withModelSafeStoreErrors } from "../../../lib/store-errors";
 
 const agendaKindSchema = z.enum([
   "due_followup",
@@ -45,15 +46,17 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    const candidates = await getRelationshipAgenda({
-      ownerUserId,
-      windowStart: new Date(input.windowStart),
-      windowEnd: new Date(input.windowEnd),
-      query: input.query,
-      limit: input.limit,
-      includeKinds: input.includeKinds as RelationshipAgendaKind[] | undefined,
-      directlyRequested: input.directlyRequested ?? false,
-    });
+    const candidates = await withModelSafeStoreErrors(() =>
+      getRelationshipAgenda({
+        ownerUserId,
+        windowStart: new Date(input.windowStart),
+        windowEnd: new Date(input.windowEnd),
+        query: input.query,
+        limit: input.limit,
+        includeKinds: input.includeKinds as RelationshipAgendaKind[] | undefined,
+        directlyRequested: input.directlyRequested ?? false,
+      }),
+    );
 
     return {
       candidates: candidates.map((candidate) => ({

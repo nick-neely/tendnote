@@ -2,6 +2,7 @@ import { searchRelationshipContext } from "@tendnote/db/queries/relationship-con
 import { exactRecallResultSchema, searchRelationshipContextSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 export default defineTool({
   description:
@@ -17,7 +18,11 @@ export default defineTool({
       // Pin includeReviewGated to false after spreading input: review context is an
       // owner-only caller decision, never model-forwarded, so a hallucinated flag (or one
       // that survives a future schema refactor) can never surface un-accepted proposals.
-      .parse(await searchRelationshipContext({ ...input, includeReviewGated: false, ownerUserId }));
+      .parse(
+        await withModelSafeStoreErrors(() =>
+          searchRelationshipContext({ ...input, includeReviewGated: false, ownerUserId }),
+        ),
+      );
 
     return {
       results,

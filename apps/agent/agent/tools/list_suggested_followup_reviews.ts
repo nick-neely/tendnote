@@ -2,6 +2,16 @@ import { listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
+
+/**
+ * How many suggestions one unbounded ask returns. The shared store applies no
+ * limit when the caller omits one, so "any follow-ups to review?" used to render
+ * a review card for every open suggestion the owner has while the description
+ * promised "a small set". Ten matches what a review pass can actually get through
+ * in a turn; an explicit `limit` up to the schema maximum still works.
+ */
+const DEFAULT_SUGGESTED_FOLLOWUP_REVIEW_LIMIT = 10;
 
 const inputSchema = z.object({
   personId: z
@@ -15,8 +25,8 @@ const inputSchema = z.object({
     .int()
     .min(1)
     .max(20)
-    .optional()
-    .describe("Max suggestions to load. Defaults to a small set."),
+    .default(DEFAULT_SUGGESTED_FOLLOWUP_REVIEW_LIMIT)
+    .describe(`Max suggestions to load. Defaults to ${DEFAULT_SUGGESTED_FOLLOWUP_REVIEW_LIMIT}.`),
 });
 
 /**
@@ -34,11 +44,13 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const reviews = await listSuggestedFollowupReviews({
-      ownerUserId,
-      personId: input.personId,
-      limit: input.limit,
-    });
+    const reviews = await withModelSafeStoreErrors(() =>
+      listSuggestedFollowupReviews({
+        ownerUserId,
+        personId: input.personId,
+        limit: input.limit,
+      }),
+    );
 
     return {
       found: true as const,

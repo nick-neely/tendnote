@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createOwnerCalendarReader } from "../lib/calendar";
 import { runCalendarRead } from "../lib/calendar-read";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   daysAhead: z
@@ -54,9 +55,14 @@ export default defineTool({
     const ownerUserId = resolveOwnerUserId(ctx);
     const reader = createOwnerCalendarReader(ownerUserId);
 
-    return runCalendarRead(
-      { ownerUserId, input, now: new Date() },
-      { read: (request) => readConnectedOwnerCalendar(request, { reader }) },
+    // The shared seam already turns "not connected" and "provider is down" into
+    // framed results, so this wrapper only catches what is left: a store failure
+    // reading the connection itself, which the model must not see raw.
+    return withModelSafeStoreErrors(() =>
+      runCalendarRead(
+        { ownerUserId, input, now: new Date() },
+        { read: (request) => readConnectedOwnerCalendar(request, { reader }) },
+      ),
     );
   },
   // The structured output is already minimized and id-free; the model sees the

@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   followupId: z.uuid().describe("The persisted suggested follow-up id to dismiss."),
@@ -21,10 +22,12 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const outcome = await dismissSuggestedFollowup({
-      actorUserId: ownerUserId,
-      followupId: input.followupId,
-    });
+    const outcome = await withModelSafeStoreErrors(() =>
+      dismissSuggestedFollowup({
+        actorUserId: ownerUserId,
+        followupId: input.followupId,
+      }),
+    );
     await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
     const followup = outcome.result;
 

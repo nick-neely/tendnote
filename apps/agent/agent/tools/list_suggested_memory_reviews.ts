@@ -2,6 +2,7 @@ import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   personId: z
@@ -35,11 +36,13 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const reviews = await listSuggestedMemoryReviews({
-      ownerUserId,
-      personId: input.personId,
-      limit: input.limit,
-    });
+    const reviews = await withModelSafeStoreErrors(() =>
+      listSuggestedMemoryReviews({
+        ownerUserId,
+        personId: input.personId,
+        limit: input.limit,
+      }),
+    );
 
     return {
       found: true as const,

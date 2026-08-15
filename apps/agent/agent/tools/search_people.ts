@@ -2,6 +2,7 @@ import { searchPeople } from "@tendnote/db/queries/people";
 import { requiresPersonDisambiguation, searchPeopleSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 export default defineTool({
   description:
@@ -9,14 +10,16 @@ export default defineTool({
   inputSchema: searchPeopleSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    let people = await searchPeople({ ...input, ownerUserId });
+    let people = await withModelSafeStoreErrors(() => searchPeople({ ...input, ownerUserId }));
 
     // The model sometimes guesses a relationshipType for a plain name lookup,
     // which hides real matches (e.g. searching "Alex" with type "other" filters
     // out a friend named Alex). When a name query returns nothing under a type
     // filter, retry by name alone so a clear lookup still surfaces the person.
     if (people.length === 0 && input.query && input.relationshipType) {
-      people = await searchPeople({ query: input.query, limit: input.limit, ownerUserId });
+      people = await withModelSafeStoreErrors(() =>
+        searchPeople({ query: input.query, limit: input.limit, ownerUserId }),
+      );
     }
 
     const matches = people.map((person) => ({

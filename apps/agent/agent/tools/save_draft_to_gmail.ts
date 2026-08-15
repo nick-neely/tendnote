@@ -11,6 +11,7 @@ import { findLinkedGmailDraftAction, gmailDraftApprovalSchema } from "@tendnote/
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   draftId: z
@@ -49,7 +50,9 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const draft = await getDraft({ ownerUserId, draftId: input.draftId });
+    const draft = await withModelSafeStoreErrors(() =>
+      getDraft({ ownerUserId, draftId: input.draftId }),
+    );
     if (!draft) {
       return {
         written: false as const,
@@ -62,10 +65,12 @@ export default defineTool({
     // Reuse a saved contact method when the confirmed address matches one; otherwise
     // it is an action-specific manual entry that is never saved as a contact method
     // (ADR-0085). Either way the recipient is validated by the shared approval schema.
-    const savedEmails = await listPersonEmailContactMethods({
-      ownerUserId,
-      personId: draft.personId,
-    });
+    const savedEmails = await withModelSafeStoreErrors(() =>
+      listPersonEmailContactMethods({
+        ownerUserId,
+        personId: draft.personId,
+      }),
+    );
     const matched = savedEmails.find(
       (method) => method.value.toLowerCase() === input.recipientEmail.trim().toLowerCase(),
     );
@@ -91,10 +96,12 @@ export default defineTool({
     // An existing Gmail draft means this is an explicit update of the same external
     // draft (targets the stored id, no duplicate); otherwise it is the first create.
     // Uses the ONE shared "linked" predicate so chat and web agree (ADR-0092).
-    const existing = await listGmailDraftActionsForDraft({
-      ownerUserId,
-      messageDraftId: input.draftId,
-    });
+    const existing = await withModelSafeStoreErrors(() =>
+      listGmailDraftActionsForDraft({
+        ownerUserId,
+        messageDraftId: input.draftId,
+      }),
+    );
     const linked = findLinkedGmailDraftAction(existing);
 
     const write = {
@@ -103,12 +110,16 @@ export default defineTool({
       subject: parsed.data.subject,
       recipient: parsed.data.recipient,
     };
-    const outcome: GmailDraftActionOutcome = linked
-      ? await service.updateGmailDraft({
-          ...write,
-          idempotencyKey: `update:${input.draftId}:${randomUUID()}`,
-        })
-      : await service.createGmailDraft({ ...write, idempotencyKey: `create:${input.draftId}` });
+    // The gate reports its own blocked/failed outcomes as values, so this wrapper
+    // only covers a store fault behind them — never the gate's curated copy.
+    const outcome: GmailDraftActionOutcome = await withModelSafeStoreErrors(() =>
+      linked
+        ? service.updateGmailDraft({
+            ...write,
+            idempotencyKey: `update:${input.draftId}:${randomUUID()}`,
+          })
+        : service.createGmailDraft({ ...write, idempotencyKey: `create:${input.draftId}` }),
+    );
 
     if (outcome.status === "blocked") {
       // Relay the shared gate's own reason verbatim rather than reinterpreting its
