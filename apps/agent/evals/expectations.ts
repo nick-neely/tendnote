@@ -23,9 +23,23 @@ export const NO_RAW_IDS = without("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}");
 
 type ToolResult = { toolName?: string; output?: unknown };
 
-/** The tool result carried by an event, or null when the event is not one. */
+/**
+ * The tool result carried by an event, or null when the event is not one.
+ *
+ * A delegated turn's results are one level down. eve 0.32 wraps every stream event
+ * an inline subagent produces in a `subagent.event`, with the child's own event
+ * under `data.event` - so a scan of the top level alone sees no tool results at all
+ * on exactly the runs that delegated, and an eval that judges an answer against the
+ * records it loaded judges it against nothing instead.
+ */
 function toolResultOf(event: unknown): ToolResult | null {
-  const candidate = event as { type?: string; data?: { result?: ToolResult } };
+  if (typeof event !== "object" || event === null) {
+    return null;
+  }
+  const candidate = event as { type?: string; data?: { result?: ToolResult; event?: unknown } };
+  if (candidate.type === "subagent.event") {
+    return toolResultOf(candidate.data?.event);
+  }
   if (candidate.type !== "action.result") {
     return null;
   }

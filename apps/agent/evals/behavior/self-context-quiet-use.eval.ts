@@ -14,7 +14,10 @@ export default defineEval({
     t.succeeded();
     t.notCalledTool("list_self_context");
     t.notCalledTool("get_person_context");
-    t.check(t.reply, includes(/index|database|query/i));
+    // Not `/index|database|query/`: the prompt says "how a database index works", so
+    // that gate passed on the question restated. An actual explanation reaches for how
+    // the lookup works, which the prompt does not supply.
+    t.check(t.reply, includes(/b-?tree|lookup|scan|faster|speeds? up|column|row/i));
     t.check(t.reply, includes(without("I know about you|your saved facts|personal profile")));
   },
 });

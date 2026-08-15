@@ -27,7 +27,16 @@ export default defineEval({
       }),
     );
     t.check(t.reply, includes(/EDR1RXD1/));
-    t.check(t.reply, includes(/where to buy|buying|purchase|retailer|seller|store/i));
+    // The limitation has to be *stated*, not merely on-topic. The prompt already
+    // contains "where to buy" and "store", so the old alternation passed on a reply
+    // that repeated the question; this one needs the negation next to the subject,
+    // which is what saying "the records don't cover that" looks like.
+    t.check(
+      t.reply,
+      includes(
+        /(no|not|don'?t|doesn'?t|isn'?t|nothing|never)[^.!?]{0,80}(where to buy|buying|purchase|retailer|seller|store)/i,
+      ),
+    );
     t.check(t.reply, includes(NO_RAW_IDS));
     t.check(t.reply, includes(without("Amazon|Home Depot|Lowe.?s|Walmart")));
     t.check(t.reply, includes(without("buy it (at|from)|available at|sold by|order it from")));

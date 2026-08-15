@@ -13,6 +13,9 @@ export default defineEval({
     t.toolOrder(["search_people", "get_person_context"]);
     t.notCalledTool("capture_memory");
     t.notCalledTool("capture_source_record");
-    t.check(t.reply, includes(/Alex|backend|platform|job/i));
+    // Only the stored wording counts. `Alex` and `job` are in the prompt, so an
+    // alternation containing them is satisfied by an answer that retrieved nothing; the
+    // memory this turn loads is "prefers backend platform work with fewer meetings".
+    t.check(t.reply, includes(/backend|platform|meetings/i));
   },
 });

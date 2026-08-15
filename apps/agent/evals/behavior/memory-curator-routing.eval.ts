@@ -1,5 +1,6 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
+import { without } from "../expectations";
 
 export default defineEval({
   description: "Memory cleanup requests route to the review-only Memory Curator.",
@@ -17,6 +18,17 @@ export default defineEval({
     t.notCalledTool("capture_source_record");
     t.notCalledTool("create_followup");
     t.notCalledTool("create_message_draft");
-    t.check(t.reply, includes(/review|proposal|cleanup|memor(y|ies)/i));
+    // The curator is review-only (ADR 0123). The old gate matched `/cleanup|memories/`,
+    // both of which the prompt says first; what has to be true of the answer is that the
+    // cleanup is offered rather than reported as done.
+    t.check(t.reply, includes(/review|approve|you can|up to you|proposal|suggest/i));
+    t.check(
+      t.reply,
+      includes(
+        without(
+          "I(’|')?ve (archived|deleted|removed|merged|cleaned|tidied)|I (archived|deleted|removed|merged) (it|them|the)|(archived|deleted|merged) \\d+",
+        ),
+      ),
+    );
   },
 });

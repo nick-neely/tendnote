@@ -1,5 +1,6 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
+import { without } from "../expectations";
 
 export default defineEval({
   description: "Cleanup Preview requests use the sandbox preview tool without durable writes.",
@@ -22,6 +23,21 @@ export default defineEval({
     t.notCalledTool("create_followup");
     t.notCalledTool("propose_followup");
     t.notCalledTool("create_message_draft");
-    t.check(t.reply, includes(/preview|review|save|saved|confirm/i));
+    // `cleanup_preview` writes nothing, and the skill requires Eve to say so plainly. The
+    // old gate matched `/preview|save|saved/`, all supplied by the prompt itself.
+    t.check(
+      t.reply,
+      includes(
+        /nothing (is|has been|was|will be) saved|not saved|no records? (were|are)|before (anything|you) sav|only a preview/i,
+      ),
+    );
+    t.check(
+      t.reply,
+      includes(
+        without(
+          "I(’|')?ve saved|I saved|I(’|')?ve added (maya|them|her|two)|I(’|')?ve created (a|the|two) (person|people|contact)",
+        ),
+      ),
+    );
   },
 });

@@ -13,7 +13,9 @@ export default defineEval({
 
     t.succeeded();
     t.calledTool("search_global_recall");
-    t.check(t.reply, includes(/EDR1RXD1|filter/i));
+    // The stored value, not the prompt's word for it: `filter` is in the question, so
+    // the alternation it used to sit in passed on an answer that found nothing.
+    t.check(t.reply, includes(/EDR1RXD1/));
     t.check(t.reply, includes(NO_RAW_IDS));
     t.check(t.reply, includes(without("XWFE")));
     t.notCalledTool("capture_memory");

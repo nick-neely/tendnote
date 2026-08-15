@@ -17,6 +17,11 @@ env:
   BETTER_AUTH_URL: http://localhost:3000
   NEXT_PUBLIC_APP_URL: http://localhost:3000
   DATABASE_URL: postgresql://tendnote:tendnote@localhost:5432/tendnote
+  # Declared because the agent this workflow boots builds its Better Auth and
+  # rate-limit clients against it. Both connect lazily, so an eval run normally
+  # touches neither - but a declared URL with nothing behind it turns any code
+  # path that does into a connect timeout deep inside an eval, which reads as a
+  # broken eval. The service below makes the declaration true.
   REDIS_URL: redis://localhost:6379
   TENDNOTE_ENV: ci
   TURBO_DAEMON: "false"
@@ -27,6 +32,11 @@ jobs:
   evaluate:
     name: Eve model evaluations
     runs-on: ubuntu-latest
+    # The deterministic tag runs one eval at a time against a live model, and
+    # resamples every failure twice. This is a manual-dispatch workflow, so the
+    # bound is here to stop a hung run from burning an hour of minutes, not to
+    # pace a healthy one.
+    timeout-minutes: 90
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -38,6 +48,15 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U tendnote -d tendnote"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
@@ -62,11 +81,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Exit 3 means no eval failed outright but at least one only passed on
+      # retry. That fails the step on purpose: a deterministic gate that needs a
+      # second sample is not clean, and the artifacts below say which one. Exit 4
+      # means nothing was graded at all - every eval skipped itself - which is a
+      # green lane over an unproven build, so it fails here too.
       - name: Run Eve model evaluations
         run: pnpm --filter @tendnote/agent eval:deterministic
+        timeout-minutes: 75
 
       - name: Upload Eve evaluation artifacts
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: eve-model-evaluations
