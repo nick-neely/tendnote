@@ -52,17 +52,12 @@ describe("segment prefetch rewrites", () => {
       }>;
     };
     const route = config.routes.find((candidate) =>
-      candidate.has?.some(
-        (condition) => condition.key === "next-router-segment-prefetch",
-      ),
+      candidate.has?.some((condition) => condition.key === "next-router-segment-prefetch"),
     );
 
     expect(route).toMatchObject({
       continue: true,
-      has: [
-        { key: "next-router-prefetch", value: "1" },
-        { key: "next-router-segment-prefetch" },
-      ],
+      has: [{ key: "next-router-prefetch", value: "1" }, { key: "next-router-segment-prefetch" }],
       transforms: [
         {
           type: "request.headers",
