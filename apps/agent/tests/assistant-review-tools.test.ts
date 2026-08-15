@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { RENDERED_TOOL_NAMES } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import { authoredInstructions } from "./instructions-source";
-import { effectiveToolSource } from "./tool-source";
+import { authorsTool, effectiveToolSource } from "./tool-source";
 
 const toolsDir = join(process.cwd(), "agent/tools");
 
@@ -12,13 +12,11 @@ function readTool(name: string): string {
 }
 
 // Authored tools only. `agent/tools/` also holds the files that disable Eve's
-// framework defaults (`export default disableTool()`); those declare an absence,
-// so the owner-scoping, scope-default, and rendering checks below have nothing
-// to say about them.
+// framework defaults and the mode gate's dynamic resolver; those declare an
+// absence and a runtime decision respectively, so the owner-scoping,
+// scope-default, and rendering checks below have nothing to say about them.
 const toolFiles = readdirSync(toolsDir).filter(
-  (file) =>
-    file.endsWith(".ts") &&
-    !/export default disableTool\(\)/.test(readFileSync(join(toolsDir, file), "utf8")),
+  (file) => file.endsWith(".ts") && authorsTool(readFileSync(join(toolsDir, file), "utf8")),
 );
 const renderedToolFiles = new Set(toolFiles);
 /** Every authored tool's source, keyed by tool name — root tools and subagent tools alike. */

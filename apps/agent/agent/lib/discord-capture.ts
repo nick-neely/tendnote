@@ -6,7 +6,6 @@ import { captureLoggedContext } from "@tendnote/db/queries/source-records";
 import type { PrivacyScope } from "@tendnote/domain";
 import { resolveDiscordCaptureScope } from "./discord-capture-scope";
 import type { DiscordHitlSession, DiscordHitlSessionStore } from "./discord-hitl-sessions";
-import { modeAllowsTool, resolveEveMode } from "./eve-modes";
 
 export type DiscordOwnerMap = Record<string, string>;
 
@@ -99,7 +98,6 @@ export type DiscordCaptureRejectionReason =
   | "empty_capture"
   | "empty_clarification"
   | "attachments_not_supported"
-  | "mode_forbids_capture"
   | "household_scope_not_supported"
   | "hitl_session_expired"
   | "hitl_session_unavailable";
@@ -179,6 +177,18 @@ export function createDiscordOwnerResolver(input: {
   };
 }
 
+/**
+ * Handle one verified Discord interaction.
+ *
+ * This is Discord Capture Mode (ADR-0128, ADR-0140) in full: a deterministic
+ * handler that writes one Source Record for review and starts no model session,
+ * so the narrowing is structural rather than a check. It used to end with a
+ * `modeAllowsTool("discord_capture", "capture_source_record")` call, which read
+ * like a gate but compared two constants and could never refuse. The registry
+ * still names what this surface may do, `tests/eve-modes.test.ts` holds it to
+ * exactly that one capability, and `agent/tools/eve_mode_gate.ts` withholds the
+ * rest should a Discord-stamped session ever reach the model.
+ */
 export async function handleDiscordCaptureInteraction(
   interaction: DiscordInteraction,
   deps: DiscordCaptureDeps,
@@ -211,10 +221,6 @@ export async function handleDiscordCaptureInteraction(
   const retainedContent = interaction.content.trim();
   if (!retainedContent) {
     return { type: "rejected", reason: "empty_capture" };
-  }
-
-  if (!discordCaptureAllowedByMode()) {
-    return { type: "rejected", reason: "mode_forbids_capture" };
   }
 
   // Deterministic scope decision before any write: Discord capture is always
@@ -313,10 +319,6 @@ async function resumeClarificationSession(
     return { type: "rejected", reason: "empty_clarification" };
   }
 
-  if (!discordCaptureAllowedByMode()) {
-    return { type: "rejected", reason: "mode_forbids_capture" };
-  }
-
   let parked: DiscordHitlSession | null;
   try {
     parked = await deps.hitlSessions.take({ ownerUserId, sessionId: interaction.sessionId });
@@ -357,12 +359,6 @@ async function resumeClarificationSession(
     durablePromotions: [],
     components: reviewComponentsForSourceRecord(sourceRecord.id),
   };
-}
-
-/** Discord Capture Mode has to allow a Source Record write for either capture path. */
-function discordCaptureAllowedByMode(): boolean {
-  const mode = resolveEveMode({ caller: "discord", channel: "discord", requestedTask: "capture" });
-  return modeAllowsTool(mode.mode, "capture_source_record");
 }
 
 function reviewComponentsForSourceRecord(sourceRecordId: string): DiscordMessageComponent[] {

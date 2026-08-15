@@ -271,8 +271,7 @@ const EXECUTING_TOOL_FILES = [
 const SHARED_TOOL_DEFINITIONS_DIR = "apps/agent/agent/lib/tools";
 
 /**
- * Tool files that define no `execute` of their own, and so are exempt from the scan
- * above only because something else answers for them.
+ * Tool files that define no `execute` of their own.
  *
  * The shared-definition directory is walked here too, not just above. The filter that
  * builds the executing list keys on `async execute(`, so a factory that assembles a
@@ -280,7 +279,7 @@ const SHARED_TOOL_DEFINITIONS_DIR = "apps/agent/agent/lib/tools";
  * while the walk stops at the two tool directories - it would be scanned by nothing at
  * all. Here it has to show the delegation instead.
  */
-const REGISTRATION_ONLY_TOOL_FILES = [
+const NON_EXECUTING_TOOL_FILES = [
   ...walk("apps/agent/agent/tools", isSource),
   ...walk("apps/agent/agent/subagents", isSource),
   ...walk(SHARED_TOOL_DEFINITIONS_DIR, isSource),
@@ -305,6 +304,24 @@ function delegatesToWalkedDefinition(path: string): boolean {
     )
   );
 }
+
+/**
+ * Dynamic resolvers: files that decide at runtime which tool names are bound to
+ * what, rather than authoring a tool. The mode gate binds withheld names to a
+ * definition that returns a constant, so it reaches no store - and the
+ * assertion below is what keeps it that way.
+ */
+const DYNAMIC_TOOL_RESOLVER_FILES = NON_EXECUTING_TOOL_FILES.filter((path) =>
+  /export default defineDynamic\(/.test(read(path)),
+);
+
+/**
+ * Tool files that define no `execute` of their own, and so are exempt from the scan
+ * above only because something else answers for them.
+ */
+const REGISTRATION_ONLY_TOOL_FILES = NON_EXECUTING_TOOL_FILES.filter(
+  (path) => !DYNAMIC_TOOL_RESOLVER_FILES.includes(path),
+);
 
 const ACTIONS_PATH_SOURCES = [
   ...walk("packages/db/src/queries/general-actions", isSource),
@@ -523,6 +540,13 @@ describe("Phase 5 boundary — Eve exposes a bounded, single-record General Acti
         delegatesToWalkedDefinition(path),
         `${path} defines no executor, so it has to register one this scan walks`,
       ).toBe(true);
+    }
+    // The third kind of file in the slot: a dynamic resolver, exempt only for as
+    // long as it reads no store. The mode gate returns constants, so nothing it
+    // binds can throw a Drizzle error at the model in the first place.
+    expect(DYNAMIC_TOOL_RESOLVER_FILES).toEqual(["apps/agent/agent/tools/eve_mode_gate.ts"]);
+    for (const path of DYNAMIC_TOOL_RESOLVER_FILES) {
+      expect(read(path), `${path} calls no store`).not.toContain("@tendnote/db");
     }
     for (const path of EXECUTING_TOOL_FILES) {
       expect(stripComments(read(path)), `${path} wraps its store calls`).toMatch(

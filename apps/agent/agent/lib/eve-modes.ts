@@ -1,209 +1,298 @@
-export type EveMode =
-  | "discord_capture"
-  | "selected_person"
-  | "drafting"
-  | "scheduled_workflow"
-  | "cleanup_preview";
+/**
+ * Eve modes (ADR-0128): which tools and skills a session may actually use.
+ *
+ * A mode only ever *restricts*. The registry below is the single table; the
+ * dynamic tool gate at `agent/tools/eve_mode_gate.ts` is what makes it bite.
+ *
+ * ## Only trusted signals select a mode
+ *
+ * A mode is resolved from the session principal the channel's own `AuthFn`
+ * stamped (`lib/eve-auth.ts` for the web channel, Eve's app principal for
+ * anything the runtime starts). It is never resolved from message text, from
+ * `clientContext`, or from anything else the model or the browser can author:
+ * a mode that a caller can select is not a boundary, it is a suggestion.
+ *
+ * ## Tools are enforced; skills are documentation
+ *
+ * The gate withholds tools. The per-mode `skills` list says which guidance
+ * belongs to a mode and is not enforced, deliberately: a skill only loads when
+ * the model calls `load_skill`, it authorizes nothing on its own, and its
+ * instructions are inert once the tools they describe are withheld. eve 0.32
+ * would let a dynamic skill *override* an authored one rather than remove it,
+ * so narrowing here would mean replacing a skill's body with a note saying it
+ * does not apply: prompt noise for no authority gained.
+ *
+ * ## The three ADR modes that are context, not authority
+ *
+ * ADR-0128 also named Selected Person, Drafting, and Cleanup Preview modes.
+ * All three are *intent expressed inside a conversation* - the person page the
+ * browser says is open, a request to draft something, a block of pasted text to
+ * parse. The only signal for any of them arrives in the turn's own content,
+ * which is exactly the input a mode must not trust. They are kept here as named
+ * context, with no tool surface of their own, and the narrowing they were meant
+ * to provide lives where it can be enforced instead: `cleanup_preview` writes
+ * nothing by construction, drafts are review-gated in the query layer, and the
+ * selected person is framed as untrusted data
+ * (`apps/web/src/lib/eve/selected-person-context.ts`).
+ */
 
-export type EveCaller = "web" | "discord" | "schedule" | "sandbox";
-export type EveChannel = "web" | "discord" | "schedule" | "sandbox";
+/**
+ * Every tool authored under `agent/tools/`, excluding the files that author no
+ * tool of their own: the `disableTool()` sentinels and the gate's own dynamic
+ * resolver. `tests/eve-modes.test.ts` pins this against the directory, so a new
+ * tool cannot arrive without being given a place in the table below.
+ */
+export const EVE_TOOL_NAMES = [
+  "accept_suggested_followup",
+  "accept_suggested_general_action",
+  "add_gift_idea",
+  "approve_suggested_memory",
+  "archive_memory",
+  "archive_self_context",
+  "capture_memory",
+  "capture_saved_item",
+  "capture_source_record",
+  "change_saved_item_capture",
+  "cleanup_preview",
+  "create_asset",
+  "create_followup",
+  "create_general_action",
+  "create_message_draft",
+  "create_person",
+  "dismiss_draft",
+  "dismiss_suggested_followup",
+  "dismiss_suggested_general_action",
+  "dismiss_suggested_memory",
+  "edit_asset",
+  "edit_draft_body",
+  "edit_general_action",
+  "edit_gift_idea",
+  "get_asset_context",
+  "get_person_context",
+  "get_relationship_agenda",
+  "get_self_context_fact",
+  "get_suggested_followup_review",
+  "get_suggested_general_action_review",
+  "get_suggested_memory_review",
+  "household_check_in",
+  "list_calendar_events",
+  "list_due_followups",
+  "list_general_action_areas",
+  "list_general_actions",
+  "list_message_drafts",
+  "list_saved_items",
+  "list_self_context",
+  "list_suggested_followup_reviews",
+  "list_suggested_general_action_reviews",
+  "list_suggested_memory_reviews",
+  "plan_suggested_general_actions",
+  "propose_asset_actions",
+  "propose_asset_memories",
+  "propose_followup",
+  "propose_suggested_memory",
+  "remember_self_context",
+  "remove_gift_idea",
+  "restore_self_context",
+  "save_draft_to_gmail",
+  "search_assets",
+  "search_gift_plans",
+  "search_global_recall",
+  "search_people",
+  "search_relationship_context",
+  "search_semantic_context",
+  "suggest_general_action",
+  "undo_saved_item_capture",
+  "update_followup_status",
+  "update_general_action_status",
+  "update_person",
+  "update_self_context",
+] as const;
 
-export type Phase3Workflow =
-  | "morning_agenda"
-  | "post_meeting_aftercare"
-  | "weekly_relationship_review"
-  | "birthday_gift_planning"
-  | "cleanup_preview";
+export type EveToolName = (typeof EVE_TOOL_NAMES)[number];
 
-export type EveModeContext = {
-  caller: EveCaller;
-  channel: EveChannel;
-  selectedPersonId?: string;
-  workflow?: Phase3Workflow;
-  requestedTask?: "capture" | "draft" | "memory_cleanup" | "strategy" | "cleanup_preview";
+/** Every skill authored under `agent/skills/`, by slug. Pinned the same way. */
+export const EVE_SKILL_NAMES = [
+  "actions",
+  "capturing-and-review",
+  "drafting",
+  "followups",
+  "household-and-gifts",
+  "recall",
+  "self-context",
+] as const;
+
+export type EveSkillName = (typeof EVE_SKILL_NAMES)[number];
+
+/**
+ * The modes a trusted signal can actually select.
+ *
+ * `restricted` is the default: a session whose origin this file does not
+ * recognise gets no tools at all rather than the curated surface. It is as
+ * fail-closed as the framework permits rather than unconditionally so - eve
+ * 0.32 skips a dynamic resolver that throws and runs the turn on the static
+ * compiled set, so a gate that crashed would hand back the full authored
+ * surface. `agent/tools/eve_mode_gate.ts` therefore resolves inside a catch and
+ * falls back to this mode rather than letting anything escape.
+ */
+export type EveMode = "web_chat" | "discord_capture" | "scheduled_workflow" | "restricted";
+
+/**
+ * ADR-0128 modes that survive as conversation context only. They narrow no
+ * tools because no trusted signal selects them; see the file header.
+ */
+export const EVE_CONTEXT_MODES = ["selected_person", "drafting", "cleanup_preview"] as const;
+
+export type EveModeDefinition = {
+  readonly mode: EveMode;
+  readonly tools: readonly EveToolName[];
+  readonly skills: readonly EveSkillName[];
 };
 
-export type EveCapability =
-  | "capture_saved_item"
-  | "change_saved_item_capture"
-  | "capture_source_record"
-  | "review_suggestions"
-  | "person_scoped_recall"
-  | "propose_followup"
-  | "draft_proposal"
-  | "persist_draft_with_intent"
-  | "memory_cleanup_proposal"
-  | "scheduled_artifact_proposal"
-  | "cleanup_preview"
-  | "sandbox_parse"
-  | "undo_saved_item_capture";
+/**
+ * Reads a scheduled workflow may perform. Every one is owner-scoped and
+ * returns records; none writes, drafts, sends, or needs the user present.
+ */
+const SCHEDULED_WORKFLOW_READS = [
+  "get_asset_context",
+  "get_person_context",
+  "get_relationship_agenda",
+  "get_self_context_fact",
+  "get_suggested_followup_review",
+  "get_suggested_general_action_review",
+  "get_suggested_memory_review",
+  "list_calendar_events",
+  "list_due_followups",
+  "list_general_action_areas",
+  "list_general_actions",
+  "list_message_drafts",
+  "list_saved_items",
+  "list_self_context",
+  "list_suggested_followup_reviews",
+  "list_suggested_general_action_reviews",
+  "list_suggested_memory_reviews",
+  "search_assets",
+  "search_gift_plans",
+  "search_global_recall",
+  "search_people",
+  "search_relationship_context",
+  "search_semantic_context",
+] as const satisfies readonly EveToolName[];
 
-export type EveToolName =
-  | "capture_saved_item"
-  | "change_saved_item_capture"
-  | "capture_source_record"
-  | "list_suggested_memory_reviews"
-  | "get_suggested_memory_review"
-  | "approve_suggested_memory"
-  | "dismiss_suggested_memory"
-  | "search_people"
-  | "get_person_context"
-  | "search_relationship_context"
-  | "search_semantic_context"
-  | "search_global_recall"
-  | "get_relationship_agenda"
-  | "list_due_followups"
-  | "list_calendar_events"
-  | "list_suggested_followup_reviews"
-  | "propose_followup"
-  | "create_message_draft"
-  | "cleanup_preview"
-  | "search_assets"
-  | "get_asset_context"
-  | "undo_saved_item_capture";
+/**
+ * Writes a scheduled workflow may perform: review-gated proposals only. A
+ * workflow runs with nobody watching, so everything it produces has to land in
+ * a review queue the owner still has to accept.
+ */
+const SCHEDULED_WORKFLOW_PROPOSALS = [
+  "plan_suggested_general_actions",
+  "propose_asset_actions",
+  "propose_asset_memories",
+  "propose_followup",
+  "propose_suggested_memory",
+  "suggest_general_action",
+] as const satisfies readonly EveToolName[];
 
-type EveSkillName =
-  | "capturing-and-review"
-  | "recall"
-  | "followups"
-  | "drafting"
-  | "memory-cleanup"
-  | "follow-up-strategy"
-  | "meeting-prep"
-  | "gift-planning"
-  | "birthday-messages"
-  | "relationship-repair"
-  | "cleanup-preview";
-
-type EveModeDefinition = {
-  mode: EveMode;
-  tools: readonly EveToolName[];
-  skills: readonly EveSkillName[];
-  capabilities: readonly EveCapability[];
-};
-
+/**
+ * The mode table.
+ *
+ * Each entry is an allowlist: a tool absent from it is unavailable in that
+ * mode, so a tool added to `agent/tools/` joins the curated web surface and
+ * nothing else until someone decides otherwise.
+ */
 const modeDefinitions = {
+  // Selected by: a signed-in owner on the web channel (`attributes.channel`
+  // is `"eve"`). The curated surface is the whole authored tool set, which is
+  // what the web assistant is for; narrowing happens below, never here.
+  web_chat: {
+    mode: "web_chat",
+    tools: EVE_TOOL_NAMES,
+    skills: EVE_SKILL_NAMES,
+  },
+  // Selected by: a session stamped with the Discord channel by that channel's
+  // own auth. ADR-0140 makes Discord a capture surface and nothing else, and
+  // today its route is a deterministic handler that writes one Source Record
+  // for review without starting a model session at all
+  // (`lib/discord-capture.ts`), so this names the one capability it exercises.
   discord_capture: {
     mode: "discord_capture",
-    tools: [
-      "capture_source_record",
-      "list_suggested_memory_reviews",
-      "get_suggested_memory_review",
-      "dismiss_suggested_memory",
-      "search_people",
-    ],
+    tools: ["capture_source_record"],
     skills: ["capturing-and-review"],
-    capabilities: ["capture_source_record", "review_suggestions"],
   },
-  selected_person: {
-    mode: "selected_person",
-    tools: [
-      "capture_saved_item",
-      "change_saved_item_capture",
-      "undo_saved_item_capture",
-      "search_people",
-      "get_person_context",
-      "search_relationship_context",
-      "search_semantic_context",
-      "search_global_recall",
-      "list_due_followups",
-      "propose_followup",
-      "create_message_draft",
-      "list_suggested_memory_reviews",
-      "get_suggested_memory_review",
-      // Asset recall is read-only and grounded, so it rides the default web-chat mode:
-      // "what filter does the fridge need?" must work without selecting a person (#204).
-      "search_assets",
-      "get_asset_context",
-    ],
-    skills: [
-      "recall",
-      "followups",
-      "drafting",
-      "memory-cleanup",
-      "follow-up-strategy",
-      "relationship-repair",
-    ],
-    capabilities: [
-      "capture_saved_item",
-      "change_saved_item_capture",
-      "undo_saved_item_capture",
-      "person_scoped_recall",
-      "propose_followup",
-      "draft_proposal",
-      "persist_draft_with_intent",
-      "memory_cleanup_proposal",
-      "review_suggestions",
-    ],
-  },
-  drafting: {
-    mode: "drafting",
-    tools: [
-      "search_people",
-      "get_person_context",
-      "search_relationship_context",
-      "search_semantic_context",
-      "search_global_recall",
-      "create_message_draft",
-    ],
-    skills: ["drafting", "birthday-messages", "relationship-repair"],
-    capabilities: ["person_scoped_recall", "draft_proposal", "persist_draft_with_intent"],
-  },
+  // Selected by: Eve's own app principal (`principalType` is `"runtime"`),
+  // which is what a schedule-started session runs as. Reads plus review-gated
+  // proposals: no durable-truth writes, no drafting, no external side effects,
+  // and nothing that needs a human in the loop - `household_check_in` asks the
+  // owner a question and `cleanup_preview` needs text the owner pasted, so
+  // neither belongs to an unattended run.
   scheduled_workflow: {
     mode: "scheduled_workflow",
-    tools: [
-      "get_relationship_agenda",
-      "list_due_followups",
-      "list_calendar_events",
-      "list_suggested_followup_reviews",
-      "list_suggested_memory_reviews",
-      "propose_followup",
-    ],
-    skills: ["meeting-prep", "gift-planning", "follow-up-strategy", "memory-cleanup"],
-    capabilities: ["scheduled_artifact_proposal", "propose_followup", "review_suggestions"],
+    tools: [...SCHEDULED_WORKFLOW_READS, ...SCHEDULED_WORKFLOW_PROPOSALS],
+    skills: ["actions", "followups", "recall"],
   },
-  cleanup_preview: {
-    mode: "cleanup_preview",
-    tools: ["cleanup_preview"],
-    skills: ["cleanup-preview"],
-    capabilities: ["cleanup_preview", "sandbox_parse"],
+  // Selected by: anything else, including a session with no principal at all.
+  restricted: {
+    mode: "restricted",
+    tools: [],
+    skills: [],
   },
-} satisfies Record<EveMode, EveModeDefinition>;
+} as const satisfies Record<EveMode, EveModeDefinition>;
 
-export function resolveEveMode(context: EveModeContext): EveModeDefinition {
-  if (context.workflow === "cleanup_preview" || context.requestedTask === "cleanup_preview") {
-    return modeDefinitions.cleanup_preview;
-  }
+/**
+ * The part of a session principal a mode is allowed to read: what the channel's
+ * `AuthFn` stamped, and nothing the caller supplied.
+ */
+export type EveSessionPrincipal = {
+  readonly principalType: string;
+  readonly attributes?: Readonly<Record<string, string | readonly string[]>>;
+};
 
-  if (context.caller === "schedule" || context.channel === "schedule" || context.workflow) {
-    return modeDefinitions.scheduled_workflow;
-  }
+/**
+ * The `attributes.channel` marker each channel's auth stamps, mapped to the
+ * mode it selects. `lib/eve-auth.ts` is the only place that stamps `"eve"`.
+ */
+const MODE_BY_CHANNEL_ATTRIBUTE: Readonly<Record<string, EveMode>> = {
+  discord: "discord_capture",
+  eve: "web_chat",
+};
 
-  if (context.caller === "discord" || context.channel === "discord") {
-    return modeDefinitions.discord_capture;
-  }
+/**
+ * Resolve the mode for a session from its authenticated principal.
+ *
+ * Pass `ctx.session.auth.current`: the caller of the *active turn*, so a
+ * session cannot be opened by one principal and continued under another's
+ * authority. Unknown shapes fall through to `restricted`.
+ */
+export function resolveSessionEveMode(principal: EveSessionPrincipal | null | undefined): EveMode {
+  if (!principal) return "restricted";
 
-  if (context.requestedTask === "draft") {
-    return modeDefinitions.drafting;
-  }
+  // Eve's own app principal: schedules and anything else the runtime starts.
+  if (principal.principalType === "runtime") return "scheduled_workflow";
 
-  if (context.selectedPersonId) {
-    return modeDefinitions.selected_person;
-  }
+  if (principal.principalType !== "user") return "restricted";
 
-  return modeDefinitions.selected_person;
+  const channel = principal.attributes?.channel;
+  if (typeof channel !== "string") return "restricted";
+
+  return MODE_BY_CHANNEL_ATTRIBUTE[channel] ?? "restricted";
+}
+
+export function eveModeDefinition(mode: EveMode): EveModeDefinition {
+  return modeDefinitions[mode];
 }
 
 export function modeAllowsTool(mode: EveMode, tool: EveToolName): boolean {
-  const definition: EveModeDefinition = modeDefinitions[mode];
-  return definition.tools.includes(tool);
+  return (modeDefinitions[mode].tools as readonly EveToolName[]).includes(tool);
 }
 
-export function modeAllowsCapability(mode: EveMode, capability: EveCapability): boolean {
-  const definition: EveModeDefinition = modeDefinitions[mode];
-  return definition.capabilities.includes(capability);
+export function modeAllowsSkill(mode: EveMode, skill: EveSkillName): boolean {
+  return (modeDefinitions[mode].skills as readonly EveSkillName[]).includes(skill);
 }
 
-export function listEveModeDefinitions(): EveModeDefinition[] {
-  return Object.values(modeDefinitions) as EveModeDefinition[];
+/** The authored tools a mode withholds: the gate's input, in registry order. */
+export function toolsUnavailableInMode(mode: EveMode): readonly EveToolName[] {
+  return EVE_TOOL_NAMES.filter((tool) => !modeAllowsTool(mode, tool));
+}
+
+export function listEveModeDefinitions(): readonly EveModeDefinition[] {
+  return Object.values(modeDefinitions);
 }

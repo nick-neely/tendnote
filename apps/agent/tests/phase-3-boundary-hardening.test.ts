@@ -1,11 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  listEveModeDefinitions,
-  modeAllowsCapability,
-  modeAllowsTool,
-} from "../agent/lib/eve-modes";
+import { listEveModeDefinitions, modeAllowsTool } from "../agent/lib/eve-modes";
 import { effectiveToolSource } from "./tool-source";
 
 const repoRoot = join(import.meta.dirname, "../../..");
@@ -26,6 +22,7 @@ const PHASE_3_IMPLEMENTATION_FILES = [
   "apps/agent/agent/subagents/relationship_strategist/tools/propose_followup.ts",
   "apps/agent/agent/subagents/relationship_strategist/tools/search_people.ts",
   "apps/agent/agent/tools/cleanup_preview.ts",
+  "apps/agent/agent/tools/eve_mode_gate.ts",
   "packages/db/src/queries/birthday-gift-planning.ts",
   "packages/db/src/queries/brief-schedules.ts",
   "packages/db/src/queries/cleanup-preview.ts",
@@ -93,7 +90,7 @@ describe("Phase 3 boundary hardening", () => {
     const currentPhase3Files = [
       ...listFiles("apps/agent/agent")
         .filter((file) =>
-          /channels\/discord|lib\/cleanup-preview-sandbox|lib\/eve-modes|schedules\/brief-dispatcher|subagents\/(memory_curator|message_drafter|relationship_strategist)\/|tools\/cleanup_preview/.test(
+          /channels\/discord|lib\/cleanup-preview-sandbox|lib\/eve-modes|schedules\/brief-dispatcher|subagents\/(memory_curator|message_drafter|relationship_strategist)\/|tools\/cleanup_preview|tools\/eve_mode_gate/.test(
             file,
           ),
         )
@@ -141,7 +138,18 @@ describe("Phase 3 boundary hardening", () => {
   });
 
   it("keeps external sends and autonomous external draft creation out of Phase 3 surfaces", () => {
-    const source = normalizedSource(PHASE_3_IMPLEMENTATION_FILES);
+    // The mode registry is a list of tool *names*, so it necessarily says
+    // `save_draft_to_gmail` while withholding it from every narrowed mode. A
+    // string scan cannot tell those apart; the assertions below check the
+    // registry the way it is meant to be read.
+    const source = normalizedSource(
+      PHASE_3_IMPLEMENTATION_FILES.filter((file) => file !== "apps/agent/agent/lib/eve-modes.ts"),
+    );
+
+    for (const mode of ["discord_capture", "scheduled_workflow", "restricted"] as const) {
+      expect(modeAllowsTool(mode, "save_draft_to_gmail"), mode).toBe(false);
+      expect(modeAllowsTool(mode, "create_message_draft"), mode).toBe(false);
+    }
 
     for (const forbidden of [
       "save_draft_to_gmail",
@@ -174,15 +182,18 @@ describe("Phase 3 boundary hardening", () => {
     expect(source).not.toContain("discord_attachment:");
     expect(source).toContain("discord attachments are not a cleanup preview input path");
 
-    expect(modeAllowsTool("cleanup_preview", "cleanup_preview")).toBe(true);
-    expect(modeAllowsTool("cleanup_preview", "capture_source_record")).toBe(false);
-    expect(modeAllowsTool("cleanup_preview", "propose_followup")).toBe(false);
-    expect(modeAllowsTool("cleanup_preview", "create_message_draft")).toBe(false);
+    // Cleanup Preview is a tool the owner reaches from web chat, not a mode of
+    // its own: nothing about pasted text is a trusted signal. The narrowing it
+    // was meant to express is structural instead, in a tool that writes
+    // nothing, and no unattended or Discord-stamped session can reach it.
+    expect(modeAllowsTool("web_chat", "cleanup_preview")).toBe(true);
+    expect(modeAllowsTool("discord_capture", "cleanup_preview")).toBe(false);
+    expect(modeAllowsTool("scheduled_workflow", "cleanup_preview")).toBe(false);
   });
 
   it("keeps specialist and scheduled surfaces behind proposal/review boundaries", () => {
     expect(modeAllowsTool("scheduled_workflow", "create_message_draft")).toBe(false);
-    expect(modeAllowsCapability("scheduled_workflow", "persist_draft_with_intent")).toBe(false);
+    expect(modeAllowsTool("scheduled_workflow", "propose_followup")).toBe(true);
 
     const scheduledSource = normalizedSource(SCHEDULED_WORKFLOW_FILES);
     expect(scheduledSource).not.toContain("createDraft(");
@@ -222,12 +233,6 @@ describe("Phase 3 boundary hardening", () => {
       listEveModeDefinitions()
         .map((definition) => definition.mode)
         .sort(),
-    ).toEqual([
-      "cleanup_preview",
-      "discord_capture",
-      "drafting",
-      "scheduled_workflow",
-      "selected_person",
-    ]);
+    ).toEqual(["discord_capture", "restricted", "scheduled_workflow", "web_chat"]);
   });
 });
