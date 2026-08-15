@@ -115,8 +115,6 @@ const HANDLE_GUIDANCE =
   "one exactly, never invent one, and never write one in a reply. Name people by " +
   "their display name.";
 
-const ROOT_RENDERED = "The agenda candidates are shown to the user in a card.";
-
 const ROOT_GUIDANCE =
   "Don't relist the candidates - the card shows them. Say what stands out in a line " +
   "or two; these are candidates to consider, not work anyone is behind on.";
@@ -152,7 +150,10 @@ export function relationshipAgendaTool(options: RelationshipAgendaToolOptions) {
           })),
           ...(options.toolCallHandles
             ? { guidance: READ_ONLY_GUIDANCE + HANDLE_GUIDANCE }
-            : { rendered: ROOT_RENDERED, guidance: ROOT_GUIDANCE }),
+            : {
+                rendered: "The agenda candidates are shown to the user in a card.",
+                guidance: ROOT_GUIDANCE,
+              }),
         },
       };
     },

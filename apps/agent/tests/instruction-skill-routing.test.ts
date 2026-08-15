@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { RENDERED_TOOL_NAMES } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import { baseInstructions } from "./instructions-source";
+import { effectiveToolSource } from "./tool-source";
 
 /**
  * The two always-on claims that were false, and the reason they are worth a test.
@@ -33,10 +34,15 @@ const skillSlugs = readdirSync(join(process.cwd(), "agent/skills"))
 const toolsDir = join(process.cwd(), "agent/tools");
 const subagentsDir = join(process.cwd(), "agent/subagents");
 
-/** A root tool's source, or null when the name belongs to a subagent instead. */
+/**
+ * A root tool's effective source, or null when the name belongs to a subagent
+ * instead. A registration file that pulls its definition from `agent/lib/tools/`
+ * carries no `toModelOutput` of its own, so the render declaration lives in the
+ * shared definition and the guard has to read it there.
+ */
 function readRootTool(name: string): string | null {
   const path = join(toolsDir, `${name}.ts`);
-  return existsSync(path) ? readFileSync(path, "utf8") : null;
+  return existsSync(path) ? effectiveToolSource(path) : null;
 }
 
 /** The subagents that own a tool of this name. */
