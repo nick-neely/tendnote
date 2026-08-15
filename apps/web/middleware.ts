@@ -3,10 +3,12 @@ import { normalizeVercelSegmentPrefetchHeaders } from "./src/lib/navigation/segm
 
 /**
  * Keep Vercel's header-form segment prefetch compatible with the artifact rewrite
- * in `next.config.ts`. Proxy runs before `beforeFiles`, so the normalized request
- * reaches the generated `.segment.rsc` route without changing ordinary navigation.
+ * in `next.config.ts`. The established middleware entrypoint is still the one
+ * Vercel's current build integration invokes for this static RSC request. The
+ * middleware only changes the exact Vercel prefetch variant that misses the
+ * generated artifact route; ordinary navigation and local `next start` are inert.
  */
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const headers = normalizeVercelSegmentPrefetchHeaders(request.headers);
   return headers ? NextResponse.next({ request: { headers } }) : NextResponse.next();
 }
