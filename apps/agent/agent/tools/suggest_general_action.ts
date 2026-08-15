@@ -27,7 +27,9 @@ const inputSchema = z.object({
   areaId: z
     .uuid()
     .optional()
-    .describe("Optional Area to file the proposed action under. Omit to leave it unfiled."),
+    .describe(
+      "Optional Area to file the proposed action under, taken from list_general_action_areas — never an invented id. Omit to leave it unfiled.",
+    ),
   personIds: z
     .array(z.uuid())
     .optional()

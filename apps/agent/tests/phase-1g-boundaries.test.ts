@@ -43,6 +43,9 @@ const PHASE_1G_FILES = [
   "apps/web/src/components/assistant-results/registry.tsx",
   "apps/web/src/components/assistant-tool-result.tsx",
   "apps/agent/agent/tools/create_message_draft.ts",
+  // The root read-back of the same records. It sends nothing by construction, and this
+  // scan is what keeps it that way as the drafting surface grows.
+  "apps/agent/agent/tools/list_message_drafts.ts",
 ];
 
 // Phase 2D adds APPROVED Gmail draft externalization (ADR-0083/0096) to the person
