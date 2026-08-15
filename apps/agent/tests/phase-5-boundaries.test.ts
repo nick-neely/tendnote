@@ -268,13 +268,22 @@ const EXECUTING_TOOL_FILES = [
   ...walk("apps/agent/agent/lib/tools", isSource),
 ].filter((path) => /async\s+\*?execute\s*\(/.test(read(path)));
 
+const SHARED_TOOL_DEFINITIONS_DIR = "apps/agent/agent/lib/tools";
+
 /**
  * Tool files that define no `execute` of their own, and so are exempt from the scan
  * above only because something else answers for them.
+ *
+ * The shared-definition directory is walked here too, not just above. The filter that
+ * builds the executing list keys on `async execute(`, so a factory that assembles a
+ * tool from an imported executor (`execute: draftsRead.execute`) matches neither list
+ * while the walk stops at the two tool directories - it would be scanned by nothing at
+ * all. Here it has to show the delegation instead.
  */
 const REGISTRATION_ONLY_TOOL_FILES = [
   ...walk("apps/agent/agent/tools", isSource),
   ...walk("apps/agent/agent/subagents", isSource),
+  ...walk(SHARED_TOOL_DEFINITIONS_DIR, isSource),
 ]
   .filter((path) => /\/tools\//.test(path))
   .filter(
@@ -282,6 +291,20 @@ const REGISTRATION_ONLY_TOOL_FILES = [
       !/async\s+\*?execute\s*\(/.test(read(path)) &&
       !/export default disableTool\(\)/.test(read(path)),
   );
+
+/** Whether a file with no executor of its own imports one this scan already walks. */
+function delegatesToWalkedDefinition(path: string): boolean {
+  const source = read(path);
+  if (/from "[^"]*\/lib\/tools\/[\w-]+"/.test(source)) return true;
+  // A shared definition composing a sibling shared definition imports it relatively,
+  // and the sibling is walked above under its own name.
+  return (
+    path.startsWith(`${SHARED_TOOL_DEFINITIONS_DIR}/`) &&
+    [...source.matchAll(/from "\.\/([\w-]+)"/g)].some((match) =>
+      existsSync(join(repoRoot, SHARED_TOOL_DEFINITIONS_DIR, `${match[1]}.ts`)),
+    )
+  );
+}
 
 const ACTIONS_PATH_SOURCES = [
   ...walk("packages/db/src/queries/general-actions", isSource),
@@ -491,12 +514,15 @@ describe("Phase 5 boundary — Eve exposes a bounded, single-record General Acti
     expect(EXECUTING_TOOL_FILES).toContain("apps/agent/agent/lib/tools/propose-followup.ts");
     // A tool file with no `execute` is exempt from the loop below, so it has to be a
     // registration of a definition that is *in* the loop. Otherwise a tool could dodge
-    // the whole scan by keeping its store call in a file nothing walks.
+    // the whole scan by keeping its store call in a file nothing walks - including a
+    // shared definition whose executor is an imported reference rather than an
+    // `async execute(` of its own.
     expect(REGISTRATION_ONLY_TOOL_FILES.length).toBeGreaterThan(0);
     for (const path of REGISTRATION_ONLY_TOOL_FILES) {
-      expect(read(path), `${path} registers a shared tool definition`).toMatch(
-        /from "[^"]*\/lib\/tools\/[\w-]+"/,
-      );
+      expect(
+        delegatesToWalkedDefinition(path),
+        `${path} defines no executor, so it has to register one this scan walks`,
+      ).toBe(true);
     }
     for (const path of EXECUTING_TOOL_FILES) {
       expect(stripComments(read(path)), `${path} wraps its store calls`).toMatch(

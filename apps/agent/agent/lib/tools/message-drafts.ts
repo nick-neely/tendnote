@@ -183,10 +183,11 @@ export function messageDraftsTool(options: MessageDraftsToolOptions) {
               : "These are private Tendnote drafts and nothing more: 'approved' means the user " +
                 "marked it ready in Tendnote, and none of them has been sent or exported. " +
                 (options.draftHandles
-                  ? "`draftId` is the handle `save_draft_to_gmail` takes - copy it exactly, never " +
-                    "write it in your reply, and only externalize an already-approved draft when " +
-                    "the user asks in this turn and confirms the recipient and subject. Refer to " +
-                    "people by name."
+                  ? "`draftId` is the handle `edit_draft_body`, `dismiss_draft`, and " +
+                    "`save_draft_to_gmail` take - copy it exactly, never write it in your reply, " +
+                    "and take it only from the draft the user named. Externalizing is the gated " +
+                    "one: an already-approved draft only, only when the user asks in this turn " +
+                    "and confirms the recipient and subject. Refer to people by name."
                   : "Editing, approving, dismissing, and externalizing a draft all belong to the " +
                     "parent agent on the user's explicit instruction. Refer to people by name."),
         },
