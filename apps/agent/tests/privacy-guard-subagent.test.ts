@@ -1,9 +1,23 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { authoredInstructions } from "./instructions-source";
 
 const subagentRoot = join(process.cwd(), "agent/subagents/privacy_guard");
+const toolsRoot = join(subagentRoot, "tools");
+
+/**
+ * Tools the reviewer actually has. An empty `tools/` directory is not the same
+ * as no directory at all: Eve gives every agent node its own copy of the default
+ * harness, so Privacy Guard's `tools/` holds the files that turn those defaults
+ * off, and only a file that does something else would be a tool.
+ */
+function authoredToolFiles(): string[] {
+  if (!existsSync(toolsRoot)) return [];
+  return readdirSync(toolsRoot).filter(
+    (file) => !/export default disableTool\(\)/.test(readFileSync(join(toolsRoot, file), "utf8")),
+  );
+}
 
 describe("Privacy Guard subagent", () => {
   it("is declared as a reviewer-only household privacy specialist", () => {
@@ -35,11 +49,11 @@ describe("Privacy Guard subagent", () => {
     expect(
       authoredFiles.map((file) => readFileSync(join(process.cwd(), file), "utf8")).length,
     ).toBe(2);
-    expect(existsSync(join(subagentRoot, "tools"))).toBe(false);
+    expect(authoredToolFiles()).toEqual([]);
   });
 
   it("has no tools or durable data imports", () => {
-    expect(existsSync(join(subagentRoot, "tools"))).toBe(false);
+    expect(authoredToolFiles()).toEqual([]);
 
     const combined = [
       readFileSync(join(subagentRoot, "agent.ts"), "utf8"),

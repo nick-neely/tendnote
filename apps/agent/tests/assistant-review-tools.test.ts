@@ -10,7 +10,15 @@ function readTool(name: string): string {
   return readFileSync(join(toolsDir, `${name}.ts`), "utf8");
 }
 
-const toolFiles = readdirSync(toolsDir).filter((file) => file.endsWith(".ts"));
+// Authored tools only. `agent/tools/` also holds the files that disable Eve's
+// framework defaults (`export default disableTool()`); those declare an absence,
+// so the owner-scoping, scope-default, and rendering checks below have nothing
+// to say about them.
+const toolFiles = readdirSync(toolsDir).filter(
+  (file) =>
+    file.endsWith(".ts") &&
+    !/export default disableTool\(\)/.test(readFileSync(join(toolsDir, file), "utf8")),
+);
 const renderedToolFiles = new Set(toolFiles);
 const subagentsDir = join(process.cwd(), "agent/subagents");
 if (existsSync(subagentsDir)) {

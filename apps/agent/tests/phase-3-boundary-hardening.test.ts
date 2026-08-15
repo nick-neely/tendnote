@@ -95,7 +95,11 @@ describe("Phase 3 boundary hardening", () => {
             file,
           ),
         )
-        .filter((file) => !file.endsWith("instructions.md")),
+        .filter((file) => !file.endsWith("instructions.md"))
+        // A file that only exports disableTool() turns off an Eve framework
+        // default. It implements nothing, so it is not a surface these scans
+        // have anything to say about; the active-tree lockdown test pins it.
+        .filter((file) => !/export default disableTool\(\)/.test(read(file))),
       ...listFiles("packages/db/src/queries").filter(
         (file) =>
           !/\.test\.ts$/.test(file) &&

@@ -33,15 +33,23 @@ describe("cross-domain conversational Capture", () => {
       ownerTimeZone: async () => "America/Chicago",
     });
 
-    const result = await capture.capture({
-      authority: "explicit",
-      interactionId: "phase-seven-filter-journey",
-      inputMode: "typed",
-      ownerUserId: "owner-1",
-      originalText:
-        "Remind me to replace the kitchen refrigerator filter on August 21 with an alert one week before; and also save an open question: Where should I buy the replacement filter? Bring it back on August 14",
-      surface: "global_capture",
-    });
+    // "August 21" and "August 14" carry no year, so their resolution depends on
+    // the wall clock; pin it or the expected dates roll into next year mid-August.
+    vi.useFakeTimers({ now: new Date("2026-08-01T12:00:00.000Z") });
+    let result: Awaited<ReturnType<typeof capture.capture>>;
+    try {
+      result = await capture.capture({
+        authority: "explicit",
+        interactionId: "phase-seven-filter-journey",
+        inputMode: "typed",
+        ownerUserId: "owner-1",
+        originalText:
+          "Remind me to replace the kitchen refrigerator filter on August 21 with an alert one week before; and also save an open question: Where should I buy the replacement filter? Bring it back on August 14",
+        surface: "global_capture",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
 
     expect(result.confirmation).toMatchObject({
       destination: "Grouped",
