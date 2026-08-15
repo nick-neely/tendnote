@@ -88,6 +88,7 @@ export default defineTool({
           lookingAfterIt: entry.responsibility,
         })),
         limitations: output.limitations,
+        rendered: "The check-in records are shown to the user in a card.",
         guidance: output.optedIn
           ? output.household === null
             ? "This user is not currently in a household, so there is no check-in for " +

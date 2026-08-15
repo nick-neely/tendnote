@@ -52,6 +52,7 @@ export default defineTool({
       value: {
         count: output.count,
         reviews: output.reviews.map((review) => toGeneralActionModelRef(review.action)),
+        rendered: "Each open suggestion is shown to the user as its own review card.",
         guidance:
           "These are TENTATIVE suggestions, each shown as a review card the user can accept or dismiss. Say how many are up for review; don't relist them. None is active until accepted.",
       },

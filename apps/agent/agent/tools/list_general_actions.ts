@@ -200,6 +200,7 @@ export default defineTool({
         window: output.window,
         count: output.count,
         actions: output.actions.map((action) => toGeneralActionModelRef(action, areaNames)),
+        rendered: "The ledger is shown to the user as an expandable list card.",
         guidance:
           "A plain ledger list (not priority ranking), shown to the user as an expandable list. Summarize briefly — how many, the gist — rather than reprinting each row; act on a specific action (complete, defer, edit) only on the user's explicit say-so. `area` is the Area an action is filed under: say its name, never its id, and reuse that id only to re-file the action when the user asks.",
       },

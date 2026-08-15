@@ -228,6 +228,7 @@ export default defineTool({
           value: describeAssetMemoryValue(memory.value) || null,
           notes: memory.notes,
         })),
+        rendered: "Each proposed detail is shown to the user as its own review card.",
         guidance:
           "NOTHING WAS SAVED. These are review cards the user must accept before any of " +
           "it becomes a fact. Say it is waiting for their review (e.g. “I've put that " +

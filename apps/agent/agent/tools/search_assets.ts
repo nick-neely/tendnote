@@ -82,6 +82,7 @@ export default defineTool({
             result.ownership === "household_native" ? null : result.visibilityChoice,
           ownership: result.ownership,
         })),
+        rendered: "The matching assets and details are shown to the user in a results card.",
         guidance:
           "`assetId` and `memoryId` are handles for your follow-up tool calls " +
           "(`get_asset_context`, `propose_asset_actions`) — copy them exactly. Never " +

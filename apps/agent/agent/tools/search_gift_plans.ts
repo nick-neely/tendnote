@@ -96,6 +96,7 @@ export default defineTool({
           claimed: plan.claimedIdeaCount,
           canEditPlan: plan.isOwner,
         })),
+        rendered: "The plans found are shown to the user in a card.",
         guidance:
           "These are every plan this user can see. Do not speculate about plans not " +
           "listed, hint that one may be hidden, or mention surprises — an absent plan " +

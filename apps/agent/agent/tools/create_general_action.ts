@@ -94,6 +94,7 @@ export default defineTool({
       value: {
         created: true,
         action: toGeneralActionModelRef(output.action),
+        rendered: "The new action is shown to the user in a card.",
         guidance:
           "It's on the active ledger and shown to the user as a card. Acknowledge it in one short sentence; don't restate the title, date, or cadence the card already shows.",
       },

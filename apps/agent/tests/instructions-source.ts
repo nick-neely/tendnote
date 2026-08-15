@@ -14,8 +14,8 @@ export function baseInstructions(root: string = process.cwd()): string {
 /**
  * The full authored instruction surface the agent reads: the always-on `base.md`
  * plus every on-demand skill, whitespace-normalized. Eve keeps situational tool
- * workflows in skills and loads them into context when their `description` matches
- * the request, so guidance that lives in a skill is still authored agent guidance —
+ * workflows in skills, which the model pulls into context by calling `load_skill`
+ * with the slug, so guidance that lives in a skill is still authored agent guidance —
  * these checks assert the whole surface, not just `base.md`, so moving a workflow
  * into a skill doesn't make the rule "disappear" from the evals' point of view.
  */
