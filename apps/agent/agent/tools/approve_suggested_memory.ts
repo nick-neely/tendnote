@@ -47,7 +47,7 @@ export default defineTool({
       },
     };
   },
-  // The now-approved memory renders as a card the user already sees. Drop the memory
+  // No card renders for this result (see UNRENDERED_COMPONENT_TOOLS). Drop the memory
   // text from the model's view (Eve `toModelOutput`) so it confirms briefly instead of
   // reprinting it; keep the ids + status. Channel gets the full output for rendering.
   toModelOutput(output) {
@@ -58,9 +58,9 @@ export default defineTool({
         memoryId: output.memory.id,
         personId: output.memory.personId,
         status: output.memory.status,
-        rendered: "The now-approved memory is shown to the user in a card.",
+        rendered: "Nothing is rendered for this result. Confirm in your reply what was approved.",
         guidance:
-          "Confirm briefly that it's saved as a confirmed fact — don't reprint the memory text; the card shows it.",
+          "Confirm in your own words that it is saved as a confirmed fact, without reprinting the full memory text.",
       },
     };
   },
