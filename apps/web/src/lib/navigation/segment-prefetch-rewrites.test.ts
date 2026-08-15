@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { segmentPrefetchRewrites } from "./segment-prefetch-rewrites";
 
@@ -35,5 +36,41 @@ describe("segment prefetch rewrites", () => {
     // into a 404 and silently disables reusable-shell prefetching.
     expect(segmentPrefetchRewrites({ vercel: undefined })).toEqual([]);
     expect(segmentPrefetchRewrites({ vercel: "0" })).toEqual([]);
+  });
+
+  it("normalizes the Vercel request variant before the generated rewrite runs", () => {
+    const config = JSON.parse(readFileSync("vercel.json", "utf8")) as {
+      routes: Array<{
+        has?: Array<{ key: string; value?: string }>;
+        transforms?: Array<{
+          type: string;
+          op: string;
+          target?: { key: string };
+          args?: string;
+        }>;
+        continue?: boolean;
+      }>;
+    };
+    const route = config.routes.find((candidate) =>
+      candidate.has?.some(
+        (condition) => condition.key === "next-router-segment-prefetch",
+      ),
+    );
+
+    expect(route).toMatchObject({
+      continue: true,
+      has: [
+        { key: "next-router-prefetch", value: "1" },
+        { key: "next-router-segment-prefetch" },
+      ],
+      transforms: [
+        {
+          type: "request.headers",
+          op: "set",
+          target: { key: "next-router-prefetch" },
+          args: "2",
+        },
+      ],
+    });
   });
 });
