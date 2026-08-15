@@ -1,8 +1,10 @@
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { webFetch } from "eve/tools/defaults";
 import { describe, expect, it } from "vitest";
 import gate from "../agent/tools/eve_mode_gate";
+import webFetchTool from "../agent/tools/web_fetch";
 
 type Principal = { principalType: string; attributes?: Record<string, string> };
 
@@ -24,10 +26,16 @@ type EveContextStorage = {
 };
 
 type EveTool = {
+  readonly name?: string;
+  readonly description?: string;
   readonly type?: string;
   readonly id?: string;
   readonly isProviderExecuted?: boolean;
   readonly execute?: (input: unknown, options: unknown) => Promise<unknown>;
+};
+
+type EveToolDefinition = EveTool & {
+  readonly name: string;
 };
 
 type EveRuntime = {
@@ -65,30 +73,36 @@ async function loadRuntime(): Promise<{
   runtime: EveRuntime;
   tools: EveHarnessTools;
   webSearch: unknown;
+  frameworkWebFetch: EveToolDefinition;
 }> {
-  const [container, keys, lifecycle, dynamicTools, harnessTools, webSearch] = await Promise.all([
-    loadEveInternal<Pick<EveRuntime, "ContextContainer" | "contextStorage">>(
-      "dist/src/context/container.js",
-    ),
-    loadEveInternal<
-      Pick<EveRuntime, "AuthKey" | "InitiatorAuthKey" | "SessionIdKey" | "SessionKey">
-    >("dist/src/context/keys.js"),
-    loadEveInternal<Pick<EveRuntime, "dispatchDynamicToolEvent">>(
-      "dist/src/context/dynamic-tool-lifecycle.js",
-    ),
-    loadEveInternal<Pick<EveRuntime, "buildDynamicTools">>(
-      "dist/src/context/build-dynamic-tools.js",
-    ),
-    loadEveInternal<EveHarnessTools>("dist/src/harness/tools.js"),
-    loadEveInternal<{ WEB_SEARCH_TOOL_DEFINITION: unknown }>(
-      "dist/src/runtime/framework-tools/web-search.js",
-    ),
-  ]);
+  const [container, keys, lifecycle, dynamicTools, harnessTools, webSearch, webFetchDefinition] =
+    await Promise.all([
+      loadEveInternal<Pick<EveRuntime, "ContextContainer" | "contextStorage">>(
+        "dist/src/context/container.js",
+      ),
+      loadEveInternal<
+        Pick<EveRuntime, "AuthKey" | "InitiatorAuthKey" | "SessionIdKey" | "SessionKey">
+      >("dist/src/context/keys.js"),
+      loadEveInternal<Pick<EveRuntime, "dispatchDynamicToolEvent">>(
+        "dist/src/context/dynamic-tool-lifecycle.js",
+      ),
+      loadEveInternal<Pick<EveRuntime, "buildDynamicTools">>(
+        "dist/src/context/build-dynamic-tools.js",
+      ),
+      loadEveInternal<EveHarnessTools>("dist/src/harness/tools.js"),
+      loadEveInternal<{ WEB_SEARCH_TOOL_DEFINITION: unknown }>(
+        "dist/src/runtime/framework-tools/web-search.js",
+      ),
+      loadEveInternal<{ WEB_FETCH_TOOL_DEFINITION: EveToolDefinition }>(
+        "dist/src/runtime/framework-tools/web-fetch.js",
+      ),
+    ]);
 
   return {
     runtime: { ...container, ...keys, ...lifecycle, ...dynamicTools },
     tools: harnessTools,
     webSearch: webSearch.WEB_SEARCH_TOOL_DEFINITION,
+    frameworkWebFetch: webFetchDefinition.WEB_FETCH_TOOL_DEFINITION,
   };
 }
 
@@ -114,7 +128,7 @@ function runtimeResolver(): RuntimeResolver {
 }
 
 async function buildRuntimeToolSets(current: Principal | null) {
-  const { runtime, tools, webSearch } = await loadRuntime();
+  const { runtime, tools, webSearch, frameworkWebFetch } = await loadRuntime();
   const ctx = new runtime.ContextContainer();
   ctx.set(runtime.SessionIdKey, "session-1");
   ctx.set(runtime.AuthKey, current);
@@ -132,7 +146,21 @@ async function buildRuntimeToolSets(current: Principal | null) {
     messages: [],
   });
 
-  const staticTools = new Map([["web_search", webSearch]]);
+  // `web_fetch` is authored by Tendnote as a thin wrapper around Eve's
+  // installed framework default. Keeping it in the static set makes this the
+  // same framework assembly that web_chat receives before the dynamic gate
+  // overlays a forbidden mode.
+  expect(webFetchTool.execute).toBe(webFetch.execute);
+  const authoredWebFetch = {
+    ...frameworkWebFetch,
+    ...webFetchTool,
+    name: frameworkWebFetch.name,
+  };
+  expect(authoredWebFetch.execute).toBe(webFetchTool.execute);
+  const staticTools = new Map<string, unknown>([
+    ["web_search", webSearch],
+    ["web_fetch", authoredWebFetch],
+  ]);
   const providerTools = await tools.buildToolSetWithProviderTools({
     modelReference: { id: "anthropic/claude-haiku-4.5" },
     tools: staticTools,
@@ -150,7 +178,7 @@ async function buildRuntimeToolSets(current: Principal | null) {
 describe("Eve mode gate at the 0.32 runtime tool merge", () => {
   it.each(
     FORBIDDEN_SESSIONS,
-  )("shadows provider web_search before a %s session can execute it", async (mode, principal) => {
+  )("shadows both network tools before a %s session can execute either", async (mode, principal) => {
     const { ctx, runtime, providerTools, finalTools } = await buildRuntimeToolSets(principal);
     const providerSearch = providerTools.web_search;
     const finalSearch = finalTools.web_search;
@@ -174,6 +202,26 @@ describe("Eve mode gate at the 0.32 runtime tool merge", () => {
       execute({}, { toolCallId: `call-${mode}` }),
     );
     expect(result).toMatchObject({ performed: false, tool: "web_search", mode });
+
+    const providerFetch = providerTools.web_fetch;
+    const finalFetch = finalTools.web_fetch;
+
+    // web_fetch is authored, so Eve keeps its real framework executor in the
+    // static set. The dynamic same-name shadow must be the only final entry in
+    // every fail-closed mode, and executing it must never reach that executor.
+    expect(providerFetch?.execute).toBeDefined();
+    expect(providerFetch?.description).toContain("public HTTPS");
+    expect(providerFetch?.description).toContain("untrusted external web content");
+    expect(finalFetch?.type).not.toBe("provider");
+    expect(finalFetch?.execute).toBeDefined();
+    expect(finalFetch?.execute).not.toBe(providerFetch?.execute);
+    const fetchExecute = finalFetch?.execute;
+    if (fetchExecute === undefined)
+      throw new Error(`web_fetch shadow for ${mode} is not executable`);
+    const fetchResult = await runtime.contextStorage.run(ctx, () =>
+      fetchExecute({ url: "https://example.com" }, { toolCallId: `fetch-${mode}` }),
+    );
+    expect(fetchResult).toMatchObject({ performed: false, tool: "web_fetch", mode });
   });
 
   it("keeps provider-managed search for an authenticated web_chat turn", async () => {
@@ -186,5 +234,14 @@ describe("Eve mode gate at the 0.32 runtime tool merge", () => {
     expect(finalSearch?.type).toBe("provider");
     expect(finalSearch?.isProviderExecuted).toBe(true);
     expect(finalSearch?.execute).toBeUndefined();
+
+    const providerFetch = providerTools.web_fetch;
+    const finalFetch = finalTools.web_fetch;
+    expect(providerFetch?.type).not.toBe("provider");
+    expect(providerFetch?.execute).toBeDefined();
+    expect(providerFetch?.description).toContain("public HTTPS");
+    expect(providerFetch?.description).toContain("untrusted external web content");
+    expect(finalFetch?.type).not.toBe("provider");
+    expect(finalFetch?.execute).toBe(providerFetch?.execute);
   });
 });
