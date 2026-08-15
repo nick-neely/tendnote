@@ -5,6 +5,7 @@ import {
   createGoogleCalendarAdapter,
   readConnectedOwnerCalendar,
 } from "@tendnote/db/queries/calendar";
+import { recordProviderConnectionError } from "@tendnote/db/queries/provider-connections";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
 import {
@@ -18,6 +19,8 @@ import {
 const PREVIEW_LOOKBACK_MS = 60 * 60 * 1000;
 const PREVIEW_LOOKAHEAD_MS = 7 * 24 * 60 * 60 * 1000;
 const PREVIEW_MAX_RESULTS = 6;
+const CALENDAR_REAUTH_MESSAGE =
+  "Google Calendar needs to be reconnected. Use Connect in Integrations to restore access.";
 
 /**
  * Build the account-page Calendar preview for the admitted owner (Phase 2C, #110).
@@ -62,7 +65,7 @@ export async function getOwnerCalendarPreview(
 
   // Shared owner-scoped read: gates on the connection, reads the bounded window,
   // and degrades gracefully — the same seam Eve and the brief dispatcher use.
-  const { connected, result } = await readConnectedOwnerCalendar(
+  const { connected, result, requiresReauthorization } = await readConnectedOwnerCalendar(
     {
       ...ref,
       calendarId: target?.calendarId,
@@ -75,8 +78,26 @@ export async function getOwnerCalendarPreview(
       maxResults: target ? 50 : PREVIEW_MAX_RESULTS,
       query: target?.query,
     },
-    { reader: createDefaultCalendarReader(adapter) },
+    {
+      reader: createDefaultCalendarReader(adapter),
+      onAuthorizationFailure: async ({ ref, error }) => {
+        // Keep runtime diagnostics useful without ever logging tokens or provider
+        // payloads. The persisted message is similarly safe and user-actionable.
+        console.warn("[tendnote] Google Calendar authorization failed", {
+          ownerUserId: ref.ownerUserId,
+          failureKind: error.kind,
+          providerStatus: error.status ?? null,
+        });
+        await recordProviderConnectionError({ ...ref, message: CALENDAR_REAUTH_MESSAGE });
+      },
+    },
   );
 
-  return buildCalendarPreviewView({ connected, result, now, targetEventId });
+  return buildCalendarPreviewView({
+    connected,
+    result,
+    requiresReauthorization,
+    now,
+    targetEventId,
+  });
 }

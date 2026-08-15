@@ -98,6 +98,17 @@ describe("buildCalendarPreviewView", () => {
     });
   });
 
+  it("shows a reconnect state when the provider authorization must be renewed", () => {
+    expect(
+      buildCalendarPreviewView({
+        connected: true,
+        result: null,
+        requiresReauthorization: true,
+        now: NOW,
+      }),
+    ).toEqual({ state: "needs_reconnect" });
+  });
+
   it("shows a calm empty state when connected with no events", () => {
     const view = buildCalendarPreviewView({
       connected: true,

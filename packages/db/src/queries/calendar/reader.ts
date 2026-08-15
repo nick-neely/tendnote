@@ -5,6 +5,7 @@ import {
   calendarWindowKey,
   DEFAULT_CALENDAR_ID,
 } from "@tendnote/domain";
+import { isCalendarAuthorizationError } from "./errors";
 import type {
   CalendarCacheStore,
   CalendarConnectionRef,
@@ -99,6 +100,15 @@ export function createCalendarReader(options: CalendarReaderOptions) {
         await options.cacheStore.evictExpired({ ref, now: new Date(nowMs), staleMaxMs });
         return { events, source: "live", stale: false, fetchedAt, expiresAt };
       } catch (error) {
+        // An authorization failure is not transient provider noise. Do not serve
+        // potentially sensitive calendar data from an expired cache while the
+        // owner's grant or token is unusable.
+        if (isCalendarAuthorizationError(error)) {
+          throw new CalendarUnavailableError("Calendar authorization is unavailable.", {
+            cause: error,
+          });
+        }
+
         // Live failure (transient quota/network/etc.): serve a fresh-enough expired
         // cache entry as stale rather than blocking the surface (ADR-0081).
         if (cached && nowMs - cached.fetchedAt.getTime() <= staleMaxMs) {
