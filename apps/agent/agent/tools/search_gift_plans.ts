@@ -41,7 +41,7 @@ const inputSchema = z.object({
  */
 export default defineTool({
   description:
-    "List or search the Gift Plans the caller is currently allowed to see — their own plans, plus plans another household member has explicitly made them a co-planner on. Use for 'what gift plans do I have?', 'what are we doing for Ana's birthday?', 'any plans coming up?'. Returns the plan's subject, occasion, timing, status, and how many ideas are on it; open the plan itself to read or add ideas. Results are already scope-filtered — a plan you do not get back is a plan that does not exist for this user, and you must never say a plan might exist, might be hidden, or is a surprise you cannot mention. Do not use this to create a plan, to guess who else is on one, or to look up the person's birthday (that is a Person fact).",
+    "List or search the Gift Plans the caller is currently allowed to see — their own plans, plus plans another household member has explicitly made them a co-planner on. Use for 'what gift plans do I have?', 'what are we doing for Ana's birthday?', 'any plans coming up?'. Returns the plan's subject, occasion, timing, status, and how many ideas are on it, never the ideas themselves; call `get_gift_plan` with a plan's `giftPlanId` to read those. Results are already scope-filtered — a plan you do not get back is a plan that does not exist for this user, and you must never say a plan might exist, might be hidden, or is a surprise you cannot mention. Do not use this to create a plan, to guess who else is on one, or to look up the person's birthday (that is a Person fact).",
   inputSchema,
   async execute(input, ctx) {
     const callerUserId = resolveOwnerUserId(ctx);
