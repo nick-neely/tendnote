@@ -460,7 +460,10 @@ describe("Global Recall", () => {
         includeRestricted: true,
         family: "all",
       }),
-    ).rejects.toThrow("Choose one record family");
+      // The refusal names the field to set and the value that is wrong, because for the
+      // model-facing copy of this schema that message is the only instruction a
+      // rejected caller reads.
+    ).rejects.toThrow(/Set `family` to one specific record family/);
 
     expect(searchRelationshipExact.mock.calls.map(([input]) => input.directlyRequested)).toEqual([
       false,

@@ -21,12 +21,50 @@ export const exactRecallTrustLevelSchema = z.enum([
 ]);
 
 export const searchRelationshipContextSchema = z.object({
-  query: z.string().trim().min(1).max(400),
-  personId: z.uuid().optional(),
-  recordKinds: z.array(exactRecallRecordKindSchema).min(1).max(4).optional(),
-  limit: z.number().int().min(1).max(20).default(8),
-  directlyRequested: z.boolean().default(false),
-  includeArchived: z.boolean().default(false),
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .max(400)
+    .describe(
+      "The literal text to find, in the user's own words. This is exact text search: " +
+        "wording that is merely similar will not match (use semantic search for that).",
+    ),
+  personId: z
+    .uuid()
+    .optional()
+    .describe(
+      "Narrow to one person, using an id resolved with `search_people` - never a guessed " +
+        "one. Omit to search across everyone.",
+    ),
+  recordKinds: z
+    .array(exactRecallRecordKindSchema)
+    .min(1)
+    .max(4)
+    .optional()
+    .describe("Restrict to particular record kinds. Omit for all of them, which is usually right."),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(8)
+    .describe("Max records to return, best match first. Omit for the ordinary small set."),
+  directlyRequested: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Reveal restricted-sensitivity records, which every ordinary search withholds. Set " +
+        "true ONLY when the user explicitly asked about that delicate context in this turn " +
+        "and the query names it - never speculatively, and never to widen a thin result.",
+    ),
+  includeArchived: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Include records the user archived. Leave false unless they explicitly ask for " +
+        "archived or older context.",
+    ),
   // Owner-only review context: when true, the caller's own `suggested` General Actions
   // may be found by exact recall so a review surface can look up grounded proposals. A
   // suggested proposal stays owner-only regardless — never scope-visible to a member

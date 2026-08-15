@@ -33,16 +33,19 @@ const inputSchema = z.object({
  *
  * The draft's status is untouched by construction: the shared lifecycle's body edit
  * writes the body and an audit line, and every transition (approve, dismiss, mark sent
- * manually) is a different call. An approved draft is not editable at all - the seam
- * refuses it - which is what keeps "the user approved this text" a statement about the
- * text they actually approved.
+ * manually) is a different call. An *active* draft is editable whichever side of
+ * approval it sits on - the same rule the person page applies
+ * (`apps/web/src/components/person-drafts.tsx`, `isActive`) - and the seam refuses only
+ * a draft that is finished with: dismissed, or already sent by the user themselves.
+ * Editing after approval is the user's own correction to make; the status simply stops
+ * describing text they have read, which is why the result reports it back.
  *
  * Nothing here sends. `save_draft_to_gmail` remains the only path out of Tendnote and
  * still runs the same explicit approval gate the web surface does (ADR 0092).
  */
 export default defineTool({
   description:
-    "Rewrite the body of one of the user's existing Tendnote message drafts, when they ask for a change in the current turn ('make it shorter', 'take out the bit about the move', 'warmer opening'). Requires a draftId from `list_message_drafts` or from creating it. Send the COMPLETE new text: start from what the draft says now and apply only what they asked for this turn - never regenerate the message from scratch, never quietly improve wording they did not mention, and never fold in facts they did not ask you to add. Do NOT use this to write a new draft (`create_message_draft`), to act on your own idea of a better message, or to change a draft the user has already approved - approved text is theirs, and it is refused here. This changes text only: it does not approve, dismiss, send, or export anything, and saving to Gmail is still `save_draft_to_gmail` with its own approval gate. Returns the updated draft reference; say what you changed, briefly.",
+    "Rewrite the body of one of the user's existing Tendnote message drafts, when they ask for a change in the current turn ('make it shorter', 'take out the bit about the move', 'warmer opening'). Requires a draftId from `list_message_drafts` or from creating it. Send the COMPLETE new text: start from what the draft says now and apply only what they asked for this turn - never regenerate the message from scratch, never quietly improve wording they did not mention, and never fold in facts they did not ask you to add. Do NOT use this to write a new draft (`create_message_draft`) or to act on your own idea of a better message. An already-approved draft can still be edited when the user asks for the change - say that the approval no longer covers the new wording. A dismissed or already-sent draft cannot be edited at all, and the attempt is refused. This changes text only: it does not approve, dismiss, send, or export anything, and saving to Gmail is still `save_draft_to_gmail` with its own approval gate. Returns the updated draft reference; say what you changed, briefly.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

@@ -13,6 +13,21 @@ const { suggestAsset, suggestAssetMemories } = vi.hoisted(() => ({
 }));
 const { captureSourceRecord } = vi.hoisted(() => ({ captureSourceRecord: vi.fn() }));
 
+/**
+ * The commit boundary, recorded rather than opened.
+ *
+ * `propose_asset_memories` captures the grounding Source Record and writes the
+ * proposal inside one `withDatabaseTransaction`. Unmocked, that reaches the real
+ * `getDb()` - which falls back to the local dev database URL, so this suite would
+ * quietly stop being a unit test and start depending on a running Postgres. The
+ * pass-through keeps it a unit test and still lets the tests below assert that
+ * both writes happened inside exactly one boundary.
+ */
+const { withDatabaseTransaction } = vi.hoisted(() => ({
+  withDatabaseTransaction: vi.fn(<T>(run: () => Promise<T>) => run()),
+}));
+
+vi.mock("@tendnote/db/client", () => ({ withDatabaseTransaction }));
 vi.mock("@tendnote/db/queries/asset-search", () => ({ searchAssets }));
 vi.mock("@tendnote/db/queries/asset-snapshots", () => ({ getAssetSnapshot }));
 vi.mock("@tendnote/db/queries/assets", () => ({
@@ -57,7 +72,12 @@ beforeEach(() => {
 
 /** `inputSchema` is the zod object at runtime (the Standard-schema type hides safeParse). */
 function inputParser(tool: { inputSchema: unknown }) {
-  return tool.inputSchema as { safeParse: (value: unknown) => { success: boolean } };
+  return tool.inputSchema as {
+    safeParse: (value: unknown) => {
+      success: boolean;
+      error?: { issues: Array<{ message: string }> };
+    };
+  };
 }
 
 function assetMemoryResult(overrides: Record<string, unknown> = {}) {
@@ -591,5 +611,90 @@ describe("propose_asset_memories tool", () => {
         ctx,
       ),
     ).rejects.toThrow(/archived/i);
+  });
+
+  /**
+   * The tool's description promises "This SAVES NOTHING". It wrote the grounding
+   * Source Record in its own commit before the review-gated write, so a failure in
+   * the second one left a durable record of the user's sentence attached to
+   * nothing - a saved thing, in an account whose owner had just been told nothing
+   * was saved. There is no `deleteSourceRecord` to compensate with, so the fix is
+   * the commit boundary and these pin it.
+   */
+  describe("evidence and proposal commit together", () => {
+    it("writes the source record and the proposal inside one transaction", async () => {
+      suggestAssetMemories.mockResolvedValue({ result: groupResult(), affectedScopes: [] });
+
+      await proposeAssetMemoriesTool.execute(
+        { assetId: ASSET_ID, saidByUser: SAID, details: [detail] },
+        ctx,
+      );
+
+      expect(withDatabaseTransaction).toHaveBeenCalledTimes(1);
+      const boundary = withDatabaseTransaction.mock.invocationCallOrder[0] as number;
+      expect(captureSourceRecord.mock.invocationCallOrder[0]).toBeGreaterThan(boundary);
+      expect(suggestAssetMemories.mock.invocationCallOrder[0]).toBeGreaterThan(boundary);
+    });
+
+    it("lets a failed proposal roll the source record back rather than orphaning it", async () => {
+      suggestAssetMemories.mockRejectedValue(LEAKY_STORE_ERROR);
+
+      await expect(
+        proposeAssetMemoriesTool.execute(
+          { assetId: ASSET_ID, saidByUser: SAID, details: [detail] },
+          ctx,
+        ),
+      ).rejects.toThrow(/could not read the user's records/i);
+
+      // The capture was attempted, and the rejection escaped the boundary: a real
+      // transaction therefore rolls it back rather than leaving the note behind.
+      expect(captureSourceRecord).toHaveBeenCalledTimes(1);
+      await expect(withDatabaseTransaction.mock.results[0]?.value).rejects.toThrow();
+    });
+  });
+
+  describe("anchor rule", () => {
+    it("refuses a call with no anchor at all, naming both ways to fix it", () => {
+      const parsed = inputParser(proposeAssetMemoriesTool).safeParse({
+        saidByUser: SAID,
+        details: [detail],
+      });
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]?.message).toMatch(/pass exactly one anchor/i);
+      expect(parsed.error?.issues[0]?.message).toMatch(/search_assets/);
+    });
+
+    it("refuses both anchors rather than silently dropping newAsset", () => {
+      // The old schema accepted this, `assetId` won, and the model's own statement
+      // that the search had found nothing was thrown away.
+      const parsed = inputParser(proposeAssetMemoriesTool).safeParse({
+        assetId: ASSET_ID,
+        newAsset: { name: "Kitchen refrigerator", kind: "appliance" },
+        saidByUser: SAID,
+        details: [detail],
+      });
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]?.message).toMatch(/pass exactly one anchor/i);
+      expect(parsed.error?.issues[0]?.message).toMatch(/would have been dropped/i);
+    });
+
+    it("accepts exactly one anchor, either way round", () => {
+      expect(
+        inputParser(proposeAssetMemoriesTool).safeParse({
+          assetId: ASSET_ID,
+          saidByUser: SAID,
+          details: [detail],
+        }).success,
+      ).toBe(true);
+      expect(
+        inputParser(proposeAssetMemoriesTool).safeParse({
+          newAsset: { name: "Kitchen refrigerator", kind: "appliance" },
+          saidByUser: SAID,
+          details: [detail],
+        }).success,
+      ).toBe(true);
+    });
   });
 });

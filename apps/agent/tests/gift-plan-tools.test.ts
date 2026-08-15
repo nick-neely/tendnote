@@ -2,18 +2,25 @@ import { HouseholdRecordUnavailableError } from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { asTestTool, toolModelValue } from "./test-tool";
 
-const { listGiftPlans, searchGiftPlans, addGiftIdea, editGiftIdea, removeGiftIdea } = vi.hoisted(
-  () => ({
-    listGiftPlans: vi.fn(),
-    searchGiftPlans: vi.fn(),
-    addGiftIdea: vi.fn(),
-    editGiftIdea: vi.fn(),
-    removeGiftIdea: vi.fn(),
-  }),
-);
+const {
+  listGiftPlans,
+  searchGiftPlans,
+  getGiftPlanDetail,
+  addGiftIdea,
+  editGiftIdea,
+  removeGiftIdea,
+} = vi.hoisted(() => ({
+  listGiftPlans: vi.fn(),
+  searchGiftPlans: vi.fn(),
+  getGiftPlanDetail: vi.fn(),
+  addGiftIdea: vi.fn(),
+  editGiftIdea: vi.fn(),
+  removeGiftIdea: vi.fn(),
+}));
 vi.mock("@tendnote/db/queries/gift-plans", () => ({
   listGiftPlans,
   searchGiftPlans,
+  getGiftPlanDetail,
   addGiftIdea,
   editGiftIdea,
   removeGiftIdea,
@@ -27,10 +34,12 @@ vi.mock("../agent/lib/request-affected-scope-reconciliation", () => ({
 }));
 
 const { default: rawSearchTool } = await import("../agent/tools/search_gift_plans");
+const { default: rawGetTool } = await import("../agent/tools/get_gift_plan");
 const { default: rawAddTool } = await import("../agent/tools/add_gift_idea");
 const { default: rawEditTool } = await import("../agent/tools/edit_gift_idea");
 const { default: rawRemoveTool } = await import("../agent/tools/remove_gift_idea");
 const searchTool = asTestTool(rawSearchTool);
+const getTool = asTestTool(rawGetTool);
 const addTool = asTestTool(rawAddTool);
 const editTool = asTestTool(rawEditTool);
 const removeTool = asTestTool(rawRemoveTool);
@@ -274,5 +283,130 @@ describe("remove_gift_idea", () => {
       HouseholdRecordUnavailableError,
     );
     expect(requestBackgroundAffectedScopeReconciliation).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The read that made `edit_gift_idea` and `remove_gift_idea` usable at all.
+ *
+ * `search_gift_plans` returns counts, not ideas, so the only `giftIdeaId` in Eve's
+ * context was the one `add_gift_idea` had just minted. "Actually make that the
+ * cashmere one" worked a minute after adding and was unanswerable the next morning.
+ */
+describe("get_gift_plan", () => {
+  function idea(overrides: Record<string, unknown> = {}) {
+    return {
+      id: IDEA_ID,
+      giftPlanId: "plan-1",
+      contributorUserId: "user-1",
+      title: "Wool scarf",
+      note: "Navy, from the market",
+      url: null,
+      claimedByUserId: null,
+      claimedAt: null,
+      lastActorUserId: null,
+      revision: 0,
+      createdAt: new Date("2026-08-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-01T00:00:00.000Z"),
+      ...overrides,
+    };
+  }
+
+  it("asks the seam with the caller's own id and no household or audience argument", async () => {
+    getGiftPlanDetail.mockResolvedValue({ plan: plan(), ideas: [idea()], events: [] });
+
+    await getTool.execute({ giftPlanId: PLAN_ID, limit: 20 }, ctx);
+
+    // The whole safety property: the only identity it can name is the session's, and
+    // there is no argument shape that widens the read.
+    expect(getGiftPlanDetail).toHaveBeenCalledWith({
+      callerUserId: "user-1",
+      giftPlanId: PLAN_ID,
+    });
+  });
+
+  it("hands the model the idea handles its edit and remove tools require", async () => {
+    getGiftPlanDetail.mockResolvedValue({ plan: plan(), ideas: [idea()], events: [] });
+
+    const output = await getTool.execute({ giftPlanId: PLAN_ID, limit: 20 }, ctx);
+    const value = toolModelValue(getTool, output) as {
+      ideas: Array<{ giftIdeaId: string; addedByCaller: boolean; claimed: boolean }>;
+    };
+
+    // Without this the two mutation tools are unreachable across sessions, which is
+    // the entire reason this tool exists.
+    expect(value.ideas[0]?.giftIdeaId).toBe(IDEA_ID);
+    expect(value.ideas[0]?.addedByCaller).toBe(true);
+    expect(value.ideas[0]?.claimed).toBe(false);
+  });
+
+  it("says an idea is claimed without saying by whom, and names no co-planner", async () => {
+    getGiftPlanDetail.mockResolvedValue({
+      plan: plan(),
+      ideas: [idea({ contributorUserId: "user-2", claimedByUserId: "user-2" })],
+      events: [{ id: "event-1", kind: "idea_claimed", actorUserId: "user-2" }],
+    });
+
+    const output = await getTool.execute({ giftPlanId: PLAN_ID, limit: 20 }, ctx);
+    const value = toolModelValue(getTool, output) as {
+      ideas: Array<{ claimed: boolean; claimedByCaller: boolean; addedByCaller: boolean }>;
+    };
+    const serialized = JSON.stringify(value.ideas);
+
+    // A claim stops two co-planners buying the same scarf; the claimer's name is
+    // gossip about a household. Neither the audience nor the event log travels.
+    expect(value.ideas[0]?.claimed).toBe(true);
+    expect(value.ideas[0]?.claimedByCaller).toBe(false);
+    expect(value.ideas[0]?.addedByCaller).toBe(false);
+    expect(serialized).not.toContain("user-2");
+    expect(serialized).not.toContain("user-9");
+    expect(serialized).not.toContain("event-1");
+    expect(JSON.stringify(value)).not.toContain("surprise");
+  });
+
+  /**
+   * The Surprise Subject case. The seam refuses at the `view` proof and answers
+   * `null`, which must reach the model as the same nothing a stranger gets: no
+   * count, no title, no hedge, and no invitation to retry with another id.
+   */
+  it("reports a refused plan as absent, byte-identically to one that does not exist", async () => {
+    getGiftPlanDetail.mockResolvedValue(null);
+
+    const output = await getTool.execute({ giftPlanId: PLAN_ID, limit: 20 }, ctx);
+    const value = toolModelValue(getTool, output);
+
+    expect(output.found).toBe(false);
+    expect(value.found).toBe(false);
+    expect(Object.keys(value).sort()).toEqual(["found", "guidance"]);
+    expect(value.guidance).toMatch(/do not say it might exist/i);
+    expect(value.guidance).toMatch(/do not retry/i);
+    expect(JSON.stringify(value)).not.toContain("Rowan");
+  });
+
+  it("bounds the ideas it returns and says so when it truncated", async () => {
+    getGiftPlanDetail.mockResolvedValue({
+      plan: plan(),
+      ideas: [idea(), idea({ id: "22222222-2222-4222-8222-222222222223" })],
+      events: [],
+    });
+
+    const output = await getTool.execute({ giftPlanId: PLAN_ID, limit: 1 }, ctx);
+    const value = toolModelValue(getTool, output) as {
+      count: number;
+      truncated: boolean;
+      guidance: string;
+    };
+
+    expect(value.count).toBe(1);
+    expect(value.truncated).toBe(true);
+    expect(value.guidance).toMatch(/more ideas are on the plan/i);
+  });
+
+  it("passes the seam's one opaque refusal through unchanged", async () => {
+    getGiftPlanDetail.mockRejectedValue(new HouseholdRecordUnavailableError());
+
+    await expect(getTool.execute({ giftPlanId: PLAN_ID, limit: 20 }, ctx)).rejects.toBeInstanceOf(
+      HouseholdRecordUnavailableError,
+    );
   });
 });

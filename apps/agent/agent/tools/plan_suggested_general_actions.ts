@@ -1,3 +1,4 @@
+import { withDatabaseTransaction } from "@tendnote/db/client";
 import { suggestGeneralAction } from "@tendnote/db/queries/general-actions";
 import { generalActionRecurrenceSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
@@ -15,6 +16,18 @@ import { withModelSafeStoreErrors } from "../lib/store-errors";
  */
 export const MAX_SHALLOW_PLAN_ACTIONS = 5;
 
+/**
+ * One proposed step. Deliberately a subset of what `suggest_general_action` takes:
+ * there is no `links`, and that is the decision rather than an oversight.
+ *
+ * A single suggestion is grounded in a record the user produced, so a link on it
+ * can be one they supplied. A plan is grounded in one note - "help me plan the
+ * camping trip" - and then decomposed by the model, so a URL on step 3 has no
+ * source but the model itself. That is the one thing a review-gated proposal must
+ * never smuggle in, and here it would arrive up to five at a time. A link the user
+ * actually wants goes on the step after they accept it, with
+ * `edit_general_action`, where they are looking at the action they own.
+ */
 const stepSchema = z.object({
   title: z
     .string()
@@ -77,31 +90,52 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    // Propose each step through the same review-gated seam in order, so a shallow plan
-    // is just a small batch of ordinary suggestions — no special bulk path, no active
-    // writes. Sequential keeps the persisted/embedded order stable and predictable.
-    const proposed = [];
-    for (const step of input.steps) {
-      const outcome = await withModelSafeStoreErrors(() =>
-        suggestGeneralAction({
-          ownerUserId,
-          title: step.title,
-          notes: step.notes ?? null,
-          dueAt: step.dueAt ? new Date(step.dueAt) : null,
-          recurrence: step.recurrence ?? null,
-          areaId: step.areaId ?? null,
-          personIds: step.personIds,
-          sourceRecordId: input.sourceRecordId,
-          directlyRequested: input.directlyRequested,
-        }),
-      );
+    /**
+     * A plan is one thing, so it commits as one thing.
+     *
+     * Each step used to be its own commit. A failure at step k therefore left k-1
+     * Suggested General Actions in the user's review queue and told the model the
+     * whole call had failed - half a plan the user never asked for, presented as
+     * nothing at all, with no way for either of them to tell which half. Every
+     * store call under the shared ambient transaction joins it through `getDb()`,
+     * so the loop becomes atomic without a bulk entry point the seam does not have.
+     *
+     * Still sequential inside the boundary: it keeps the persisted and embedded
+     * order stable, and it is still the same ordinary review-gated seam a single
+     * `suggest_general_action` uses - no special bulk path, no active writes.
+     */
+    const outcomes = await withModelSafeStoreErrors(() =>
+      withDatabaseTransaction(async () => {
+        const written = [];
+        for (const step of input.steps) {
+          written.push(
+            await suggestGeneralAction({
+              ownerUserId,
+              title: step.title,
+              notes: step.notes ?? null,
+              dueAt: step.dueAt ? new Date(step.dueAt) : null,
+              recurrence: step.recurrence ?? null,
+              areaId: step.areaId ?? null,
+              personIds: step.personIds,
+              sourceRecordId: input.sourceRecordId,
+              directlyRequested: input.directlyRequested,
+            }),
+          );
+        }
+        return written;
+      }),
+    );
+
+    // After the commit, never inside it: reconciliation is a cache call, and a
+    // transport failure there must not roll back a plan the user can already see.
+    for (const outcome of outcomes) {
       await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
-      const result = outcome.result;
-      proposed.push({
-        component: result.component,
-        action: toGeneralActionRef(result.action),
-      });
     }
+
+    const proposed = outcomes.map((outcome) => ({
+      component: outcome.result.component,
+      action: toGeneralActionRef(outcome.result.action),
+    }));
 
     return {
       found: true as const,

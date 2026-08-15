@@ -13,18 +13,57 @@ import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
-const inputSchema = z.object({
-  followupId: z.uuid().describe("The persisted follow-up id to update."),
-  status: z
-    .enum(["complete", "dismiss", "snooze", "reopen", "archive"])
-    .describe("The lifecycle transition to apply. 'snooze' also requires a new dueAt."),
-  dueAt: z
-    .string()
-    .optional()
-    .describe(
-      "New concrete due date as an ISO 8601 string, required when status is 'snooze'. Resolve relative phrases to a concrete date; ask the user if the new timing is ambiguous.",
-    ),
-});
+/**
+ * `dueAt` belongs to exactly one transition, enforced at parse time.
+ *
+ * Both halves matter. Without a date, `snooze` used to reach the executor and
+ * throw a bare `Error` the model met as the opaque store sentence. With a date on
+ * some *other* status, the call parsed, ignored the date, and applied that other
+ * status - so "push Alex's reminder to next week" sent as `{complete, dueAt}`
+ * completed the reminder instead. Both are refused here, where the message can
+ * name the field to fix.
+ *
+ * A refinement over a flat object rather than a discriminated union: eve hands
+ * this schema to the provider as JSON Schema, and zod renders a top-level union
+ * as a root `oneOf` with no `"type": "object"`.
+ */
+const inputSchema = z
+  .object({
+    followupId: z.uuid().describe("The persisted follow-up id to update."),
+    status: z
+      .enum(["complete", "dismiss", "snooze", "reopen", "archive"])
+      .describe(
+        "The lifecycle transition to apply. 'snooze' requires a new dueAt and every other transition forbids one.",
+      ),
+    dueAt: z
+      .string()
+      .optional()
+      .describe(
+        "New concrete due date as an ISO 8601 string. Required when status is 'snooze', and not accepted with any other status. Resolve relative phrases to a concrete date; ask the user if the new timing is ambiguous.",
+      ),
+  })
+  .superRefine((input, ctx) => {
+    if (input.status === "snooze" && input.dueAt === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Snoozing a follow-up needs a new due date: pass dueAt as an ISO 8601 date. Ask the " +
+          "user when it should come back if the new timing is ambiguous.",
+        path: ["dueAt"],
+      });
+      return;
+    }
+    if (input.status !== "snooze" && input.dueAt !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          `dueAt applies only to status "snooze", not "${input.status}" - this call would have ` +
+          `applied "${input.status}" to the follow-up and silently dropped the date. Use status ` +
+          '"snooze" to move it out.',
+        path: ["dueAt"],
+      });
+    }
+  });
 
 type UpdateFollowupInput = z.infer<typeof inputSchema>;
 
@@ -45,6 +84,9 @@ const followupTransitions: Record<
   archive: ({ followupId }, ownerUserId) =>
     archiveFollowup({ actorUserId: ownerUserId, followupId }),
   snooze: ({ followupId, dueAt }, ownerUserId) => {
+    // Unreachable through the tool: the schema refuses `snooze` without a date before
+    // `execute` runs. Kept because this is also the type narrowing, and a silent
+    // `new Date(undefined)` here would snooze the follow-up to Invalid Date.
     if (!dueAt) {
       throw new Error("Snoozing a follow-up needs a new due date.");
     }

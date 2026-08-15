@@ -1,6 +1,7 @@
 import {
   type AccessDecision,
   GeneralActionValidationError,
+  MessageDraftValidationError,
   SavedItemUnavailableDestinationError,
 } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
@@ -157,6 +158,19 @@ describe("owner action seam", () => {
         result: (output) => output,
       }),
     ).resolves.toEqual({ ok: false, error: "That action cannot be reopened." });
+
+    // The draft lifecycle's refusals are the same kind of fact: the user's own
+    // record, said in a sentence they can act on rather than a generic failure.
+    await expect(
+      runOwnerAction({
+        schema: z.string(),
+        input: "valid",
+        body: async () => {
+          throw new MessageDraftValidationError("Cannot edit a draft that is dismissed.");
+        },
+        result: (output) => output,
+      }),
+    ).resolves.toEqual({ ok: false, error: "Cannot edit a draft that is dismissed." });
 
     deps.enforceBudget.mockRejectedValueOnce(
       new ProductRateLimitError({

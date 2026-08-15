@@ -19,24 +19,65 @@ import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
-const inputSchema = z.object({
-  generalActionId: z
-    .uuid()
-    .describe(
-      "The exact persisted action id to update — resolve it deterministically first with list_general_actions or search. Never guess; if more than one action could match the user's words, ask which one instead of calling this.",
-    ),
-  action: z
-    .enum(["complete", "defer", "dismiss", "reopen", "archive", "pause", "resume"])
-    .describe(
-      "The lifecycle transition to apply. 'defer' also requires deferUntil. 'pause'/'resume' apply only to Routines. Invalid transitions are rejected by the shared layer.",
-    ),
-  deferUntil: z
-    .string()
-    .optional()
-    .describe(
-      "Concrete resurface date as an ISO 8601 string, required when action is 'defer'. Resolve relative phrases to a concrete date; ask if the timing is ambiguous.",
-    ),
-});
+/**
+ * `deferUntil` belongs to exactly one transition, enforced at parse time.
+ *
+ * The pairing used to live only in the executor, so the model learned it from a
+ * thrown error after the call rather than from the schema before it - and the
+ * *other* half was not checked at all: `{action:"complete", deferUntil:"…"}`
+ * parsed, ignored the date, and completed the action. A user saying "push this
+ * to Friday" and getting it marked done is the worst outcome this tool has, so
+ * both halves are refused here, where the message can name the field to fix.
+ *
+ * A discriminated union would express this in the schema's *shape*, and was the
+ * first choice. It is not used because eve hands the tool's JSON Schema straight
+ * to the provider, and zod renders a top-level union as a root `oneOf` with no
+ * `"type": "object"` - which is not a tool input schema the Messages API accepts.
+ * The constraint therefore rides on a refinement over a plain object, which is
+ * the same guarantee (invalid input never reaches `execute`) in a shape every
+ * provider takes.
+ */
+const inputSchema = z
+  .object({
+    generalActionId: z
+      .uuid()
+      .describe(
+        "The exact persisted action id to update - resolve it deterministically first with list_general_actions or search. Never guess; if more than one action could match the user's words, ask which one instead of calling this.",
+      ),
+    action: z
+      .enum(["complete", "defer", "dismiss", "reopen", "archive", "pause", "resume"])
+      .describe(
+        "The lifecycle transition to apply. 'defer' requires deferUntil and every other transition forbids it. 'pause'/'resume' apply only to Routines. Invalid transitions are rejected by the shared layer.",
+      ),
+    deferUntil: z
+      .string()
+      .optional()
+      .describe(
+        "Concrete resurface date as an ISO 8601 string. Required when action is 'defer', and not accepted with any other action - to move an action's due date without deferring it, use edit_general_action. Resolve relative phrases to a concrete date; ask if the timing is ambiguous.",
+      ),
+  })
+  .superRefine((input, ctx) => {
+    if (input.action === "defer" && input.deferUntil === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Deferring an action needs a concrete resurface date: pass deferUntil as an ISO 8601 " +
+          "date. Ask the user when it should come back if the timing is ambiguous.",
+        path: ["deferUntil"],
+      });
+      return;
+    }
+    if (input.action !== "defer" && input.deferUntil !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          `deferUntil applies only to action "defer", not "${input.action}" - this call would ` +
+          `have applied "${input.action}" to the action and silently dropped the date. Use ` +
+          'action "defer" to push it out, or edit_general_action to change its due date.',
+        path: ["deferUntil"],
+      });
+    }
+  });
 
 type UpdateInput = z.infer<typeof inputSchema>;
 
@@ -61,6 +102,9 @@ function applyTransition(
     case "resume":
       return resumeGeneralAction({ actorUserId: ownerUserId, generalActionId });
     case "defer": {
+      // Unreachable through the tool: the schema refuses `defer` without a date before
+      // `execute` runs. Kept because the executor is also the type narrowing, and a
+      // silent `new Date(undefined)` here would defer the action to Invalid Date.
       if (!input.deferUntil) {
         throw new GeneralActionValidationError(
           "Deferring an action needs a concrete resurface date.",

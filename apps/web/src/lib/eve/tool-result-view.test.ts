@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { formatSurfacingDay, RENDERED_TOOL_NAMES } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import {
@@ -1715,37 +1717,42 @@ describe("activeToolLabel (in-flight tool → working copy)", () => {
   it("has an explicit working label for every rendered tool in the shared contract", () => {
     // Every tool that persists a renderable result (the @tendnote/domain registry)
     // must have a hand-written shimmer label, so the label map can't silently drift
-    // behind the contract and fall back to the slugified tool name.
+    // behind the contract and fall back to the slugified tool name. This half also
+    // covers the two subagent tools that reach the chat, which have no file in the
+    // root tool directory the next test walks.
     for (const toolName of RENDERED_TOOL_NAMES) {
       const fallback = `${toolName.replace(/_/g, " ")}…`;
       expect(activeToolLabel(toolName)).not.toBe(fallback);
     }
   });
 
-  it("has an explicit working label for the prose mutation tools", () => {
-    // These render no card, so they are absent from RENDERED_TOOL_NAMES - but they
-    // still run and shimmer, and must not fall back to a slugified tool name mid-flight.
+  it("has an explicit working label for every tool Eve can call, card or not", () => {
+    // Derived from the tool directory rather than from a list kept here.
     //
-    // The list grew past the General Action four when Eve gained explicit-instruction
-    // writes for assets, gift ideas, memories, and drafts. None of them earns a card: a
-    // rename, a correction, an archive, and a draft revision are each a confirmation in
-    // one sentence, and the record's own surface is where the result belongs.
-    const proseMutationTools = [
-      "accept_suggested_general_action",
-      "dismiss_suggested_general_action",
-      "edit_general_action",
-      "update_general_action_status",
-      "create_asset",
-      "edit_asset",
-      "edit_gift_idea",
-      "remove_gift_idea",
-      "archive_memory",
-      "edit_draft_body",
-      "dismiss_draft",
-    ];
-    for (const toolName of proseMutationTools) {
+    // A shimmer label is a property of the *call*, so the set it has to cover is
+    // every tool Eve can call - and most of them render no card at all, which is why
+    // RENDERED_TOOL_NAMES above cannot be the whole check. The hand-written array
+    // that used to fill the gap only ever caught a tool someone remembered to add to
+    // it; the prose mutation tools it named were added long after the tools shipped.
+    // `agent/tools/*.ts` is the authoring surface itself, so a tool that lands there
+    // without a label fails here on the same commit that adds it. The exclusions are
+    // the two file kinds that author no callable tool: the `disableTool()` sentinels
+    // that switch a framework tool off, and the dynamic mode gate.
+    const toolsDir = join(process.cwd(), "../agent/agent/tools");
+    const authoredTools = readdirSync(toolsDir)
+      .filter((file) => file.endsWith(".ts"))
+      .filter((file) => {
+        const source = readFileSync(join(toolsDir, file), "utf8");
+        return !/export default disableTool\(\)/.test(source) && !/defineDynamic/.test(source);
+      })
+      .map((file) => file.replace(/\.ts$/, ""));
+
+    expect(authoredTools.length).toBeGreaterThan(RENDERED_TOOL_NAMES.length);
+    for (const toolName of authoredTools) {
       const fallback = `${toolName.replace(/_/g, " ")}…`;
-      expect(activeToolLabel(toolName)).not.toBe(fallback);
+      expect(activeToolLabel(toolName), `${toolName} needs a hand-written label`).not.toBe(
+        fallback,
+      );
     }
   });
 });

@@ -11,6 +11,7 @@ import {
   GiftPlanValidationError,
   HouseholdRecordUnavailableError,
   HouseholdValidationError,
+  MessageDraftValidationError,
   PersonReferenceValidationError,
   RelationshipShareValidationError,
   SavedItemConflictError,
@@ -67,6 +68,10 @@ function userSafeErrorMessage(error: unknown): string | null {
     error instanceof ContextFactValidationError ||
     error instanceof GiftPlanValidationError ||
     error instanceof HouseholdValidationError ||
+    // The draft lifecycle's own refusals ("Cannot edit a draft that is
+    // dismissed.", "A draft edit must change the body."): facts about the user's
+    // record that the user can act on, and curated for exactly this reason.
+    error instanceof MessageDraftValidationError ||
     error instanceof RelationshipShareValidationError ||
     error instanceof PersonReferenceValidationError ||
     error instanceof ProductRateLimitError

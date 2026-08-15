@@ -86,6 +86,32 @@ describe("general action embed-on-write", () => {
     ]);
   });
 
+  it("keeps the write when the embedding fails, rather than failing the write with it", async () => {
+    // The trigger runs inline outside production, so a provider that is down throws
+    // where the caller writes - and `plan_suggested_general_actions` writes its whole
+    // plan in one transaction, which a thrown embedding would roll back in full.
+    const store = createInMemoryGeneralActionLifecycleStore();
+    const lifecycle = createGeneralActionLifecycle(store, {
+      scheduleGeneralActionEmbedding: async () => {
+        throw new Error("embedding provider unavailable");
+      },
+    });
+
+    const action = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Replace the refrigerator water filter",
+    });
+
+    expect(action).toMatchObject({ status: "open" });
+    await expect(
+      lifecycle.editGeneralAction({
+        actorUserId: OWNER,
+        generalActionId: action.id,
+        edit: { title: "Replace the fridge filter" },
+      }),
+    ).resolves.toMatchObject({ title: "Replace the fridge filter" });
+  });
+
   it("does not require a scheduler (defaults to a no-op)", async () => {
     const store = createInMemoryGeneralActionLifecycleStore();
     const lifecycle = createGeneralActionLifecycle(store);

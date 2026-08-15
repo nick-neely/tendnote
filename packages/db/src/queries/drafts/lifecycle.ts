@@ -2,6 +2,7 @@ import {
   assertMessageDraftEditable,
   type MessageDraft,
   type MessageDraftAction,
+  MessageDraftValidationError,
   resolveMessageDraftTransition,
 } from "@tendnote/domain";
 import type { DraftLifecycleStore } from "./types";
@@ -31,6 +32,10 @@ export function createDraftLifecycle(store: DraftLifecycleStore) {
   async function requireDraft(input: DraftActionInput): Promise<MessageDraft> {
     const draft = await store.getDraft(input);
 
+    // Deliberately a bare `Error`, unlike the state refusals below: a missing
+    // record reaches a model as an invitation to guess another id, and the opaque
+    // store sentence is the one that tells it to stop instead
+    // (`apps/agent/agent/lib/store-errors.ts`).
     if (!draft) {
       throw new Error("Message draft not found.");
     }
@@ -92,10 +97,10 @@ export function createDraftLifecycle(store: DraftLifecycleStore) {
 
       const body = input.body.trim();
       if (!body) {
-        throw new Error("A draft body cannot be empty.");
+        throw new MessageDraftValidationError("A draft body cannot be empty.");
       }
       if (body === draft.body) {
-        throw new Error("A draft edit must change the body.");
+        throw new MessageDraftValidationError("A draft edit must change the body.");
       }
 
       const updated = await store.updateDraft({

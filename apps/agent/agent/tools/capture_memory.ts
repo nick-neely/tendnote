@@ -21,6 +21,35 @@ const inputSchema = z.object({
     .describe("Override sensitivity when the user signals the context is delicate."),
 });
 
+/**
+ * Why there is no `approval:` gate on the one tool that writes a pre-approved
+ * durable memory.
+ *
+ * Eve supports `approval: once()`, and on its face this is the tool that wants
+ * one: it writes an *approved* memory, not a suggestion, so nothing downstream
+ * asks the user to confirm what was stored. The gate is nonetheless deliberately
+ * absent, because the surface that would have to render it does not.
+ *
+ * Eve's approval protocol parks the turn durably at `session.waiting` and waits
+ * for the client to answer with `inputResponses`. The web chat is the only place
+ * this tool runs, and it is built on `useEveAgent()`
+ * (`apps/web/src/components/assistant-panel.tsx`), which today: never reads an
+ * `input.requested` event; never calls the SDK's own `respond(...)`; and filters
+ * pending-approval tool parts out of the transcript entirely
+ * (`apps/web/src/lib/eve/message-views.ts` - `isActiveToolPart` /
+ * `isCompletedToolPart` admit neither). A gate added here would therefore park
+ * the turn on a prompt nobody can see and nothing can answer: the user asks Eve
+ * to remember something, the reply never arrives, and the memory is never
+ * written. That is strictly worse than the ungated write it was meant to guard.
+ *
+ * What the write actually rests on instead: an explicit in-turn instruction
+ * ("remember…", "save…"), the user's own words parsed rather than inferred, a
+ * rendered `memory_saved` card, and an ordinary edit/remove path afterwards.
+ *
+ * Turning this into a real gate is UI work, not tool work, and needs all three:
+ * a client-visible parked-turn state, an approve/deny card in the transcript,
+ * and `agent.respond(inputResponses)` wired to it.
+ */
 export default defineTool({
   description:
     "Save an explicit memory for a person when the user says remember, save, note, or keep track of something outside Global Capture. Do not use this for 'Use Capture', 'capture this', or a turn with another supported explicit clause even if the word Capture is absent; capture_saved_item owns that path. Otherwise this creates a durable approved memory backed by a source record. Resolve the person first.",

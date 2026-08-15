@@ -132,16 +132,60 @@ export const assetSearchResultSchema = z.object({
 export type AssetSearchResult = z.infer<typeof assetSearchResultSchema>;
 
 export const searchAssetsSchema = z.object({
-  query: z.string().trim().min(1).max(400),
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .max(400)
+    .describe(
+      "What to look for, in the user's own words. One query covers all three signals at " +
+        "once: exact text, an exact stored value typed literally (a serial, a model, " +
+        '"$1,299.99", "2026-03-14"), and fuzzy intent ("warranties expiring soon").',
+    ),
   // Narrow to one Asset — "what do I know about *this* fridge?". A plain string, like
   // every other asset id in the domain: an id the caller does not own simply finds
   // nothing, so format validation would add no safety here.
-  assetId: z.string().min(1).optional(),
-  recordKinds: z.array(assetSearchRecordKindSchema).min(1).max(3).optional(),
-  assetKinds: z.array(assetKindSchema).min(1).max(6).optional(),
-  limit: z.number().int().min(1).max(20).default(8),
+  assetId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Narrow to one Asset, using an id copied exactly from an earlier `search_assets` " +
+        "result - never a guessed one. Omit to search across everything the user tracks.",
+    ),
+  recordKinds: z
+    .array(assetSearchRecordKindSchema)
+    .min(1)
+    .max(3)
+    .optional()
+    .describe(
+      "Restrict to Assets, reviewed Asset Memories, or captured Asset Evidence. Omit for " +
+        "all three, which is usually right.",
+    ),
+  assetKinds: z
+    .array(assetKindSchema)
+    .min(1)
+    .max(6)
+    .optional()
+    .describe(
+      "Restrict to kinds of thing (appliance, vehicle, subscription, …) when the user's " +
+        "question names one. Omit otherwise.",
+    ),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(8)
+    .describe("Max records to return, best match first. Omit for the ordinary small set."),
   /** Archived assets keep their history but stay out of the way unless asked for. */
-  includeArchived: z.boolean().default(false),
+  includeArchived: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Include Assets the user archived. Leave false unless they explicitly ask about " +
+        "something they no longer have.",
+    ),
   /**
    * Owner-only review context: when true, the caller's own `suggested` Assets and
    * Asset Memories may be found so a review surface can look up grounded proposals.

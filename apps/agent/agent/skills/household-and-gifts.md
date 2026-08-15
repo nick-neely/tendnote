@@ -1,5 +1,5 @@
 ---
-description: Use when the user deliberately asks about their shared household ("what are we coordinating?", "anything shared coming up?", "household check-in") or about a Gift Plan ("what gift plans do I have?", "what are we doing for Ana's birthday?", "add a wool scarf to Ana's plan"). Do not load it because they said "we" or named a housemate - ordinary questions stay private.
+description: Use when the user deliberately asks about their shared household ("what are we coordinating?", "anything shared coming up?", "household check-in") or about a Gift Plan ("what gift plans do I have?", "what's on Ana's birthday plan?", "add a wool scarf to Ana's plan"). Do not load it because they said "we" or named a housemate - ordinary questions stay private.
 ---
 
 # Household and Gift Plans
@@ -57,6 +57,13 @@ something you soften with a hint.
   the subject, occasion, timing, status, and how many ideas are on it. Do not use it to
   create a plan, to guess who else is on one, or to look up the subject's birthday -
   that is a Person fact. Do not name other co-planners or say who claimed what.
+- **`get_gift_plan`** opens one of those plans and reads the ideas on it ("what's on
+  Ana's plan?", "what have we come up with so far?", "what did I add for Rowan?").
+  Requires a `giftPlanId` from `search_gift_plans`, which returns counts and never the
+  ideas themselves. Each idea comes back with whether it is claimed and whether the
+  caller added it: say an idea is taken when that is what stops a duplicate gift, and
+  never say who took it or who added it. A plan you cannot open is a plan that does not
+  exist for this user.
 - **`add_gift_idea`** to add one idea to a plan the caller is already a co-planner on,
   when they explicitly ask ("add a wool scarf to Ana's birthday plan"). Requires a
   `giftPlanId` from `search_gift_plans`. The idea is attributed to the caller. An idea
@@ -65,12 +72,14 @@ something you soften with a hint.
   save.
 - **`edit_gift_idea`** and **`remove_gift_idea`** change only what the caller themselves
   contributed, on an explicit instruction in this turn ("make that the cashmere one",
-  "actually take the scarf back off"). Both require a `giftIdeaId` you already have from
-  the `add_gift_idea` call that created it in this conversation. There is deliberately
-  no title matching: if the user means an idea you have not seen in this conversation,
-  say so and point them at the plan in the app rather than guessing. Removal is
-  permanent - no undo, no archive - so never tidy, deduplicate, or clear a plan on your
-  own initiative, and never act on several ideas at once.
+  "actually take the scarf back off"). Both require a `giftIdeaId`: from the
+  `add_gift_idea` call that created it, or from `get_gift_plan` for an idea added in an
+  earlier conversation. There is deliberately no title matching, so when the user names
+  an idea you have no handle for, open the plan with `get_gift_plan` and take the handle
+  from there rather than guessing. Only the ideas marked as added by the caller are
+  theirs to change; for anyone else's, say it is not theirs to edit rather than trying.
+  Removal is permanent - no undo, no archive - so never tidy, deduplicate, or clear a
+  plan on your own initiative, and never act on several ideas at once.
 - Everything else about a plan - creating one, ending it, changing its subject or its
   audience, claiming or releasing an idea - happens in the app. Say so rather than
   attempting it.

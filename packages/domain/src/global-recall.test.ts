@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   type GlobalRecallResult,
   globalRecallCanonicalKindSchema,
   globalRecallInputSchema,
   globalRecallResponseSchema,
+  globalRecallToolInputSchema,
 } from "./global-recall";
 
 const base = {
@@ -16,6 +18,13 @@ const base = {
   href: "/",
   parent: null,
 };
+
+/** The model-facing artifact: what eve actually hands the provider for this tool. */
+function toolSchemaProperties() {
+  return z.toJSONSchema(globalRecallToolInputSchema, { io: "input" }) as {
+    properties: Record<string, { description?: string } | undefined>;
+  };
+}
 
 describe("Global Recall contract", () => {
   it("accepts every canonical family in one typed response", () => {
@@ -151,5 +160,62 @@ describe("Global Recall contract", () => {
         includeRestricted: true,
       }).success,
     ).toBe(true);
+  });
+
+  /**
+   * `family` defaults to "all", so a caller that set `includeRestricted` and left
+   * `family` alone was certain to be rejected - by a message that did not name the
+   * field to change, from a schema whose fields carried no description at all. For
+   * the model-facing copy of this schema that is the whole difference between a
+   * rule it can follow and a wall it walks into (T11, T12).
+   */
+  describe("the restricted unlock explains itself", () => {
+    it("names the field to set, and what to do instead", () => {
+      const parsed = globalRecallInputSchema.safeParse({
+        query: "Priya medical",
+        includeRestricted: true,
+      });
+
+      expect(parsed.success).toBe(false);
+      const [issue] = parsed.error?.issues ?? [];
+      expect(issue?.path).toEqual(["family"]);
+      expect(issue?.message).toMatch(/set `family` to one specific record family/i);
+      expect(issue?.message).toMatch(/drop `includeRestricted`/);
+    });
+
+    it("states the rule on both fields it constrains, before any call is made", () => {
+      const { properties } = toolSchemaProperties();
+
+      expect(properties.includeRestricted?.description).toMatch(/one record family at a time/);
+      expect(properties.includeRestricted?.description).toMatch(
+        /only when the user explicitly asks/i,
+      );
+      expect(properties.family?.description).toMatch(/one record family at a time/);
+    });
+
+    it("describes every field the model has to fill", () => {
+      const { properties } = toolSchemaProperties();
+
+      for (const field of ["query", "family", "includeArchived", "matchKinds", "limit"]) {
+        expect(properties[field]?.description, field).toBeTruthy();
+      }
+    });
+
+    /**
+     * The refinement rides on a plain object rather than a union, so what eve hands
+     * the provider stays a `"type": "object"` input schema. A root `oneOf` is not a
+     * tool schema the Messages API accepts, and this is the pin on that.
+     */
+    it("still renders as a plain object schema for the provider", () => {
+      const json = z.toJSONSchema(globalRecallToolInputSchema, { io: "input" }) as {
+        type?: string;
+        oneOf?: unknown;
+        anyOf?: unknown;
+      };
+
+      expect(json.type).toBe("object");
+      expect(json.oneOf).toBeUndefined();
+      expect(json.anyOf).toBeUndefined();
+    });
   });
 });

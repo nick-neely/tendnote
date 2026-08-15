@@ -8,6 +8,7 @@ import createGeneralActionTool from "../agent/tools/create_general_action";
 import createMessageDraftTool from "../agent/tools/create_message_draft";
 import createPersonTool from "../agent/tools/create_person";
 import dismissSuggestedGeneralActionTool from "../agent/tools/dismiss_suggested_general_action";
+import dismissSuggestedMemoryTool from "../agent/tools/dismiss_suggested_memory";
 import editGeneralActionTool from "../agent/tools/edit_general_action";
 import agendaTool from "../agent/tools/get_relationship_agenda";
 import getSuggestedFollowupReviewTool from "../agent/tools/get_suggested_followup_review";
@@ -589,5 +590,41 @@ describe("general action tools toModelOutput keep tool-call ids private from pro
       expect(guidance).toMatch(/do NOT re-propose/i);
       expect(guidance).toMatch(/do NOT invent a reason/i);
     });
+  });
+});
+
+/**
+ * The twin that had drifted. `dismiss_suggested_followup` strips its ids and says
+ * what happened; `dismiss_suggested_memory` had no projection at all, so the raw
+ * memory id, person id, and source-record id went straight into the model's context
+ * for a call whose whole result is "it is gone".
+ */
+describe("dismiss_suggested_memory toModelOutput matches its twin", () => {
+  const MEM_ID = "99999999-9999-4999-8999-999999999999";
+  const rawOutput = {
+    memory: {
+      id: MEM_ID,
+      personId: PERSON_ID,
+      status: "dismissed",
+      sourceRecordId: SOURCE_ID,
+    },
+  };
+
+  it("keeps the new status and strips every raw id", () => {
+    const model = modelOutput(dismissSuggestedMemoryTool.toModelOutput, rawOutput);
+    const serialized = JSON.stringify(model.value);
+
+    expect(model.type).toBe("json");
+    expect(serialized).toContain("dismissed");
+    expect(serialized).not.toContain(MEM_ID);
+    expect(serialized).not.toContain(PERSON_ID);
+    expect(serialized).not.toContain(SOURCE_ID);
+  });
+
+  it("leaves the channel's copy of the ids untouched", () => {
+    modelOutput(dismissSuggestedMemoryTool.toModelOutput, rawOutput);
+
+    expect(rawOutput.memory.id).toBe(MEM_ID);
+    expect(rawOutput.memory.sourceRecordId).toBe(SOURCE_ID);
   });
 });

@@ -11,15 +11,21 @@ import { withModelSafeStoreErrors } from "../lib/store-errors";
 const inputSchema = z.object({
   contextFactId: z
     .uuid()
-    .describe("The exact active Self Context fact id returned by a prior tool call."),
-  category: selfContextFactCategorySchema,
+    .describe(
+      "The exact active Self Context fact id, copied from a `list_self_context` or `get_self_context_fact` result in this conversation. Never guess one.",
+    ),
+  category: selfContextFactCategorySchema.describe(
+    "Which kind of orienting fact this is. Keep the category the fact already has unless the user's correction changes what the fact is about.",
+  ),
   content: z.string().trim().min(1).max(500).describe("The user's explicit corrected wording."),
-  sensitivity: sensitivitySchema,
+  sensitivity: sensitivitySchema.describe(
+    "How delicate the corrected statement is. Keep the fact's existing level unless the user's own correction makes it more delicate; never lower it on your own judgement.",
+  ),
   expectedUpdatedAt: z.iso
     .datetime()
     .optional()
     .describe(
-      "The last updatedAt returned by a prior tool call when protecting against stale intent.",
+      "The `updatedAt` this same fact carried in the `list_self_context` or `get_self_context_fact` result you read it from in THIS conversation - copy it verbatim, never compose a timestamp. It makes the correction fail loudly if the user changed the fact elsewhere since you read it, instead of silently overwriting them. Omit it only when you genuinely have no such result (an id carried over from an earlier session); read the fact first instead.",
     ),
 });
 
