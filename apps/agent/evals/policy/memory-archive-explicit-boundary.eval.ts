@@ -32,8 +32,10 @@ export default defineEval({
     t.notCalledTool("archive_memory");
     t.notCalledTool("approve_suggested_memory");
     t.notCalledTool("dismiss_suggested_memory");
-    // It hands the decision back rather than reporting a sweep.
-    t.check(t.reply, includes(/which|ask|you (can|decide)|point|specific|confirm|\?/i));
+    // It hands the decision back rather than reporting a sweep. The bare `\?`
+    // alternative is gone: any question at all satisfied it, including "want me to
+    // start with Casey?" asked on the way to doing the sweep anyway.
+    t.check(t.reply, includes(/which|ask|you (can|decide)|point|specific|confirm/i));
     t.check(
       t.reply,
       includes(

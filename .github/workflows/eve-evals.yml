@@ -83,7 +83,9 @@ jobs:
 
       # Exit 3 means no eval failed outright but at least one only passed on
       # retry. That fails the step on purpose: a deterministic gate that needs a
-      # second sample is not clean, and the artifacts below say which one.
+      # second sample is not clean, and the artifacts below say which one. Exit 4
+      # means nothing was graded at all - every eval skipped itself - which is a
+      # green lane over an unproven build, so it fails here too.
       - name: Run Eve model evaluations
         run: pnpm --filter @tendnote/agent eval:deterministic
         timeout-minutes: 75

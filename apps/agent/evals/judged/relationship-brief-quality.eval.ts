@@ -12,6 +12,12 @@ import { usedRelationshipStrategyPath } from "../helpers";
  * an invented one does too. Every other judged eval hands the judge the records
  * the answer came from; this one now does the same, and gates on the grounding
  * read having happened at all.
+ *
+ * The gate allows either path - Eve reading the agenda herself or delegating to
+ * `relationship_strategist` - so the payload has to survive both. It does:
+ * `toolOutputs` unwraps the `subagent.event` a delegated read arrives inside,
+ * which it did not when this eval was written, so a correctly delegated brief was
+ * graded against an empty agenda and marked ungrounded for being routed well.
  */
 export default defineEval({
   description: "Judge whether a relationship-agenda style answer is useful and bounded.",

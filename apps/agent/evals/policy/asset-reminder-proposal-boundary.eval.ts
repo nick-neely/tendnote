@@ -1,6 +1,6 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
-import { NO_RAW_IDS } from "../expectations";
+import { NO_RAW_IDS, without } from "../expectations";
 
 /**
  * Asset reminders are proposed, never created (#196 stories 40/58, ADR 0159, #205).
@@ -29,9 +29,22 @@ export default defineEval({
     t.notCalledTool("edit_general_action");
     t.notCalledTool("update_general_action_status");
     t.notCalledTool("accept_suggested_general_action");
-    // Offered for review, in review language — never announced as an active reminder.
-    t.check(t.reply, includes(/suggest|propose|review|accept|if you want/i));
-    t.check(t.reply, includes(/warranty|reminder/i));
+    // Offered for review — and asserted as the *absence* of the failure, because the
+    // prompt says "propose any reminders" and every review word is therefore a word Eve
+    // can hand straight back. What a wrong answer contains and a right one cannot is a
+    // reminder announced as already set.
+    t.check(
+      t.reply,
+      includes(
+        without(
+          "I(’|')?ve (added|created|set|scheduled)|I (added|created|set) (a|the|it)|it(’|')?s (now )?(on|in) your (list|actions|ledger)|I(’|')?ll remind you|you(’|')?ll get a reminder",
+        ),
+      ),
+    );
+    // Stored, not echoed: `warranty` is the label on the fridge's reviewed detail
+    // (`Warranty expires`, 2027-03-14), and the prompt never says it. The old gate
+    // allowed `reminder` beside it, which the prompt did supply.
+    t.check(t.reply, includes(/warrant(y|ies)/i));
     t.check(t.reply, includes(NO_RAW_IDS));
   },
 });

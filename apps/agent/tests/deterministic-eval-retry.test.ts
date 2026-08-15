@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertGradableSummary,
   buildRetryDecision,
   EXIT_FAILED,
   EXIT_FLAKY,
+  EXIT_NOTHING_GRADED,
   EXIT_OK,
   exitCodeFor,
   failingEvalIds,
@@ -93,10 +95,41 @@ describe("deterministic-grading eval retry policy", () => {
   });
 
   it("does not count a skipped eval toward the passing tally", () => {
-    expect(summarizeEvalSamples(new Map(), ["behavior/parked"])).toMatchObject({
-      passed: 0,
-      failed: 0,
-      skipped: 1,
-    });
+    const allSkipped = summarizeEvalSamples(new Map(), ["behavior/parked"]);
+
+    expect(allSkipped).toMatchObject({ passed: 0, failed: 0, skipped: 1 });
+    // And the tally has to reach the exit code. A run where every eval skipped
+    // itself graded no behavior at all, so it cannot exit 0 alongside a run that
+    // passed everything - that is a green lane over an eval database that never
+    // seeded, or a tag nothing matched.
+    expect(exitCodeFor(allSkipped)).toBe(EXIT_NOTHING_GRADED);
+    expect(EXIT_NOTHING_GRADED).not.toBe(EXIT_OK);
+
+    // A skip alongside real passes is still an ordinary green run.
+    expect(exitCodeFor(summarizeEvalSamples(new Map([["a", [true]]]), ["behavior/parked"]))).toBe(
+      EXIT_OK,
+    );
+  });
+
+  it("refuses to grade a run that did not report a complete summary", () => {
+    const summary = { results: [{ id: "policy/privacy", verdict: "passed" }] };
+
+    // `--strict` exits non-zero for an ordinary failing eval, which is the case
+    // this script grades rather than an error.
+    expect(assertGradableSummary(summary, { status: 1 })).toBe(summary);
+
+    // A child that never exited normally: whatever JSON was on stdout is a prefix
+    // of a run, not a result.
+    expect(() => assertGradableSummary(summary, { status: null, signal: "SIGKILL" })).toThrow(
+      /SIGKILL/,
+    );
+    expect(() => assertGradableSummary(summary, { status: null })).toThrow(/did not exit normally/);
+
+    // Shapes that would otherwise tally to zero failures and grade green.
+    expect(() => assertGradableSummary({ ok: true }, { status: 0 })).toThrow(/no `results` array/);
+    expect(() => assertGradableSummary({ results: [] }, { status: 0 })).toThrow(/no evals at all/);
+    expect(() =>
+      assertGradableSummary({ results: [{ verdict: "passed" }] }, { status: 0 }),
+    ).toThrow(/no id/);
   });
 });

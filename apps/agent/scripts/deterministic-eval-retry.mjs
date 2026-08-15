@@ -31,9 +31,19 @@ import { fileURLToPath } from "node:url";
  * `.eve/evals/` afterwards, so a non-zero exit is exactly what puts the evidence
  * in front of someone.
  *
+ * ## What "nothing failed" is not
+ *
+ * A skip is neither a pass nor a failure, which leaves one run where that is not
+ * enough: the one where *everything* skipped. Nothing failed and nothing was
+ * recovered, so the exit code was 0 and the lane reported green having graded no
+ * behavior at all - the exact outcome a missing precondition, an unseeded eval
+ * database, or a tag nothing matches produces. A run that graded nothing gets its
+ * own non-zero code instead.
+ *
  * Exit codes, which are the contract with `.github/workflows/eve-evals.yml`:
  * 0 = every eval passed on its first sample; 1 = at least one eval failed every
- * sample; 3 = no persistent failures, but at least one eval only passed on retry.
+ * sample; 3 = no persistent failures, but at least one eval only passed on retry;
+ * 4 = nothing was graded, so the run proves nothing.
  */
 
 const PASS_VERDICTS = new Set(["passed"]);
@@ -43,6 +53,7 @@ const RETRY_ROUNDS = 2;
 export const EXIT_OK = 0;
 export const EXIT_FAILED = 1;
 export const EXIT_FLAKY = 3;
+export const EXIT_NOTHING_GRADED = 4;
 
 const USAGE = `Usage: node scripts/deterministic-eval-retry.mjs [--junit <path>]
 
@@ -52,7 +63,7 @@ against a freshly prepared database, and writes a JUnit report.
   --junit <path>  JUnit output path (default: .eve/evals/junit.xml)
   --help          Print this and exit without running anything.
 
-Exit codes: ${EXIT_OK} clean, ${EXIT_FAILED} persistent failure, ${EXIT_FLAKY} recovered by retry (flaky).
+Exit codes: ${EXIT_OK} clean, ${EXIT_FAILED} persistent failure, ${EXIT_FLAKY} recovered by retry (flaky), ${EXIT_NOTHING_GRADED} nothing graded.
 `;
 
 /** How one recorded eval result landed. A skip is neither a pass nor a failure. */
@@ -117,7 +128,42 @@ export function summarizeEvalSamples(samplesById, skippedIds = []) {
 /** The process exit code one summary earns. Flake is reported, never absorbed. */
 export function exitCodeFor(summary) {
   if (summary.failed > 0) return EXIT_FAILED;
+  // Everything skipped: nothing failed, nothing passed, nothing was proven. Zero
+  // here is how a lane that graded no behavior at all reports as a green gate.
+  if (summary.passed === 0 && summary.skipped > 0) return EXIT_NOTHING_GRADED;
   return summary.recovered > 0 ? EXIT_FLAKY : EXIT_OK;
+}
+
+/**
+ * The child's report, only when it is actually one.
+ *
+ * `eve eval --strict` exits non-zero for an ordinary failing eval, so a non-zero
+ * status is not an error here - grading those failures is what this script is for.
+ * What is an error is a run that never finished reporting: killed by a signal, or
+ * a summary that parsed but carries no gradable results. The parser takes the first
+ * line that starts with `{` and JSON.parse would accept a complete-looking object
+ * from a truncated stream, and a summary with no results grades green through every
+ * tally below - so the shape is checked here rather than assumed.
+ */
+export function assertGradableSummary(summary, child) {
+  if (child?.signal) {
+    throw new Error(`Eve eval was terminated by ${child.signal} before it reported.`);
+  }
+  if (typeof child?.status !== "number") {
+    throw new Error("Eve eval did not exit normally, so its summary cannot be graded.");
+  }
+  if (!summary || typeof summary !== "object" || !Array.isArray(summary.results)) {
+    throw new Error("Eve eval did not produce a gradable summary: no `results` array.");
+  }
+  if (summary.results.length === 0) {
+    throw new Error("Eve eval reported no evals at all; there is nothing to grade.");
+  }
+  for (const result of summary.results) {
+    if (!result || typeof result.id !== "string" || result.id.length === 0) {
+      throw new Error("Eve eval reported a result with no id; the summary is not complete.");
+    }
+  }
+  return summary;
 }
 
 function parseJsonOutput(stdout) {
@@ -146,7 +192,7 @@ function runEveEval(cwd, ids = []) {
   args.push("--strict", "--skip-report", "--json");
   const result = run("pnpm", args, { cwd });
   try {
-    return parseJsonOutput(result.stdout);
+    return assertGradableSummary(parseJsonOutput(result.stdout), result);
   } catch (error) {
     if (result.stdout) process.stdout.write(result.stdout);
     throw error;

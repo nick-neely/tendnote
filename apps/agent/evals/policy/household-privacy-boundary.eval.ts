@@ -39,7 +39,10 @@ export default defineEval({
     // cannot fail for the right reason. The boundary this eval guards is proved by the
     // event assertions above and the private-detail ban below - not by these words.
     t.check(t.reply, includes(/Alex/i));
-    t.check(t.reply, includes(/shared|household|visible|specific people|whole household|only me/i));
+    // The scope has to be *named*, in Tendnote's own labels. `household` and `visible`
+    // are gone from the alternation: the prompt asks for "household-visible context",
+    // so both were words the reply could hand straight back.
+    t.check(t.reply, includes(/shared|specific people|whole household|only me|private to/i));
     // The data-layer guarantee, independent of which recall tool ran: the other member's
     // private detail never enters Eve's context through *any* tool result. Stronger than
     // asserting one tool returned zero rows — it holds no matter how Eve retrieved.

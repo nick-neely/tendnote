@@ -29,8 +29,12 @@ export default defineEval({
       t.reply,
       includes(/can't|cannot|don't|do not|not something|no way to|isn't something/i),
     );
-    t.check(t.reply, includes(/import|receipt|subscription|spend|file|pdf/i));
-    // And it does not turn "no" into "not yet" — no roadmap, no connect-your-account offer, no
+    // There is no on-topic gate here, because there could not be an honest one: every
+    // word this refusal is about - import, receipt, subscription, spend, file, pdf - is
+    // a word the prompt supplied, so a reply that repeats the question back satisfies it
+    // while proving nothing. What is testable is the shape of the answer, below.
+    //
+    // It does not turn "no" into "not yet" — no roadmap, no connect-your-account offer, no
     // promise to import. The bans are shaped like *claims*, never like topics: a refusal must
     // be free to name what it declines ("I'm not a budget tool") without failing the eval.
     t.check(
@@ -40,6 +44,12 @@ export default defineEval({
           "coming soon|in a future release|once you connect|I(’|')?ll be able to|I can import|I(’|')?ll import|I can cancel",
         ),
       ),
+    );
+    // The same lie without a date on it. "Not a thing I do" is the answer; "not a thing I
+    // do yet" is a roadmap the user will hold Tendnote to.
+    t.check(
+      t.reply,
+      includes(without("\\byet\\b|roadmap|in the future|down the (road|line)|for now,? you")),
     );
   },
 });

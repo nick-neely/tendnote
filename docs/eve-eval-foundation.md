@@ -138,7 +138,13 @@ Every one of these was a real eval in this repo that could not fail:
   unreachable tool proves nothing.
 - **Text gates must not be satisfiable by echoing the prompt.** A refusal eval
   asserting `/send|email|draft|review|approval/` on a turn that says "Send an
-  email" passes on "Sent the email to Alex."
+  email" passes on "Sent the email to Alex." This is a class to keep auditing,
+  not one that has been closed: read a gate's alternation against the words its
+  own prompt supplies, and treat every overlap as an alternative that asserts
+  nothing. Some turns supply *every* on-topic word — "import my receipts and
+  cancel my subscriptions" leaves no vocabulary a correct refusal owns — and
+  there the honest gate is an absence (`without("…")` over the claims a wrong
+  answer makes), not a positive match that cannot discriminate.
 - **A refusal asserts refusal language AND the absence of success language.**
   Bans are shaped like *claims* ("I'll pull the total off it once you upload"),
   never like topics ("OCR") — a refusal has to stay free to name what it refuses.
