@@ -126,8 +126,13 @@ export type EveSkillName = (typeof EVE_SKILL_NAMES)[number];
 /**
  * The modes a trusted signal can actually select.
  *
- * `restricted` is the fail-closed default: a session whose origin this file
- * does not recognise gets no tools at all rather than the curated surface.
+ * `restricted` is the default: a session whose origin this file does not
+ * recognise gets no tools at all rather than the curated surface. It is as
+ * fail-closed as the framework permits rather than unconditionally so - eve
+ * 0.32 skips a dynamic resolver that throws and runs the turn on the static
+ * compiled set, so a gate that crashed would hand back the full authored
+ * surface. `agent/tools/eve_mode_gate.ts` therefore resolves inside a catch and
+ * falls back to this mode rather than letting anything escape.
  */
 export type EveMode = "web_chat" | "discord_capture" | "scheduled_workflow" | "restricted";
 

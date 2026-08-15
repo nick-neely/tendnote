@@ -93,4 +93,32 @@ describe("Eve mode gate", () => {
       Object.keys(await withheldTools({ principalType: "user", attributes: {} })),
     ).toHaveLength(EVE_TOOL_NAMES.length);
   });
+
+  it("withholds the whole surface rather than throwing, because throwing fails open", async () => {
+    // eve 0.32 skips a resolver that throws and runs the turn on the static
+    // compiled set - the full authored surface. So the two ways this resolver
+    // could fail have to resolve to `restricted` instead of escaping: a context
+    // with no session at all, and one whose principal cannot even be read.
+    const noSession = {} as DynamicResolveContext;
+    const unreadablePrincipal = {
+      session: {
+        id: "session-1",
+        auth: {
+          get current(): Principal {
+            throw new Error("principal store unavailable");
+          },
+        },
+      },
+      channel: {},
+      messages: [],
+    } as unknown as DynamicResolveContext;
+
+    for (const ctx of [noSession, unreadablePrincipal]) {
+      const withheld = (await resolveTurn?.({}, ctx)) as Record<string, DynamicToolEntry>;
+      expect(Object.keys(withheld).sort()).toEqual([...EVE_TOOL_NAMES].sort());
+      expect(withheld.create_message_draft?.description).toContain(
+        "Unavailable in restricted mode",
+      );
+    }
+  });
 });

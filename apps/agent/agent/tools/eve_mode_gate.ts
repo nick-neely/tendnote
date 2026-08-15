@@ -1,7 +1,14 @@
-import { type DynamicToolSet, defineDynamic, defineTool } from "eve/tools";
+import {
+  type DynamicResolveContext,
+  type DynamicToolSet,
+  defineDynamic,
+  defineTool,
+} from "eve/tools";
 import { z } from "zod";
 import {
+  EVE_TOOL_NAMES,
   type EveMode,
+  type EveToolName,
   eveModeDefinition,
   resolveSessionEveMode,
   toolsUnavailableInMode,
@@ -33,19 +40,58 @@ import {
  * Resolution runs on `turn.started` rather than `session.started` because
  * `auth.current` is the caller of the active turn: a session opened by one
  * principal must not keep that principal's authority for another's turn.
+ *
+ * ## Why nothing in here is allowed to throw
+ *
+ * eve 0.32 *skips* a dynamic resolver that throws: the turn proceeds with the
+ * static compiled set, which is the full authored surface. A gate that fails is
+ * therefore a gate that fails open, and the session it would have failed on is
+ * by definition the one whose principal it could not make sense of. So the
+ * principal is read defensively and the resolution is caught below, with the
+ * most restrictive answer the table has as the fallback: an unreadable session
+ * gets `restricted`, exactly as an unrecognised one does.
  */
+
+/** What the gate withholds this turn: the mode's answer, or the strictest one. */
+type WithholdingPlan = {
+  readonly mode: EveMode;
+  readonly unavailable: readonly EveToolName[];
+  readonly availableHere: string;
+};
+
+const NOTHING_AVAILABLE = "No tools are available in this mode.";
+
+/** The fallback: every authored tool withheld, named as the restricted mode. */
+const RESTRICTED_PLAN: WithholdingPlan = {
+  mode: "restricted",
+  unavailable: EVE_TOOL_NAMES,
+  availableHere: NOTHING_AVAILABLE,
+};
+
+function withholdingPlan(ctx: DynamicResolveContext): WithholdingPlan {
+  try {
+    // Optional all the way down on purpose: a context arriving without the
+    // session or its auth is the shape this resolver must not throw on.
+    const mode = resolveSessionEveMode(ctx.session?.auth?.current ?? null);
+    const allowed = eveModeDefinition(mode).tools;
+    return {
+      mode,
+      unavailable: toolsUnavailableInMode(mode),
+      availableHere:
+        allowed.length === 0
+          ? NOTHING_AVAILABLE
+          : `Tools available in this mode: ${allowed.join(", ")}.`,
+    };
+  } catch {
+    return RESTRICTED_PLAN;
+  }
+}
+
 export default defineDynamic({
   events: {
     "turn.started": (_event, ctx) => {
-      const mode: EveMode = resolveSessionEveMode(ctx.session.auth.current);
-      const unavailable = toolsUnavailableInMode(mode);
+      const { mode, unavailable, availableHere } = withholdingPlan(ctx);
       if (unavailable.length === 0) return null;
-
-      const allowed = eveModeDefinition(mode).tools;
-      const availableHere =
-        allowed.length === 0
-          ? "No tools are available in this mode."
-          : `Tools available in this mode: ${allowed.join(", ")}.`;
 
       // Built with a loop and an assignment rather than `Object.fromEntries`
       // over array literals: eve's bundler transform hoists each inline
