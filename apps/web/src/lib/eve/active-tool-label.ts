@@ -43,14 +43,20 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   list_suggested_general_action_reviews: "Gathering actions to review…",
   propose_asset_actions: "Checking what this asset needs…",
   propose_asset_memories: "Putting that up for review…",
+  propose_suggested_memory: "Putting that up for review…",
   // Prose mutation tools render no card, but still shimmer with a hand-written label
   // rather than a slugified tool name while they run.
   accept_suggested_general_action: "Adding it to your list…",
   dismiss_suggested_general_action: "Dismissing the suggestion…",
   edit_general_action: "Updating the action…",
   update_general_action_status: "Updating the action…",
+  archive_memory: "Archiving the memory…",
+  edit_draft_body: "Revising the draft…",
+  dismiss_draft: "Throwing the draft away…",
   search_assets: "Searching your things…",
   get_asset_context: "Pulling up what you know about it…",
+  create_asset: "Adding it to your things…",
+  edit_asset: "Renaming it…",
   // Household surfaces. The wording stays about records rather than about people:
   // "checking on the household" would read as checking up on whoever is in it.
   household_check_in: "Checking what your household is coordinating…",
@@ -59,6 +65,8 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   list_message_drafts: "Checking your drafts…",
   search_gift_plans: "Checking your gift plans…",
   add_gift_idea: "Adding the idea to the plan…",
+  edit_gift_idea: "Updating the idea…",
+  remove_gift_idea: "Taking the idea off the plan…",
 };
 
 /** Present-continuous label for an in-flight tool call (the shimmer line). */

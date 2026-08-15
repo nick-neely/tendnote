@@ -46,6 +46,11 @@ const PHASE_1G_FILES = [
   // The root read-back of the same records. It sends nothing by construction, and this
   // scan is what keeps it that way as the drafting surface grows.
   "apps/agent/agent/tools/list_message_drafts.ts",
+  // Revising and discarding a draft - the two internal lifecycle calls Eve may make on
+  // an explicit ask. Both are the shared audited seam and neither touches approval, but
+  // they are the tools nearest to "and then send it", so the scan covers them too.
+  "apps/agent/agent/tools/edit_draft_body.ts",
+  "apps/agent/agent/tools/dismiss_draft.ts",
 ];
 
 // Phase 2D adds APPROVED Gmail draft externalization (ADR-0083/0096) to the person

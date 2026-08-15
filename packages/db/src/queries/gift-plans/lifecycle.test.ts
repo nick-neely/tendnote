@@ -250,6 +250,78 @@ describe("Gift Plan lifecycle", () => {
       expect(await plans.getGiftPlan({ callerUserId: CO_PLANNER, giftPlanId: planId })).toBeNull();
     });
 
+    it("adds one idea per idempotency key, however many times the call is retried", async () => {
+      // The retry an agent makes when the write committed but the reply did not.
+      const first = await plans.addGiftIdea({
+        actorUserId: CO_PLANNER,
+        giftPlanId: planId,
+        title: "Wool blanket",
+        idempotencyKey: "turn-1:wool blanket",
+      });
+      const retry = await plans.addGiftIdea({
+        actorUserId: CO_PLANNER,
+        giftPlanId: planId,
+        title: "Wool blanket",
+        idempotencyKey: "turn-1:wool blanket",
+      });
+
+      expect(first.decision).toBe("created");
+      expect(retry.decision).toBe("existing");
+      expect(retry.result.id).toBe(first.result.id);
+      // The scopes come back on the repeat too: the likeliest reason a caller is here
+      // twice is that the first reconciliation never landed.
+      expect(retry.affectedScopes).toEqual(first.affectedScopes);
+      const detail = await plans.getGiftPlanDetail({ callerUserId: OWNER, giftPlanId: planId });
+      expect(detail?.ideas).toHaveLength(1);
+    });
+
+    it("treats a different key, and no key at all, as a different idea", async () => {
+      await plans.addGiftIdea({
+        actorUserId: CO_PLANNER,
+        giftPlanId: planId,
+        title: "Wool blanket",
+        idempotencyKey: "turn-1:wool blanket",
+      });
+      // A second idea in the same turn keys on its own words ...
+      await plans.addGiftIdea({
+        actorUserId: CO_PLANNER,
+        giftPlanId: planId,
+        title: "Cast iron pan",
+        idempotencyKey: "turn-1:cast iron pan",
+      });
+      // ... and a caller with no key at all (a person pressing Add) is never deduplicated.
+      await plans.addGiftIdea({
+        actorUserId: CO_PLANNER,
+        giftPlanId: planId,
+        title: "Wool blanket",
+      });
+
+      const detail = await plans.getGiftPlanDetail({ callerUserId: OWNER, giftPlanId: planId });
+      expect(detail?.ideas).toHaveLength(3);
+    });
+
+    it("re-adds a keyed idea that was removed rather than resurrecting the old one", async () => {
+      // The key answers "did this call already happen?", never "what should be on the
+      // plan?" - so a retraction the user made in between stands.
+      const first = await plans.addGiftIdea({
+        actorUserId: CO_PLANNER,
+        giftPlanId: planId,
+        title: "Wool blanket",
+        idempotencyKey: "turn-1:wool blanket",
+      });
+      await plans.removeGiftIdea({ actorUserId: CO_PLANNER, giftIdeaId: first.result.id });
+
+      const again = await plans.addGiftIdea({
+        actorUserId: CO_PLANNER,
+        giftPlanId: planId,
+        title: "Wool blanket",
+        idempotencyKey: "turn-1:wool blanket",
+      });
+
+      expect(again.decision).toBe("created");
+      expect(again.result.id).not.toBe(first.result.id);
+    });
+
     it("counts ideas and claims from the same proved read as the plan", async () => {
       const idea = await plans.addGiftIdea({
         actorUserId: CO_PLANNER,

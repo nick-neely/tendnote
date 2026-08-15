@@ -13,13 +13,16 @@ import { authoredInstructions } from "./instructions-source";
  *
  * Two absences carry most of the weight:
  *
- * - **No durable asset write.** Eve can *propose* — a fact, an asset, a reminder — and she
- *   can do nothing else. No tool she has creates, edits, archives, or deletes an Asset, an
- *   Asset Memory, Asset Evidence, or a link; the two proposal tools reach only the seam's
- *   `suggested`-only entry points, so a proposal becoming durable requires the user's own
- *   accept. The review gate is not a rule she is asked to follow — it is the only door in
- *   the room, which is what makes the honesty of her *wording* the evals' business and not
- *   this file's.
+ * - **No durable asset write Eve was not told to make.** Everything Eve works out for
+ *   herself - a fact, an asset she inferred, a reminder - she can only *propose*: the two
+ *   proposal tools reach the seam's `suggested`-only entry points, so a proposal becoming
+ *   durable requires the user's own accept. The one thing that is not review-gated is the
+ *   thing ADR 0169 never gated: an Asset created or renamed on the user's explicit
+ *   instruction in the current turn. That is the ADR's own line - "directly only from
+ *   explicit user intent", with everything *inferred* into review - and it is drawn below
+ *   as a two-file allowance rather than a promise, so the review gate stays the only door
+ *   for every other tool and every other write. Nothing anywhere archives, deletes, or
+ *   accepts an Asset, an Asset Memory, Asset Evidence, or a link.
  * - **No file contents.** Nothing in the agent reads uploaded bytes. Chat uploads route to
  *   the shared Asset Evidence capture flow in the web app; the agent never sees the file, so
  *   OCR, receipt parsing, arbitrary file Q&A, and a document inbox are not features that were
@@ -86,22 +89,46 @@ function toolSource(name: string): string {
 }
 
 const ASSET_TOOLS = [
+  "create_asset",
+  "edit_asset",
   "get_asset_context",
   "propose_asset_actions",
   "propose_asset_memories",
   "search_assets",
 ];
 
-describe("Phase 6 boundary — Eve's asset surface is read-only plus review-gated proposals", () => {
-  it("exposes exactly four asset tools, anywhere in the agent", () => {
-    // List equality, over every tool the agent ships — root and subagent. A fifth asset tool
-    // cannot appear without this line naming it.
+/**
+ * The two writes ADR 0169 leaves ungated, and the only tool each may live in.
+ *
+ * The ADR gates *extraction*: asset-like information inferred from a receipt, a photo, a
+ * warranty, a note, or a promoted hint goes to review as a Suggested Asset. It does not
+ * gate a user saying "add my car" - it says the opposite, in as many words - and for two
+ * phases the absence of a tool for that sentence was read as a boundary. It was a gap:
+ * asked to add an asset, the model either proposed a review card nobody wanted or claimed
+ * a record it could not create.
+ *
+ * So the allowance is keyed to the tool, not to the seam. `createAsset`/`editAsset` may
+ * appear in the two tools whose whole content is the explicit-instruction template - a
+ * current-turn ask, a deterministically resolved record, the shared layer's private
+ * default, no scope argument (ADR 0179), and no path to a fact - and nowhere else. Every
+ * other durable asset write stays absent from every tool, including these two.
+ */
+const EXPLICIT_INTENT_ASSET_WRITES: Record<string, string> = {
+  createAsset: "create_asset",
+  editAsset: "edit_asset",
+};
+
+describe("Phase 6 boundary - Eve's asset surface is read, review-gated proposals, and explicit-intent creation", () => {
+  it("exposes exactly six asset tools, anywhere in the agent", () => {
+    // List equality, over every tool the agent ships - root and subagent. A seventh asset
+    // tool cannot appear without this line naming it.
     expect(toolNames().filter((name) => name.includes("asset"))).toEqual(ASSET_TOOLS);
   });
 
-  it("gives Eve no way to write a durable Asset, Memory, Evidence, or link", () => {
-    // The owner-scoped write seam exports these. If one ever appears in a tool, the review
-    // gate stopped being structural and became a promise the model is asked to keep.
+  it("gives Eve no way to write a durable Asset, Memory, Evidence, or link she was not told to", () => {
+    // The owner-scoped write seam exports these. If one ever appears in a tool that is not
+    // its named explicit-instruction home, the review gate stopped being structural and
+    // became a promise the model is asked to keep.
     const durableWrites = [
       "createAsset",
       "editAsset",
@@ -120,10 +147,34 @@ describe("Phase 6 boundary — Eve's asset surface is read-only plus review-gate
 
     for (const { name, code } of toolFiles()) {
       for (const write of durableWrites) {
+        if (EXPLICIT_INTENT_ASSET_WRITES[write] === name) continue;
         expect(code, `${name} must not call the durable asset write ${write}`).not.toMatch(
           new RegExp(`\\b${write}\\s*\\(`),
         );
       }
+    }
+  });
+
+  it("keeps each explicit-intent asset write to one tool that is only reachable on an explicit ask", () => {
+    for (const [write, toolName] of Object.entries(EXPLICIT_INTENT_ASSET_WRITES)) {
+      const code = toolSource(toolName);
+      expect(code, `${toolName} should call ${write}`).toMatch(new RegExp(`\\b${write}\\s*\\(`));
+      // No scope argument reaches the seam: an Asset's visibility is the ceiling for every
+      // child record hung on it (ADR 0179), so widening one is the user's decision in the
+      // app and the shared layer's private default is what a tool gets.
+      expect(code, `${toolName} must not choose an Asset's audience`).not.toMatch(
+        /\b(scope|householdId|selectedUserIds|ownership)\s*:/,
+      );
+      // The explicit-turn gate lives in the description, which is the model's map of when
+      // the tool applies. Both halves have to be there: when to use it, and the inferred
+      // case that belongs in review instead.
+      const description = /description:\s*(`[\s\S]*?`|"[\s\S]*?")/.exec(code)?.[1] ?? "";
+      expect(description, `${toolName} must gate on an explicit current-turn ask`).toMatch(
+        /explicit/i,
+      );
+      expect(description, `${toolName} must route inferred asset facts to review`).toMatch(
+        /propose_asset_memories/,
+      );
     }
   });
 
