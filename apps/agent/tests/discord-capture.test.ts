@@ -16,6 +16,7 @@ import {
   handleDiscordCaptureInteraction,
   parseDiscordOwnerMap,
 } from "../agent/lib/discord-capture";
+import { createInMemoryDiscordHitlSessionStore } from "../agent/lib/discord-hitl-sessions";
 import { modeAllowsTool } from "../agent/lib/eve-modes";
 import {
   HOUSEHOLD_MEMBER_ID,
@@ -39,8 +40,7 @@ function realStoreCaptureDeps() {
     },
     enqueueExtraction: vi.fn(async () => undefined),
     enqueueActionExtraction: vi.fn(async () => undefined),
-    parkHitlSession: vi.fn(async () => undefined),
-    resumeHitlSession: vi.fn(async () => undefined),
+    hitlSessions: createInMemoryDiscordHitlSessionStore(),
   };
   return { store, deps };
 }
@@ -69,7 +69,7 @@ function sourceRecord(input: {
   };
 }
 
-function deps(): DiscordCaptureDeps {
+function deps() {
   return {
     captureForPerson: vi.fn(async (input) => ({
       sourceRecord: sourceRecord({
@@ -91,9 +91,8 @@ function deps(): DiscordCaptureDeps {
     })),
     enqueueExtraction: vi.fn(async () => undefined),
     enqueueActionExtraction: vi.fn(async () => undefined),
-    parkHitlSession: vi.fn(async () => undefined),
-    resumeHitlSession: vi.fn(async () => undefined),
-  };
+    hitlSessions: createInMemoryDiscordHitlSessionStore(),
+  } satisfies DiscordCaptureDeps;
 }
 
 describe("Discord private capture channel", () => {
@@ -156,10 +155,26 @@ describe("Discord private capture channel", () => {
     });
   });
 
-  it("parks HITL component and modal replies without creating durable truth", async () => {
+  it("parks a clarification, then resumes it into logged context for review", async () => {
     const captureDeps = deps();
+    const resolveOwner = discordOwnerMapResolver({ "discord-1": "owner-1" });
 
-    const result = await handleDiscordCaptureInteraction(
+    const prompt = await handleDiscordCaptureInteraction(
+      { type: "component", discordUserId: "discord-1", sessionId: "session-1", action: "clarify" },
+      captureDeps,
+      resolveOwner,
+    );
+
+    // Opening the modal parks the session and writes nothing.
+    expect(prompt).toEqual({
+      type: "hitl_prompt",
+      ownerUserId: "owner-1",
+      sessionId: "session-1",
+      kind: "clarification",
+    });
+    expect(captureDeps.captureGlobal).not.toHaveBeenCalled();
+
+    const resumed = await handleDiscordCaptureInteraction(
       {
         type: "modal_submit",
         discordUserId: "discord-1",
@@ -168,32 +183,59 @@ describe("Discord private capture channel", () => {
         value: "I meant Jo Rivera.",
       },
       captureDeps,
-      discordOwnerMapResolver({ "discord-1": "owner-1" }),
+      resolveOwner,
     );
 
-    expect(result).toEqual({
-      type: "parked_session",
+    // The submit resumes the parked session and completes it as reviewable
+    // context, not as durable truth: a Source Record with a review button.
+    expect(resumed).toMatchObject({
+      type: "resumed_session",
       ownerUserId: "owner-1",
       sessionId: "session-1",
       action: "clarify",
       value: "I meant Jo Rivera.",
+      sourceRecord: { id: "source-global", status: "active", scope: "private" },
+      reviewRequired: true,
+      durablePromotions: [],
+      components: [{ components: [{ customId: "review:source-global" }] }],
     });
-    expect(captureDeps.parkHitlSession).toHaveBeenCalledWith({
-      ownerUserId: "owner-1",
-      discordUserId: "discord-1",
-      sessionId: "session-1",
-      action: "clarify",
-      value: "I meant Jo Rivera.",
-    });
-    expect(captureDeps.resumeHitlSession).toHaveBeenCalledWith({
-      ownerUserId: "owner-1",
-      discordUserId: "discord-1",
-      sessionId: "session-1",
-      action: "clarify",
-      value: "I meant Jo Rivera.",
-    });
-    expect(captureDeps.captureGlobal).not.toHaveBeenCalled();
+    expect(captureDeps.captureGlobal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerUserId: "owner-1",
+        retainedContent: "I meant Jo Rivera.",
+        metadataJson: { captureSurface: "discord", discordHitlSessionId: "session-1" },
+      }),
+    );
     expect(captureDeps.captureForPerson).not.toHaveBeenCalled();
+  });
+
+  it("refuses an empty clarification without consuming the parked session", async () => {
+    const captureDeps = deps();
+    const resolveOwner = discordOwnerMapResolver({ "discord-1": "owner-1" });
+    await handleDiscordCaptureInteraction(
+      { type: "component", discordUserId: "discord-1", sessionId: "session-1", action: "clarify" },
+      captureDeps,
+      resolveOwner,
+    );
+
+    const blank = await handleDiscordCaptureInteraction(
+      {
+        type: "modal_submit",
+        discordUserId: "discord-1",
+        sessionId: "session-1",
+        action: "clarify",
+        value: "   ",
+      },
+      captureDeps,
+      resolveOwner,
+    );
+
+    expect(blank).toEqual({ type: "rejected", reason: "empty_clarification" });
+    expect(captureDeps.captureGlobal).not.toHaveBeenCalled();
+    // The session survives a blank submit, so the real one still resumes.
+    await expect(
+      captureDeps.hitlSessions.take({ ownerUserId: "owner-1", sessionId: "session-1" }),
+    ).resolves.toMatchObject({ sessionId: "session-1", action: "clarify" });
   });
 
   it("rejects unmapped users and inbound attachments", async () => {
@@ -303,8 +345,32 @@ describe("Discord owner resolution ordering", () => {
     expect(captureDeps.captureGlobal).not.toHaveBeenCalled();
     expect(captureDeps.captureForPerson).not.toHaveBeenCalled();
     expect(captureDeps.enqueueExtraction).not.toHaveBeenCalled();
-    expect(captureDeps.parkHitlSession).not.toHaveBeenCalled();
-    expect(captureDeps.resumeHitlSession).not.toHaveBeenCalled();
+
+    // The same fail-closed gate runs ahead of the session store, so an
+    // unresolved caller cannot consume a session someone else parked.
+    await captureDeps.hitlSessions.park({
+      ownerUserId: "owner-1",
+      discordUserId: "discord-1",
+      sessionId: "session-1",
+      action: "clarify",
+      parkedAt: "2026-07-02T00:00:00.000Z",
+    });
+    await expect(
+      handleDiscordCaptureInteraction(
+        {
+          type: "modal_submit",
+          discordUserId: "unmapped",
+          sessionId: "session-1",
+          action: "clarify",
+          value: "Sneak this in.",
+        },
+        captureDeps,
+        resolve,
+      ),
+    ).resolves.toEqual({ type: "rejected", reason: "unmapped_discord_user" });
+    await expect(
+      captureDeps.hitlSessions.take({ ownerUserId: "owner-1", sessionId: "session-1" }),
+    ).resolves.toMatchObject({ sessionId: "session-1" });
   });
 
   it("resolves two Discord users in the same guild to different owners without cross-writing", async () => {

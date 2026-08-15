@@ -5,6 +5,7 @@ import type {
 import { captureLoggedContext } from "@tendnote/db/queries/source-records";
 import type { PrivacyScope } from "@tendnote/domain";
 import { resolveDiscordCaptureScope } from "./discord-capture-scope";
+import type { DiscordHitlSession, DiscordHitlSessionStore } from "./discord-hitl-sessions";
 import { modeAllowsTool, resolveEveMode } from "./eve-modes";
 
 export type DiscordOwnerMap = Record<string, string>;
@@ -24,13 +25,20 @@ export type DiscordInteraction =
       /** An explicit visibility scope, if a future surface ever plumbs one through Discord. */
       requestedScope?: PrivacyScope;
     }
-  | {
-      type: "component" | "modal_submit";
-      discordUserId: string;
-      sessionId: string;
-      action: "clarify" | "review";
-      value?: string;
-    };
+  | DiscordComponentInteraction
+  | DiscordModalSubmitInteraction;
+
+/** What a button click and its modal submit carry: the session, never the owner. */
+type DiscordSessionInteraction = {
+  discordUserId: string;
+  sessionId: string;
+  action: DiscordComponentAction;
+  value?: string;
+};
+
+export type DiscordComponentInteraction = { type: "component" } & DiscordSessionInteraction;
+
+export type DiscordModalSubmitInteraction = { type: "modal_submit" } & DiscordSessionInteraction;
 
 export type DiscordAttachment = {
   id: string;
@@ -59,22 +67,42 @@ export type DiscordCaptureResult =
       components: DiscordMessageComponent[];
     }
   | {
-      type: "parked_session";
+      /** A HITL session was parked durably; the caller may now open the modal. */
+      type: "hitl_prompt";
+      ownerUserId: string;
+      sessionId: string;
+      kind: "clarification";
+    }
+  | {
+      /** A modal submit resumed its parked session and captured the clarification. */
+      type: "resumed_session";
       ownerUserId: string;
       sessionId: string;
       action: DiscordComponentAction;
-      value: string | null;
+      value: string;
+      sourceRecord: Pick<
+        CaptureSourceRecordResult["sourceRecord"],
+        "id" | "status" | "content" | "scope"
+      >;
+      reviewRequired: true;
+      durablePromotions: [];
+      components: DiscordMessageComponent[];
     }
   | {
       type: "rejected";
-      reason:
-        | "unmapped_discord_user"
-        | "unsupported_command"
-        | "empty_capture"
-        | "attachments_not_supported"
-        | "mode_forbids_capture"
-        | "household_scope_not_supported";
+      reason: DiscordCaptureRejectionReason;
     };
+
+export type DiscordCaptureRejectionReason =
+  | "unmapped_discord_user"
+  | "unsupported_command"
+  | "empty_capture"
+  | "empty_clarification"
+  | "attachments_not_supported"
+  | "mode_forbids_capture"
+  | "household_scope_not_supported"
+  | "hitl_session_expired"
+  | "hitl_session_unavailable";
 
 export type DiscordMessageComponent = {
   type: "action_row";
@@ -87,16 +115,12 @@ export type DiscordMessageComponent = {
 };
 
 export type DiscordCaptureDeps = CaptureLoggedContextDeps & {
-  parkHitlSession: (input: DiscordHitlSessionInput) => Promise<unknown>;
-  resumeHitlSession: (input: DiscordHitlSessionInput) => Promise<unknown>;
-};
-
-export type DiscordHitlSessionInput = {
-  ownerUserId: string;
-  discordUserId: string;
-  sessionId: string;
-  action: DiscordComponentAction;
-  value: string | null;
+  /**
+   * Durable store for HITL sessions that are open but not yet submitted. It has
+   * to outlive the process that opened the modal, because the submit arrives as
+   * a separate request that any instance may serve.
+   */
+  hitlSessions: DiscordHitlSessionStore;
 };
 
 /**
@@ -165,31 +189,21 @@ export async function handleDiscordCaptureInteraction(
     return { type: "rejected", reason: "unmapped_discord_user" };
   }
 
-  if (interaction.type === "component" || interaction.type === "modal_submit") {
-    const value = interaction.value?.trim() || null;
-    const sessionInput = {
-      ownerUserId,
-      discordUserId: interaction.discordUserId,
-      sessionId: interaction.sessionId,
-      action: interaction.action,
-      value,
-    };
-    await deps.parkHitlSession(sessionInput);
-    await deps.resumeHitlSession(sessionInput);
-
-    return {
-      type: "parked_session",
-      ownerUserId,
-      sessionId: interaction.sessionId,
-      action: interaction.action,
-      value,
-    };
+  if (interaction.type === "component") {
+    return parkClarificationSession(interaction, deps, ownerUserId);
   }
 
-  if (interaction.type !== "slash_command" || interaction.commandName !== "capture") {
+  if (interaction.type === "modal_submit") {
+    return resumeClarificationSession(interaction, deps, ownerUserId);
+  }
+
+  if (interaction.commandName !== "capture") {
     return { type: "rejected", reason: "unsupported_command" };
   }
 
+  // Defense in depth: the channel refuses attachments while parsing, before an
+  // interaction is built, so this only fires for a caller that assembled one by
+  // hand. Both paths answer with the same message.
   if (interaction.attachments?.length) {
     return { type: "rejected", reason: "attachments_not_supported" };
   }
@@ -199,8 +213,7 @@ export async function handleDiscordCaptureInteraction(
     return { type: "rejected", reason: "empty_capture" };
   }
 
-  const mode = resolveEveMode({ caller: "discord", channel: "discord", requestedTask: "capture" });
-  if (!modeAllowsTool(mode.mode, "capture_source_record")) {
+  if (!discordCaptureAllowedByMode()) {
     return { type: "rejected", reason: "mode_forbids_capture" };
   }
 
@@ -241,6 +254,115 @@ export async function handleDiscordCaptureInteraction(
     durablePromotions: [],
     components: reviewComponentsForSourceRecord(sourceRecord.id),
   };
+}
+
+/**
+ * Clicking "Clarify" opens a modal, and Discord sends the submit as a separate
+ * request that any instance may serve. The session is therefore parked durably
+ * *before* the modal is rendered: an unparked modal would have nothing to
+ * resume against. Only the clarification button opens one; the review button is
+ * a link-out with no session.
+ */
+async function parkClarificationSession(
+  interaction: DiscordComponentInteraction,
+  deps: DiscordCaptureDeps,
+  ownerUserId: string,
+): Promise<DiscordCaptureResult> {
+  if (interaction.action !== "clarify") {
+    return { type: "rejected", reason: "unsupported_command" };
+  }
+
+  try {
+    await deps.hitlSessions.park({
+      ownerUserId,
+      discordUserId: interaction.discordUserId,
+      sessionId: interaction.sessionId,
+      action: "clarify",
+      parkedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    // Same posture as the shared rate limiter: an unreachable store is a
+    // controlled refusal the user can act on, never a thrown request.
+    console.error("Discord HITL session park failed.", error);
+    return { type: "rejected", reason: "hitl_session_unavailable" };
+  }
+
+  return {
+    type: "hitl_prompt",
+    ownerUserId,
+    sessionId: interaction.sessionId,
+    kind: "clarification",
+  };
+}
+
+/**
+ * A modal submit resumes its parked session and completes it: the clarification
+ * becomes owner-scoped logged context for review, carrying the session id so the
+ * clarification stays attached to what it clarifies. It stays inside the Discord
+ * capture boundary: a Source Record for review, never a durable promotion.
+ *
+ * Taking the session consumes it, so a resubmitted modal cannot capture twice.
+ */
+async function resumeClarificationSession(
+  interaction: DiscordModalSubmitInteraction,
+  deps: DiscordCaptureDeps,
+  ownerUserId: string,
+): Promise<DiscordCaptureResult> {
+  const clarification = interaction.value?.trim();
+  if (!clarification) {
+    return { type: "rejected", reason: "empty_clarification" };
+  }
+
+  if (!discordCaptureAllowedByMode()) {
+    return { type: "rejected", reason: "mode_forbids_capture" };
+  }
+
+  let parked: DiscordHitlSession | null;
+  try {
+    parked = await deps.hitlSessions.take({ ownerUserId, sessionId: interaction.sessionId });
+  } catch (error) {
+    console.error("Discord HITL session resume failed.", error);
+    return { type: "rejected", reason: "hitl_session_unavailable" };
+  }
+
+  // No parked session means it expired, was already resumed, or was opened by a
+  // different owner: nothing to resume, and nothing is written.
+  if (!parked) {
+    return { type: "rejected", reason: "hitl_session_expired" };
+  }
+
+  const { sourceRecord } = await captureLoggedContext(
+    {
+      ownerUserId,
+      retainedContent: clarification,
+      captureSurface: "discord",
+      metadataJson: { discordHitlSessionId: parked.sessionId },
+    },
+    deps,
+  );
+
+  return {
+    type: "resumed_session",
+    ownerUserId,
+    sessionId: parked.sessionId,
+    action: parked.action,
+    value: clarification,
+    sourceRecord: {
+      id: sourceRecord.id,
+      status: sourceRecord.status,
+      content: sourceRecord.content,
+      scope: sourceRecord.scope,
+    },
+    reviewRequired: true,
+    durablePromotions: [],
+    components: reviewComponentsForSourceRecord(sourceRecord.id),
+  };
+}
+
+/** Discord Capture Mode has to allow a Source Record write for either capture path. */
+function discordCaptureAllowedByMode(): boolean {
+  const mode = resolveEveMode({ caller: "discord", channel: "discord", requestedTask: "capture" });
+  return modeAllowsTool(mode.mode, "capture_source_record");
 }
 
 function reviewComponentsForSourceRecord(sourceRecordId: string): DiscordMessageComponent[] {

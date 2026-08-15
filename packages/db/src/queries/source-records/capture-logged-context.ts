@@ -22,6 +22,13 @@ export type CaptureLoggedContextInput = {
   sensitivity?: CaptureSourceRecordInput["sensitivity"];
   /** Where the capture came from, recorded in metadata. */
   captureSurface: CaptureSurface;
+  /**
+   * Surface-specific provenance merged into the capture metadata, for the cases
+   * where the surface alone does not say what a record belongs to (a Discord
+   * clarification naming the session it clarifies). `captureSurface` is owned
+   * here and cannot be overridden.
+   */
+  metadataJson?: Record<string, unknown>;
 };
 
 export type CaptureLoggedContextDeps = {
@@ -52,7 +59,7 @@ export async function captureLoggedContext(
   input: CaptureLoggedContextInput,
   deps: CaptureLoggedContextDeps,
 ): Promise<CaptureSourceRecordResult> {
-  const metadataJson = { captureSurface: input.captureSurface };
+  const metadataJson = { ...input.metadataJson, captureSurface: input.captureSurface };
 
   // Context-aware path: a known person is captured and linked in one call; an
   // ambiguous capture becomes a global Source Record the user resolves later.

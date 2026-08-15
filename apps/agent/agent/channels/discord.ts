@@ -10,7 +10,7 @@ import {
 import {
   createDiscordOwnerResolver,
   type DiscordCaptureDeps,
-  type DiscordHitlSessionInput,
+  type DiscordCaptureRejectionReason,
   type DiscordInteraction,
   type DiscordMessageComponent,
   type DiscordOwnerResolver,
@@ -21,6 +21,7 @@ import {
   handleDiscordCaptureInteraction,
   parseDiscordOwnerMap,
 } from "../lib/discord-capture";
+import { createRedisDiscordHitlSessionStore } from "../lib/discord-hitl-sessions";
 
 const DISCORD_SIGNATURE_HEADER = "x-signature-ed25519";
 const DISCORD_TIMESTAMP_HEADER = "x-signature-timestamp";
@@ -111,44 +112,73 @@ export async function handleDiscordRequest(
     return json({ type: 1 } satisfies DiscordInteractionResponse);
   }
 
-  const interaction = discordApiPayloadToCaptureInteraction(payload);
-  if (!interaction) {
+  try {
+    return await dispatchDiscordInteraction(payload, input);
+  } catch (error) {
+    // Anything unhandled below, an unreachable store or a failed capture, would
+    // otherwise reach Discord as a 500 and render as "the application did not
+    // respond". The user gets an ephemeral message instead; the detail stays in
+    // the logs and never travels back over the interaction.
+    console.error("Discord interaction handling failed.", error);
+    return json(
+      ephemeral("Tendnote could not complete that Discord interaction. Try again in a moment."),
+      200,
+    );
+  }
+}
+
+/** Route one verified, parsed interaction to its response. */
+async function dispatchDiscordInteraction(
+  payload: DiscordApiInteraction,
+  input: {
+    resolveOwner?: DiscordOwnerResolver;
+    ownerMapRaw?: string;
+    deps?: DiscordCaptureDeps;
+  },
+): Promise<Response> {
+  const parsed = discordApiPayloadToCaptureInteraction(payload);
+  if (!parsed) {
     return json(ephemeral("Unsupported Discord interaction."), 200);
   }
 
-  if (interaction.type === "component" && interaction.action === "clarify") {
+  if (parsed.type === "rejected") {
+    return json(ephemeral(responseForRejection(parsed.reason)), 200);
+  }
+
+  if (parsed.type === "component" && parsed.action === "review") {
+    return json(ephemeral(`Open Tendnote to review Source Record ${parsed.sessionId}.`), 200);
+  }
+
+  const result = await handleDiscordCaptureInteraction(
+    parsed,
+    input.deps ?? defaultDiscordCaptureDeps(),
+    createDiscordRequestOwnerResolver(input),
+  );
+
+  // The modal only opens once its session is parked durably, so the submit that
+  // comes back, to any instance, has something to resume.
+  if (result.type === "hitl_prompt") {
     return json(
       renderDiscordHitlPrompt({
-        sessionId: interaction.sessionId,
+        sessionId: result.sessionId,
         kind: "clarification",
         content: "What should Eve know?",
       }),
     );
   }
 
-  if (interaction.type === "component" && interaction.action === "review") {
-    return json(ephemeral(`Open Tendnote to review Source Record ${interaction.sessionId}.`), 200);
-  }
-
-  const result = await handleDiscordCaptureInteraction(
-    interaction,
-    input.deps ?? defaultDiscordCaptureDeps(),
-    createDiscordRequestOwnerResolver(input),
-  );
-
-  if (result.type === "captured") {
+  if (result.type === "captured" || result.type === "resumed_session") {
     return json({
       type: 4,
       data: {
-        content: "Captured as Tendnote logged context for review.",
+        content:
+          result.type === "captured"
+            ? "Captured as Tendnote logged context for review."
+            : "Saved that clarification as Tendnote logged context for review.",
         flags: 64,
         components: discordComponentsToApi(result.components),
       },
     } satisfies DiscordInteractionResponse);
-  }
-
-  if (result.type === "parked_session") {
-    return json(ephemeral("Saved that clarification for the Tendnote review session."), 200);
   }
 
   return json(ephemeral(responseForRejection(result.reason)), 200);
@@ -218,13 +248,26 @@ export function verifyDiscordSignature(
   }
 }
 
+/** A payload refused while parsing, before any interaction is built from it. */
+export type DiscordInteractionParseRejection = {
+  type: "rejected";
+  reason: Extract<DiscordCaptureRejectionReason, "attachments_not_supported">;
+};
+
 export function discordApiPayloadToCaptureInteraction(
   payload: DiscordApiInteraction,
-): DiscordInteraction | null {
+): DiscordInteraction | DiscordInteractionParseRejection | null {
   const discordUserId = payload.member?.user?.id ?? payload.user?.id;
   if (!discordUserId) return null;
 
   if (payload.type === 2 && payload.data?.name === "capture") {
+    // Attachments are refused here rather than accepted and rejected downstream:
+    // Discord attachments are not a Tendnote import path, so their ids and
+    // filenames are never mapped, carried, or logged in the first place.
+    if (hasResolvedAttachments(payload)) {
+      return { type: "rejected", reason: "attachments_not_supported" };
+    }
+
     return {
       type: "slash_command",
       commandName: "capture",
@@ -233,7 +276,6 @@ export function discordApiPayloadToCaptureInteraction(
       // The scope policy reads these but never widens scope from them; nothing persists them.
       guildId: payload.guild_id ?? null,
       channelId: payload.channel_id ?? null,
-      attachments: slashCommandAttachments(payload),
     };
   }
 
@@ -244,26 +286,20 @@ export function discordApiPayloadToCaptureInteraction(
   return null;
 }
 
-/** Filename of a resolved attachment, falling back to a placeholder for malformed shapes. */
-function resolvedAttachmentFilename(value: unknown): string {
-  return typeof value === "object" &&
-    value !== null &&
-    "filename" in value &&
-    typeof value.filename === "string"
-    ? value.filename
-    : "attachment";
-}
-
-/** Map a `/capture` command's resolved attachments to `{ id, filename }`, if any. */
-function slashCommandAttachments(
-  payload: DiscordApiInteraction,
-): { id: string; filename: string }[] | undefined {
+/**
+ * Whether a `/capture` command arrived with any resolved attachment.
+ *
+ * The payload is a `JSON.parse` result wearing a declared type, so the type says
+ * nothing about what actually arrived. An explicit `"attachments": null` is
+ * valid JSON that passes the signature check and would make `Object.keys` throw
+ * a TypeError inside the parse step, which the route can only answer with its
+ * generic failure. Anything that is not an object of attachments is treated as
+ * no attachments, which is the same answer the field being absent gives.
+ */
+function hasResolvedAttachments(payload: DiscordApiInteraction): boolean {
   const resolved = payload.data?.resolved?.attachments;
-  if (!resolved) return undefined;
-  return Object.entries(resolved).map(([id, value]) => ({
-    id,
-    filename: resolvedAttachmentFilename(value),
-  }));
+  if (typeof resolved !== "object" || resolved === null) return false;
+  return Object.keys(resolved).length > 0;
 }
 
 /** Build a component / modal-submit interaction, failing closed on an undecodable custom id. */
@@ -333,74 +369,19 @@ export function isDiscordOwnerMapFallbackAllowed(nodeEnv = process.env.NODE_ENV)
   return nodeEnv !== "production";
 }
 
+/**
+ * The production wiring, including the HITL resume path: parking and resuming go
+ * through Redis, so an open clarification modal outlives the instance that
+ * rendered it, and a submit served by any other instance still resolves. Nothing
+ * about the flow depends on a handler being registered at runtime.
+ */
 function defaultDiscordCaptureDeps(): DiscordCaptureDeps {
   return {
     captureForPerson: captureSourceRecordForPersonWithEmbeddingDelivery,
     captureGlobal: captureSourceRecord,
     enqueueExtraction: enqueueAndPublishExtractionJob,
     enqueueActionExtraction: enqueueAndPublishActionExtractionJob,
-    parkHitlSession: parkDiscordHitlSession,
-    resumeHitlSession: resumeDiscordHitlSession,
-  };
-}
-
-type DiscordHitlSession = DiscordHitlSessionInput & {
-  handledAt: Date;
-};
-
-type ParkedDiscordHitlSession = {
-  ownerUserId: string;
-  discordUserId: string;
-  sessionId: string;
-  action: "clarify" | "review";
-  value: string | null;
-  parkedAt: Date;
-};
-
-const parkedDiscordHitlSessions = new Map<string, ParkedDiscordHitlSession>();
-const resumedDiscordHitlSessions = new Map<string, DiscordHitlSession>();
-const discordHitlResumeHandlers = new Map<
-  string,
-  (input: DiscordHitlSessionInput) => Promise<unknown>
->();
-
-export async function parkDiscordHitlSession(
-  input: Omit<ParkedDiscordHitlSession, "parkedAt">,
-): Promise<ParkedDiscordHitlSession> {
-  const parked = { ...input, parkedAt: new Date() };
-  parkedDiscordHitlSessions.set(input.sessionId, parked);
-  return parked;
-}
-
-export function getParkedDiscordHitlSession(sessionId: string): ParkedDiscordHitlSession | null {
-  return parkedDiscordHitlSessions.get(sessionId) ?? null;
-}
-
-export async function resumeDiscordHitlSession(
-  input: DiscordHitlSessionInput,
-): Promise<DiscordHitlSession> {
-  const resumeHandler = discordHitlResumeHandlers.get(input.sessionId);
-  if (!resumeHandler) {
-    throw new Error(`No Discord HITL resume handler registered for session ${input.sessionId}`);
-  }
-
-  await resumeHandler(input);
-  const resumed = { ...input, handledAt: new Date() };
-  resumedDiscordHitlSessions.set(input.sessionId, resumed);
-  return resumed;
-}
-
-export function getResumedDiscordHitlSession(sessionId: string): DiscordHitlSession | null {
-  return resumedDiscordHitlSessions.get(sessionId) ?? null;
-}
-
-export function registerDiscordHitlSessionResumeHandler(
-  sessionId: string,
-  handler: (input: DiscordHitlSessionInput) => Promise<unknown>,
-): () => void {
-  discordHitlResumeHandlers.set(sessionId, handler);
-  return () => {
-    discordHitlResumeHandlers.delete(sessionId);
+    hitlSessions: createRedisDiscordHitlSessionStore(),
   };
 }
 
@@ -417,7 +398,7 @@ function firstSubmittedValue(payload: DiscordApiInteraction): string | undefined
   return payload.data?.components?.flatMap((row) => row.components ?? [])[0]?.value;
 }
 
-function responseForRejection(reason: string): string {
+function responseForRejection(reason: DiscordCaptureRejectionReason): string {
   switch (reason) {
     case "unmapped_discord_user":
       return "This Discord user is not mapped to a Tendnote owner.";
@@ -425,6 +406,12 @@ function responseForRejection(reason: string): string {
       return "Discord attachments are not a Tendnote cleanup import path yet.";
     case "empty_capture":
       return "Add text to capture with the command.";
+    case "empty_clarification":
+      return "Add a clarification before sending it to Tendnote.";
+    case "hitl_session_expired":
+      return "That clarification prompt expired. Open Clarify again to send it.";
+    case "hitl_session_unavailable":
+      return "Tendnote could not reach its clarification store. Try that again in a moment.";
     case "household_scope_not_supported":
       return "Discord capture is private to you. Household or shared visibility is set in Tendnote, not from Discord.";
     default:
