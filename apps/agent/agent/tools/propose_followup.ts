@@ -1,102 +1,16 @@
-import { suggestFollowup } from "@tendnote/db/queries/followups";
 import { defineTool } from "eve/tools";
-import { z } from "zod";
-import { resolveOwnerUserId } from "../lib/owner";
-import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
-import { withModelSafeStoreErrors } from "../lib/store-errors";
-
-const inputSchema = z.object({
-  personId: z
-    .uuid()
-    .describe(
-      "The resolved person the suggestion is for. Resolve identity with search_people first.",
-    ),
-  reason: z
-    .string()
-    .min(1)
-    .describe("Why following up might help, in plain language (e.g. 'check in about the move')."),
-  dueAt: z
-    .string()
-    .describe(
-      "A concrete proposed due date as an ISO 8601 string. Resolve relative phrases to a concrete date; if timing is ambiguous, ask the user instead of calling this tool.",
-    ),
-  sourceRecordId: z
-    .uuid()
-    .describe(
-      "The source record this suggestion is grounded in — the note you just logged, the source record under review, or one returned by get_person_context/search. A suggestion must be grounded.",
-    ),
-  directlyRequested: z
-    .boolean()
-    .optional()
-    .describe(
-      "Set true ONLY when the user directly asked about this delicate context. Restricted source records are excluded from proactive suggestion by default.",
-    ),
-});
+import { proposeFollowupTool } from "../lib/tools/propose-followup";
 
 /**
- * Thin wrapper over the shared review-gated suggestion path (PRD #42, ADR-0006).
- * Eve proposes follow-ups only in explicit flows — after logging a note, reviewing
- * a source record or memory, viewing a person, or being asked whether to follow up
- * — never from a background scan. The suggestion is persisted as `suggested` and
- * stays tentative until the user accepts it; it is grounded in a source record and
- * excludes restricted context unless the user directly asked. This never creates an
- * active reminder (use create_followup for that, only on an explicit ask).
+ * The root agent's registration of the shared review-gated suggestion path
+ * (PRD #42, ADR-0006). It proposes only in an explicit flow and never creates an
+ * active reminder; `create_followup` is the tool for that, on an explicit ask.
  */
-export default defineTool({
-  description:
-    "Propose a SUGGESTED follow-up for the user to review — never an active reminder. Use this only in an explicit flow (just logged a note, reviewing a source record or memory, viewing a person, or the user asked 'should I follow up?'). Requires a resolved personId, a reason, a concrete proposed dueAt, and the sourceRecordId it is grounded in. Do NOT use this to scan everyone and invent follow-ups, and do NOT rank who to check in with. The result is tentative until the user accepts it; render it for review and let the user accept, edit, or dismiss. Returns the persisted suggestion reference; name the person, never the raw id.",
-  inputSchema,
-  async execute(input, ctx) {
-    const ownerUserId = resolveOwnerUserId(ctx);
-
-    const outcome = await withModelSafeStoreErrors(() =>
-      suggestFollowup({
-        ownerUserId,
-        personId: input.personId,
-        reason: input.reason,
-        // Parsed here; the shared layer rejects anything that isn't a concrete date.
-        dueAt: new Date(input.dueAt),
-        sourceRecordId: input.sourceRecordId,
-        directlyRequested: input.directlyRequested,
-      }),
-    );
-    await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
-    const result = outcome.result;
-
-    return {
-      found: true as const,
-      component: result.component,
-      person: result.person
-        ? { id: result.person.id, displayName: result.person.displayName }
-        : null,
-      followup: {
-        id: result.followup.id,
-        personId: result.followup.personId,
-        reason: result.followup.reason,
-        dueAt: result.followup.dueAt.toISOString(),
-        status: result.followup.status,
-      },
-      sourceRecord: result.sourceRecord ? { id: result.sourceRecord.id } : null,
-    };
-  },
-  // The proposal renders as a review card the user already sees. Drop the reason and
-  // due date echo from the model's view (Eve `toModelOutput`) so it offers it briefly
-  // instead of restating it; keep the id + person so the user can ask you to set or
-  // dismiss it. Channel still gets the full output above for rendering.
-  toModelOutput(output) {
-    return {
-      type: "json" as const,
-      value: {
-        proposed: true,
-        followupId: output.followup.id,
-        personId: output.followup.personId,
-        person: output.person?.displayName ?? null,
-        status: output.followup.status,
-        rendered:
-          "The suggested follow-up is shown to the user in a review card they can accept, edit, or dismiss.",
-        guidance:
-          "It's a TENTATIVE suggestion, not an active reminder. Don't reprint the reason or due date — the card shows them. Offer it for review in a brief line; set it as a reminder only on the user's explicit say-so.",
-      },
-    };
-  },
-});
+export default defineTool(
+  proposeFollowupTool({
+    whenToUse:
+      "Use this only in an explicit flow (just logged a note, reviewing a source record or memory, viewing a person, or the user asked 'should I follow up?').",
+    groundingHint:
+      "the note you just logged, the source record under review, or one returned by get_person_context/search.",
+  }),
+);

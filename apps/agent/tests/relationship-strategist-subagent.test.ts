@@ -2,27 +2,38 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { authoredInstructions } from "./instructions-source";
-import { asTestTool } from "./test-tool";
+import { asTestTool, parseToolInput, toolModelValue } from "./test-tool";
 
-const { getRelationshipAgenda, suggestFollowup, listDraftsForPerson } = vi.hoisted(() => ({
-  getRelationshipAgenda: vi.fn(),
-  suggestFollowup: vi.fn(),
-  listDraftsForPerson: vi.fn(),
-}));
+const { getRelationshipAgenda, suggestFollowup, listDraftsForPerson, getPerson, searchPeople } =
+  vi.hoisted(() => ({
+    getRelationshipAgenda: vi.fn(),
+    suggestFollowup: vi.fn(),
+    listDraftsForPerson: vi.fn(),
+    getPerson: vi.fn(),
+    searchPeople: vi.fn(),
+  }));
 
 vi.mock("@tendnote/db/queries/relationship-agenda", () => ({ getRelationshipAgenda }));
 vi.mock("@tendnote/db/queries/followups", () => ({ suggestFollowup }));
-vi.mock("@tendnote/db/queries/drafts", () => ({ listDraftsForPerson }));
+vi.mock("@tendnote/db/queries/drafts", () => ({
+  listDraftsForPerson,
+  listDraftsForOwner: vi.fn(),
+}));
+vi.mock("@tendnote/db/queries/people", () => ({ getPerson, searchPeople }));
 
 const subagentRoot = join(process.cwd(), "agent/subagents/relationship_strategist");
-const PERSON_ID = "11111111-1111-1111-1111-111111111111";
-const FOLLOWUP_ID = "22222222-2222-2222-2222-222222222222";
-const SOURCE_RECORD_ID = "33333333-3333-3333-3333-333333333333";
-const DRAFT_ID = "44444444-4444-4444-4444-444444444444";
+const PERSON_ID = "11111111-1111-4111-8111-111111111111";
+const FOLLOWUP_ID = "22222222-2222-4222-8222-222222222222";
+const SOURCE_RECORD_ID = "33333333-3333-4333-8333-333333333333";
+const DRAFT_ID = "44444444-4444-4444-8444-444444444444";
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 
-function importsOf(source: string): string[] {
-  return [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1] ?? "");
+function toolSource(file: string): string {
+  return readFileSync(join(subagentRoot, "tools", file), "utf8");
+}
+
+function instructions(): string {
+  return readFileSync(join(subagentRoot, "instructions/base.md"), "utf8");
 }
 
 beforeEach(() => {
@@ -39,54 +50,72 @@ describe("Relationship Strategist subagent", () => {
   });
 
   it("blocks durable and external mutations inside isolated instructions", () => {
-    const instructions = readFileSync(join(subagentRoot, "instructions.md"), "utf8");
-    expect(instructions).toMatch(/get_relationship_agenda/i);
-    expect(instructions).toMatch(/read-only ranking surface/i);
-    expect(instructions).toMatch(/list_calendar_events/i);
-    expect(instructions).toMatch(/Calendar output is provider-derived context/i);
-    expect(instructions).toMatch(/list_message_drafts/i);
-    expect(instructions).toMatch(/Draft reads are read-only/i);
-    expect(instructions).toMatch(/propose_followup/i);
-    expect(instructions).toMatch(/concrete `sourceRecordId`/i);
-    expect(instructions).toMatch(/must not create active Follow-Ups/i);
-    expect(instructions).toMatch(/must not create .*Memories/i);
-    expect(instructions).toMatch(/create Source Records/i);
-    expect(instructions).toMatch(/create Message Drafts/i);
-    expect(instructions).toMatch(/external actions/i);
+    expect(instructions()).toMatch(/get_relationship_agenda/i);
+    expect(instructions()).toMatch(/read-only ranking surface/i);
+    expect(instructions()).toMatch(/list_calendar_events/i);
+    expect(instructions()).toMatch(/Calendar output is provider-derived context/i);
+    expect(instructions()).toMatch(/list_message_drafts/i);
+    expect(instructions()).toMatch(/Draft reads are read-only/i);
+    expect(instructions()).toMatch(/propose_followup/i);
+    expect(instructions()).toMatch(/concrete `sourceRecordId`/i);
+    expect(instructions()).toMatch(/must not create active Follow-Ups/i);
+    expect(instructions()).toMatch(/must not create .*Memories/i);
+    expect(instructions()).toMatch(/create Source Records/i);
+    expect(instructions()).toMatch(/create Message Drafts/i);
+    expect(instructions()).toMatch(/external actions/i);
   });
 
-  it("keeps relationship agenda read-only and separate from suggested follow-up mutation", () => {
-    const agendaTool = readFileSync(join(subagentRoot, "tools/get_relationship_agenda.ts"), "utf8");
-    expect(agendaTool).toContain("getRelationshipAgenda");
-    expect(agendaTool).toContain("resolveOwnerUserId");
-    expect(agendaTool).toContain("sourceRefs");
-    expect(agendaTool).toMatch(/read-only/i);
-    expect(importsOf(agendaTool)).not.toEqual(
-      expect.arrayContaining(["@tendnote/db/queries/followups"]),
-    );
-    expect(agendaTool).not.toMatch(
-      /\b(suggestFollowup|createFollowup|createMemory|captureSourceRecord|generateDraft|saveDraft)\s*\(/,
-    );
+  /**
+   * ADR 0124's path was unreachable: `propose_followup` requires a `personId`, and a
+   * subagent inherits no conversation to have learned one from. The parent passing one
+   * is the normal case; being able to resolve a name itself is what keeps a delegation
+   * that forgot from dead-ending.
+   */
+  it("can reach a personId from the delegated message and from its own lookup", () => {
+    expect(instructions()).toMatch(/carries the exact `personId`/i);
+    expect(instructions()).toMatch(/search_people/);
+    expect(instructions()).toMatch(/hand the choice back to the parent agent/i);
+    expect(instructions()).toMatch(/never ask the owner for a raw id/i);
+    // The parent's own contract has to agree with the child's.
+    expect(authoredInstructions()).toMatch(/Pass\s+the resolved `personId` for every person/i);
   });
 
-  it("creates only grounded review-gated Suggested Follow-Ups with owner scoping", () => {
-    const proposalTool = readFileSync(join(subagentRoot, "tools/propose_followup.ts"), "utf8");
-    expect(proposalTool).toContain("suggestFollowup");
-    expect(proposalTool).toContain("resolveOwnerUserId");
-    expect(proposalTool).toMatch(/sourceRecordId/);
-    expect(proposalTool).toMatch(/status:\s*result\.followup\.status/);
-    expect(proposalTool).toMatch(/Suggested Follow-Up/i);
-    expect(importsOf(proposalTool)).not.toEqual(
-      expect.arrayContaining([
-        "@tendnote/db/queries/memories",
-        "@tendnote/db/queries/source-records",
-        "@tendnote/db/queries/drafts",
-        "@tendnote/db/queries/gmail-drafts",
-      ]),
-    );
-    expect(proposalTool).not.toMatch(
-      /\b(createFollowup|acceptSuggestedFollowup|dismissSuggestedFollowup|createMemory|captureSourceRecord|generateDraft|saveDraft|send)\s*\(/,
-    );
+  it("keeps its anti-CRM, anti-guilt tone rules", () => {
+    expect(instructions()).toMatch(/non-salesy/i);
+    expect(instructions()).toMatch(/relationship impact/);
+    expect(instructions()).toMatch(/lead\/deal\/pipeline language/);
+    expect(instructions()).toMatch(/Do not guilt the owner/i);
+    expect(instructions()).toMatch(/thoughtful options the owner can consider/i);
+  });
+
+  /**
+   * The four tools were hand-copied from the root's and had drifted apart in exactly
+   * the direction that costs safety: the copies dropped clauses. They are registrations
+   * over one shared definition now, so a clause can only be removed from both at once.
+   */
+  it("registers shared tool definitions instead of re-implementing them", () => {
+    for (const file of [
+      "get_relationship_agenda.ts",
+      "list_calendar_events.ts",
+      "list_message_drafts.ts",
+      "propose_followup.ts",
+      "search_people.ts",
+    ]) {
+      const source = toolSource(file);
+      expect(source, file).toMatch(/from "\.\.\/\.\.\/\.\.\/lib\/tools\//);
+      expect(source, file).not.toMatch(/async\s+execute\s*\(/);
+      expect(source, file).not.toMatch(/@tendnote\/db\/queries/);
+    }
+  });
+
+  it("keeps both refusal clauses on the suggestion path, for the root and the subagent", () => {
+    const shared = readFileSync(join(process.cwd(), "agent/lib/tools/propose-followup.ts"), "utf8");
+    expect(shared).toMatch(/Do NOT use this to scan everyone and invent follow-ups/);
+    expect(shared).toMatch(/do NOT rank who to check in with/);
+    expect(shared).toMatch(/never an active reminder/);
+    // The one field that used to describe source refs as an identity lookup.
+    expect(shared).toMatch(/Resolve identity with search_people first/);
+    expect(shared).not.toMatch(/agenda source refs or identity lookup/);
   });
 
   it("executes the agenda tool as an owner-scoped read with no suggested-follow-up mutation", async () => {
@@ -133,6 +162,20 @@ describe("Relationship Strategist subagent", () => {
     expect(result.candidates[0]?.sourceRefs).toEqual([
       { kind: "source_record", id: SOURCE_RECORD_ID },
     ]);
+
+    // The handles its own propose_followup call needs, and the rule that they are
+    // handles: without them the subagent has a ranking it can do nothing with.
+    const model = toolModelValue(rawAgendaTool, result) as {
+      candidates: { person: string; personId: string; sourceRefs: unknown[] }[];
+      guidance: string;
+    };
+    expect(model.candidates[0]?.person).toBe("Alex");
+    expect(model.candidates[0]?.personId).toBe(PERSON_ID);
+    expect(model.candidates[0]?.sourceRefs).toEqual([
+      { kind: "source_record", id: SOURCE_RECORD_ID },
+    ]);
+    expect(model.guidance).toMatch(/never write one in a reply/i);
+    expect(model.guidance).toMatch(/read-only agenda context/i);
   });
 
   it("executes grounded Suggested Follow-Up creation through the review-gated shared path", async () => {
@@ -180,9 +223,30 @@ describe("Relationship Strategist subagent", () => {
     );
     expect(result.followup.status).toBe("suggested");
     expect(result.component.followupId).toBe(FOLLOWUP_ID);
+
+    const model = toolModelValue(rawProposalTool, result);
+    expect(model.guidance).toMatch(/tentative/i);
+    expect(model.guidance).toMatch(/do not claim it was accepted/i);
   });
 
-  it("executes draft reads as owner-scoped, person-scoped, read-only context", async () => {
+  it("resolves a name to a personId without being able to create anyone", async () => {
+    searchPeople.mockResolvedValue([
+      { id: PERSON_ID, displayName: "Alex", relationshipType: "friend", closenessLevel: 3 },
+    ]);
+    const { default: rawSearchTool } = await import(
+      "../agent/subagents/relationship_strategist/tools/search_people"
+    );
+    const searchTool = asTestTool(rawSearchTool);
+
+    const result = await searchTool.execute(parseToolInput(rawSearchTool, { query: "Alex" }), ctx);
+
+    expect(searchPeople).toHaveBeenCalledWith(expect.objectContaining({ ownerUserId: "user-1" }));
+    expect(result.people[0]?.id).toBe(PERSON_ID);
+    expect(result.requiresDisambiguation).toBe(false);
+    expect(rawSearchTool.description).toMatch(/cannot create a person/i);
+  });
+
+  it("executes draft reads as owner-scoped, person-scoped, bounded, and id-free", async () => {
     listDraftsForPerson.mockResolvedValue([
       {
         id: DRAFT_ID,
@@ -203,12 +267,14 @@ describe("Relationship Strategist subagent", () => {
         updatedAt: new Date("2026-07-01T00:00:00.000Z"),
       },
     ]);
+    getPerson.mockResolvedValue({ id: PERSON_ID, displayName: "Alex" });
     const { default: rawDraftTool } = await import(
       "../agent/subagents/relationship_strategist/tools/list_message_drafts"
     );
     const draftTool = asTestTool(rawDraftTool);
 
-    const result = await draftTool.execute({ personId: PERSON_ID, statuses: ["draft"] }, ctx);
+    const input = parseToolInput(rawDraftTool, { personId: PERSON_ID, statuses: ["draft"] });
+    const result = await draftTool.execute(input, ctx);
 
     expect(listDraftsForPerson).toHaveBeenCalledWith({
       ownerUserId: "user-1",
@@ -216,6 +282,22 @@ describe("Relationship Strategist subagent", () => {
       statuses: ["draft"],
     });
     expect(result.drafts).toHaveLength(1);
-    expect(result.guidance).toMatch(/read-only|explicit owner intent/i);
+
+    // The old copy required a personId it could not obtain, returned every draft the
+    // person ever had, and passed the grounding record ids to the model.
+    const model = toolModelValue(rawDraftTool, result);
+    const serialized = JSON.stringify(model);
+    expect(serialized).not.toContain(SOURCE_RECORD_ID);
+    expect(serialized).not.toContain(DRAFT_ID);
+    expect(serialized).not.toContain(PERSON_ID);
+    expect(serialized).toContain("Alex");
+    expect(model.guidance).toMatch(/never been sent|has been sent or exported/i);
+    expect(model.guidance).toMatch(/parent agent/i);
+  });
+
+  it("bounds one person's drafts to a page the turn can carry", () => {
+    const shared = readFileSync(join(process.cwd(), "agent/lib/tools/message-drafts.ts"), "utf8");
+    expect(shared).toMatch(/DEFAULT_DRAFT_LIST_LIMIT = 5/);
+    expect(shared).toMatch(/\.max\(25\)/);
   });
 });

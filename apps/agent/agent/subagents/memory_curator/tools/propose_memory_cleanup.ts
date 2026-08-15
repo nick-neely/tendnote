@@ -16,13 +16,21 @@ const inputSchema = z.object({
 
 export default defineTool({
   description:
-    "Read eligible owner-scoped Memories and Source Records and return review-only memory cleanup proposals with source grounding. This tool never approves, edits, archives, merges, or deletes durable Memories.",
+    "Read eligible owner-scoped Memories and Source Records and return review-only memory cleanup proposals with source grounding. Use this once when the owner asks to tidy, clean up, review, or make sense of what Tendnote remembers - duplicates, stale memories, notes that contradict each other, or memories too vague to be useful. It is the only way to find cleanup candidates: never assemble one by reasoning about what the owner probably has. This tool never approves, edits, archives, merges, or deletes durable Memories, and nothing it returns has changed anything.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    return withModelSafeStoreErrors(() =>
+    const result = await withModelSafeStoreErrors(() =>
       getMemoryCuratorProposals({ ownerUserId, limit: input.limit }),
     );
+
+    // The owner id the shared read echoes back is scoping metadata, not part of a
+    // proposal: it identifies the caller to the caller. It stops here rather than
+    // riding out to the channel with every card.
+    return {
+      component: result.component,
+      proposals: result.proposals.map(({ ownerUserId: _ownerUserId, ...proposal }) => proposal),
+    };
   },
   toModelOutput(output) {
     return {
@@ -35,9 +43,11 @@ export default defineTool({
           title: proposal.title,
           reason: proposal.reason,
           suggestedAction: proposal.suggestedAction,
+          // Kind and label, never the record id: this agent has no tool that takes
+          // one, so an id in its view is an id it can only print. The channel still
+          // gets the full refs above for the review card.
           sourceRefs: proposal.sourceRefs.map((sourceRef) => ({
             kind: sourceRef.kind,
-            id: sourceRef.id,
             label: sourceRef.label,
           })),
           sensitivity: proposal.sensitivity,

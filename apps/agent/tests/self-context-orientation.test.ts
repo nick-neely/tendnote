@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSelfContextInstructionsMarkdown,
   buildUnavailableSelfContextInstructionsMarkdown,
+  resolveAuthenticatedCaller,
   resolveOrientationCaller,
 } from "../agent/lib/self-context-orientation";
 
@@ -42,6 +43,37 @@ describe("Self Context Eve orientation", () => {
         },
       } as never),
     ).toBeNull();
+  });
+
+  /**
+   * The identity half of the same rule, split out so a subagent turn can resolve a
+   * fact about its own session (which day it is where the owner lives) without
+   * loosening the exclusion that keeps stored Self Context out of a child session.
+   */
+  it("separates the identity test from the child-session exclusion", () => {
+    const delegated = {
+      session: {
+        auth: { current: { principalId: "user-123", principalType: "user" } },
+        parent: { sessionId: "parent-session" },
+      },
+    } as never;
+
+    expect(resolveAuthenticatedCaller(delegated)).toBe("user-123");
+    expect(resolveOrientationCaller(delegated)).toBeNull();
+    expect(
+      resolveAuthenticatedCaller(context({ principalType: "runtime", principalId: "eve:app" })),
+    ).toBeNull();
+  });
+
+  it("says whether the caller has a household without naming anyone in it", () => {
+    const markdown = buildSelfContextInstructionsMarkdown(
+      '{"identity":{"kind":"authenticated_user","userId":"user-123"},"household":{"isMember":true}}',
+    );
+
+    expect(markdown).toContain("`household.isMember`");
+    expect(markdown).toMatch(/carries no other member's data/i);
+    expect(markdown).toMatch(/grants\s+no access/i);
+    expect(markdown).toMatch(/When it is absent, assume neither/i);
   });
 
   it("delimits serialized facts and keeps their authority below static policy", () => {

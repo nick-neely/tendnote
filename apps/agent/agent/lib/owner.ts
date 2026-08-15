@@ -1,4 +1,4 @@
-type OwnerScopedContext = {
+export type OwnerScopedContext = {
   session: { auth: { current?: { principalId?: string | null } | null } };
 };
 

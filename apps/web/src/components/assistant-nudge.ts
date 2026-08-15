@@ -3,21 +3,17 @@
  * unit-testable without the panel's server-only transitive imports.
  */
 
-export type NudgePersonContext = { personId: string; personName: string };
+import {
+  type SelectedPersonContext,
+  selectedPersonClientContext,
+} from "@/lib/eve/selected-person-context";
 
-type NudgeClientContext = { person: { id: string; displayName: string } } | undefined;
+export type NudgePersonContext = SelectedPersonContext;
 
 export type NudgeAgent = {
   status: string;
-  send: (message: string, options?: { clientContext?: NudgeClientContext }) => Promise<unknown>;
+  send: (message: string, options?: { clientContext?: string }) => Promise<unknown>;
 };
-
-/** Owner-safe one-turn client context for the agent, or none when unscoped. */
-export function nudgeClientContextFor(context?: NudgePersonContext): NudgeClientContext {
-  return context
-    ? { person: { id: context.personId, displayName: context.personName } }
-    : undefined;
-}
 
 /**
  * Send a prompt nudge to Eve: only when the agent is ready, the nudge's full prompt
@@ -32,6 +28,6 @@ export function sendNudgeToAgent(
   if (agent.status !== "ready") {
     return false;
   }
-  agent.send(prompt, { clientContext: nudgeClientContextFor(context) }).catch(() => {});
+  agent.send(prompt, { clientContext: selectedPersonClientContext(context) }).catch(() => {});
   return true;
 }

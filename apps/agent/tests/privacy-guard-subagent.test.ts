@@ -5,6 +5,7 @@ import { authoredInstructions } from "./instructions-source";
 
 const subagentRoot = join(process.cwd(), "agent/subagents/privacy_guard");
 const toolsRoot = join(subagentRoot, "tools");
+const instructionsPath = join(subagentRoot, "instructions/base.md");
 
 /**
  * Tools the reviewer actually has. An empty `tools/` directory is not the same
@@ -31,9 +32,10 @@ describe("Privacy Guard subagent", () => {
   });
 
   it("has isolated instructions that block access-policy decisions and extra context", () => {
-    const instructions = readFileSync(join(subagentRoot, "instructions.md"), "utf8");
+    const instructions = readFileSync(instructionsPath, "utf8");
 
     expect(instructions).toMatch(/reviewer-only/i);
+    expect(instructions).toMatch(/inherit nothing from the parent agent/i);
     expect(instructions).toMatch(/after deterministic scope enforcement/i);
     expect(instructions).toMatch(/must not decide access/i);
     expect(instructions).toMatch(/must not add records, context, tools, or actions/i);
@@ -41,14 +43,18 @@ describe("Privacy Guard subagent", () => {
   });
 
   it("pins the authored Privacy Guard surface covered by reviewer-only checks", () => {
+    // The date anchor is the third: a reviewer that reads a proposed answer about
+    // "next Tuesday" needs to know which Tuesday, and a subagent inherits none of the
+    // root's session context.
     const authoredFiles = [
       "agent/subagents/privacy_guard/agent.ts",
-      "agent/subagents/privacy_guard/instructions.md",
+      "agent/subagents/privacy_guard/instructions/base.md",
+      "agent/subagents/privacy_guard/instructions/current-date.ts",
     ];
 
     expect(
       authoredFiles.map((file) => readFileSync(join(process.cwd(), file), "utf8")).length,
-    ).toBe(2);
+    ).toBe(3);
     expect(authoredToolFiles()).toEqual([]);
   });
 
@@ -57,7 +63,7 @@ describe("Privacy Guard subagent", () => {
 
     const combined = [
       readFileSync(join(subagentRoot, "agent.ts"), "utf8"),
-      readFileSync(join(subagentRoot, "instructions.md"), "utf8"),
+      readFileSync(instructionsPath, "utf8"),
     ].join("\n");
 
     expect(combined).not.toMatch(
