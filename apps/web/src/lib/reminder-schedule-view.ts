@@ -8,6 +8,7 @@ export type ReminderScheduleView = {
   localTime: string | null;
   leadMinutes: number | null;
   timeZone: string;
+  intendedAt?: Date;
   label: string;
 };
 
@@ -25,6 +26,7 @@ export function toReminderScheduleView(
     localTime: string | null;
     leadMinutes: number | null;
     timeZone: string;
+    intendedAt?: Date;
   },
   timeSemantics: "date_only" | "instant" = "date_only",
 ): ReminderScheduleView {

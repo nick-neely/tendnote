@@ -88,10 +88,16 @@ function toSuggestedGeneralActionReviewItem(
 function summarizeGeneralAction(
   action: Pick<
     GeneralActionListItemView,
-    "isRoutine" | "recurrenceLabel" | "timingLabel" | "personNames" | "visibilityLabel"
+    | "isRoutine"
+    | "recurrenceLabel"
+    | "timingLabel"
+    | "personNames"
+    | "visibilityLabel"
+    | "reminderLabel"
   >,
 ): string | null {
   return joinGeneralActionMeta([
+    action.reminderLabel,
     action.isRoutine ? (action.recurrenceLabel ?? "Routine") : action.timingLabel,
     formatLinkedPeople(action.personNames),
     action.visibilityLabel,
@@ -164,7 +170,20 @@ export const createdGeneralActionModule = defineModule<"created_general_action">
     create_general_action: (output) => {
       const parsed = assistantToolResultSchemas.create_general_action.safeParse(output);
       if (!parsed.success) return null;
-      return { kind: "created_general_action", ...toGeneralActionListItem(parsed.data.action) };
+      const reminder = parsed.data.reminder;
+      return {
+        kind: "created_general_action",
+        ...toGeneralActionListItem(parsed.data.action),
+        ...(reminder
+          ? {
+              reminderStatus: reminder.status,
+              reminderLabel:
+                reminder.status === "scheduled"
+                  ? reminder.label
+                  : "Action saved; reminder not scheduled",
+            }
+          : {}),
+      };
     },
   },
   tier: () => "card",

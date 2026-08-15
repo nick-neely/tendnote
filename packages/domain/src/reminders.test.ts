@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatReminderChoiceLabel,
+  formatReminderScheduleLabel,
   isReminderRecordEligible,
   nextBirthdayFollowupDueAt,
   reminderTimeSemanticsForRecordKind,
+  resolveReminderIntendedAt,
 } from "./reminders";
 
 describe("Birthday Follow-Up offer", () => {
@@ -50,5 +53,35 @@ describe("Reminder record policy", () => {
     expect(
       isReminderRecordEligible({ ...base, kind: "routine", status: "deferred", recurrence: {} }),
     ).toBe(false);
+  });
+
+  it("renders arbitrary lead times instead of claiming the occurrence time", () => {
+    expect(formatReminderChoiceLabel({ kind: "relative", leadMinutes: 123 }, "date_only")).toBe(
+      "2 hours 3 minutes before at 9:00 AM",
+    );
+
+    const label = formatReminderScheduleLabel({
+      kind: "relative",
+      localTime: null,
+      leadMinutes: 123,
+      timeZone: "America/Chicago",
+      intendedAt: new Date("2026-08-16T11:57:00.000Z"),
+    });
+    expect(label).toContain("2026-08-16");
+    expect(label).toContain("2 hours 3 minutes before");
+    expect(label).not.toContain("occurrence time");
+  });
+
+  it("keeps legacy callers permissive while Eve can request strict wall-time validation", () => {
+    const input = {
+      occursAt: new Date("2026-03-08T00:00:00.000Z"),
+      timeSemantics: "date_only" as const,
+      timeZone: "America/New_York",
+      choice: { kind: "exact" as const, localTime: "02:30" },
+    };
+    expect(resolveReminderIntendedAt(input)).toEqual(new Date("2026-03-08T07:30:00.000Z"));
+    expect(() => resolveReminderIntendedAt({ ...input, wallTimeMode: "strict" })).toThrow(
+      /does not exist/i,
+    );
   });
 });

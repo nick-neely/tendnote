@@ -77,6 +77,56 @@ function localParts(timeZone: string, instant: Date) {
   };
 }
 
+type ZonedWallTime = {
+  timeZone: string;
+  year: number;
+  month: number;
+  day: number;
+  minute: number;
+};
+
+function utcWallGuess(input: Pick<ZonedWallTime, "year" | "month" | "day" | "minute">) {
+  const hour = Math.floor(input.minute / 60);
+  const minute = input.minute % 60;
+  const guess = new Date(0);
+  guess.setUTCFullYear(input.year, input.month - 1, input.day);
+  guess.setUTCHours(hour, minute, 0, 0);
+  return guess;
+}
+
+function assertValidWallDate(input: Pick<ZonedWallTime, "year" | "month" | "day" | "minute">) {
+  if (
+    !Number.isInteger(input.year) ||
+    !Number.isInteger(input.month) ||
+    !Number.isInteger(input.day) ||
+    !Number.isInteger(input.minute) ||
+    input.month < 1 ||
+    input.month > 12 ||
+    input.minute < 0 ||
+    input.minute > 1_439
+  ) {
+    throw new RangeError("The wall-clock date or time is out of range.");
+  }
+  const lastDay = new Date(0);
+  lastDay.setUTCFullYear(input.year, input.month, 0);
+  lastDay.setUTCHours(0, 0, 0, 0);
+  if (input.day < 1 || input.day > lastDay.getUTCDate()) {
+    throw new RangeError("The wall-clock date is not a real calendar date.");
+  }
+}
+
+function sameWallMinute(instant: Date, input: ZonedWallTime) {
+  const parts = localParts(input.timeZone, instant);
+  return (
+    parts.year === input.year &&
+    parts.month === input.month &&
+    parts.day === input.day &&
+    parts.hour === Math.floor(input.minute / 60) &&
+    parts.minute === input.minute % 60 &&
+    parts.second === 0
+  );
+}
+
 /** Timezone offset (local − UTC, in ms) at a given instant. */
 export function timezoneOffsetMs(timeZone: string, instant: Date): number {
   const p = localParts(timeZone, instant);
@@ -98,6 +148,46 @@ export function zonedWallTimeToUtc(input: {
   // Subtract the zone offset at the guessed instant to land on the wall time.
   const offset = timezoneOffsetMs(input.timeZone, new Date(guess));
   return new Date(guess - offset);
+}
+
+/**
+ * Resolves a local wall-clock time without accepting JavaScript's normalization.
+ *
+ * The ordinary helper is intentionally permissive because brief recurrence
+ * computation can skip over a spring-forward gap. Reminder schedules need a
+ * user-facing answer instead: an impossible wall time must be clarified, and a
+ * fall-back time with two possible instants must not be chosen arbitrarily.
+ */
+export function zonedWallTimeToUtcStrict(input: ZonedWallTime): Date {
+  assertValidWallDate(input);
+  const guess = utcWallGuess(input);
+  const offsets = new Set(
+    [-2, 0, 2].map((days) =>
+      timezoneOffsetMs(input.timeZone, new Date(guess.getTime() + days * 86_400_000)),
+    ),
+  );
+  const matches = [...offsets]
+    .map((offset) => new Date(guess.getTime() - offset))
+    .filter((candidate) => sameWallMinute(candidate, input));
+  if (matches.length === 0) {
+    throw new RangeError("The wall-clock time does not exist in this timezone.");
+  }
+  if (matches.length > 1) {
+    throw new RangeError("The wall-clock time is ambiguous in this timezone.");
+  }
+  return matches[0] as Date;
+}
+
+/** Rejects an ISO date prefix that names a calendar day JavaScript would normalize. */
+export function assertIsoCalendarDate(value: string): void {
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|T|\s)/.exec(value);
+  if (!match) return;
+  assertValidWallDate({
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    minute: 0,
+  });
 }
 
 /** The local calendar date (YYYY-MM-DD) of an instant in a timezone. */

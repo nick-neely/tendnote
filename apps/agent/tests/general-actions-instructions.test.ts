@@ -19,6 +19,13 @@ describe("General Action instructions — explicit creation", () => {
     expect(authored).toMatch(/ask a clarifying question/i);
   });
 
+  it("requires explicit reminder timing and truthful partial results", () => {
+    expect(authored).toMatch(/reminderSchedule/);
+    expect(authored).toMatch(/concrete.*dueAt/i);
+    expect(authored).toMatch(/no notification was scheduled/i);
+    expect(authored).toMatch(/not a browser installation/i);
+  });
+
   it("distinguishes a Routine (cadence) from a one-time action", () => {
     expect(authored).toMatch(/Routine/);
     expect(authored).toMatch(/cadence/i);

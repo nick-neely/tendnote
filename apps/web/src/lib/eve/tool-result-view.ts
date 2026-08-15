@@ -307,6 +307,9 @@ export type GeneralActionListItemView = {
   timingLabel: string | null;
   personNames: string[];
   visibilityLabel: string | null;
+  /** Concrete explicit reminder label, or the honest partial-failure message. */
+  reminderLabel?: string | null;
+  reminderStatus?: "scheduled" | "failed";
 };
 
 /**

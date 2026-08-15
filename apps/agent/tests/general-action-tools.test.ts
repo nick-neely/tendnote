@@ -1,9 +1,10 @@
 import type { GeneralActionWithContext } from "@tendnote/db/queries/general-actions";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { asTestTool } from "./test-tool";
+import { asTestTool, parseToolInput } from "./test-tool";
 
 const mocks = vi.hoisted(() => ({
   createGeneralAction: vi.fn(),
+  createGeneralActionWithReminder: vi.fn(),
   suggestGeneralAction: vi.fn(),
   listActiveGeneralActions: vi.fn(),
   listPausedGeneralActions: vi.fn(),
@@ -166,6 +167,194 @@ describe("create_general_action — explicit active creation", () => {
     const serialized = JSON.stringify(model.value);
     expect(serialized).toContain("Replace the fridge water filter");
     expect(serialized).toContain(ACTION_ID);
+  });
+
+  it("attaches an explicit reminder in the owner's timezone without an agent installation", async () => {
+    mocks.createGeneralActionWithReminder.mockResolvedValue(
+      mutationOutcome({
+        action: action({ dueAt: new Date("2026-08-16T00:00:00.000Z") }),
+        reminder: {
+          status: "scheduled",
+          schedule: {
+            kind: "exact",
+            localTime: "15:00",
+            leadMinutes: null,
+            timeZone: "America/Chicago",
+            intendedAt: new Date("2026-08-16T20:00:00.000Z"),
+          },
+          occurrenceIntent: { id: "intent-1" },
+          optIn: { state: "none", clientInstallationId: null },
+        },
+      }),
+    );
+    mocks.getOwnerTodayContext.mockResolvedValue({
+      localDate: "2026-08-15",
+      timeZone: "America/Chicago",
+      now: new Date("2026-08-15T17:00:00.000Z"),
+    });
+
+    const result = await createTool.execute(
+      {
+        title: "Replace the fridge water filter",
+        dueAt: "2026-08-16",
+        reminderSchedule: { kind: "exact", localTime: "15:00" },
+      },
+      ctx,
+    );
+
+    expect(mocks.createGeneralActionWithReminder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerUserId: "user-1",
+        dueAt: new Date("2026-08-16T00:00:00.000Z"),
+        reminder: {
+          schedule: { kind: "exact", localTime: "15:00" },
+          timeZone: "America/Chicago",
+          now: new Date("2026-08-15T17:00:00.000Z"),
+        },
+      }),
+    );
+    expect(mocks.createGeneralActionWithReminder.mock.calls[0]?.[0]).not.toHaveProperty(
+      "clientInstallationId",
+    );
+    expect(result.reminder).toMatchObject({
+      status: "scheduled",
+      timeZone: "America/Chicago",
+      intendedAt: "2026-08-16T20:00:00.000Z",
+    });
+    expect(mocks.createGeneralAction).not.toHaveBeenCalled();
+  });
+
+  it("reports a saved action and failed notification scheduling separately", async () => {
+    mocks.createGeneralActionWithReminder.mockResolvedValue(
+      mutationOutcome({
+        action: action({ dueAt: new Date("2026-08-16T00:00:00.000Z") }),
+        reminder: { status: "failed", reason: "unavailable" },
+      }),
+    );
+    mocks.getOwnerTodayContext.mockResolvedValue({
+      localDate: "2026-08-15",
+      timeZone: "America/Chicago",
+      now: new Date("2026-08-15T17:00:00.000Z"),
+    });
+
+    const result = await createTool.execute(
+      {
+        title: "Replace the fridge water filter",
+        dueAt: "2026-08-16",
+        reminderSchedule: { kind: "exact", localTime: "15:00" },
+      },
+      ctx,
+    );
+
+    expect(result.action.id).toBe(ACTION_ID);
+    expect(result.reminder).toEqual({ status: "failed", reason: "unavailable" });
+    const model = createTool.toModelOutput?.(result as never) as { value: { guidance: string } };
+    expect(model.value.guidance).toMatch(/action was created/i);
+    expect(model.value.guidance).toMatch(/not.*scheduled/i);
+  });
+
+  it("confirms an arbitrary lead time with its concrete intended instant", async () => {
+    mocks.createGeneralActionWithReminder.mockResolvedValue(
+      mutationOutcome({
+        action: action({ dueAt: new Date("2026-08-16T00:00:00.000Z") }),
+        reminder: {
+          status: "scheduled",
+          schedule: {
+            kind: "relative",
+            localTime: null,
+            leadMinutes: 123,
+            timeZone: "America/Chicago",
+            intendedAt: new Date("2026-08-16T11:57:00.000Z"),
+          },
+          occurrenceIntent: { id: "intent-1" },
+          optIn: { state: "none", clientInstallationId: null },
+        },
+      }),
+    );
+    mocks.getOwnerTodayContext.mockResolvedValue({
+      localDate: "2026-08-15",
+      timeZone: "America/Chicago",
+      now: new Date("2026-08-15T17:00:00.000Z"),
+    });
+
+    const result = await createTool.execute(
+      {
+        title: "Replace the fridge water filter",
+        dueAt: "2026-08-16",
+        reminderSchedule: { kind: "relative", leadMinutes: 123 },
+      },
+      ctx,
+    );
+
+    expect(result.reminder).toMatchObject({
+      status: "scheduled",
+      intendedAt: "2026-08-16T11:57:00.000Z",
+    });
+    if (result.reminder?.status !== "scheduled") {
+      throw new Error("Expected a scheduled custom reminder.");
+    }
+    expect(result.reminder.label).toContain("2 hours 3 minutes before");
+    expect(result.reminder.label).toContain("2026-08-16");
+    expect(result.reminder.label).not.toContain("occurrence time");
+  });
+
+  it("requires a concrete action date before accepting a reminder schedule", async () => {
+    await expect(
+      createTool.execute(
+        {
+          title: "Replace the fridge water filter",
+          reminderSchedule: { kind: "exact", localTime: "15:00" },
+        },
+        ctx,
+      ),
+    ).rejects.toThrow(/concrete.*date|due date/i);
+    expect(mocks.createGeneralAction).not.toHaveBeenCalled();
+    expect(mocks.createGeneralActionWithReminder).not.toHaveBeenCalled();
+  });
+
+  it("rejects a normalized impossible calendar date before creating an Action", async () => {
+    await expect(
+      createTool.execute(
+        {
+          title: "Replace the fridge water filter",
+          dueAt: "2026-02-30",
+        },
+        ctx,
+      ),
+    ).rejects.toThrow(/real calendar date/i);
+    expect(mocks.createGeneralAction).not.toHaveBeenCalled();
+    expect(mocks.createGeneralActionWithReminder).not.toHaveBeenCalled();
+
+    await expect(
+      createTool.execute(
+        {
+          title: "Replace the fridge water filter",
+          dueAt: "2026-02-30 00:00:00",
+        },
+        ctx,
+      ),
+    ).rejects.toThrow(/real calendar date|ISO 8601/i);
+  });
+
+  it("schemas due dates as canonical ISO dates or offset date-times before parsing", () => {
+    expect(() =>
+      parseToolInput(rawCreateTool, {
+        title: "Replace the fridge water filter",
+        dueAt: "2026-02-30 00:00:00",
+      }),
+    ).toThrow();
+    expect(() =>
+      parseToolInput(rawCreateTool, {
+        title: "Replace the fridge water filter",
+        dueAt: "2026-08-16 00:00:00Z",
+      }),
+    ).toThrow();
+    expect(
+      parseToolInput(rawCreateTool, {
+        title: "Replace the fridge water filter",
+        dueAt: "2026-08-16",
+      }),
+    ).toMatchObject({ dueAt: "2026-08-16" });
   });
 });
 
@@ -399,8 +588,9 @@ describe("update_general_action_status — explicit, single-record mutation", ()
       });
 
       expect(parsed.success).toBe(false);
-      expect(parsed.error?.issues[0]?.message).toMatch(/would have applied "complete"/i);
-      expect(parsed.error?.issues[0]?.message).toMatch(/edit_general_action/);
+      const message = parsed.error?.issues.map((issue) => issue.message).join("\n") ?? "";
+      expect(message).toContain('would have applied "complete"');
+      expect(message).toContain("edit_general_action");
     });
 
     it("accepts each transition in its one valid shape", () => {
