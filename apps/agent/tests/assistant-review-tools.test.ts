@@ -313,8 +313,12 @@ describe("instructions steer capture vs save vs review", () => {
 
 describe("tools do not bypass owner scoping or scope/sensitivity rules", () => {
   // Tools that perform owner-scoped reads/writes (everything except the
-  // owner-agnostic people search).
-  const ownerScopedTools = toolFiles.filter((file) => file !== "search_people.ts");
+  // owner-agnostic people search and the framework web_fetch wrapper. The latter
+  // delegates to Eve's bounded, provider-independent HTTP executor and reads no
+  // Tendnote state, so there is no owner to resolve.
+  const ownerScopedTools = toolFiles.filter(
+    (file) => file !== "search_people.ts" && file !== "web_fetch.ts",
+  );
 
   for (const file of ownerScopedTools) {
     it(`${file} resolves the owner via the shared helper instead of trusting input`, () => {

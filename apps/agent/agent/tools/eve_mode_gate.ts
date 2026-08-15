@@ -6,9 +6,9 @@ import {
 } from "eve/tools";
 import { z } from "zod";
 import {
-  EVE_TOOL_NAMES,
+  EVE_GATED_TOOL_NAMES,
+  type EveGatedToolName,
   type EveMode,
-  type EveToolName,
   eveModeDefinition,
   resolveSessionEveMode,
   toolsUnavailableInMode,
@@ -18,8 +18,8 @@ import {
  * The Eve mode gate: the file that makes ADR-0128 narrowing real.
  *
  * Eve resolves the mode for every turn from the principal the channel's own
- * `AuthFn` stamped, then withholds every authored tool that mode does not
- * allow. The trusted-signal rule and the mode table both live in
+ * `AuthFn` stamped, then withholds every authored or gated framework tool that
+ * mode does not allow. The trusted-signal rule and the mode table both live in
  * `lib/eve-modes.ts`; this file only applies them.
  *
  * ## Why the withheld tools are replaced rather than removed
@@ -55,16 +55,16 @@ import {
 /** What the gate withholds this turn: the mode's answer, or the strictest one. */
 type WithholdingPlan = {
   readonly mode: EveMode;
-  readonly unavailable: readonly EveToolName[];
+  readonly unavailable: readonly EveGatedToolName[];
   readonly availableHere: string;
 };
 
 const NOTHING_AVAILABLE = "No tools are available in this mode.";
 
-/** The fallback: every authored tool withheld, named as the restricted mode. */
+/** The fallback: every authored and gated framework tool withheld, named as restricted. */
 const RESTRICTED_PLAN: WithholdingPlan = {
   mode: "restricted",
-  unavailable: EVE_TOOL_NAMES,
+  unavailable: EVE_GATED_TOOL_NAMES,
   availableHere: NOTHING_AVAILABLE,
 };
 

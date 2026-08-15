@@ -2,7 +2,9 @@
  * Eve modes (ADR-0128): which tools and skills a session may actually use.
  *
  * A mode only ever *restricts*. The registry below is the single table; the
- * dynamic tool gate at `agent/tools/eve_mode_gate.ts` is what makes it bite.
+ * dynamic tool gate at `agent/tools/eve_mode_gate.ts` is what makes it bite,
+ * including for provider-managed framework capabilities that have no authored
+ * executor.
  *
  * ## Only trusted signals select a mode
  *
@@ -107,9 +109,28 @@ export const EVE_TOOL_NAMES = [
   "update_general_action_status",
   "update_person",
   "update_self_context",
+  "web_fetch",
 ] as const;
 
 export type EveToolName = (typeof EVE_TOOL_NAMES)[number];
+
+/**
+ * Framework-owned capabilities that the mode gate must shadow when a session
+ * cannot use them. `web_search` is provider-executed and therefore has no
+ * authored `agent/tools/web_search.ts` definition to appear in EVE_TOOL_NAMES.
+ * A same-name dynamic definition is the only Eve 0.32 mechanism that can keep
+ * the provider executor from being injected for a forbidden mode.
+ */
+export const EVE_FRAMEWORK_TOOL_NAMES = ["web_search"] as const;
+
+export type EveFrameworkToolName = (typeof EVE_FRAMEWORK_TOOL_NAMES)[number];
+export type EveGatedToolName = EveToolName | EveFrameworkToolName;
+
+/** Every authored capability plus the framework capability governed by modes. */
+export const EVE_GATED_TOOL_NAMES = [
+  ...EVE_TOOL_NAMES,
+  ...EVE_FRAMEWORK_TOOL_NAMES,
+] as const satisfies readonly EveGatedToolName[];
 
 /** Every skill authored under `agent/skills/`, by slug. Pinned the same way. */
 export const EVE_SKILL_NAMES = [
@@ -145,7 +166,7 @@ export const EVE_CONTEXT_MODES = ["selected_person", "drafting", "cleanup_previe
 
 export type EveModeDefinition = {
   readonly mode: EveMode;
-  readonly tools: readonly EveToolName[];
+  readonly tools: readonly EveGatedToolName[];
   readonly skills: readonly EveSkillName[];
 };
 
@@ -203,11 +224,12 @@ const SCHEDULED_WORKFLOW_PROPOSALS = [
  */
 const modeDefinitions = {
   // Selected by: a signed-in owner on the web channel (`attributes.channel`
-  // is `"eve"`). The curated surface is the whole authored tool set, which is
-  // what the web assistant is for; narrowing happens below, never here.
+  // is `"eve"`). The curated surface is the whole authored tool set plus the
+  // provider-managed web search capability, which is what the web assistant is
+  // for; narrowing happens below, never here.
   web_chat: {
     mode: "web_chat",
-    tools: EVE_TOOL_NAMES,
+    tools: EVE_GATED_TOOL_NAMES,
     skills: EVE_SKILL_NAMES,
   },
   // Selected by: a session stamped with the Discord channel by that channel's
@@ -282,17 +304,17 @@ export function eveModeDefinition(mode: EveMode): EveModeDefinition {
   return modeDefinitions[mode];
 }
 
-export function modeAllowsTool(mode: EveMode, tool: EveToolName): boolean {
-  return (modeDefinitions[mode].tools as readonly EveToolName[]).includes(tool);
+export function modeAllowsTool(mode: EveMode, tool: EveGatedToolName): boolean {
+  return (modeDefinitions[mode].tools as readonly EveGatedToolName[]).includes(tool);
 }
 
 export function modeAllowsSkill(mode: EveMode, skill: EveSkillName): boolean {
   return (modeDefinitions[mode].skills as readonly EveSkillName[]).includes(skill);
 }
 
-/** The authored tools a mode withholds: the gate's input, in registry order. */
-export function toolsUnavailableInMode(mode: EveMode): readonly EveToolName[] {
-  return EVE_TOOL_NAMES.filter((tool) => !modeAllowsTool(mode, tool));
+/** The authored and gated framework tools a mode withholds, in registry order. */
+export function toolsUnavailableInMode(mode: EveMode): readonly EveGatedToolName[] {
+  return EVE_GATED_TOOL_NAMES.filter((tool) => !modeAllowsTool(mode, tool));
 }
 
 export function listEveModeDefinitions(): readonly EveModeDefinition[] {
