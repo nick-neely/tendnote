@@ -11,18 +11,17 @@ const agentRoot = join(import.meta.dirname, "../agent");
  * harness unless a file at the tool's own slug exports `disableTool()`, so every
  * one of these was live while `base.md` promised the user the opposite: the
  * agent asserts it never reads file contents and answers only from returned
- * records, and `bash`, `read_file`, `write_file`, `glob`, `grep`, `web_fetch`,
- * and `web_search` each contradict that in a different direction.
+ * records, and `bash`, `read_file`, `write_file`, `glob`, and `grep` each
+ * contradict that in a different direction. Public web research is deliberately
+ * the one framework network capability the root keeps, behind the Eve mode gate.
  */
-const DISABLED_FRAMEWORK_TOOLS = [
-  "bash",
-  "glob",
-  "grep",
-  "read_file",
+const DISABLED_FRAMEWORK_TOOLS = ["bash", "glob", "grep", "read_file", "write_file"];
+
+const SUBAGENT_DISABLED_FRAMEWORK_TOOLS = [
+  ...DISABLED_FRAMEWORK_TOOLS,
   "web_fetch",
   "web_search",
-  "write_file",
-];
+].sort();
 
 /**
  * Plus, at the root only, the built-in self-copy: `agent` spawns the root agent
@@ -36,7 +35,7 @@ const ROOT_DISABLED_FRAMEWORK_TOOLS = [...DISABLED_FRAMEWORK_TOOLS, "agent"].sor
  * path, `load_skill` is the only way a skill loads at all, and `todo` is
  * in-session scratch state that touches no record.
  */
-const KEPT_FRAMEWORK_TOOLS = ["ask_question", "load_skill", "todo"];
+const KEPT_FRAMEWORK_TOOLS = ["ask_question", "load_skill", "todo", "web_fetch", "web_search"];
 
 /**
  * The framework tool names as the installed eve build defines them, read from
@@ -126,13 +125,13 @@ describe("active Eve tree", () => {
     expect(disabledFrameworkToolsIn("tools")).toEqual(ROOT_DISABLED_FRAMEWORK_TOOLS);
 
     // Eve resolves the default harness per agent node, so a declared subagent
-    // carries its own bash and its own web_fetch unless it says otherwise. Their
+    // carries its own bash and its own web tools unless it says otherwise. Their
     // curated toolsets are only as narrow as this loop keeps them, and the loop
     // reads the directory rather than a list so a fifth subagent cannot arrive
     // with the defaults intact.
     for (const subagent of readdirSync(join(agentRoot, "subagents"))) {
       expect(disabledFrameworkToolsIn(join("subagents", subagent, "tools")), subagent).toEqual(
-        DISABLED_FRAMEWORK_TOOLS,
+        SUBAGENT_DISABLED_FRAMEWORK_TOOLS,
       );
     }
 

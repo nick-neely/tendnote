@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   EVE_CONTEXT_MODES,
+  EVE_FRAMEWORK_TOOL_NAMES,
+  EVE_GATED_TOOL_NAMES,
   EVE_SKILL_NAMES,
   EVE_TOOL_NAMES,
   eveModeDefinition,
@@ -62,7 +64,8 @@ describe("Eve mode registry", () => {
   });
 
   it("offers the whole curated surface to the web chat mode", () => {
-    expect(eveModeDefinition("web_chat").tools).toEqual(EVE_TOOL_NAMES);
+    expect(EVE_FRAMEWORK_TOOL_NAMES).toEqual(["web_search"]);
+    expect(eveModeDefinition("web_chat").tools).toEqual(EVE_GATED_TOOL_NAMES);
     expect(eveModeDefinition("web_chat").skills).toEqual(EVE_SKILL_NAMES);
     expect(toolsUnavailableInMode("web_chat")).toEqual([]);
   });
@@ -152,7 +155,7 @@ describe("Eve mode registry", () => {
   it("gives an unrecognised session origin nothing at all", () => {
     expect(eveModeDefinition("restricted").tools).toEqual([]);
     expect(eveModeDefinition("restricted").skills).toEqual([]);
-    expect(toolsUnavailableInMode("restricted")).toEqual(EVE_TOOL_NAMES);
+    expect(toolsUnavailableInMode("restricted")).toEqual(EVE_GATED_TOOL_NAMES);
   });
 });
 

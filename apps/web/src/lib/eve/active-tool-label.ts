@@ -9,6 +9,8 @@ import { humanizeToolName } from "./tool-name";
  * A tool absent from the table falls back to its slugified name.
  */
 const ACTIVE_TOOL_LABELS: Record<string, string> = {
+  web_search: "Searching the web…",
+  web_fetch: "Looking that up on the web…",
   search_people: "Searching people…",
   search_relationship_context: "Searching your notebook…",
   // The cross-domain search: it looks everywhere, so it says so rather than naming

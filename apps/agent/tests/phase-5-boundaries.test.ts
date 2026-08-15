@@ -323,6 +323,12 @@ const REGISTRATION_ONLY_TOOL_FILES = NON_EXECUTING_TOOL_FILES.filter(
   (path) => !DYNAMIC_TOOL_RESOLVER_FILES.includes(path),
 );
 
+// The root web_fetch registration intentionally delegates to Eve's spread
+// framework executor. It is not a Tendnote store adapter and therefore cannot
+// satisfy the owner-scoped registration rule below; its default executor and
+// bounded model projection have their own focused contract test.
+const FRAMEWORK_TOOL_REGISTRATION_FILES = ["apps/agent/agent/tools/web_fetch.ts"];
+
 const ACTIONS_PATH_SOURCES = [
   ...walk("packages/db/src/queries/general-actions", isSource),
   ...walk("packages/db/src/queries/general-action-areas", isSource),
@@ -535,7 +541,9 @@ describe("Phase 5 boundary — Eve exposes a bounded, single-record General Acti
     // shared definition whose executor is an imported reference rather than an
     // `async execute(` of its own.
     expect(REGISTRATION_ONLY_TOOL_FILES.length).toBeGreaterThan(0);
-    for (const path of REGISTRATION_ONLY_TOOL_FILES) {
+    for (const path of REGISTRATION_ONLY_TOOL_FILES.filter(
+      (path) => !FRAMEWORK_TOOL_REGISTRATION_FILES.includes(path),
+    )) {
       expect(
         delegatesToWalkedDefinition(path),
         `${path} defines no executor, so it has to register one this scan walks`,

@@ -1702,6 +1702,8 @@ describe("toolViewTier (how much weight a result earns)", () => {
 
 describe("activeToolLabel (in-flight tool → working copy)", () => {
   it("maps known tools to present-continuous labels", () => {
+    expect(activeToolLabel("web_search")).toBe("Searching the web…");
+    expect(activeToolLabel("web_fetch")).toBe("Looking that up on the web…");
     expect(activeToolLabel("search_relationship_context")).toBe("Searching your notebook…");
     expect(activeToolLabel("search_semantic_context")).toBe("Searching by meaning…");
     expect(activeToolLabel("get_relationship_agenda")).toBe("Checking your relationship agenda…");

@@ -1,6 +1,6 @@
 import type { DynamicResolveContext, DynamicToolEntry, ToolContext } from "eve/tools";
 import { describe, expect, it } from "vitest";
-import { EVE_TOOL_NAMES } from "../agent/lib/eve-modes";
+import { EVE_GATED_TOOL_NAMES } from "../agent/lib/eve-modes";
 import gate from "../agent/tools/eve_mode_gate";
 
 type Principal = { principalType: string; attributes?: Record<string, string> };
@@ -41,7 +41,7 @@ describe("Eve mode gate", () => {
     for (const tool of ["create_message_draft", "save_draft_to_gmail", "capture_memory"]) {
       expect(Object.keys(withheld), tool).toContain(tool);
     }
-    expect(Object.keys(withheld)).toHaveLength(EVE_TOOL_NAMES.length - 1);
+    expect(Object.keys(withheld)).toHaveLength(EVE_GATED_TOOL_NAMES.length - 1);
   });
 
   it("reports, rather than performs, a call the mode does not allow", async () => {
@@ -88,10 +88,10 @@ describe("Eve mode gate", () => {
   });
 
   it("withholds the whole surface from a session with no recognised principal", async () => {
-    expect(Object.keys(await withheldTools(null)).sort()).toEqual([...EVE_TOOL_NAMES].sort());
+    expect(Object.keys(await withheldTools(null)).sort()).toEqual([...EVE_GATED_TOOL_NAMES].sort());
     expect(
       Object.keys(await withheldTools({ principalType: "user", attributes: {} })),
-    ).toHaveLength(EVE_TOOL_NAMES.length);
+    ).toHaveLength(EVE_GATED_TOOL_NAMES.length);
   });
 
   it("withholds the whole surface rather than throwing, because throwing fails open", async () => {
@@ -115,10 +115,38 @@ describe("Eve mode gate", () => {
 
     for (const ctx of [noSession, unreadablePrincipal]) {
       const withheld = (await resolveTurn?.({}, ctx)) as Record<string, DynamicToolEntry>;
-      expect(Object.keys(withheld).sort()).toEqual([...EVE_TOOL_NAMES].sort());
+      expect(Object.keys(withheld).sort()).toEqual([...EVE_GATED_TOOL_NAMES].sort());
       expect(withheld.create_message_draft?.description).toContain(
         "Unavailable in restricted mode",
       );
     }
+  });
+
+  it.each([
+    ["discord_capture", { principalType: "user", attributes: { channel: "discord" } }],
+    ["scheduled_workflow", { principalType: "runtime" }],
+    ["restricted", null],
+    ["restricted", { principalType: "user", attributes: {} }],
+    ["restricted", { principalType: "user", attributes: { channel: "unknown" } }],
+  ] as const)("shadows network tools in %s without an executor", async (mode, principal) => {
+    const withheld = await withheldTools(principal);
+    for (const toolName of ["web_search", "web_fetch"] as const) {
+      const shadow = withheld[toolName];
+
+      expect(shadow, `${mode} must bind a local ${toolName} shadow`).toBeDefined();
+      expect(shadow?.description).toContain(`Unavailable in ${mode} mode`);
+      expect(shadow?.execute).toBeDefined();
+
+      const result = await shadow?.execute({}, {} as ToolContext);
+      expect(result).toMatchObject({ performed: false, tool: toolName, mode });
+    }
+  });
+
+  it("leaves provider-managed web_search untouched for authenticated web chat", async () => {
+    expect(await resolveTurn?.({}, resolveContext(WEB_OWNER))).toBeNull();
+    // A null dynamic result leaves Eve's static web_search definition with no
+    // executor, which is the signal buildToolSetWithProviderTools uses to inject
+    // the model provider's real search implementation.
+    expect(Object.keys(await withheldTools(WEB_OWNER))).not.toContain("web_search");
   });
 });
