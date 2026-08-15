@@ -172,6 +172,37 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain('href="/people/person-1"');
   });
 
+  it("renders an exact recall Action as an Action, deep-linked to its ledger row", () => {
+    // General Actions are ordinary recall results (ADR 0150). The card used to reject
+    // the whole result set rather than name one, so this pins both the naming and the
+    // destination: an Action opens its ledger row, not a person it merely mentions.
+    const html = render({
+      kind: "relationship_context_search",
+      results: [
+        {
+          recordKind: "general_action",
+          recordId: "ga-1",
+          visibilityChoice: "only_me",
+          visibilityLabel: "Only me",
+          relatedPersonId: "person-1",
+          relatedPersonDisplayName: "Mara Lin",
+          label: "Replace the fridge water filter",
+          snippet: "Replace the fridge water filter",
+          matchedFields: ["title"],
+          trustLevel: "action_item",
+          sensitivity: "normal",
+        },
+      ],
+    });
+
+    expect(html).toContain("Replace the fridge water filter");
+    expect(html).toContain("Action");
+    expect(html).toContain("On your list");
+    expect(html).toContain('href="/actions#action-ga-1"');
+    expect(html).not.toContain('href="/people/person-1"');
+    expect(html).not.toContain("Confirmed fact");
+  });
+
   it("renders mixed exact recall results with separate trust language per record", () => {
     const html = render({
       kind: "relationship_context_search",
@@ -282,6 +313,81 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain("No semantic matches found");
     expect(html).not.toContain("Found 0 semantic matches");
     expect(html).not.toContain('data-tool-view="semantic_context_search"');
+  });
+
+  it("renders Global Recall rows with the same deep links the search surfaces open", () => {
+    const html = render({
+      kind: "global_recall",
+      query: "fridge filter",
+      results: [
+        {
+          family: "general_action",
+          canonicalKind: "general_action",
+          canonicalId: "ga-1",
+          href: "/actions#action-ga-1",
+          primary: "Replace the fridge water filter",
+          secondary: "Open",
+          matchKind: "exact",
+          visibilityLabel: "Only me",
+          sensitivity: "normal",
+        },
+        {
+          family: "asset_memory",
+          canonicalKind: "asset_memory",
+          canonicalId: "memory-1",
+          href: "/assets/asset-1#asset-memory-memory-1",
+          primary: "Filter size",
+          secondary: "RPWFE",
+          matchKind: "related",
+          visibilityLabel: "Whole household",
+          sensitivity: "sensitive",
+        },
+      ],
+      limitations: ["Calendar results are unavailable."],
+      hasMore: true,
+    });
+
+    expect(html).toContain("Found 2 matches across your records");
+    expect(html).toContain('href="/actions#action-ga-1"');
+    expect(html).toContain('href="/assets/asset-1#asset-memory-memory-1"');
+    // Family names come from the shared recall labels, so a row is called the same
+    // thing here as in the palette.
+    expect(html).toContain("Actions");
+    expect(html).toContain("Asset details");
+    expect(html).toContain("Related");
+    expect(html).toContain("Sensitive");
+    // What recall could not reach is part of the answer, not a detail the card drops.
+    expect(html).toContain("Calendar results are unavailable.");
+    expect(html).toContain("More matches than fit here.");
+    expect(html).toContain('data-tool-view="global_recall"');
+  });
+
+  it("renders an empty, unqualified Global Recall as a quiet line", () => {
+    const html = render({
+      kind: "global_recall",
+      query: "nothing here",
+      results: [],
+      limitations: [],
+      hasMore: false,
+    });
+
+    expect(html).toContain("Nothing matching in your records");
+    expect(html).not.toContain('data-tool-view="global_recall"');
+  });
+
+  it("keeps a limitation visible even when Global Recall found nothing", () => {
+    // "Nothing matched" and "nothing matched, and the calendar was unreachable" are
+    // different answers; collapsing the second to the first would hide the caveat.
+    const html = render({
+      kind: "global_recall",
+      query: "dentist",
+      results: [],
+      limitations: ["Calendar results are unavailable."],
+      hasMore: false,
+    });
+
+    expect(html).toContain("Calendar results are unavailable.");
+    expect(html).toContain('data-tool-view="global_recall"');
   });
 
   it("places dated agenda candidates on the calendar with accessible day labels", () => {

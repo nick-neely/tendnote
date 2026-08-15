@@ -57,7 +57,7 @@ import {
   markGlobalRecallReturn,
   readGlobalRecallState,
 } from "@/lib/global-recall-navigation";
-import { recallResultLines } from "@/lib/recall-result-lines";
+import { RECALL_FAMILY_LABELS, recallResultLines } from "@/lib/recall-result-lines";
 import {
   GLOBAL_RECALL_FAMILY_OPTIONS,
   GLOBAL_RECALL_MATCH_OPTIONS,
@@ -736,24 +736,6 @@ type RecallGroup = {
   results: GlobalRecallResponse["results"];
 };
 
-const FAMILY_HEADINGS: Record<GlobalRecallFamily, string> = {
-  person: "People",
-  self_context: "Self Context",
-  // Named in full beside "Self Context" rather than shortened to "Household":
-  // the two headings sit one above the other whenever a search touches both,
-  // and a member reading a shared statement has to be able to tell at a glance
-  // that it is not something they wrote about themselves.
-  household_context: "Household Context",
-  relationship_context: "Memories",
-  follow_up: "Follow-Ups",
-  general_action: "Actions",
-  asset: "Assets",
-  asset_memory: "Asset details",
-  saved_item: "Saved Items",
-  calendar_event: "Calendar",
-  gift_plan: "Gift plans",
-};
-
 const FAMILY_ICONS: Record<GlobalRecallFamily, Icon> = {
   person: BookUserIcon,
   self_context: CircleUserRoundIcon,
@@ -770,8 +752,17 @@ const FAMILY_ICONS: Record<GlobalRecallFamily, Icon> = {
   gift_plan: GiftIcon,
 };
 
-/** Families in reading order: who first, then what was said, then what is owed. */
-const FAMILY_ORDER: GlobalRecallFamily[] = [
+/**
+ * Families in reading order: who first, then what was said, then what is owed.
+ *
+ * `groupResultsByFamily` walks this array rather than the results, so a family
+ * missing from it is not merely ordered last, it is dropped from the desktop
+ * palette with nothing to show it happened. `satisfies` keeps a typo out;
+ * search-palette.dom.test.tsx pins the set against
+ * `globalRecallFamilySchema.options` so a family added to the domain enum
+ * cannot stay unlisted here.
+ */
+export const FAMILY_ORDER = [
   "person",
   "self_context",
   "household_context",
@@ -786,7 +777,7 @@ const FAMILY_ORDER: GlobalRecallFamily[] = [
   // the one family whose heading appearing at all is a small disclosure. Keeping
   // it below the everyday families means an ordinary search never leads with it.
   "gift_plan",
-];
+] as const satisfies readonly GlobalRecallFamily[];
 
 /**
  * One group per record family, exact matches ahead of related ones inside each.
@@ -802,7 +793,7 @@ function groupResultsByFamily(response: GlobalRecallResponse | null): RecallGrou
     return [
       {
         family,
-        heading: FAMILY_HEADINGS[family],
+        heading: RECALL_FAMILY_LABELS[family],
         results: [
           ...inFamily.filter((result) => result.match.kind === "exact"),
           ...inFamily.filter((result) => result.match.kind === "related"),

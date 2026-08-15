@@ -20,6 +20,10 @@ const toolFiles = readdirSync(toolsDir).filter(
     !/export default disableTool\(\)/.test(readFileSync(join(toolsDir, file), "utf8")),
 );
 const renderedToolFiles = new Set(toolFiles);
+/** Every authored tool's source, keyed by tool name — root tools and subagent tools alike. */
+const toolSources = new Map<string, string>(
+  toolFiles.map((file) => [file.replace(/\.ts$/, ""), readFileSync(join(toolsDir, file), "utf8")]),
+);
 const subagentsDir = join(process.cwd(), "agent/subagents");
 if (existsSync(subagentsDir)) {
   for (const subagent of readdirSync(subagentsDir)) {
@@ -27,6 +31,10 @@ if (existsSync(subagentsDir)) {
     if (!existsSync(subagentToolsDir)) continue;
     for (const file of readdirSync(subagentToolsDir).filter((file) => file.endsWith(".ts"))) {
       renderedToolFiles.add(file);
+      toolSources.set(
+        file.replace(/\.ts$/, ""),
+        readFileSync(join(subagentToolsDir, file), "utf8"),
+      );
     }
   }
 }
@@ -309,6 +317,24 @@ describe("tools do not bypass owner scoping or scope/sensitivity rules", () => {
   }
 });
 
+/**
+ * Tools that attach a `component` to their result but own no entry in the render
+ * contract, each with why that is a known gap rather than drift.
+ *
+ * All three forward the shared review component of a proposal they just *settled*.
+ * The record they hand back is no longer a proposal — an accepted follow-up is an
+ * active reminder, an approved suggestion is a confirmed memory — so rendering the
+ * review card the component names would offer Accept and Dismiss on something the
+ * user already accepted. Closing these needs a settled-record result kind and a card
+ * of its own, not a registry line, so they are pinned here instead of hidden.
+ */
+const UNRENDERED_COMPONENT_TOOLS: Record<string, string> = {
+  accept_suggested_followup: "forwards the suggested-follow-up review component after accepting",
+  accept_suggested_general_action:
+    "forwards the suggested-General-Action review component after accepting",
+  approve_suggested_memory: "forwards the suggested-memory review component after approving",
+};
+
 describe("the web render contract stays in lock-step with the agent's tools", () => {
   it("has a tool for every rendered tool-result schema (no orphaned contract)", () => {
     // RENDERED_TOOL_NAMES is the single source of truth (@tendnote/domain) for which
@@ -318,6 +344,32 @@ describe("the web render contract stays in lock-step with the agent's tools", ()
     expect(RENDERED_TOOL_NAMES.length).toBeGreaterThan(0);
     for (const toolName of RENDERED_TOOL_NAMES) {
       expect(renderedToolFiles).toContain(`${toolName}.ts`);
+    }
+  });
+
+  it("registers every tool that claims a typed card, so none can render generic", () => {
+    // The other direction, and the one that stayed blind: the guard above catches a
+    // contract with no tool, but `search_global_recall` shipped for months emitting
+    // `component: { type: "global_recall" }` with no schema and no module behind it,
+    // so Eve's one cross-domain answer arrived as an unnamed housekeeping line
+    // (ADR 0199). A tool that attaches a component is declaring "render me"; if the
+    // registry does not name it, that declaration is silently false.
+    const claimingTools = [...toolSources]
+      .filter(([, source]) => /^\s*component:/m.test(source))
+      .map(([toolName]) => toolName);
+    expect(claimingTools.length).toBeGreaterThan(0);
+
+    const rendered = new Set<string>(RENDERED_TOOL_NAMES);
+    const unregistered = claimingTools.filter(
+      (toolName) => !rendered.has(toolName) && !(toolName in UNRENDERED_COMPONENT_TOOLS),
+    );
+    expect(unregistered, "these tools emit a component no registry entry renders").toEqual([]);
+
+    // The pinned exceptions have to stay real, so a tool that gains a card (or stops
+    // emitting a component) is removed from the list rather than lingering as cover.
+    for (const toolName of Object.keys(UNRENDERED_COMPONENT_TOOLS)) {
+      expect(claimingTools, `${toolName} no longer emits a component`).toContain(toolName);
+      expect(rendered.has(toolName), `${toolName} is rendered now; drop the exception`).toBe(false);
     }
   });
 });

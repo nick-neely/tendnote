@@ -15,6 +15,7 @@ import {
   suggestedGeneralActionReviewListModule,
   suggestedGeneralActionReviewModule,
 } from "./general-action";
+import { globalRecallModule } from "./global-recall";
 import {
   captureOutcomeModule,
   giftIdeaAddedModule,
@@ -102,6 +103,7 @@ export const RESULT_MODULES = {
   suggested_memory_review_list: suggestedMemoryReviewListModule,
   relationship_context_search: relationshipContextSearchModule,
   semantic_context_search: semanticContextSearchModule,
+  global_recall: globalRecallModule,
   relationship_agenda: relationshipAgendaModule,
   memory_curator_proposals: memoryCuratorProposalsModule,
   suggested_followup_review: suggestedFollowupReviewModule,

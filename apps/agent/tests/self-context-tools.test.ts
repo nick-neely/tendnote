@@ -14,9 +14,9 @@ describe("Self Context Eve tools", () => {
 
     expect(listSource).toContain("listSelfContextFacts");
     expect(readTool("get_self_context_fact")).toContain("getSelfContextFact");
-    expect(listSource).toContain("factsByCategory");
+    // The canonical About you link comes from the shared recall normalizer rather
+    // than being rebuilt here, so one fact links to one place.
     expect(listSource).toContain("toSelfContextResult");
-    expect(listSource).toContain("results");
     expect(listSource).toMatch(/exact|categorized/i);
     expect(listSource).not.toMatch(/personality profile|generated profile|you seem like/i);
   });

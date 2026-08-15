@@ -1,3 +1,10 @@
+import type {
+  ExactRecallRecordKind,
+  ExactRecallTrustLevel,
+  RelationshipSemanticRecordKind,
+  RelationshipSemanticTrustLevel,
+} from "@tendnote/domain";
+import type { GlobalRecallFamily } from "@tendnote/domain/global-recall";
 import type { AssetReviewGroupView } from "@/lib/asset-review-view";
 
 /**
@@ -58,6 +65,22 @@ export type AssistantToolView =
   | {
       kind: "semantic_context_search";
       results: SemanticContextSearchResultView[];
+    }
+  /**
+   * Global Recall read in chat (ADR 0199).
+   *
+   * The card carries the same three things the owner-facing recall surfaces carry:
+   * the rows, what recall could not reach (`limitations`), and whether more matched
+   * than fit (`hasMore`). Dropping either of the last two would let a partial read
+   * present itself as the whole answer, which is the one thing a cross-domain search
+   * must never do.
+   */
+  | {
+      kind: "global_recall";
+      query: string;
+      results: GlobalRecallResultView[];
+      limitations: string[];
+      hasMore: boolean;
     }
   | {
       kind: "relationship_agenda";
@@ -286,8 +309,34 @@ export type GeneralActionListItemView = {
   visibilityLabel: string | null;
 };
 
+/**
+ * One Global Recall row, as chat renders it.
+ *
+ * `href` is the row's own destination, taken verbatim from the shared normalizer, so
+ * a result opened from the chat card lands exactly where the same result opened from
+ * the search palette or the phone's Search flow lands. `primary`/`secondary` come
+ * from `recallResultLines`, the one presentation rule all three surfaces read.
+ */
+export type GlobalRecallResultView = {
+  family: GlobalRecallFamily;
+  /** The canonical record cited, for a refresh-stable identity. */
+  canonicalKind: string;
+  canonicalId: string;
+  href: string;
+  primary: string;
+  secondary: string | null;
+  matchKind: "exact" | "related";
+  visibilityLabel: string | null;
+  sensitivity: "normal" | "sensitive" | "restricted";
+};
+
+/**
+ * Exact Recall rows carry the producing contract's kinds and trust registers, not a
+ * narrower guess at them: a General Action is an ordinary Exact Recall result, and a
+ * view that could not name one used to cost the card every row (ADR 0150).
+ */
 export type RelationshipContextSearchResultView = {
-  recordKind: "person" | "memory" | "source_record";
+  recordKind: ExactRecallRecordKind;
   recordId: string;
   visibilityChoice?: "only_me" | "selected_members" | "whole_household" | null;
   visibilityLabel?: string | null;
@@ -296,12 +345,12 @@ export type RelationshipContextSearchResultView = {
   label: string;
   snippet: string;
   matchedFields: string[];
-  trustLevel: "identity_reference" | "confirmed_fact" | "logged_context";
+  trustLevel: ExactRecallTrustLevel;
   sensitivity: "normal" | "sensitive" | "restricted";
 };
 
 export type SemanticContextSearchResultView = {
-  recordKind: "memory" | "source_record";
+  recordKind: RelationshipSemanticRecordKind;
   recordId: string;
   visibilityChoice: "only_me" | "selected_members" | "whole_household";
   visibilityLabel: string;
@@ -309,7 +358,7 @@ export type SemanticContextSearchResultView = {
   relatedPersonDisplayName: string | null;
   snippet: string;
   similarity: number;
-  trustLevel: "confirmed_fact" | "logged_context";
+  trustLevel: RelationshipSemanticTrustLevel;
   sensitivity: "normal" | "sensitive" | "restricted";
 };
 

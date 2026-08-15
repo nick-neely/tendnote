@@ -3,9 +3,15 @@ import { assetMemoryValueSchema } from "./asset-memories";
 import { assetKindSchema, assetOwnershipSchema } from "./assets";
 import { conversationalCaptureConfirmationSchema } from "./conversational-capture-schemas";
 import { draftProposalResultSchema } from "./draft-proposals";
+import { exactRecallRecordKindSchema, exactRecallTrustLevelSchema } from "./exact-recall";
+import { globalRecallResponseSchema } from "./global-recall";
 import { householdCoordinationFamilySchema } from "./household-home";
 import { memoryCuratorProposalResultSchema } from "./memory-curator";
 import { privacyScopeSchema } from "./privacy";
+import {
+  relationshipSemanticRecordKindSchema,
+  relationshipSemanticTrustLevelSchema,
+} from "./semantic-retrieval";
 
 /**
  * The single source of truth for the persisted Eve tool-result contract that the
@@ -107,10 +113,22 @@ export const suggestedFollowupListToolResult = z.object({
   reviews: z.array(suggestedFollowupReviewItem),
 });
 
+/**
+ * Exact Recall as a chat card.
+ *
+ * `recordKind` and `trustLevel` are the *shared* search enums rather than copies of
+ * them, and that is the whole point. They used to be hand-written subsets that
+ * predated General Actions (ADR 0150), so the moment a search matched an Action the
+ * card schema rejected the row, the parser returned null, and the entire result set
+ * vanished into a "didn't return a readable result" line — one unrenderable row cost
+ * the user every row beside it. Referencing the producing contract means the card can
+ * never again be narrower than what the tool can return: widening the search widens
+ * the card in the same commit or fails to compile.
+ */
 export const relationshipContextSearchToolResult = z.object({
   results: z.array(
     z.object({
-      recordKind: z.enum(["person", "memory", "source_record"]),
+      recordKind: exactRecallRecordKindSchema,
       recordId: z.string(),
       visibilityChoice: z.enum(["only_me", "selected_members", "whole_household"]).nullable(),
       visibilityLabel: z.string().nullable(),
@@ -119,16 +137,17 @@ export const relationshipContextSearchToolResult = z.object({
       label: z.string(),
       snippet: z.string(),
       matchedFields: z.array(z.string()),
-      trustLevel: z.enum(["identity_reference", "confirmed_fact", "logged_context"]),
+      trustLevel: exactRecallTrustLevelSchema,
       sensitivity: z.enum(["normal", "sensitive", "restricted"]),
     }),
   ),
 });
 
+/** Semantic Retrieval as a chat card, on the same shared-enum rule as Exact Recall. */
 export const semanticContextSearchToolResult = z.object({
   results: z.array(
     z.object({
-      recordKind: z.enum(["memory", "source_record"]),
+      recordKind: relationshipSemanticRecordKindSchema,
       recordId: z.string(),
       visibilityChoice: z.enum(["only_me", "selected_members", "whole_household"]),
       visibilityLabel: z.string(),
@@ -136,7 +155,7 @@ export const semanticContextSearchToolResult = z.object({
       relatedPersonDisplayName: z.string().nullish(),
       snippet: z.string(),
       similarity: z.number(),
-      trustLevel: z.enum(["confirmed_fact", "logged_context"]),
+      trustLevel: relationshipSemanticTrustLevelSchema,
       sensitivity: z.enum(["normal", "sensitive", "restricted"]),
     }),
   ),
@@ -503,6 +522,21 @@ export function captureOutcomeAudiences(
   }));
 }
 
+/**
+ * Global Recall as a chat card (ADR 0199).
+ *
+ * Deliberately the shared response contract itself, not a minimized copy of it. Global
+ * Recall's whole promise is that one record reads the same wherever recall found it —
+ * same canonical citation, same trust register, same visibility label, same deep link
+ * the palette and the phone's Search flow open. A second, chat-only shape here would
+ * be a second answer to what a recall row says, and the surfaces would drift.
+ *
+ * `limitations` and `hasMore` travel with the results for the same reason the search
+ * surfaces show them: what recall could not reach is part of the answer, and a card
+ * that dropped them would quietly present a partial read as a complete one.
+ */
+export const globalRecallToolResult = globalRecallResponseSchema;
+
 export const assistantToolResultSchemas = {
   capture_source_record: sourceRecordToolResult,
   capture_memory: memoryToolResult,
@@ -517,6 +551,7 @@ export const assistantToolResultSchemas = {
   list_suggested_followup_reviews: suggestedFollowupListToolResult,
   search_relationship_context: relationshipContextSearchToolResult,
   search_semantic_context: semanticContextSearchToolResult,
+  search_global_recall: globalRecallToolResult,
   get_relationship_agenda: relationshipAgendaToolResult,
   propose_memory_cleanup: memoryCuratorToolResult,
   propose_message_draft: draftProposalToolResult,
@@ -555,6 +590,7 @@ export type MemoryCuratorToolResult = z.infer<typeof memoryCuratorToolResult>;
 export type DraftProposalToolResult = z.infer<typeof draftProposalToolResult>;
 export type HouseholdCheckinToolResult = z.infer<typeof householdCheckinToolResult>;
 export type GiftPlanSearchToolResult = z.infer<typeof giftPlanSearchToolResult>;
+export type GlobalRecallToolResult = z.infer<typeof globalRecallToolResult>;
 export type CaptureOutcomeToolResult = z.infer<typeof captureOutcomeToolResult>;
 
 /** True when a tool name has a typed rendered contract in the registry. */

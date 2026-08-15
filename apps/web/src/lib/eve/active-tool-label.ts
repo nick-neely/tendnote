@@ -11,6 +11,9 @@ import { humanizeToolName } from "./tool-name";
 const ACTIVE_TOOL_LABELS: Record<string, string> = {
   search_people: "Searching people…",
   search_relationship_context: "Searching your notebook…",
+  // The cross-domain search: it looks everywhere, so it says so rather than naming
+  // one record family the answer might not come from.
+  search_global_recall: "Searching your records…",
   search_semantic_context: "Searching by meaning…",
   get_relationship_agenda: "Checking your relationship agenda…",
   propose_memory_cleanup: "Reviewing memory cleanup candidates…",
