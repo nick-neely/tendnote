@@ -11,6 +11,7 @@ type ActionRequestedEvent = {
     actions: Array<{
       kind?: string;
       toolName?: string;
+      input?: unknown;
     }>;
   };
 };
@@ -38,6 +39,43 @@ export function requestedTool(events: readonly unknown[], toolName: string): boo
         (action) => action.kind === "tool-call" && action.toolName === toolName,
       ),
   );
+}
+
+/** Inputs emitted in stream action requests for one tool, including provider tools. */
+export function requestedToolInputs(events: readonly unknown[], toolName: string): unknown[] {
+  return events.flatMap((event) => {
+    if (!isActionRequestedEvent(event)) return [];
+    return event.data.actions
+      .filter((action) => action.kind === "tool-call" && action.toolName === toolName)
+      .map((action) => action.input);
+  });
+}
+
+/**
+ * The provider shape varies by model: Eve's Exa tool uses `query`, while
+ * provider-native web search tools can nest it under `action` or use a list of
+ * `queries`. Normalize only the request payload so an egress assertion cannot
+ * accidentally inspect a search result or the assistant's prose.
+ */
+export function webSearchQueryText(input: unknown): string {
+  return findWebSearchQueryText(input, 0);
+}
+
+function findWebSearchQueryText(input: unknown, depth: number): string {
+  if (depth > 3) return "";
+  if (typeof input === "string") return input;
+  if (!isRecord(input)) return "";
+
+  for (const key of ["query", "search_query", "searchQuery"] as const) {
+    if (typeof input[key] === "string") return input[key];
+  }
+
+  if (Array.isArray(input.queries)) {
+    const queries = input.queries.filter((query): query is string => typeof query === "string");
+    if (queries.length > 0) return queries.join(" ");
+  }
+
+  return findWebSearchQueryText(input.action, depth + 1);
 }
 
 export function usedSubagent(events: readonly unknown[], subagentName: string): boolean {
