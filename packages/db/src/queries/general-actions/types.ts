@@ -13,6 +13,9 @@ import type {
   GeneralActionStatus,
   Person,
   PrivacyScope,
+  ReminderOccurrenceIntent,
+  ReminderSchedule,
+  ReminderScheduleChoice,
   SourceRecord,
 } from "@tendnote/domain";
 import type { GeneralActionAreaStore } from "../general-action-areas/types";
@@ -314,6 +317,43 @@ export type CreateActiveGeneralActionInput = {
   scope?: PrivacyScope;
   householdId?: string | null;
   selectedUserIds?: string[];
+};
+
+/**
+ * An explicit Reminder Schedule requested alongside a newly-created Action.
+ *
+ * `clientInstallationId` is deliberately optional. An agent-authored Action can
+ * create a durable schedule and pending occurrence intent without pretending the
+ * agent channel is a browser/PWA installation. A real web installation may pass
+ * its earned identity when it owns the scheduling surface.
+ */
+export type GeneralActionReminderRequest = {
+  schedule: ReminderScheduleChoice;
+  timeZone: string;
+  clientInstallationId?: string;
+  now?: Date;
+};
+
+export type GeneralActionReminderResult =
+  | {
+      status: "scheduled";
+      schedule: ReminderSchedule;
+      occurrenceIntent: ReminderOccurrenceIntent;
+      optIn: { state: "offer" | "none"; clientInstallationId: string | null };
+    }
+  | {
+      status: "failed";
+      reason: "unavailable";
+    };
+
+/** The shared Action creation result used by direct and agent-authored writes. */
+export type CreateGeneralActionWithReminderInput = CreateActiveGeneralActionInput & {
+  reminder?: GeneralActionReminderRequest;
+};
+
+export type CreateGeneralActionWithReminderResult = {
+  action: GeneralActionWithContext;
+  reminder: GeneralActionReminderResult | null;
 };
 
 export type EditGeneralActionInput = GeneralActionActionInput & {

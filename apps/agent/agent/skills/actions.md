@@ -1,5 +1,5 @@
 ---
-description: Use when the user wants to add, track, list, complete, defer, edit, file, or review a General Action or Routine - a durable to-do for themselves ("add an action to replace the water filter", "what's overdue?", "set up a routine to change the filters every 6 months", "help me plan the trip", "what areas do I have?", "mark the filter task done"). Not for reminders to reconnect with a person (that's follow-ups).
+description: Use when the user wants to add, track, list, complete, defer, edit, file, or review a General Action or Routine - a durable to-do for themselves ("add an action to replace the water filter", "add the action and remind me tomorrow at 3 PM", "what's overdue?", "set up a routine to change the filters every 6 months", "help me plan the trip", "what areas do I have?", "mark the filter task done"). Not for reminders to reconnect with a person (that's follow-ups).
 ---
 
 # General Actions and Routines
@@ -24,6 +24,14 @@ need a due date.
   does give timing, translate a relative phrase ("next Friday") into a concrete date;
   when the timing is genuinely ambiguous ("sometime", "soon"), **ask a clarifying
   question** instead of guessing.
+- **An explicit notification is part of the same create request.** For a direct ask
+  such as "add this Action and remind me tomorrow at 3 PM", pass the concrete Action
+  date as `dueAt` and the requested clock time as `reminderSchedule` (`exact`), using
+  the owner's timezone. A lead such as "one day before" uses `relative` with its
+  concrete `leadMinutes`. A Reminder Schedule needs a concrete Action date, and a
+  past or otherwise impossible alert needs clarification before creating anything.
+  If the tool reports that the Action was created but scheduling failed, report those
+  as two separate facts and never claim the notification exists.
 - **A cadence makes it a Routine.** Only pass `recurrence` for a genuine repeating chore
   ("every 6 months"), never a one-off. Cadence is simple ("every N days/weeks/months/
   years") - no per-occurrence rules.

@@ -662,6 +662,38 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain("Every 6 months");
   });
 
+  it("renders a concrete reminder and an honest partial scheduling failure", () => {
+    const scheduled = render({
+      kind: "created_general_action",
+      generalActionId: "ga-3",
+      title: "Replace the fridge water filter",
+      status: "open",
+      isRoutine: false,
+      recurrenceLabel: null,
+      timingLabel: "Due Aug 16, 2026",
+      personNames: [],
+      visibilityLabel: "Only me",
+      reminderStatus: "scheduled",
+      reminderLabel: "Reminder at 15:00 · America/Chicago",
+    });
+    expect(scheduled).toContain("Reminder at 15:00 · America/Chicago");
+
+    const failed = render({
+      kind: "created_general_action",
+      generalActionId: "ga-4",
+      title: "Replace the fridge water filter",
+      status: "open",
+      isRoutine: false,
+      recurrenceLabel: null,
+      timingLabel: "Due Aug 16, 2026",
+      personNames: [],
+      visibilityLabel: "Only me",
+      reminderStatus: "failed",
+      reminderLabel: "Action saved; reminder not scheduled",
+    });
+    expect(failed).toContain("Action saved; reminder not scheduled");
+  });
+
   it("renders a General Action ledger list as an expandable list without raw ids", () => {
     const html = render({
       kind: "general_action_list",

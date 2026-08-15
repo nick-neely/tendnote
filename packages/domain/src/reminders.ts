@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { formatLocalDate, zonedWallTimeToUtc } from "./brief-schedules";
+import { formatLocalDate, zonedWallTimeToUtc, zonedWallTimeToUtcStrict } from "./brief-schedules";
 
 export const reminderRecordKindSchema = z.enum([
   "general_action",
@@ -66,6 +66,44 @@ export const reminderScheduleChoiceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("relative"), leadMinutes: z.number().int().min(0).max(43_200) }),
 ]);
 export type ReminderScheduleChoice = z.infer<typeof reminderScheduleChoiceSchema>;
+
+/**
+ * Resolves one schedule choice using the same wall-time math at every save seam.
+ *
+ * Existing structured capture and editor callers keep the legacy normalization
+ * default. Eve's explicit Action-plus-reminder preflight opts into strict mode
+ * so issue #423 can clarify an impossible or ambiguous wall time before writing.
+ */
+export function resolveReminderIntendedAt(input: {
+  occursAt: Date;
+  timeSemantics: "date_only" | "instant";
+  timeZone: string;
+  choice: ReminderScheduleChoice;
+  /** Eve's explicit create path rejects wall times that cannot be fulfilled. */
+  wallTimeMode?: "legacy" | "strict";
+}): Date {
+  if (input.timeSemantics === "instant" && input.choice.kind === "relative") {
+    return new Date(input.occursAt.getTime() - input.choice.leadMinutes * 60_000);
+  }
+  const occurrenceDate = input.occursAt.toISOString().slice(0, 10);
+  const [year, month, day] = occurrenceDate.split("-").map(Number) as [number, number, number];
+  const minute =
+    input.choice.kind === "exact"
+      ? Number(input.choice.localTime.slice(0, 2)) * 60 + Number(input.choice.localTime.slice(3))
+      : 9 * 60;
+  const resolveWallTime =
+    input.wallTimeMode === "strict" ? zonedWallTimeToUtcStrict : zonedWallTimeToUtc;
+  const base = resolveWallTime({
+    timeZone: input.timeZone,
+    year,
+    month,
+    day,
+    minute,
+  });
+  return input.choice.kind === "relative"
+    ? new Date(base.getTime() - input.choice.leadMinutes * 60_000)
+    : base;
+}
 
 export function reminderScheduleChoiceFromStored(schedule: {
   kind: ReminderScheduleChoice["kind"];
@@ -186,6 +224,31 @@ const INSTANT_RELATIVE_LABELS: Record<number, string> = {
   0: "at the bring-back time",
 };
 
+function formatLeadMinutes(leadMinutes: number) {
+  const hours = Math.floor(leadMinutes / 60);
+  const minutes = leadMinutes % 60;
+  const parts = [
+    hours > 0 ? `${hours} hour${hours === 1 ? "" : "s"}` : null,
+    minutes > 0 ? `${minutes} minute${minutes === 1 ? "" : "s"}` : null,
+  ].filter((part): part is string => part !== null);
+  return parts.join(" ") || "0 minutes";
+}
+
+function formatLocalClockTime(timeZone: string, instant: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(instant);
+}
+
+function relativeLabelForLead(leadMinutes: number, timeSemantics: "date_only" | "instant") {
+  const duration = formatLeadMinutes(leadMinutes);
+  return timeSemantics === "instant"
+    ? `${duration} before the bring-back time`
+    : `${duration} before at 9:00 AM`;
+}
+
 export function formatReminderChoiceLabel(
   choice: ReminderScheduleChoice,
   timeSemantics: "date_only" | "instant" = "date_only",
@@ -194,7 +257,7 @@ export function formatReminderChoiceLabel(
   const label =
     (timeSemantics === "instant" ? INSTANT_RELATIVE_LABELS : DATE_ONLY_RELATIVE_LABELS)[
       choice.leadMinutes
-    ] ?? "at the occurrence time";
+    ] ?? relativeLabelForLead(choice.leadMinutes, timeSemantics);
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
@@ -204,15 +267,21 @@ export function formatReminderScheduleLabel(
     localTime: string | null;
     leadMinutes: number | null;
     timeZone: string;
+    intendedAt?: Date;
   },
   timeSemantics: "date_only" | "instant" = "date_only",
 ) {
+  const leadMinutes = schedule.leadMinutes ?? 0;
+  const knownRelativeLabel = (
+    timeSemantics === "instant" ? INSTANT_RELATIVE_LABELS : DATE_ONLY_RELATIVE_LABELS
+  )[leadMinutes];
+  const hasConcreteIntendedAt =
+    schedule.intendedAt instanceof Date && !Number.isNaN(schedule.intendedAt.getTime());
   const timing =
     schedule.kind === "exact"
       ? `at ${schedule.localTime ?? "09:00"}`
-      : formatReminderChoiceLabel(
-          { kind: "relative", leadMinutes: schedule.leadMinutes ?? 0 },
-          timeSemantics,
-        ).toLowerCase();
+      : !knownRelativeLabel && hasConcreteIntendedAt
+        ? `at ${formatLocalDate(schedule.timeZone, schedule.intendedAt as Date)} ${formatLocalClockTime(schedule.timeZone, schedule.intendedAt as Date)} (${formatLeadMinutes(leadMinutes)} before)`
+        : formatReminderChoiceLabel({ kind: "relative", leadMinutes }, timeSemantics).toLowerCase();
   return `Reminder ${timing} · ${schedule.timeZone}`;
 }

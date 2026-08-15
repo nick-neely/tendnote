@@ -4,6 +4,7 @@ import {
   computeNextBriefRun,
   formatLocalDate,
   zonedWallTimeToUtc,
+  zonedWallTimeToUtcStrict,
 } from "./brief-schedules";
 
 const utcDaily: BriefScheduleRecurrence = {
@@ -79,5 +80,41 @@ describe("timezone helpers", () => {
     });
     expect(instant.toISOString()).toBe("2026-06-28T15:00:00.000Z");
     expect(formatLocalDate("America/Los_Angeles", instant)).toBe("2026-06-28");
+  });
+
+  it("rejects an impossible calendar date", () => {
+    expect(() =>
+      zonedWallTimeToUtcStrict({
+        timeZone: "UTC",
+        year: 2026,
+        month: 2,
+        day: 30,
+        minute: 9 * 60,
+      }),
+    ).toThrow(/calendar date/i);
+  });
+
+  it("rejects a spring-forward wall time that does not exist", () => {
+    expect(() =>
+      zonedWallTimeToUtcStrict({
+        timeZone: "America/New_York",
+        year: 2026,
+        month: 3,
+        day: 8,
+        minute: 2 * 60 + 30,
+      }),
+    ).toThrow(/does not exist/i);
+  });
+
+  it("rejects an ambiguous fall-back wall time instead of choosing an instant", () => {
+    expect(() =>
+      zonedWallTimeToUtcStrict({
+        timeZone: "America/New_York",
+        year: 2026,
+        month: 11,
+        day: 1,
+        minute: 1 * 60 + 30,
+      }),
+    ).toThrow(/ambiguous/i);
   });
 });

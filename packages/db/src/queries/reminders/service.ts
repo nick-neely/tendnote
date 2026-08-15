@@ -4,6 +4,7 @@ import {
   type ReminderRecordKind,
   reminderScheduleChoiceSchema,
   reminderTimeSemanticsForRecordKind,
+  resolveReminderIntendedAt,
 } from "@tendnote/domain/reminders";
 import { createReminderDeliveryPlanner } from "./delivery-planning";
 import { createReminderDispatcher } from "./dispatch";
@@ -58,20 +59,26 @@ export function createReminderService(input: {
     recordId: string;
   }): Promise<ReminderRecord | null> {
     if (input.loadReminderRecord) return input.loadReminderRecord(values);
-    if (values.recordKind !== "general_action" || !input.loadGeneralAction) return null;
+    if (
+      (values.recordKind !== "general_action" && values.recordKind !== "routine") ||
+      !input.loadGeneralAction
+    ) {
+      return null;
+    }
     const action = await input.loadGeneralAction({
       ownerUserId: values.ownerUserId,
       generalActionId: values.recordId,
     });
-    return action
-      ? {
-          ...action,
-          kind: "general_action",
-          occursAt: action.dueAt,
-          timeSemantics: reminderTimeSemanticsForRecordKind("general_action"),
-          personId: null,
-        }
-      : null;
+    if (!action) return null;
+    const kind = action.recurrence ? ("routine" as const) : ("general_action" as const);
+    if (kind !== values.recordKind) return null;
+    return {
+      ...action,
+      kind,
+      occursAt: action.dueAt,
+      timeSemantics: reminderTimeSemanticsForRecordKind(kind),
+      personId: null,
+    };
   }
 
   const { createInstallationJobs, persistOccurrenceAndJobs } = createReminderDeliveryPlanner({
@@ -114,7 +121,7 @@ export function createReminderService(input: {
     ownerUserId: string;
     recordKind: ReminderRecordKind;
     recordId: string;
-    clientInstallationId: string;
+    clientInstallationId?: string;
     timeZone: string;
     schedule: { kind: "exact"; localTime: string } | { kind: "relative"; leadMinutes: number };
     now: Date;
@@ -146,10 +153,9 @@ export function createReminderService(input: {
     const occurrenceDate = record.occursAt.toISOString().slice(0, 10);
     const occurrenceKey = reminderOccurrenceKey(record);
     const effectiveChoice = resolveSetAsideAlertChoice(record, choice);
-    const intendedAt = resolveIntendedAt({
+    const intendedAt = resolveReminderIntendedAt({
       occursAt: record.occursAt,
       timeSemantics: record.timeSemantics,
-      occurrenceDate,
       timeZone: values.timeZone,
       choice: effectiveChoice,
     });
@@ -178,16 +184,20 @@ export function createReminderService(input: {
       freshUntil,
       now: values.now,
     });
-    const optIn = await resolveOptInInvitation({
-      ownerUserId: values.ownerUserId,
-      clientInstallationId: values.clientInstallationId,
-      hasOccurrenceIntent: Boolean(occurrenceIntent),
-      now: values.now,
-    });
-    const dueTime = resolveIntendedAt({
+    const optIn = values.clientInstallationId
+      ? await resolveOptInInvitation({
+          ownerUserId: values.ownerUserId,
+          clientInstallationId: values.clientInstallationId,
+          hasOccurrenceIntent: Boolean(occurrenceIntent),
+          now: values.now,
+        })
+      : {
+          state: "none" as const,
+          clientInstallationId: null,
+        };
+    const dueTime = resolveReminderIntendedAt({
       occursAt: record.occursAt,
       timeSemantics: record.timeSemantics,
-      occurrenceDate,
       timeZone: values.timeZone,
       choice: { kind: "relative", leadMinutes: 0 },
     });
@@ -248,10 +258,9 @@ export function createReminderService(input: {
     const occurrenceKey = reminderOccurrenceKey(record);
     const timeZone = values.timeZone ?? currentSchedule.timeZone;
     const effectiveChoice = resolveSetAsideAlertChoice(record, choice);
-    const intendedAt = resolveIntendedAt({
+    const intendedAt = resolveReminderIntendedAt({
       occursAt: record.occursAt,
       timeSemantics: record.timeSemantics,
-      occurrenceDate,
       timeZone,
       choice: effectiveChoice,
     });
@@ -416,7 +425,7 @@ export function createReminderService(input: {
     saveGeneralActionReminder(values: {
       ownerUserId: string;
       generalActionId: string;
-      clientInstallationId: string;
+      clientInstallationId?: string;
       timeZone: string;
       schedule: { kind: "exact"; localTime: string } | { kind: "relative"; leadMinutes: number };
       now: Date;
@@ -444,31 +453,6 @@ function resolveSetAsideAlertChoice(
     return { kind: "exact" as const, localTime: "09:00" };
   }
   return choice;
-}
-
-function resolveIntendedAt(input: {
-  occursAt: Date;
-  timeSemantics: ReminderRecord["timeSemantics"];
-  occurrenceDate: string;
-  timeZone: string;
-  choice: { kind: "exact"; localTime: string } | { kind: "relative"; leadMinutes: number };
-}): Date {
-  if (input.timeSemantics === "instant" && input.choice.kind === "relative") {
-    return new Date(input.occursAt.getTime() - input.choice.leadMinutes * 60_000);
-  }
-  const [year, month, day] = input.occurrenceDate.split("-").map(Number) as [
-    number,
-    number,
-    number,
-  ];
-  const minute =
-    input.choice.kind === "exact"
-      ? Number(input.choice.localTime.slice(0, 2)) * 60 + Number(input.choice.localTime.slice(3))
-      : 9 * 60;
-  const base = zonedWallTimeToUtc({ timeZone: input.timeZone, year, month, day, minute });
-  return input.choice.kind === "relative"
-    ? new Date(base.getTime() - input.choice.leadMinutes * 60_000)
-    : base;
 }
 
 function resolveFreshUntil(input: {

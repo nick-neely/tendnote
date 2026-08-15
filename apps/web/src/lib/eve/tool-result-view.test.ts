@@ -919,6 +919,38 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     expect(dated).toMatchObject({ timingLabel: dueLabel });
   });
 
+  it("renders a scheduled reminder label and keeps a failed schedule visibly partial", () => {
+    const scheduled = toAssistantToolView({
+      toolName: "create_general_action",
+      output: {
+        action: gaRef({ dueAt: "2026-08-16T00:00:00.000Z" }),
+        reminder: {
+          status: "scheduled",
+          label: "Reminder at 15:00 · America/Chicago",
+          timeZone: "America/Chicago",
+          intendedAt: "2026-08-16T20:00:00.000Z",
+          optInOffered: false,
+        },
+      },
+    });
+    expect(scheduled).toMatchObject({
+      reminderStatus: "scheduled",
+      reminderLabel: "Reminder at 15:00 · America/Chicago",
+    });
+
+    const failed = toAssistantToolView({
+      toolName: "create_general_action",
+      output: {
+        action: gaRef({ dueAt: "2026-08-16T00:00:00.000Z" }),
+        reminder: { status: "failed", reason: "unavailable" },
+      },
+    });
+    expect(failed).toMatchObject({
+      reminderStatus: "failed",
+      reminderLabel: "Action saved; reminder not scheduled",
+    });
+  });
+
   it("renders suggest_general_action and get_suggested_general_action_review as review items", () => {
     const output = {
       found: true,

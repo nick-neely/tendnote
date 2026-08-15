@@ -1,5 +1,6 @@
 import type { GeneralActionOfferKind } from "@tendnote/domain";
 import { shouldOfferResponsibilityHandoff } from "@tendnote/domain";
+import { createGeneralActionWithReminderOperation } from "./general-actions/create-with-reminder";
 import { createDrizzleGeneralActionLifecycleStore } from "./general-actions/drizzle-store";
 import {
   createAffectedGeneralActionLifecycle,
@@ -9,6 +10,7 @@ import { createSuggestedGeneralActionReview } from "./general-actions/review";
 import type {
   AcceptSuggestedGeneralActionInput,
   CreateActiveGeneralActionInput,
+  CreateGeneralActionWithReminderInput,
   DeferGeneralActionInput,
   EditGeneralActionInput,
   EditSuggestedGeneralActionInput,
@@ -27,6 +29,7 @@ import {
   clearGeneralActionReminder,
   listReminderSchedulesForOwner,
   reconcileReminderRecordForSubscribers,
+  saveReminder,
 } from "./reminders";
 import { enqueueAndTriggerSemanticEmbeddingJob } from "./semantic-retrieval";
 
@@ -96,6 +99,14 @@ async function reconcileGeneralActionReminder(action: {
 
 export async function createGeneralAction(input: CreateActiveGeneralActionInput) {
   return defaultGeneralActionLifecycle.createGeneralAction(input);
+}
+
+/** Creates an Action and optional explicit Reminder Schedule through one shared seam. */
+export function createGeneralActionWithReminder(input: CreateGeneralActionWithReminderInput) {
+  return createGeneralActionWithReminderOperation(input, {
+    createAction: createGeneralAction,
+    saveReminder,
+  });
 }
 
 export async function editGeneralAction(input: EditGeneralActionInput) {

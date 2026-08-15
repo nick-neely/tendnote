@@ -200,6 +200,46 @@ describe("assistant tool-result contract", () => {
     expect(JSON.stringify(parsed.data)).not.toContain("general_action_created");
   });
 
+  it("keeps explicit reminder success and partial failure typed on a created Action", () => {
+    const base = {
+      id: "ga-1",
+      title: "Replace the fridge water filter",
+      status: "open",
+      dueAt: "2026-08-16T00:00:00.000Z",
+      deferUntil: null,
+      isRoutine: false,
+      recurrence: null,
+      areaId: null,
+      people: [],
+      visibilityChoice: "only_me" as const,
+      visibilityLabel: "Only me",
+    };
+    const scheduled = assistantToolResultSchemas.create_general_action.safeParse({
+      action: base,
+      reminder: {
+        status: "scheduled",
+        label: "Reminder at 15:00 · America/Chicago",
+        timeZone: "America/Chicago",
+        intendedAt: "2026-08-16T20:00:00.000Z",
+        optInOffered: false,
+        scheduleId: "must be stripped",
+      },
+    });
+    expect(scheduled.success).toBe(true);
+    expect(scheduled.success && scheduled.data.reminder).toMatchObject({ status: "scheduled" });
+    expect(JSON.stringify(scheduled.data)).not.toContain("scheduleId");
+
+    const failed = assistantToolResultSchemas.create_general_action.safeParse({
+      action: base,
+      reminder: { status: "failed", reason: "unavailable", error: "database details" },
+    });
+    expect(failed.success).toBe(true);
+    expect(failed.success && failed.data.reminder).toEqual({
+      status: "failed",
+      reason: "unavailable",
+    });
+  });
+
   it("accepts a suggested General Action review, ignoring the persisted component", () => {
     const parsed = assistantToolResultSchemas.suggest_general_action.safeParse({
       found: true,

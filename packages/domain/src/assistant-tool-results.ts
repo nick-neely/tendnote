@@ -220,8 +220,29 @@ export const generalActionRef = z.object({
   visibilityLabel: z.string().nullable(),
 });
 
+/**
+ * A created Action may carry one explicit Reminder Schedule. This is a deliberately
+ * compact presentation contract: the web needs the concrete label and intended
+ * instant, but never the schedule or occurrence ids. A failed reminder stays visibly
+ * distinct from the successful Action so a partial write cannot look fully scheduled.
+ */
+export const createdGeneralActionReminder = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("scheduled"),
+    label: z.string().min(1),
+    timeZone: z.string().min(1),
+    intendedAt: z.string().min(1),
+    optInOffered: z.boolean(),
+  }),
+  z.object({
+    status: z.literal("failed"),
+    reason: z.literal("unavailable"),
+  }),
+]);
+
 export const createdGeneralActionToolResult = z.object({
   action: generalActionRef,
+  reminder: createdGeneralActionReminder.nullish(),
 });
 
 export const suggestedGeneralActionReviewItem = z.object({
@@ -595,6 +616,8 @@ export const RENDERED_TOOL_NAMES = Object.keys(assistantToolResultSchemas) as Re
 export type SuggestedMemoryReviewItemOutput = z.infer<typeof suggestedMemoryReviewItem>;
 export type SuggestedFollowupReviewItemOutput = z.infer<typeof suggestedFollowupReviewItem>;
 export type GeneralActionRefOutput = z.infer<typeof generalActionRef>;
+export type CreatedGeneralActionReminderOutput = z.infer<typeof createdGeneralActionReminder>;
+export type CreatedGeneralActionToolResult = z.infer<typeof createdGeneralActionToolResult>;
 export type SuggestedGeneralActionReviewItemOutput = z.infer<
   typeof suggestedGeneralActionReviewItem
 >;
