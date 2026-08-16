@@ -33,17 +33,20 @@ as data that a store with no database can execute and refuse, and the same order
 is confirmed against a real Postgres by `pnpm --filter @tendnote/db db:purge:check`.
 
 The sweep rides the existing ten-minute background cron rather than a schedule
-of its own, bounded to a few households per pass and running last: a thirty-day
-deadline does not need its own timer, a second cron entry would be a second
-place for the deletion promise to be switched off, and a run that is short of
-budget should spend what remains on work that can be retried before it spends
-any on work that cannot be undone. Each household is erased in one transaction
-with per-household error isolation, so a failure leaves that household whole for
-the next pass rather than half-deleted.
+of its own, bounded to a few households per pass and run after the retryable
+backfills with its own budget: a thirty-day deadline does not need its own timer,
+a second cron entry would be a second place for the deletion promise to be
+switched off, and a slow household cannot consume the separate audit-retention
+budget that follows it. Each household is erased in one transaction with
+per-household error isolation, so a failure leaves that household whole for the
+next pass rather than half-deleted. The recovery assembly attempts the audit
+retention stage even when an earlier stage fails, so the two irreversible
+policies do not block one another.
 
-Open item, deliberately not built here: the audit trail's own two-year
-expiry. `audit_log` has no retention mechanism today, so the tombstone this
-decision creates currently persists indefinitely rather than for the stated two
-years. Adding one is a general retention concern across every audit entry
-Tendnote writes, not a household one, and it needs its own decision about
-storage, scope, and who may still read an entry as it ages.
+The audit trail's own expiry is resolved separately in
+[ADR 0223](0223-audit-log-retention-and-internal-read-boundary.md). The general
+policy is keyed by action and entity type, currently retains entries for two
+calendar years, hard-deletes them through the existing recovery cron, and keeps
+raw audit reads internal rather than exposing them to Household members. That
+policy explicitly covers this tombstone and closes the retention gap described
+above.

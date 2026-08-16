@@ -11,6 +11,7 @@ export * from "./asset-search";
 export * from "./asset-snapshots";
 export * from "./assets";
 export * from "./assistant-tool-results";
+export * from "./audit-retention";
 export * from "./brief-schedules";
 export * from "./brief-summary";
 export * from "./briefs";
