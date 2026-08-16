@@ -2,7 +2,7 @@
 
 Tendnote is a private, consent-first memory for your life — the people you care about, the things you own, and the work you keep meaning to get to. It remembers context you give it, surfaces it when it's useful, and helps you follow up thoughtfully.
 
-It is not a sales CRM. There are no pipelines, no lead scores, and no autonomous outreach. Nothing leaves Tendnote without you approving it.
+It is not a sales CRM. There are no pipelines, no lead scores, and no autonomous outreach. Nothing leaves Tendnote without you approving it. Eve can do bounded public web research in chat, but it builds those queries only from what you said in that turn, never from your stored context.
 
 ## What it does
 
@@ -12,6 +12,7 @@ It is not a sales CRM. There are no pipelines, no lead scores, and no autonomous
 - **Start with Today**, a calm, bounded shortlist across relationships, Actions, Routines, Saved Items, review work, and fresh Calendar context. Deterministic policy remains authoritative if Eve is unavailable.
 - **Search everything you can access** through one grounded result contract. Exact matches come before related matches, and every result links back to its canonical record and evidence.
 - **Keep the leftovers intentionally** as Saved Items: notes, links, and open questions that do not belong in a richer record family yet. Promote them to Actions when they become actionable.
+- **Keep About You current** with a small set of exact, explicit facts about yourself - add, correct, import, or archive them. Eve treats them as ground truth, never as inference.
 - **Install Tendnote as a PWA** for a standalone mobile shell. On an opted-in installation, explicit Reminder Schedules can deliver one privacy-gated alert for eligible records.
 
 ### People
@@ -21,6 +22,7 @@ It is not a sales CRM. There are no pipelines, no lead scores, and no autonomous
 - **Recall** a person's context as a snapshot, search your stored context by exact wording, or search it by meaning.
 - **Follow up** with person-linked reminders you create or Eve proposes — complete, snooze, dismiss, or reopen.
 - **Plan** across everyone with a read-only agenda: "anything coming up next week?"
+- **Plan a gift** for someone with household co-planners you choose; mark them as the surprise subject and they never see the plan or get a reminder for it.
 - **Get briefed** with small persisted daily and weekly relationship briefs.
 - **Draft** thoughtful messages inside Tendnote — grounded in the memories and records that justify them, reviewable, and never sent for you.
 
@@ -30,11 +32,15 @@ Durable to-dos for *yourself*, separate from person follow-ups. Create one-off A
 
 ### Assets
 
-The things you own, and what you know about them. An Asset holds typed memories (model numbers, purchase dates, warranty windows), evidence files like receipts and photos, links to related people and Actions, and a rebuildable context snapshot. Eve can propose asset facts and maintenance or renewal reminders — all review-gated.
+The things you own, and what you know about them. An Asset holds typed memories (model numbers, purchase dates, warranty windows), evidence files like receipts and photos, links to related people and Actions, and a rebuildable context snapshot. Eve can create or edit an Asset directly when you explicitly ask; anything Eve infers on its own - facts, maintenance or renewal reminders - stays a review-gated suggestion.
 
 ### Sharing and scope
 
-Every record carries a visibility scope: private, shared with selected household members, or visible to a whole household workspace. Scope is enforced in the query layer, so retrieval, search, and Eve all honor it. Household *management* (creating a household, inviting members) is not yet a product surface — households are provisioned through seed data today.
+Every record carries a visibility scope: private, shared with selected household members, or visible to a whole household workspace. Scope is enforced in the query layer, so retrieval, search, and Eve all honor it.
+
+### Household
+
+Create a household and invite members by email; invitations are sent, resent, canceled, accepted, or declined explicitly. Active members share a Household home, calendar, event plans, and check-ins, layered on the same visibility scope every record already respects. Membership, roles, and departure live under Account > Household. There is no shared People directory or activity feed - People stay member-owned, shared only through explicit read-only Relationship Shares.
 
 ### Connected services
 
@@ -45,7 +51,7 @@ All connections are opt-in, individually consented, and narrowly scoped.
 | **Google Calendar** | Reads events read-only for calendar context in chat, brief highlights, and deterministic post-meeting follow-up suggestions | Write to your calendar, store raw provider payloads, create people from attendees |
 | **Gmail** | Creates or updates a Gmail draft from a Tendnote draft you approved | Send email, read your mail, reconcile mailbox state |
 | **Google Contacts** | Powers an explicit import preview you confirm row by row | Auto-create people, store raw People API payloads |
-| **Discord** | Optional private capture channel and proactive delivery of briefs, aftercare, and action summaries | Read channels it wasn't invited to, act without your configured delivery targets |
+| **Discord** | Optional private capture channel and proactive delivery of briefs, aftercare, birthday and gift planning, and action summaries | Read channels it wasn't invited to, act without your configured delivery targets |
 
 Disconnecting revokes the grant, clears cached data, and blocks further reads.
 

@@ -46,6 +46,8 @@ Tendnote stores three rich subject families — **people**, **assets**, and **ge
 
 Every record carries an owner and a visibility scope. An asset's scope is a ceiling for its child records (ADR 0179), and assets may link people without owning them (ADR 0178).
 
+Records also carry an ownership axis, separate from visibility: **member-owned** (an `owner_user_id`) or **household-native** (owned by the Household Workspace itself). `householdRecordOwnershipCheck` (`packages/db/src/schema/app/common.ts`) is the database invariant - a member-owned row has an owner and no household scope requirement, a household-native row has a household id and `household` scope. Widening a record's visibility to `household` never changes who owns it; converting a member-owned record to household-native is an explicit, confirmed, owner-only action with no claim-back path (ADR 0214). The distinction is load-bearing at erasure: the household purge sweep disposes of what the workspace owns and releases everything else back to `private`.
+
 ## Capture, Today, and Global Recall
 
 Phase Seven's web and Eve surfaces are thin adapters over the same owner-scoped product functions in `@tendnote/db`:
@@ -72,6 +74,8 @@ Suggested-memory extraction, action extraction, and semantic embeddings run as P
 > **Local gotcha:** the offline adapter's model version is part of every embedding idempotency key and read filter. When that fixture version changes, old local vectors are intentionally ignored — reset the disposable local Postgres volume and rerun `pnpm db:migrate && pnpm db:seed` to rebuild them.
 
 Both apps publish outbox deliveries through one shared owner-scoped `publishBackgroundJobDelivery` in `packages/db` (ADR 0194). The queue transport is injected, so the data layer stays provider-agnostic and never imports the queue provider; the rate-limit-aware consumers live in `apps/web`. See [`background-job-delivery.md`](background-job-delivery.md) for the production foundation, recovery path, and optional live smoke test.
+
+The same ten-minute recovery cron (`apps/web/src/app/api/cron/background-jobs/route.ts`) also runs two irreversible sweeps as a second job class alongside the extraction/embedding/reminder recovery work: the household purge sweep, which closes a dissolved household's thirty-day recovery window by erasing what the workspace owns (ADR 0221), and the audit-log retention sweep, which hard-deletes expired audit entries (ADR 0223). Both are bounded per pass - `HOUSEHOLD_PURGE_LIMIT` (3 households) and `AUDIT_RETENTION_LIMIT` (100 rows) - and the retention sweep runs as its own final stage so a failure earlier in the pass cannot block it.
 
 ## PWA and reminder delivery
 
@@ -154,10 +158,12 @@ Proactive delivery POSTs to configured channel targets with `DISCORD_BOT_TOKEN` 
 
 ## Household scope
 
-Every record carries a visibility scope: **private**, **shared with selected members**, or **whole household**. Scope is enforced deterministically in the query layer, so retrieval, search, Eve tools, and UI all inherit it rather than each re-implementing it. `packages/db/src/queries/households.ts` owns membership and share mutations.
+Every record carries a visibility scope: **private**, **shared with selected members**, or **whole household**. Scope is enforced deterministically in the query layer, so retrieval, search, Eve tools, and UI all inherit it rather than each re-implementing it. `packages/db/src/queries/households.ts` owns membership and share mutations, with the invitation, governance, and erasure lifecycle split out under `packages/db/src/queries/households/`.
 
-Household *management* is not yet a product surface — there is no route or server action to create a household or invite a member, and households are provisioned through seed data today. The enforcement substrate is complete and tested; the onboarding UI is not built.
+Household management is a shipped product surface: `apps/web/src/app/(admitted)/household/page.tsx` and `.../account/household/page.tsx` are the routes, backed by server actions in `apps/web/src/app/actions/households.ts`, `household-invitations.ts`, and `household-governance.ts`. A Household Invitation is a separate, email-address-bound, expiring capability rather than a pending membership; acceptance requires the emailed secret plus a session whose own address matches the invited one. Co-owner governance favors explicit, auditable consent over a creator-admin model - promotion requires the recipient's acceptance, no owner may unilaterally demote or remove another owner, the last owner cannot leave, and dissolution requires unanimous active-owner confirmation (ADR 0213).
+
+Dissolving a household opens a thirty-day recovery window, after which a bounded background sweep permanently erases it: household-native records are deleted, member-owned records still pointing at the household are released back to `private`, and a minimized tombstone survives, filed against a scrubbed system actor (ADR 0221). Deleting a member account is gated the same way - the sole owner of a multi-member household must hand off ownership before their account can be deleted, so an account operation cannot strand the remaining members (ADR 0214).
 
 ## Rate limiting
 
-`@tendnote/rate-limit` defines cost categories rather than per-route limits: `eve-ingress` (30/60s), `server-action` (60/60s), `llm-extraction` (20/60s), `embedding` (60/60s), `provider-call` (60/60s), and `push-delivery` (120/60s). The store is pluggable — Redis in the web app, a fake in tests — so limits are testable without infrastructure.
+`@tendnote/rate-limit` defines cost categories rather than per-route limits: `eve-ingress` (30/60s), `server-action` (60/60s), `llm-extraction` (20/60s), `embedding` (60/60s), `provider-call` (60/60s), and `push-delivery` (120/60s). Household Invitation abuse gets five further independent categories rather than a route limit - `household-invitation-inviter` (10/hour), `household-invitation-household` (15/hour), `household-invitation-recipient` (5/day), `household-invitation-source` (20/hour), and `household-invitation-delivery` (60/hour) - because seat capacity alone does not stop a cancel-and-reinvite loop from harassing a recipient. The store is pluggable — Redis in the web app, a fake in tests — so limits are testable without infrastructure.

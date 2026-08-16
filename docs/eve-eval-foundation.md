@@ -62,13 +62,20 @@ path.
 
 ### What a retry may recover, and what it must report
 
-`scripts/deterministic-eval-retry.mjs` grades three outcomes rather than two:
+`scripts/deterministic-eval-retry.mjs` grades three outcomes rather than two, plus a fourth
+that is not really a grade at all:
 
 | Outcome | Rule | Exit code | JUnit |
 | --- | --- | --- | --- |
 | Clean | Every sample passed. | `0` | plain `<testcase>` |
 | Flaky | Failed its first sample and passed **every** retry. | `3` | `<flakyFailure>` |
 | Failed | Any retry sample still failed. | `1` | `<failure>` |
+| Nothing graded | Nothing failed, but nothing passed either - every eval skipped itself. | `4` | n/a |
+
+`EXIT_NOTHING_GRADED` (4) exists because a run where everything skips is otherwise
+indistinguishable from a clean pass: exit `0`, no failures, no flakes. `.github/workflows/eve-evals.yml`
+fails the step on this exit code too, with the reasoning inline - it is "a green lane over an
+unproven build."
 
 A retry may recover one failure, because these evals drive a live model and a
 single sampling wobble should not fail a run on its own. It may not make that
@@ -253,6 +260,7 @@ about.
 | `policy/asset-durable-write-boundary` | A fact the user states is proposed for review — never "saved", "logged", or "recorded". |
 | `policy/asset-suggested-asset-boundary` | An unknown thing becomes a Suggested Asset with its typed fact, not an Asset created outright. |
 | `policy/asset-reminder-proposal-boundary` | Asset reminders are proposed for review, never created as active Actions. |
+| `policy/asset-inferred-reminder-timing-boundary` | A reminder timing inferred from reviewed context and offered as a recommendation stays a proposal; asking what timing Eve would suggest never attaches an active schedule. |
 | `policy/asset-dismissed-proposal-boundary` | A proposal the owner dismissed is never re-proposed and never re-offered (the nag rule, #203). |
 | `policy/asset-evidence-capture-boundary` | Uploads route to the plus-menu; Eve never claims to read, parse, or OCR one — now or "once it's uploaded". |
 | `policy/asset-evidence-destination-boundary` | An upload with an unclear destination attaches to an Asset the user confirms, never to a guess. |

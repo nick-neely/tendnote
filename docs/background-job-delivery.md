@@ -2,14 +2,16 @@
 
 Tendnote uses a backend-only background job delivery foundation for lightweight asynchronous processors. Postgres remains the source of truth for product job state; Vercel Queues is the default production transport that wakes processor-specific consumers.
 
-The delivery ledger is `background_job_deliveries`. Each row records a queue publication intent with `id`, `owner_user_id`, `job_kind`, `job_id`, `topic`, `status`, `attempts`, `last_error`, `next_attempt_at`, `created_at`, `updated_at`, and `published_at`. `job_kind` currently supports `extraction` and `embedding`. Delivery status is transport-only:
+The delivery ledger is `background_job_deliveries`. Each row records a queue publication intent with `id`, `owner_user_id`, `job_kind`, `job_id`, `topic`, `status`, `attempts`, `last_error`, `next_attempt_at`, `created_at`, `updated_at`, and `published_at`. `job_kind` supports five values: `extraction`, `embedding`, `action_extraction`, `context_fact_extraction`, and `reminder_push`. Delivery status is transport-only:
 
 - `pending`: the delivery intent exists and has not been accepted by the queue.
 - `published`: Vercel Queue accepted the send call. This does not mean the job was consumed or processed.
 - `publish_failed`: the durable product record and processor job exist, but queue publication failed and can be retried.
 - `abandoned`: recovery found the underlying processor job terminal or no longer valid.
 
-Topic routing goes through the typed topic map in `@tendnote/db/queries/background-job-deliveries`; the concrete topic string is still stored on each delivery row for inspection. Current topics are `extraction` and `embedding`. Queue payloads carry `deliveryId`, `jobKind`, and `jobId` as pointers. Consumers reload the delivery row and processor job from Postgres, validate payload fields, and then process only the delivered job id through the shared extraction or embedding processor.
+For `extraction`, `embedding`, `action_extraction`, and `context_fact_extraction`, recovery treats the underlying processor job's status as the authority on whether a delivery is still worth republishing. `reminder_push` has no processor job in that sense: recovery always treats its deliveries as active and defers to the reminder policy processor, which independently suppresses stale, revoked, completed, or otherwise ineligible work before it ever contacts Web Push.
+
+Topic routing goes through the typed topic map in `@tendnote/db/queries/background-job-deliveries`; the concrete topic string is still stored on each delivery row for inspection. There are three topics: `tendnote-extraction-v1`, shared by `extraction`, `action_extraction`, and `context_fact_extraction` (the consumer route dispatches by the payload's `jobKind`, so one route and one Vercel queue cover all three); `tendnote-embedding-v1`; and `tendnote-reminder-push-v1`. Queue payloads carry `deliveryId`, `jobKind`, and `jobId` as pointers. Consumers reload the delivery row and processor job from Postgres, validate payload fields, and then process only the delivered job id through the shared processor for that job kind.
 
 Local development can keep work inline through the existing processor runtime modes. Ordinary verification uses fake queue adapters and fake queue messages, so `pnpm verify` does not require Vercel Queue access or live provider credentials.
 
@@ -21,8 +23,9 @@ Queue trigger objects in `vercel.json` intentionally include only Vercel-support
 
 The queue callbacks are:
 
-- `/api/queue/extraction` for the `extraction` topic.
-- `/api/queue/embedding` for the `embedding` topic.
+- `/api/queue/extraction` for the `tendnote-extraction-v1` topic (`extraction`, `action_extraction`, and `context_fact_extraction`).
+- `/api/queue/embedding` for the `tendnote-embedding-v1` topic.
+- `/api/queue/reminder` for the `tendnote-reminder-push-v1` topic.
 
 The recovery cron is `/api/cron/background-jobs` and is scheduled every ten minutes in `apps/web/vercel.json`. Set `CRON_SECRET` in production and preview so manual cron calls require `Authorization: Bearer <CRON_SECRET>`.
 
@@ -37,7 +40,9 @@ Run the smoke with `pnpm --filter @tendnote/web test -- vercel-queue.smoke`. It 
 
 ## Recovery And Inspection
 
-The recovery dispatcher runs bounded work. It republishes due `pending` or `publish_failed` delivery intents, abandons obsolete delivery intents, and runs capped extraction and embedding backfill through the same shared processors used by queue consumers.
+The recovery dispatcher runs bounded work on the same ten-minute cron. It republishes due `pending` or `publish_failed` delivery intents (up to 25 per pass), abandons obsolete delivery intents, and backfills up to 5 jobs per pass each for `extraction`, `embedding`, `action_extraction`, and `context_fact_extraction` through the same shared processors used by queue consumers.
+
+Two more bounded sweeps ride the same cron pass but are not queue outbox deliveries: a household purge sweep (`runHouseholdPurgeSweep`, up to 3 households per pass) that erases workspaces whose thirty-day recovery window has closed, and an audit-log retention sweep (`runAuditLogRetentionSweep`, up to 100 entries per pass) that deletes expired audit trail entries. Both are periodic housekeeping over their own tables, not delivery/processor-job recovery, and neither publishes to a queue.
 
 Backend-only inspection examples:
 

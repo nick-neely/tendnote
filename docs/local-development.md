@@ -42,7 +42,7 @@ dev process for that invocation.
 
 ## Local services
 
-Local development uses Docker Postgres with pgvector and Redis on project-specific host ports `55432` and `56379` to avoid collisions with other local services. Production can point `DATABASE_URL` at Neon (which supports the `vector` extension) and `REDIS_URL` at a managed Redis-compatible service.
+Local development uses Docker Postgres with pgvector and Redis on project-specific host ports `55432` and `56379` to avoid collisions with other local services. Production can point `DATABASE_URL` at Neon (which supports the `vector` extension) and `REDIS_URL` at a managed Redis-compatible service. `DATABASE_DRIVER` is optional and defaults to `postgres`; `DATABASE_DRIVER=neon-http` is rejected even against a Neon database, because Tendnote needs the transaction-capable driver.
 
 If you created the local database before pgvector was added, recreate the local Postgres volume once so the container uses the pgvector-capable image:
 
@@ -59,7 +59,7 @@ Semantic embeddings run through the same job lifecycle in every environment. Loc
 - With `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN` set, embeddings use `TENDNOTE_EMBEDDING_MODEL` (default `openai/text-embedding-3-small`) through the AI SDK.
 - Suggested Memory and General Action extraction use `TENDNOTE_EXTRACTION_MODEL` when set and otherwise default to `google/gemini-3.1-flash-lite`; an omitted tuning override never disables extraction.
 - Without gateway credentials, local development falls back to deterministic fake vectors so capture and search still work offline.
-- Set `TENDNOTE_EMBEDDING_RUNTIME=enqueue_only` to leave jobs for a worker instead of processing inline.
+- Set `TENDNOTE_EMBEDDING_RUNTIME=enqueue_only` to leave jobs for a worker instead of processing inline. `TENDNOTE_EXTRACTION_RUNTIME` and `TENDNOTE_CONTEXT_FACT_EXTRACTION_RUNTIME` are the same `inline` / `enqueue_only` toggle for the extraction and context-fact-extraction job families.
 - Optional Today ranking is deterministic in development even when web gateway credentials are present. Set `TENDNOTE_ENABLE_TODAY_RANKING=1` in `apps/web/.env.local` to exercise the bounded live ranking path; a failure keeps the deterministic order and only unexpected errors get a concise server warning.
 
 Several other model overrides follow the same fallback chain — the specific variable, then `TENDNOTE_AGENT_MODEL`, then `anthropic/claude-haiku-4.5`. All are optional tuning knobs:
@@ -69,6 +69,8 @@ Several other model overrides follow the same fallback chain — the specific va
 | `TENDNOTE_SNAPSHOT_MODEL` | Person and asset context snapshots |
 | `TENDNOTE_BRIEF_SUMMARY_MODEL` | The presentation-only brief summary line |
 | `TENDNOTE_DRAFT_MODEL` | Message drafting |
+
+Each Eve subagent also has its own override following the same pattern - `TENDNOTE_MEMORY_CURATOR_MODEL`, `TENDNOTE_MESSAGE_DRAFTER_MODEL`, `TENDNOTE_PRIVACY_GUARD_MODEL`, `TENDNOTE_RELATIONSHIP_STRATEGIST_MODEL` - set at `apps/agent/agent/subagents/<name>/agent.ts`.
 
 In production, extraction and embedding jobs are delivered through Vercel Queues with an outbox-style ledger and a recovery cron. None of that is needed locally — inline processing and deterministic adapters cover the path, and `pnpm verify` never touches a live queue. See [`background-job-delivery.md`](background-job-delivery.md) for the production foundation and the optional live smoke test.
 
@@ -178,6 +180,7 @@ To reproduce the CI gate exactly, run `pnpm coverage:ci && pnpm fallow:coverage:
   - **Browser contract** (when web paths change) — Chromium contract tests.
   - **Instant browser matrix** (full tier, when Instant paths change) — routine Chromium coverage plus the promotion browser matrix.
   - **Database** (only when database paths change) - a database dependency-closure install, then `pnpm db:check` for drift and `pnpm db:migrate` against a pgvector service container.
+- `.github/workflows/promotion-verify.yml` runs the same verification tier as `full-ci`, with the Instant Interaction browser matrix widened to add the reduced Firefox and WebKit smoke; it only runs via `workflow_dispatch` or the `full-browser-matrix` PR label, so it never gates a routine PR.
 - `.github/workflows/playwright-cache.yml` primes the shared Chromium cache from `main` whenever the lockfile changes.
 - `.github/workflows/eve-evals.yml` runs the deterministic Eve evals; it is `workflow_dispatch` only, so it never gates a PR.
 - The `main` ruleset requires `Verify`, the exact-SHA `Full CI qualification`, and Vercel deployment before merge. After merge, Vercel sends `.github/workflows/production-migrations.yml` a `vercel.deployment.ready` repository dispatch for the staged production build. The workflow validates the project, environment, branch, and deployed SHA, then idempotently applies any pending Drizzle migrations using a database-only dependency install. Running the migration ledger on every ready deployment avoids missing schema work if Vercel coalesces multiple `main` builds. It reports the stable `Production Release Gate` commit status back to Vercel and expects `PRODUCTION_DATABASE_DIRECT_URL` in the production GitHub environment.

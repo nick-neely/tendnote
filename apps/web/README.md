@@ -1,6 +1,6 @@
 # @tendnote/web
 
-Next.js App Router workspace for Tendnote: the mobile-first Today, Capture, Search, people, actions, Saved Items, and assets surfaces; the installable PWA and reminder settings; Better Auth with a private-beta gate; the same-origin Eve chat mount; integrations; and background-job queue consumers.
+Next.js App Router workspace for Tendnote: the mobile-first Today, Capture, Search, people, actions, Saved Items, assets, household, and gift-plan surfaces; the installable PWA and reminder settings; Better Auth with a private-beta gate; the same-origin Eve chat mount; integrations; and background-job queue consumers.
 
 ## Routes
 
@@ -11,10 +11,17 @@ Next.js App Router workspace for Tendnote: the mobile-first Today, Capture, Sear
 | `/actions`, `/actions/today` | General Actions, Routines, Areas, and the focused action-only view |
 | `/saved-items` | Notes, links, and open questions with lifecycle, bring-back, source, and promotion controls |
 | `/assets`, `/assets/[assetId]` | Assets list and Asset profile (memories, evidence, links, actions) |
+| `/household` | Household's working surface - check-in, shared home sections, and event/gift planning |
+| `/gift-plans`, `/gift-plans/[giftPlanId]` | Gift Plans list and detail - ideas, co-planners, surprise protection |
 | `/reminders/open` | Authenticated notification deep-link resolver; re-authorizes the record without mutating it |
 | `/account` | Identity, access status, and provider connections |
+| `/account/household`, `/account/household/context` | Household creation and governance (membership, invitations) and its context facts |
+| `/account/about-you`, `/account/about-you/import` | Self Context facts (About You) and import from an external assistant conversation |
 | `/account/contacts/import` | Google Contacts import preview and confirmation |
 | `/account/discord` | Discord install status and per-workflow delivery targets |
+| `/onboarding/self-context` | First-run Self Context onboarding |
+| `/shared/[recordKind]/[recordId]` | Direct read of one relationship record a household member shared |
+| `/join/[token]` | Public household invitation acceptance; an emailed link, never linked in-app |
 | `/sign-in`, `/sign-up`, `/forgot-password`, `/reset-password`, `/pending` | Auth and pending-access pages |
 
 ### API routes
@@ -24,17 +31,20 @@ Next.js App Router workspace for Tendnote: the mobile-first Today, Capture, Sear
 - `api/cron/background-jobs` — recovery cron for stalled deliveries.
 - `api/integrations/discord/install` and `install/callback` — bot-install OAuth with a session-bound signed `state` and a double-submit CSRF nonce.
 - `api/asset-evidence/[evidenceId]/file` — gated evidence byte serving; re-checks scope per request and returns 404 on every denial.
+- `api/internal/cache/reconcile` - HMAC-signed endpoint background jobs (including Eve) call to reconcile affected-scope caches outside a web request.
 - `.well-known/vercel/flags` — Flags Explorer discovery endpoint.
 - `api/dev/demo-session` — local-only Better Auth session bridge for the dev fallback owner; unavailable in production.
 
 ## Layout
 
-- `src/app/actions/*.ts` — thin server adapters over owner-scoped product functions (conversational Capture, Today, Global Recall, memories, source records, follow-ups, Saved Items, Reminder Schedules and installations, briefs, drafts, general actions and areas, assets, review/evidence/links/action proposals, contact import, Gmail drafts, integrations). Note that `src/app/actions/` is both the server-action directory and the `/actions` route.
-- `src/components` — Today, mobile shell and Capture, Search, review queue, person detail, action/Saved Item/asset surfaces, reminder opt-in and installation settings, chat result cards, drafts, account integrations, and auth forms.
+- `src/app/actions/*.ts` — thin server adapters over owner-scoped product functions (conversational Capture, Today, Global Recall, people, memories, source records, follow-ups and suggested-followup reviews, Saved Items, Reminder Schedules and installations, briefs, drafts, general actions, areas, and suggested-general-action reviews, assets, review/evidence/links/action proposals, contact import, Gmail drafts, integrations, logged notes, the Eve composer's contextual hints, household setup and governance, gift plans, self context, and relationship shares). Note that `src/app/actions/` is both the server-action directory and the `/actions` route.
+- `src/components` — Today, mobile shell and Capture, Search, review queue, person detail, action/Saved Item/asset surfaces, household and gift-plan surfaces, reminder opt-in and installation settings, chat result cards, drafts, account surfaces (provider integrations, household governance and invitations, About You/Self Context), and auth forms.
 - `src/components/ui` — shadcn/ui components. `src/components/ai-elements` — AI Elements chat primitives.
 - `src/lib/auth` — Better Auth web setup over the shared `@tendnote/auth` baseline.
 - `src/lib/access` — Private Beta Access resolution.
 - `src/lib/integrations` — provider connections, Google Calendar connect/preview/disconnect, Gmail draft externalization, Contacts import preview, and the Discord connection/install/disconnect modules.
+- `src/lib/household` - household read models, join-invitation view, calendar and event-plan projections, and invitation delivery.
+- `src/lib/email` - Resend-backed transactional email (household invitations) and templates.
 - `src/lib/rate-limit` — the Redis-backed store and guards over `@tendnote/rate-limit`.
 - `src/lib/background-jobs` — queue runtime, reminder Web Push delivery, and recovery. `src/lib/cache` — request-scoped caching.
 - `src/lib/eve` — persisted Eve tool-result rendering and hosted-boundary policy coverage.
