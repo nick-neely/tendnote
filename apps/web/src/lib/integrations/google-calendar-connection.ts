@@ -2,6 +2,7 @@ import {
   GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE,
   hasCalendarEventsReadScope,
   PROVIDER_GOOGLE,
+  type ProviderConnection,
 } from "@tendnote/domain";
 
 /**
@@ -25,6 +26,8 @@ export type LinkedAccountLike = {
   scope?: string | null;
   /** The linked Google account's email, when the provider/Better Auth surfaces it. */
   email?: string | null;
+  /** Better Auth updates this when a reconnect refreshes the stored OAuth tokens. */
+  updatedAt?: Date | string | null;
 };
 
 /** Parse a granted-scope value (string[] or space/comma-separated string). */
@@ -105,12 +108,31 @@ export type ConnectCalendarFn = (input: {
 export async function reconcileGoogleCalendarConnection(input: {
   ownerUserId: string;
   accounts: readonly LinkedAccountLike[];
+  existingConnections?: readonly Pick<
+    ProviderConnection,
+    "providerKey" | "capabilityKey" | "status" | "lastErrorAt"
+  >[];
   connect: ConnectCalendarFn;
 }): Promise<unknown | null> {
   const derived = deriveCalendarConnection(input.accounts);
   if (!derived) {
     return null;
   }
+
+  const existingError = input.existingConnections?.find(
+    (connection) =>
+      connection.providerKey === PROVIDER_GOOGLE &&
+      connection.capabilityKey === GOOGLE_CALENDAR_CAPABILITY &&
+      connection.status === "error",
+  );
+  const linkedAccount = input.accounts.find(isGoogleAccount);
+  if (
+    existingError &&
+    !linkedAccountWasUpdatedAfterError(linkedAccount, existingError.lastErrorAt)
+  ) {
+    return existingError;
+  }
+
   return input.connect({
     ownerUserId: input.ownerUserId,
     providerKey: PROVIDER_GOOGLE,
@@ -118,6 +140,18 @@ export async function reconcileGoogleCalendarConnection(input: {
     displayIdentity: derived.displayIdentity,
     authorizedScopes: derived.authorizedScopes,
   });
+}
+
+function linkedAccountWasUpdatedAfterError(
+  account: LinkedAccountLike | undefined,
+  lastErrorAt: Date | null | undefined,
+): boolean {
+  if (!account?.updatedAt || !lastErrorAt) {
+    return false;
+  }
+  const updatedAt =
+    account.updatedAt instanceof Date ? account.updatedAt : new Date(account.updatedAt);
+  return !Number.isNaN(updatedAt.getTime()) && updatedAt.getTime() > lastErrorAt.getTime();
 }
 
 export { GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE };

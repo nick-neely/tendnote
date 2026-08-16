@@ -1,5 +1,6 @@
 import type { CalendarEventSummary } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
+import { CalendarAuthorizationError } from "./calendar/errors";
 import { createFailingCalendarAdapter, createFakeCalendarAdapter } from "./calendar/fake-adapter";
 import { createInMemoryCalendarCacheStore } from "./calendar/in-memory-store";
 import {
@@ -118,6 +119,33 @@ describe("createCalendarReader", () => {
     await expect(reader.readCalendarEvents({ ...CONNECTION, ...WINDOW })).rejects.toBeInstanceOf(
       CalendarUnavailableError,
     );
+  });
+
+  it("does not serve stale cache after an authorization failure", async () => {
+    const cacheStore = createInMemoryCalendarCacheStore();
+    const time = clock(1_000);
+    const ok = createCalendarReader({
+      adapter: createFakeCalendarAdapter([event()]),
+      cacheStore,
+      now: time.now,
+    });
+    await ok.readCalendarEvents({ ...CONNECTION, ...WINDOW });
+
+    time.advance(DEFAULT_CALENDAR_TTL_MS + 1);
+    const failing = createCalendarReader({
+      adapter: {
+        listEvents: async () => {
+          throw new CalendarAuthorizationError("token");
+        },
+      },
+      cacheStore,
+      now: time.now,
+    });
+
+    await expect(failing.readCalendarEvents({ ...CONNECTION, ...WINDOW })).rejects.toMatchObject({
+      name: "CalendarUnavailableError",
+      cause: { name: "CalendarAuthorizationError", kind: "token" },
+    });
   });
 
   it("keys the cache by owner, connection, calendar id, and window shape", async () => {

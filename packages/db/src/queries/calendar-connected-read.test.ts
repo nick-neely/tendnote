@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultGoogleCalendarReader, readConnectedOwnerCalendar } from "./calendar";
+import { CalendarAuthorizationError } from "./calendar/errors";
 import { createFailingCalendarAdapter, createFakeCalendarAdapter } from "./calendar/fake-adapter";
 import { createInMemoryCalendarCacheStore } from "./calendar/in-memory-store";
 import { createCalendarReader } from "./calendar/reader";
@@ -74,6 +75,35 @@ describe("readConnectedOwnerCalendar", () => {
     });
 
     expect(outcome).toEqual({ connected: true, result: null });
+  });
+
+  it("marks authorization failures for reconnect and reports them to the caller", async () => {
+    const reader = createCalendarReader({
+      adapter: {
+        listEvents: async () => {
+          throw new CalendarAuthorizationError("provider", { status: 401 });
+        },
+      },
+      cacheStore: createInMemoryCalendarCacheStore(),
+      now: () => 1000,
+    });
+    const onAuthorizationFailure = vi.fn().mockResolvedValue(undefined);
+
+    const outcome = await readConnectedOwnerCalendar(REQUEST, {
+      reader,
+      isConnected: async () => true,
+      onAuthorizationFailure,
+    });
+
+    expect(outcome).toEqual({
+      connected: true,
+      result: null,
+      requiresReauthorization: true,
+    });
+    expect(onAuthorizationFailure).toHaveBeenCalledWith({
+      ref: CONNECTION,
+      error: expect.objectContaining({ kind: "provider", status: 401 }),
+    });
   });
 
   it("can read live on cache miss through the Better Auth token bridge composition", async () => {

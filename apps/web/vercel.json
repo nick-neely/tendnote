@@ -32,5 +32,32 @@
         }
       ]
     }
-  }
+  },
+  "routes": [
+    {
+      "src": "/.*",
+      "has": [
+        {
+          "type": "header",
+          "key": "next-router-prefetch",
+          "value": "1"
+        },
+        {
+          "type": "header",
+          "key": "next-router-segment-prefetch"
+        }
+      ],
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": {
+            "key": "next-router-prefetch"
+          },
+          "args": "2"
+        }
+      ],
+      "continue": true
+    }
+  ]
 }

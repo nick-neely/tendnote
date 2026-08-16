@@ -10,6 +10,7 @@ import {
   calendarEventSummarySchema,
   calendarExcerpt,
 } from "@tendnote/domain";
+import { CalendarAuthorizationError } from "./errors";
 import type {
   CalendarConnectionRef,
   CalendarProviderAdapter,
@@ -134,11 +135,16 @@ export function createGoogleCalendarAdapter(
 
   return {
     async listEvents(input: CalendarProviderReadInput) {
-      const token = await options.getAccessToken({
-        ownerUserId: input.ownerUserId,
-        providerKey: input.providerKey,
-        capabilityKey: input.capabilityKey,
-      });
+      let token: string;
+      try {
+        token = await options.getAccessToken({
+          ownerUserId: input.ownerUserId,
+          providerKey: input.providerKey,
+          capabilityKey: input.capabilityKey,
+        });
+      } catch (error) {
+        throw new CalendarAuthorizationError("token", { cause: error });
+      }
 
       const params = new URLSearchParams({
         singleEvents: "true",
@@ -158,6 +164,9 @@ export function createGoogleCalendarAdapter(
 
       if (!response.ok) {
         // No token or raw payload in the error (ADR-0081): status only.
+        if (response.status === 401 || response.status === 403) {
+          throw new CalendarAuthorizationError("provider", { status: response.status });
+        }
         throw new Error(`Google Calendar list failed with status ${response.status}.`);
       }
 

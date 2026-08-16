@@ -61,6 +61,7 @@ export function parseCalendarPreviewTarget(input: {
 export type CalendarPreviewView =
   | { state: "hidden" }
   | { state: "unavailable" }
+  | { state: "needs_reconnect" }
   | { state: "empty"; stale: boolean; cachedLabel: string | null }
   | {
       state: "events";
@@ -133,13 +134,14 @@ function toPreviewEvent(summary: CalendarEventSummary, timeZone: string): Calend
 /**
  * Map the connection status + a calendar read (or its absence) into the preview
  * view model. `hidden` when the calendar is not connected (the connection row
- * already shows that); `unavailable` when connected but the read failed with no
- * cache; otherwise an events/empty state, marked stale when an expired cache was
- * served as a fallback.
+ * already shows that); `needs_reconnect` when the provider authorization failed;
+ * `unavailable` when connected but a transient read failed with no cache; otherwise
+ * an events/empty state, marked stale when an expired cache was served as a fallback.
  */
 export function buildCalendarPreviewView(input: {
   connected: boolean;
   result: CalendarReadResult | null;
+  requiresReauthorization?: boolean;
   now: Date;
   timeZone?: string;
   targetEventId?: string;
@@ -148,6 +150,9 @@ export function buildCalendarPreviewView(input: {
     return { state: "hidden" };
   }
   if (!input.result) {
+    if (input.requiresReauthorization) {
+      return { state: "needs_reconnect" };
+    }
     return { state: "unavailable" };
   }
 

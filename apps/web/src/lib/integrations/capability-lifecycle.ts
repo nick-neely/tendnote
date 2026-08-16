@@ -137,6 +137,7 @@ export const CAPABILITY_LIFECYCLE: readonly CapabilityLifecycle[] = [
       await reconcileGoogleCalendarConnection({
         ownerUserId: context.ownerUserId,
         accounts: context.accounts,
+        existingConnections: context.existingConnections,
         connect: context.connect,
       });
     },
