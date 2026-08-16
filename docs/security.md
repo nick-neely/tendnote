@@ -51,7 +51,19 @@ Every record carries a visibility scope: **private**, **shared with selected hou
 
 An asset's scope is a **ceiling** for its child records — a memory attached to an asset cannot be more visible than the asset itself. The `privacy_guard` subagent reviews but holds no tools; deterministic enforcement stays authoritative regardless of what any model concludes.
 
-Household management has no product surface yet, so shared workspaces exist only where seed data provisions them.
+Household management is a shipped product surface: `apps/web/src/app/(admitted)/household/page.tsx` and `.../account/household/page.tsx`, backed by server actions in `apps/web/src/app/actions/households.ts`, `household-invitations.ts`, and `household-governance.ts`. Invitation acceptance requires both the emailed one-time secret and a session whose own address matches the invited address - possession plus address match, not Better Auth's `emailVerified` flag, since Tendnote sends no separate verification email. Every recipient-side failure short of that proof collapses into one indistinguishable refusal, so a guessed link cannot be used to probe invitation state.
+
+Co-owner governance favors explicit, auditable consent over a creator-admin model: promotion to owner requires the recipient's own acceptance, no owner may unilaterally demote or remove another owner, the last owner cannot leave, and dissolution requires unanimous active-owner confirmation. Household Invitations are protected by five independent abuse-budget categories - see Rate limiting below - because seat capacity alone is not an abuse control.
+
+Records also carry an ownership axis, separate from visibility scope: **member-owned** (an `owner_user_id`) or **household-native** (owned by the workspace itself, `packages/db/src/schema/app/common.ts`). Widening a record to household visibility never transfers ownership; converting a member-owned record to household-native is an explicit, confirmed, owner-only action with no claim-back path.
+
+### Household dissolution and erasure
+
+Dissolving a household ends access immediately and opens a **thirty-day recovery window** in which support can restore it. When that window closes, a bounded background sweep permanently erases the workspace: household-native records are deleted, member-owned records still pointing at the household are released back to `private`, and a single minimized tombstone survives - naming the household, the two moments, and per-family counts, filed against a scrubbed system actor rather than any member, so a household a member long since left cannot reappear on their own audit path (ADR 0221). The sweep runs on the same ten-minute recovery cron as other background work, bounded per pass, with per-household error isolation so a failure leaves that household intact for the next pass rather than half-erased.
+
+### Account deletion
+
+Deleting an account is gated by household governance before it can proceed: the sole owner of a multi-member household must hand off ownership first, so an account deletion can never strand the remaining members (`assertHouseholdAccountDeletionAllowed` in `packages/db/src/queries/households/account-deletion.ts`, wired into Better Auth's `deleteUser` `beforeDelete` hook). Member-owned records are deleted with the account; household-native records stay with the workspace, and creator/actor provenance on them becomes null rather than pointing at a deleted account (ADR 0214).
 
 ## Data capture and retrieval
 
@@ -61,7 +73,7 @@ Household management has no product surface yet, so shared workspaces exist only
 - Semantic embeddings cover only approved memories, minimized retained source-record text, General Actions, and eligible Saved Items — never raw provider dumps. Embedding jobs run through the same owner-scoped lifecycle as other background work.
 - Hosted scheduled workflows enumerate only durable granted Private Beta Access profiles. The local `demo-user` principal is never used as a production background-job owner.
 - Sensitive memories are excluded from briefs unless directly requested and authorized.
-- Mutating data tools write audit log entries.
+- Mutating data tools write audit log entries. The audit log is internal evidence, not a member-facing activity feed: entries are retained for a policy-defined period (two calendar years by default, keyed by action and entity type) and then hard-deleted with no archive, on the same recovery cron. Raw audit reads are restricted to internal support, admin, and operational tooling - never exposed to household members, including the `household.purge` tombstone itself (ADR 0223).
 - Discord capture writes a **source record for review**, never a memory directly.
 - Cleanup Preview parses messy input into review-only candidates and **writes nothing**.
 
@@ -78,6 +90,12 @@ External message sends and external draft creation require explicit approval. **
 Message drafting is Tendnote-internal: drafts are reviewed, edited, copied, or marked sent manually, and they persist the source references — approved memories, source records, follow-ups, brief items — that grounded them, rather than relying on prompt-only context.
 
 Gmail draft creation is an *externalization* of an approved Tendnote draft, not a parallel drafting source of truth.
+
+## Outbound web research
+
+"Nothing leaves without approval" governs external *actions* - sends and drafts. Outbound web *reads* are a separate, narrower capability: provider-managed `web_search` plus a bounded `web_fetch` (HTTPS-only, 30s default/120s max timeout, 5 MB response cap). Both are gated to `web_chat` mode only (`agent/tools/eve_mode_gate.ts`) - unavailable to Discord capture, scheduled workflows, and any restricted session.
+
+The boundary that matters is what a query can be built from: a search or fetch query may be composed only from what the user said in the active turn, never from stored Tendnote context - memories, context facts, source records, saved items, calendar, or assets - and never from restricted-sensitivity content. This is a model policy boundary rather than a query-layer filter, and it is covered by an eval (`web-research-query-egress-boundary.eval.ts`) that asserts the captured query never carries stored-context markers. Fetched content is returned to the model framed explicitly as untrusted external data, not a Tendnote record or confirmed fact.
 
 ## Reminder delivery and Web Push
 
@@ -129,6 +147,13 @@ Proactive delivery is strictly opt-in: the sender returns `null` when unconfigur
 | `embedding` | 60 / 60s | Embedding model spend |
 | `provider-call` | 60 / 60s | Outbound Google and Discord calls |
 | `push-delivery` | 120 / 60s | Per-installation Web Push attempts |
+| `household-invitation-inviter` | 10 / hour | One person's sends |
+| `household-invitation-household` | 15 / hour | All co-owners' sends, combined |
+| `household-invitation-recipient` | 5 / day | One mailbox, regardless of who is inviting |
+| `household-invitation-source` | 20 / hour | One request fingerprint, so a fresh account cannot reset the budget |
+| `household-invitation-delivery` | 60 / hour | The deployment's total send volume |
+
+Household Invitation abuse is bounded by five independent categories rather than one, because seat capacity alone does not stop a cancel-and-reinvite loop from harassing a recipient. Every key is charged before an external send goes out, all fail closed, and all raise the same refusal so it never discloses which one fired.
 
 The store is pluggable — Redis in the web app, a fake in tests — so limits are exercised in tests without infrastructure.
 
