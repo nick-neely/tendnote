@@ -41,28 +41,42 @@ Audited at commit `25b4f39` on `docs/phase-9a-wayfinder`.
 
 ### 1. `Juli` survives in history and nowhere else
 
-**The finding that matters most, and the reason #449 was blocked on this one.**
+**Resolved: real person, consent given, ships as-is.** Retained here because it
+is the audit record and because the surrounding facts still constrain #449.
 
 Commit `994f64f` (2026-06-27, three days into the project) replaced `Juli` with
 `Mara` across fixtures, tests, `apps/web/PRODUCT.md`, and `docs/prd.md`. The
-current tree contains **zero** occurrences. History contains **7 commits across
-12 files**.
+current tree contains **zero** occurrences. History contains **26 distinct
+lines across 7 commits**.
 
 A rename does not remove a name from history. If the history ships,
 `git log -S Juli` recovers it in one command.
 
-The commit message calls it a persona change. The pattern is nonetheless
-consistent with an early real first name later pseudonymised: a real-sounding
-given name, replaced very early, across both fixtures and the persona
-documentation.
+**What is exposed.** First name only; no surname appears anywhere in history.
+The name is explicitly bound to the author (`shared household (Nick + Juli)`,
+`Support Nick and Juli shared context`) and carries relationship details in
+fixtures: a relationship start date, a household detail, and a preference. All
+mundane by any normal measure. Nothing touching health, finances, address, or
+employer.
 
-**This requires the author to state whether `Juli` is a real person.** The
-answer changes #449 materially:
+**Disposition.** Confirmed as the author's partner, a real person. She was
+asked directly and raised no objection to the history being published. The
+history therefore ships unmodified on this axis, which is also the outcome that
+preserves the most value: no SHA rewrite, no broken references, and the
+agent-driven build history stays intact as case-study evidence.
 
-- Not a real person: history is clean on this axis and can ship as-is.
-- A real person: shipping history publishes an identifiable first name attached
-  to relationship-app fixtures, permanently. Options narrow to targeted history
-  rewriting before publication, or a fresh initial commit.
+**A constraint discovered while investigating, which outlives this finding.**
+The earliest commit containing the name is `d3bb16b`, the repository's *first
+commit*. Any `git filter-repo --replace-text` pass over history therefore
+rewrites **every SHA in the repository**. That would break commit references
+across all existing issues and pull requests and the pinned commits in
+`docs/verification/`. Should a future finding ever require history rewriting,
+this cost applies to it too, and it makes a fresh initial commit relatively more
+attractive than it first appears.
+
+**#449 is unblocked but not decided.** Its remaining inputs are the SHA-rewrite
+cost above, the deployment identifiers in finding 3, and whether history as
+build evidence is actually wanted by the case study, which is [#451](https://github.com/nick-neely/tendnote/issues/451).
 
 ### 2. Vendored third-party skill ships without its license text
 
@@ -117,6 +131,10 @@ completeness; it is not a blocker and needs no action.
 
 ## What this unblocks
 
-[#449](https://github.com/nick-neely/tendnote/issues/449) is now actionable. The history question reduces to a single open
-input: whether `Juli` is a real person. Every other axis of the history is
-clean, which is a materially better starting position than the ticket assumed.
+[#449](https://github.com/nick-neely/tendnote/issues/449) is actionable and starts from a stronger position than the ticket
+assumed. Secrets are clean across the entire object graph, the one personal-data
+finding is consented, and the remaining inputs are known: the full-repository
+SHA-rewrite cost recorded in finding 1, the deployment identifiers in finding 3,
+and whether history-as-evidence is wanted by the case study ([#451](https://github.com/nick-neely/tendnote/issues/451)).
+
+Nothing found in this audit requires history to be rewritten.
