@@ -2444,36 +2444,122 @@ Vertical slice issue seeds:
 
 These domains are intentionally not fully sequenced yet. Phase 5 and Phase 6 should preserve enough architectural room for them by keeping source records as evidence, memories as reviewed durable claims, snapshots as rebuildable caches, retrieval results typed, reminders/actions lifecycle-based, provider data minimized, and durable writes review-gated.
 
-Candidate future domains:
+These domains now sit **behind Phase 9**, not before it. Five domains already
+compose through Today, Global Recall, Capture, Review, Eve tools, household
+scoping, reminders, and audit, so a sixth costs the multiplication rather than
+the domain. Phase 8 priced that multiplication at 95 Fallow findings, 42 of
+which were accepted into a new baseline (#394).
 
-- Career memory / brag document for work evidence, wins, metrics, promotion packets, resume bullets, and interview stories
-- Personal knowledge notebook / library for notes, journal entries, quotes, book highlights, pictures, ideas, and saved snippets
+Candidate future domains, in current preference order:
+
+- Career memory / brag document for work evidence, wins, metrics, promotion packets, resume bullets, and interview stories. The leading candidate: it is the most self-contained of the four, with little household scoping to propagate
+- Personal knowledge notebook / library for notes, journal entries, quotes, book highlights, pictures, ideas, and saved snippets. Weakest candidate despite the appeal: it overlaps heavily with Saved Items and Source Records, and pursuing it is the most likely way to end up needing the generic subject abstraction warned against below
 - Goals, habits, routines, and reflection, keeping routines distinct from reminders/actions
 - Decision journal for options, rationale, assumptions, outcomes, and review reminders
 - Broader Personal OS dashboard behavior as more domains become real
 
 Do not introduce a giant generic subject abstraction until a concrete second durable domain needs it. Prefer staged generalization from real verticals, link tables over overloaded records, and domain-specific behavior where it earns its keep.
 
-#### Phase 9: Productization or Open Source
+#### Phase 9: Publication and Commercialization
 
-Goal: Decide whether Tendnote stays private, becomes an OSS template, or becomes a product.
+The Phase 9 question is settled: Tendnote becomes an **AGPL-3.0 open-core
+project** with a paid hosted service (ADR 0224). It does not stay private and
+it does not choose between open source and product.
+
+The audience is deliberately ordered. The primary audience is technical readers
+evaluating the method: the decision record, the phase specifications, the Eve
+instruction set, and the evidence that an agent-built system can carry real
+privacy invariants. The secondary audience is end users of the product itself,
+who are served but not led with.
+
+Because Tendnote has never received a demand signal from anyone other than its
+author, the phase splits in two with an evidence gate between them (ADR 0228).
+Phase 9a is weeks of work and serves the primary audience. Phase 9b is months
+of work and serves an audience that has never signaled. Ordering them this way
+makes the expensive half conditional on evidence the cheap half produces.
+
+##### Phase 9a: Publication
+
+Goal: Publish the repository and the build story, and find out whether anyone
+wants a hosted version.
+
+Prerequisite, not a deliverable: **the eval suite executes at least once**
+before publication, and what it finds is fixed and published honestly. The
+suite has never run. A repository whose claim on attention is rigor cannot ship
+with a `workflow_dispatch`-only workflow and a git history stating that zero
+evals were executed. The results are the evidence section of the case study
+(ADR 0228, ADR 0227).
 
 Deliverables:
 
-- Public-safe repo cleanup
-- Mock demo mode
-- Self-hosting docs
-- Data export/import
-- Security documentation
-- Optional billing and hosted version
+- Full eval suite execution, remediation of what it finds, and published
+  results including failures
+- Private data split: secrets, personal seed and development fixtures, and
+  private beta admission configuration out of the public tree
+- `LICENSE` (AGPL-3.0) and a CLA collected from the first external pull request
+- README stating the honest self-hosting scope: deployment to the operator's
+  own Vercel account, with no container image and no platform-neutral path
+  promised (ADR 0225)
+- Stated support policy: issues open, no service level agreement, self-host
+  support community-only
+- Self-hosting documentation matching the scoped promise
+- Security documentation and a disclosure path
+- Data export, which is a trust obligation independent of commercialization and
+  the artifact self-hosting migration needs
+- The case-study writeup and the build-in-public launch through X and the Eve
+  community
+- `tendnote.com` acquired and pointed at the current deployment
 
 Vertical slice issue seeds:
 
-- Split private data from reusable framework code.
-- Add mock dataset and demo environment.
-- Add self-hosting documentation.
-- Add data export and delete workflows.
-- Add landing page and waitlist if pursuing production SaaS.
+- Fund and execute the full eval suite; triage and fix what it surfaces.
+- Split private data and admission configuration out of the public tree.
+- Add `LICENSE`, CLA automation, README with scoped self-host promise, and
+  support policy.
+- Add self-hosting documentation for the owner's-own-Vercel path.
+- Add security documentation and a vulnerability disclosure path.
+- Add owner data export.
+- Write the case study and publish the repository.
+
+Gate: **Phase 9b does not begin until unprompted requests for a hosted option
+arrive from people who are not the author.** If they do not arrive, the
+commercial buildout is never paid for, which is the gate working rather than
+failing.
+
+##### Phase 9b: Commercialization
+
+Goal: Sell a hosted Tendnote to people who asked for one.
+
+Deliverables:
+
+- Marketing site: landing page and supporting pages
+- Terms of service and a privacy policy covering third-party data subjects
+- Stripe billing, with payment preceding product access and no trial state
+- US-only availability with EU geo-blocking (ADR 0226)
+- No free hosted tier; self-hosting is the free tier (ADR 0226)
+- Price set from measured per-user cost after the ADR 0227 tool-surface
+  reduction and model selection, not before
+- Admission and onboarding for strangers rather than for the author
+- Mock demo mode
+- Tendnote operated as a DBA under the existing LLC, with a separate entity
+  revisited when there are paying users
+
+Prerequisite: **one person who is not the author completes signup through first
+value while being observed.** Every empty state, onboarding assumption, and
+piece of product copy was written by someone who already knows what a Source
+Record is, and that cannot be evaluated from inside the author's own account.
+This gates 9b only; it does not gate 9a.
+
+Vertical slice issue seeds:
+
+- Reduce the interactive tool surface via progressive disclosure (ADR 0227).
+- Run model comparison against the executed eval suite and select a model.
+- Add marketing site and landing page.
+- Add terms of service and privacy policy covering non-user data subjects.
+- Add Stripe billing with pre-access payment and no trial state.
+- Add EU geo-blocking.
+- Rework admission and onboarding for a first-time user who is not the author.
+- Add mock demo mode.
 
 ### Technical Risks
 
@@ -2485,7 +2571,9 @@ Vertical slice issue seeds:
 | Integrations expose too much data | Privacy concern | Preview-first imports, scoped reads, audit logs, approval gates. |
 | Shared household context leaks private notes | Major trust issue | Enforce scope in DB queries and evals, not only prompts. |
 | Full CRM scope creep | MVP stalls | Keep sales CRM features out of scope. |
-| Open source leaks private context | Security and privacy issue | Keep personal data, `.env`, and private prompts out of repo. |
+| Open source leaks private context | Security and privacy issue | Keep personal data, `.env`, and admission configuration out of the repo. Prompts and ADRs are published deliberately (ADR 0224); only secrets and personal data are withheld. |
+| Hosted service holds data about non-consenting third parties | Legal exposure and unusually severe breach impact | US-only launch with EU geo-blocking, minimized retention, scope enforced in the query layer rather than in prompts (ADR 0226). |
+| No demand signal from anyone but the author | Months of commercial buildout for a market that may not exist | Publish first and gate commercialization on unprompted hosted-version requests (ADR 0228). |
 
 ---
 
@@ -2548,7 +2636,13 @@ Definition of done for an MVP issue:
 | Auth | Better Auth |
 | UI foundation | Tailwind CSS, shadcn/ui, and AI Elements |
 | Memory storage/retrieval | Neon Postgres first, then context snapshots, Postgres full-text search, and pgvector |
-| Domain | `tendnote.com`, with `.dev` for docs/dev if purchased |
+| Domain | `tendnote.com` |
+| Naming | Keep Tendnote. The elided `d` is a real phonetic cost, accepted because the "tend" semantics carry the product thesis and the launch channel is text |
+| Open source | Yes, AGPL-3.0 open core (ADR 0224) |
+| Productization | Paid hosted service, gated on demand evidence from publication (ADR 0228) |
+| Self-hosting scope | Operator's own Vercel account; no container image promised (ADR 0225) |
+| Hosted availability and tiers | US-only with EU geo-blocking; no free hosted tier (ADR 0226) |
+| Business entity | Tendnote as a DBA under the existing LLC; separate entity when there are paying users |
 
 ### Remaining Open Questions
 
@@ -2559,7 +2653,9 @@ These do not block Phase 0 or the first vertical slice.
 | First non-web channel | Email digest or Telegram, not SMS |
 | First integration | Google Calendar before Gmail |
 | Shared household timing | Phase 3 only after scope rules exist |
-| Open source timing | After private MVP proves useful |
+| Hosted price point | Set from measured per-user cost after the ADR 0227 tool-surface reduction and model selection. The category anchors are roughly $9 to $20; agent-native capability argues for a premium above them |
+| Next Personal OS domain | Career memory, if one is added at all. Deferred behind Phase 9 |
+| EU availability | A deliberate compliance workstream, not a configuration change (ADR 0226) |
 
 ---
 
