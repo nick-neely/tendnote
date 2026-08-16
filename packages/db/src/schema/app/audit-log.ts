@@ -18,5 +18,8 @@ export const auditLog = pgTable(
       .default(sql`'{}'::jsonb`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("audit_log_owner_user_id_idx").on(table.ownerUserId)],
+  (table) => [
+    index("audit_log_owner_user_id_idx").on(table.ownerUserId),
+    index("audit_log_created_at_id_idx").on(table.createdAt, table.id),
+  ],
 );

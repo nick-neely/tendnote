@@ -1,4 +1,9 @@
 import {
+  type AuditLogRetentionSweepResult,
+  createDrizzleAuditLogRetentionStore,
+  runAuditLogRetentionSweep,
+} from "@tendnote/db/queries/audit-retention";
+import {
   type BackgroundJobDelivery,
   type BackgroundJobDeliveryStore,
   createDrizzleBackgroundJobDeliveryStore,
@@ -60,6 +65,7 @@ export type BackgroundJobRecoveryRunResult = {
   actionExtraction: ProcessorBackfillResult;
   contextFactExtraction: ProcessorBackfillResult;
   householdPurge: HouseholdPurgeSweepResult;
+  auditRetention: AuditLogRetentionSweepResult;
 };
 
 /** A backing job is obsolete once it is gone or already terminal. */
@@ -239,10 +245,9 @@ function runContextFactExtractionBackfill(
  * up, disposing of the workspace's own records and leaving the minimized
  * non-content tombstone (#391).
  *
- * Bounded like every other family here, and last in the pass: it is the only
- * irreversible one, so a run that is running out of its budget spends what is
- * left on work that can be retried without consequence before it spends any on
- * work that cannot be undone.
+ * Bounded like every other family here, and after the retryable recovery work:
+ * it is the only irreversible family in this part of the pass, so its own
+ * budget keeps a slow household from consuming the audit-retention budget.
  */
 function purgeDueDissolvedHouseholds(input: {
   limit: number;
@@ -257,60 +262,79 @@ function purgeDueDissolvedHouseholds(input: {
   });
 }
 
-export async function runBackgroundJobRecovery(input: {
+/**
+ * Keeps the internal audit trail bounded on the same ten-minute recovery pass.
+ * It runs in a separate final stage so a failure in any earlier recovery stage
+ * cannot prevent retention from getting its own attempt and budget.
+ */
+function retainExpiredAuditLogEntries(input: {
+  limit: number;
+  now?: Date;
+  logger?: BackgroundJobQueueLogger;
+}): Promise<AuditLogRetentionSweepResult> {
+  return runAuditLogRetentionSweep({
+    limit: input.limit,
+    store: createDrizzleAuditLogRetentionStore(),
+    ...(input.now ? { now: input.now } : {}),
+    ...(input.logger ? { logger: input.logger } : {}),
+  });
+}
+
+function reportSecondaryAuditRetentionFailure(input: { logger?: BackgroundJobQueueLogger }): void {
+  try {
+    input.logger?.error?.("background_job_recovery.audit_retention_failed", {
+      stage: "audit_retention",
+      reason: "retention_failed_after_recovery_stage",
+    });
+  } catch {
+    // A diagnostic logger must never replace the recovery failure being reported.
+  }
+}
+
+async function runRetryableBackgroundRecovery(input: {
   deliveryLimit: number;
   extractionBackfillLimit: number;
   embeddingBackfillLimit: number;
   actionExtractionBackfillLimit: number;
-  contextFactExtractionBackfillLimit?: number;
-  householdPurgeLimit?: number;
-  now?: Date;
+  contextFactExtractionBackfillLimit: number;
+  householdPurgeLimit: number;
+  now: Date;
   logger?: BackgroundJobQueueLogger;
-  recoverDeliveries?: typeof recoverBackgroundJobDeliveries;
-  backfillExtraction?: typeof runExtractionBackfill;
-  backfillEmbedding?: typeof runEmbeddingBackfill;
-  backfillActionExtraction?: typeof runActionExtractionBackfill;
-  backfillContextFactExtraction?: typeof runContextFactExtractionBackfill;
-  purgeDissolvedHouseholds?: typeof purgeDueDissolvedHouseholds;
-}): Promise<BackgroundJobRecoveryRunResult> {
-  const now = input.now ?? new Date();
-  const recoverDeliveries = input.recoverDeliveries ?? recoverBackgroundJobDeliveries;
-  const backfillExtraction = input.backfillExtraction ?? runExtractionBackfill;
-  const backfillEmbedding = input.backfillEmbedding ?? runEmbeddingBackfill;
-  const backfillActionExtraction = input.backfillActionExtraction ?? runActionExtractionBackfill;
-  const backfillContextFactExtraction =
-    input.backfillContextFactExtraction ?? runContextFactExtractionBackfill;
-  const purgeDissolvedHouseholds = input.purgeDissolvedHouseholds ?? purgeDueDissolvedHouseholds;
-
-  const deliveries = await recoverDeliveries({
+  recoverDeliveries: typeof recoverBackgroundJobDeliveries;
+  backfillExtraction: typeof runExtractionBackfill;
+  backfillEmbedding: typeof runEmbeddingBackfill;
+  backfillActionExtraction: typeof runActionExtractionBackfill;
+  backfillContextFactExtraction: typeof runContextFactExtractionBackfill;
+  purgeDissolvedHouseholds: typeof purgeDueDissolvedHouseholds;
+}): Promise<Omit<BackgroundJobRecoveryRunResult, "auditRetention">> {
+  const deliveries = await input.recoverDeliveries({
     limit: input.deliveryLimit,
-    now,
+    now: input.now,
     logger: input.logger,
   });
-  const extraction = await backfillExtraction({
+  const extraction = await input.backfillExtraction({
     limit: input.extractionBackfillLimit,
-    now,
+    now: input.now,
     logger: input.logger,
   });
-  const embedding = await backfillEmbedding({
+  const embedding = await input.backfillEmbedding({
     limit: input.embeddingBackfillLimit,
-    now,
+    now: input.now,
     logger: input.logger,
   });
-  const actionExtraction = await backfillActionExtraction({
+  const actionExtraction = await input.backfillActionExtraction({
     limit: input.actionExtractionBackfillLimit,
-    now,
+    now: input.now,
     logger: input.logger,
   });
-  const contextFactExtraction = await backfillContextFactExtraction({
-    limit: input.contextFactExtractionBackfillLimit ?? 0,
-    now,
+  const contextFactExtraction = await input.backfillContextFactExtraction({
+    limit: input.contextFactExtractionBackfillLimit,
+    now: input.now,
     logger: input.logger,
   });
-
-  const householdPurge = await purgeDissolvedHouseholds({
-    limit: input.householdPurgeLimit ?? 0,
-    now,
+  const householdPurge = await input.purgeDissolvedHouseholds({
+    limit: input.householdPurgeLimit,
+    now: input.now,
     ...(input.logger ? { logger: input.logger } : {}),
   });
 
@@ -322,6 +346,139 @@ export async function runBackgroundJobRecovery(input: {
     contextFactExtraction,
     householdPurge,
   };
+}
+
+type BackgroundJobRecoveryInput = {
+  deliveryLimit: number;
+  extractionBackfillLimit: number;
+  embeddingBackfillLimit: number;
+  actionExtractionBackfillLimit: number;
+  contextFactExtractionBackfillLimit?: number;
+  householdPurgeLimit?: number;
+  auditRetentionLimit?: number;
+  now?: Date;
+  logger?: BackgroundJobQueueLogger;
+  recoverDeliveries?: typeof recoverBackgroundJobDeliveries;
+  backfillExtraction?: typeof runExtractionBackfill;
+  backfillEmbedding?: typeof runEmbeddingBackfill;
+  backfillActionExtraction?: typeof runActionExtractionBackfill;
+  backfillContextFactExtraction?: typeof runContextFactExtractionBackfill;
+  purgeDissolvedHouseholds?: typeof purgeDueDissolvedHouseholds;
+  retainAuditLog?: typeof retainExpiredAuditLogEntries;
+};
+
+type BackgroundJobRecoveryDependencies = {
+  recoverDeliveries: typeof recoverBackgroundJobDeliveries;
+  backfillExtraction: typeof runExtractionBackfill;
+  backfillEmbedding: typeof runEmbeddingBackfill;
+  backfillActionExtraction: typeof runActionExtractionBackfill;
+  backfillContextFactExtraction: typeof runContextFactExtractionBackfill;
+  purgeDissolvedHouseholds: typeof purgeDueDissolvedHouseholds;
+  retainAuditLog: typeof retainExpiredAuditLogEntries;
+};
+
+function resolveBackgroundJobRecoveryDependencies(
+  input: BackgroundJobRecoveryInput,
+): BackgroundJobRecoveryDependencies {
+  return {
+    recoverDeliveries: input.recoverDeliveries ?? recoverBackgroundJobDeliveries,
+    backfillExtraction: input.backfillExtraction ?? runExtractionBackfill,
+    backfillEmbedding: input.backfillEmbedding ?? runEmbeddingBackfill,
+    backfillActionExtraction: input.backfillActionExtraction ?? runActionExtractionBackfill,
+    backfillContextFactExtraction:
+      input.backfillContextFactExtraction ?? runContextFactExtractionBackfill,
+    purgeDissolvedHouseholds: input.purgeDissolvedHouseholds ?? purgeDueDissolvedHouseholds,
+    retainAuditLog: input.retainAuditLog ?? retainExpiredAuditLogEntries,
+  };
+}
+
+type BackgroundJobRecoveryAttempt =
+  | {
+      ok: true;
+      result: Omit<BackgroundJobRecoveryRunResult, "auditRetention">;
+    }
+  | { ok: false; error: unknown };
+
+async function attemptRetryableBackgroundRecovery(input: {
+  recovery: Parameters<typeof runRetryableBackgroundRecovery>[0];
+}): Promise<BackgroundJobRecoveryAttempt> {
+  try {
+    return {
+      ok: true,
+      result: await runRetryableBackgroundRecovery(input.recovery),
+    };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+async function runAuditRetentionAfterRecovery(input: {
+  limit: number;
+  now: Date;
+  logger?: BackgroundJobQueueLogger;
+  retainAuditLog: typeof retainExpiredAuditLogEntries;
+  recoveryFailed: boolean;
+}): Promise<AuditLogRetentionSweepResult | undefined> {
+  try {
+    return await input.retainAuditLog({
+      limit: input.limit,
+      now: input.now,
+      ...(input.logger ? { logger: input.logger } : {}),
+    });
+  } catch (error) {
+    if (!input.recoveryFailed) throw error;
+    reportSecondaryAuditRetentionFailure({ logger: input.logger });
+    return undefined;
+  }
+}
+
+async function runBackgroundJobRecoveryPass(
+  input: BackgroundJobRecoveryInput,
+  now: Date,
+  dependencies: BackgroundJobRecoveryDependencies,
+): Promise<BackgroundJobRecoveryRunResult> {
+  const recovery = await attemptRetryableBackgroundRecovery({
+    recovery: {
+      deliveryLimit: input.deliveryLimit,
+      extractionBackfillLimit: input.extractionBackfillLimit,
+      embeddingBackfillLimit: input.embeddingBackfillLimit,
+      actionExtractionBackfillLimit: input.actionExtractionBackfillLimit,
+      contextFactExtractionBackfillLimit: input.contextFactExtractionBackfillLimit ?? 0,
+      householdPurgeLimit: input.householdPurgeLimit ?? 0,
+      now,
+      logger: input.logger,
+      recoverDeliveries: dependencies.recoverDeliveries,
+      backfillExtraction: dependencies.backfillExtraction,
+      backfillEmbedding: dependencies.backfillEmbedding,
+      backfillActionExtraction: dependencies.backfillActionExtraction,
+      backfillContextFactExtraction: dependencies.backfillContextFactExtraction,
+      purgeDissolvedHouseholds: dependencies.purgeDissolvedHouseholds,
+    },
+  });
+  const auditRetention = await runAuditRetentionAfterRecovery({
+    limit: input.auditRetentionLimit ?? 0,
+    now,
+    logger: input.logger,
+    retainAuditLog: dependencies.retainAuditLog,
+    recoveryFailed: !recovery.ok,
+  });
+
+  if (!recovery.ok) throw recovery.error;
+  if (!auditRetention) {
+    throw new Error("Background recovery completed without a retention result.");
+  }
+
+  return { ...recovery.result, auditRetention };
+}
+
+export async function runBackgroundJobRecovery(
+  input: BackgroundJobRecoveryInput,
+): Promise<BackgroundJobRecoveryRunResult> {
+  return runBackgroundJobRecoveryPass(
+    input,
+    input.now ?? new Date(),
+    resolveBackgroundJobRecoveryDependencies(input),
+  );
 }
 
 async function runProcessorBackfill(input: {

@@ -203,6 +203,7 @@ describe("background job recovery", () => {
       actionExtraction: { scanned: 1, processed: 1, failed: 0 },
       contextFactExtraction: { scanned: 0, processed: 0, failed: 0 },
       householdPurge: { scanned: 1, purged: 1, skipped: 0, failed: 0 },
+      auditRetention: { scanned: 0, deleted: 0, skipped: 0, failed: 0 },
     });
   });
 
@@ -210,7 +211,15 @@ describe("background job recovery", () => {
     // The sweep rides the existing ten-minute cron rather than a schedule of its
     // own: a thirty-day deadline does not need its own timer, and a second cron
     // entry would be a second place for the deletion promise to be switched off.
-    const purge = vi.fn().mockResolvedValue({ scanned: 3, purged: 2, skipped: 1, failed: 0 });
+    const order: string[] = [];
+    const purge = vi.fn().mockImplementation(async () => {
+      order.push("household-purge");
+      return { scanned: 3, purged: 2, skipped: 1, failed: 0 };
+    });
+    const retainAuditLog = vi.fn().mockImplementation(async () => {
+      order.push("audit-retention");
+      return { scanned: 2, deleted: 1, skipped: 1, failed: 0 };
+    });
 
     const result = await runBackgroundJobRecovery({
       deliveryLimit: 0,
@@ -218,6 +227,7 @@ describe("background job recovery", () => {
       embeddingBackfillLimit: 0,
       actionExtractionBackfillLimit: 0,
       householdPurgeLimit: 5,
+      auditRetentionLimit: 7,
       recoverDeliveries: vi
         .fn()
         .mockResolvedValue({ scanned: 0, republished: 0, failed: 0, abandoned: 0 }),
@@ -227,10 +237,84 @@ describe("background job recovery", () => {
         .mockResolvedValue({ recovered: 0, scanned: 0, processed: 0, failed: 0 }),
       backfillActionExtraction: vi.fn().mockResolvedValue({ scanned: 0, processed: 0, failed: 0 }),
       purgeDissolvedHouseholds: purge,
+      retainAuditLog,
     });
 
     expect(purge).toHaveBeenCalledWith(expect.objectContaining({ limit: 5 }));
+    expect(retainAuditLog).toHaveBeenCalledWith(expect.objectContaining({ limit: 7 }));
+    expect(order).toEqual(["household-purge", "audit-retention"]);
+    expect(result.auditRetention).toEqual({ scanned: 2, deleted: 1, skipped: 1, failed: 0 });
     expect(result.householdPurge).toEqual({ scanned: 3, purged: 2, skipped: 1, failed: 0 });
+  });
+
+  it("still attempts audit retention when an earlier recovery stage fails", async () => {
+    const recoveryError = new Error("delivery recovery failed");
+    const retainAuditLog = vi
+      .fn()
+      .mockResolvedValue({ scanned: 1, deleted: 1, skipped: 0, failed: 0 });
+
+    await expect(
+      runBackgroundJobRecovery({
+        deliveryLimit: 1,
+        extractionBackfillLimit: 1,
+        embeddingBackfillLimit: 1,
+        actionExtractionBackfillLimit: 1,
+        auditRetentionLimit: 7,
+        recoverDeliveries: vi.fn().mockRejectedValue(recoveryError),
+        retainAuditLog,
+      }),
+    ).rejects.toBe(recoveryError);
+
+    expect(retainAuditLog).toHaveBeenCalledWith(expect.objectContaining({ limit: 7 }));
+  });
+
+  it("preserves an earlier failure when audit retention also fails", async () => {
+    const recoveryError = new Error("delivery recovery failed");
+    const retentionError = new Error("postgres detail: private connection string");
+    const logger = { error: vi.fn() };
+
+    await expect(
+      runBackgroundJobRecovery({
+        deliveryLimit: 1,
+        extractionBackfillLimit: 1,
+        embeddingBackfillLimit: 1,
+        actionExtractionBackfillLimit: 1,
+        auditRetentionLimit: 7,
+        logger,
+        recoverDeliveries: vi.fn().mockRejectedValue(recoveryError),
+        retainAuditLog: vi.fn().mockRejectedValue(retentionError),
+      }),
+    ).rejects.toBe(recoveryError);
+
+    expect(logger.error).toHaveBeenCalledWith("background_job_recovery.audit_retention_failed", {
+      stage: "audit_retention",
+      reason: "retention_failed_after_recovery_stage",
+    });
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain("private connection string");
+  });
+
+  it("propagates an audit retention failure when recovery completes", async () => {
+    const retentionError = new Error("audit retention unavailable");
+
+    await expect(
+      runBackgroundJobRecovery({
+        deliveryLimit: 0,
+        extractionBackfillLimit: 0,
+        embeddingBackfillLimit: 0,
+        actionExtractionBackfillLimit: 0,
+        recoverDeliveries: vi
+          .fn()
+          .mockResolvedValue({ scanned: 0, republished: 0, failed: 0, abandoned: 0 }),
+        backfillExtraction: vi.fn().mockResolvedValue({ scanned: 0, processed: 0, failed: 0 }),
+        backfillEmbedding: vi
+          .fn()
+          .mockResolvedValue({ recovered: 0, scanned: 0, processed: 0, failed: 0 }),
+        backfillActionExtraction: vi
+          .fn()
+          .mockResolvedValue({ scanned: 0, processed: 0, failed: 0 }),
+        retainAuditLog: vi.fn().mockRejectedValue(retentionError),
+      }),
+    ).rejects.toBe(retentionError);
   });
 
   it("purges nothing when the run is given no household budget", async () => {
@@ -254,6 +338,7 @@ describe("background job recovery", () => {
 
     expect(purge).toHaveBeenCalledWith(expect.objectContaining({ limit: 0 }));
     expect(result.householdPurge).toEqual({ scanned: 0, purged: 0, skipped: 0, failed: 0 });
+    expect(result.auditRetention).toEqual({ scanned: 0, deleted: 0, skipped: 0, failed: 0 });
   });
 
   it("configures a bounded Vercel cron trigger for recovery", () => {

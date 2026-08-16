@@ -512,6 +512,13 @@
       "when": 1786504890375,
       "tag": "0072_record_asset_link_creator_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1786833253215,
+      "tag": "0073_audit_log_retention",
+      "breakpoints": true
     }
   ]
 }

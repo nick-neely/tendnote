@@ -12,6 +12,8 @@ const CONTEXT_FACT_EXTRACTION_BACKFILL_LIMIT = 5;
  * minutes to drain in rather than needing to clear in a single run.
  */
 const HOUSEHOLD_PURGE_LIMIT = 3;
+/** Audit evidence is cheaper than a household purge, but stays bounded per pass. */
+const AUDIT_RETENTION_LIMIT = 100;
 
 // Route segment config must remain a statically analyzable literal for Next.js.
 export const maxDuration = 300;
@@ -37,6 +39,7 @@ export async function GET(request: NextRequest) {
     actionExtractionBackfillLimit: ACTION_EXTRACTION_BACKFILL_LIMIT,
     contextFactExtractionBackfillLimit: CONTEXT_FACT_EXTRACTION_BACKFILL_LIMIT,
     householdPurgeLimit: HOUSEHOLD_PURGE_LIMIT,
+    auditRetentionLimit: AUDIT_RETENTION_LIMIT,
     logger: console,
   });
 
