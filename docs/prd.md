@@ -2499,7 +2499,8 @@ Deliverables:
 - `LICENSE` (AGPL-3.0) and a CLA collected from the first external pull request
 - README stating the honest self-hosting scope: deployment to the operator's
   own Vercel account, with no container image and no platform-neutral path
-  promised (ADR 0225)
+  promised (ADR 0225), and the explicit household-bounded self-hosted
+  admission mode (ADR 0232)
 - Stated support policy: issues open, no service level agreement, self-host
   support community-only
 - Self-hosting documentation matching the scoped promise
@@ -2521,7 +2522,8 @@ Vertical slice issue seeds:
 - Split private data and admission configuration out of the public tree.
 - Add `LICENSE`, CLA automation, README with scoped self-host promise, and
   support policy.
-- Add self-hosting documentation for the owner's-own-Vercel path.
+- Add self-hosting documentation for the owner's-own-Vercel path, explicit
+  bootstrap-owner configuration, and Household-invitation admission.
 - Add security documentation and a vulnerability disclosure path.
 - Add owner data export.
 - Write the case study and publish the repository.

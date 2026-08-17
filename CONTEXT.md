@@ -363,3 +363,7 @@ _Avoid_: Marketing site, sales page, signup funnel, independent case study
 **Owner Data Export**:
 An explicitly requested, versioned portable archive of one member's durable Tendnote record graph, including their restricted content and owned Asset Evidence bytes. It is neither a backup of credentials or operational state nor a Household Workspace export, and it does not transfer records another member merely shared to the requester.
 _Avoid_: Database dump, account backup, household export, provider migration
+
+**Self-Hosted Admission Mode**:
+The explicitly configured admission policy for an operator's own Vercel deployment: one configured bootstrap owner and their verified invited Household Members may enter Tendnote, while unrelated signups remain pending. It is distinct from hosted Private Beta Access and never inferred from unavailable Flags configuration.
+_Avoid_: Open signup, managed beta gate, missing-configuration fallback, multi-tenant hosting

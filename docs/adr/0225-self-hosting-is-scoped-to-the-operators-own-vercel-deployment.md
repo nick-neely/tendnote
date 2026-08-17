@@ -25,6 +25,11 @@ unqualified "self-hostable" claim would be a promise the architecture does not
 keep, and discovering that in a bug report is worse for the project than
 stating it in the README.
 
+Private Beta Access is a hosted admission concern, not a self-hosting
+prerequisite. A supported operator deployment uses the explicit, household-
+bounded admission mode in ADR 0232 instead of requiring the operator to
+configure Tendnote's managed-service Flags gate.
+
 This scope is a boundary on the *promise*, not a prohibition on the work. A
 platform-neutral path may be built later if demand for it is evidenced, and
 this ADR is the record of why it was not built speculatively.
