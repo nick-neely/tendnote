@@ -2504,8 +2504,13 @@ Deliverables:
   support community-only
 - Self-hosting documentation matching the scoped promise
 - Security documentation and a disclosure path
-- Data export, which is a trust obligation independent of commercialization and
-  the artifact self-hosting migration needs
+- Owner Data Export, an explicit background job that produces a versioned,
+  machine-readable archive of the member's durable record graph and owned Asset
+  Evidence bytes, including clearly labelled restricted content. The archive
+  excludes credentials, provider state, caches, operational records, and
+  Household-native or other members' data; it is offered through a short-lived
+  authenticated Account download, with no external notification. Import and a
+  separately authorized Household Workspace export are later work (ADR 0231).
 - The case-study writeup and the build-in-public launch through X and the Eve
   community
 - `tendnote.com` acquired and pointed at the current deployment

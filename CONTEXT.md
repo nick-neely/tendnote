@@ -359,3 +359,7 @@ _Avoid_: Marketing page, launch thread, README section, alternate source of trut
 **Publication Companion**:
 A reader-friendly public presentation of the Canonical Case Study for Phase 9a distribution. It may improve discovery but repeats no unsupported claim, links to the exact source and evidence, and has no hosted-product commercial call to action.
 _Avoid_: Marketing site, sales page, signup funnel, independent case study
+
+**Owner Data Export**:
+An explicitly requested, versioned portable archive of one member's durable Tendnote record graph, including their restricted content and owned Asset Evidence bytes. It is neither a backup of credentials or operational state nor a Household Workspace export, and it does not transfer records another member merely shared to the requester.
+_Avoid_: Database dump, account backup, household export, provider migration
