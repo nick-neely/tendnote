@@ -356,6 +356,10 @@ _Avoid_: Event type, message topic, queue, generic worker
 The versioned repository document that makes Tendnote's bounded Phase 9a publication claim and links its inspectable evidence. It is the citable source of truth for the build story, not a README summary, launch post, marketing page, or second decision record.
 _Avoid_: Marketing page, launch thread, README section, alternate source of truth
 
+**Reader Evidence Path**:
+The intentional newcomer route from the README through the Canonical Case Study, its governing decision record, the exact evaluation evidence, and preserved history. It is a bounded technical orientation, not the Phase 9a planning workspace, a product tour, or an ADR dump.
+_Avoid_: Documentation tour, launch funnel, planning index
+
 **Publication Companion**:
 A reader-friendly public presentation of the Canonical Case Study for Phase 9a distribution. It may improve discovery but repeats no unsupported claim, links to the exact source and evidence, and has no hosted-product commercial call to action.
 _Avoid_: Marketing site, sales page, signup funnel, independent case study
