@@ -10,6 +10,9 @@ export default defineAgent({
     // authored tool. Keep the AI SDK and ordinary runtime dependencies external
     // so the dev build does not rebundle them. Workspace packages stay bundled:
     // their extensionless TypeScript imports are not directly runnable by Node.
+    // Every external package below must be a direct production dependency of
+    // @tendnote/agent: Eve executes the generated snapshot from this package's
+    // resolution boundary, not from a workspace dependency's node_modules.
     externalDependencies: [
       "@better-auth/redis-storage",
       "@vercel/queue",
