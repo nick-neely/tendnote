@@ -2483,17 +2483,23 @@ makes the expensive half conditional on evidence the cheap half produces.
 Goal: Publish the repository and the build story, and find out whether anyone
 wants a hosted version.
 
-Prerequisite, not a deliverable: **the eval suite executes at least once**
-before publication, and what it finds is fixed and published honestly. The
+Prerequisite, not a deliverable: **the deterministic eval suite executes once
+cleanly** before publication. The manually dispatched, cost-bounded run must
+pass every selected case on its first sample, with no failures, recovered
+flakes, or all-skipped result; its durable summary, JUnit XML, and JSON output
+become the evidence section of the case study (ADR 0228, ADR 0227). A
+non-clean run is preserved honestly but blocks publication: it creates a
+separate decision about classification and remediation rather than authorizing
+an in-place fix. The judged and author-only suites are outside this gate. The
 suite has never run. A repository whose claim on attention is rigor cannot ship
 with a `workflow_dispatch`-only workflow and a git history stating that zero
-evals were executed. The results are the evidence section of the case study
-(ADR 0228, ADR 0227).
+evals were executed.
 
 Deliverables:
 
-- Full eval suite execution, remediation of what it finds, and published
-  results including failures
+- One clean deterministic eval-gate execution with published durable evidence;
+  any non-clean outcome is preserved and classified before a separately decided
+  remediation path
 - Private data split: secrets, personal seed and development fixtures, and
   private beta admission configuration out of the public tree
 - `LICENSE` (AGPL-3.0) and a CLA collected from the first external pull request
@@ -2518,7 +2524,8 @@ Deliverables:
 
 Vertical slice issue seeds:
 
-- Fund and execute the full eval suite; triage and fix what it surfaces.
+- Fund and execute the deterministic eval gate; preserve and classify any
+  non-clean outcome before deciding remediation.
 - Split private data and admission configuration out of the public tree.
 - Add `LICENSE`, CLA automation, README with scoped self-host promise, and
   support policy.
