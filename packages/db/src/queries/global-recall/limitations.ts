@@ -224,6 +224,14 @@ function calendarLimitation(
     return { source: "calendar", message: "Calendar results are temporarily unavailable." };
   }
   if (sources.calendar.connected && sources.calendar.result === null) {
+    if ("requiresReauthorization" in sources.calendar && sources.calendar.requiresReauthorization) {
+      return {
+        source: "calendar",
+        requiresReauthorization: true,
+        message:
+          "Google Calendar authorization needs to be renewed. Reconnect Google Calendar from your account page, then try again.",
+      };
+    }
     return {
       source: "calendar",
       message: "Connected Calendar results could not be refreshed or confirmed.",

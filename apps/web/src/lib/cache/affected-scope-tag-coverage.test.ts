@@ -70,6 +70,11 @@ vi.mock("@tendnote/db/queries/saved-items", () => ({
 vi.mock("@tendnote/db/queries/today", () => ({
   getTodayShortlist: vi.fn().mockResolvedValue([]),
 }));
+// The tag-coverage test exercises cache invalidation, not Calendar provider
+// lifecycle. Isolate that injected runtime seam from its server-only graph.
+vi.mock("@/lib/integrations/calendar-runtime", () => ({
+  createOwnerCalendarReader: vi.fn(),
+}));
 vi.mock("@/lib/asset-view", () => ({
   toAssetBrowseView: vi.fn((value) => value),
   toAssetView: vi.fn((value) => value),

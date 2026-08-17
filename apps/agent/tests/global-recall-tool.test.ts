@@ -55,6 +55,7 @@ describe("search_global_recall", () => {
     );
     expect(searchGlobalRecall).toHaveBeenCalledWith(
       expect.objectContaining({ ownerUserId: "user-1", query: "fridge filter" }),
+      { readerFor: expect.any(Function) },
     );
     const model = tool.toModelOutput?.(output) as { value: Record<string, unknown> };
     expect(model.value).toMatchObject({
@@ -70,5 +71,44 @@ describe("search_global_recall", () => {
         },
       ],
     });
+  });
+
+  it("preserves Calendar reconnect guidance through model output", async () => {
+    searchGlobalRecall.mockResolvedValue({
+      query: "Maya calendar",
+      results: [],
+      limitations: [
+        {
+          source: "calendar",
+          requiresReauthorization: true,
+          message:
+            "Google Calendar authorization needs to be renewed. Reconnect Google Calendar from your account page, then try again.",
+        },
+      ],
+      hasMore: false,
+    });
+
+    const output = await tool.execute(
+      {
+        query: "Maya calendar",
+        family: "all",
+        limit: 12,
+        includeArchived: false,
+        includeRestricted: false,
+      },
+      ctx,
+    );
+    const model = tool.toModelOutput?.(output) as {
+      value: { limitations: Array<Record<string, unknown>> };
+    };
+
+    expect(model.value.limitations).toEqual([
+      {
+        source: "calendar",
+        requiresReauthorization: true,
+        message:
+          "Google Calendar authorization needs to be renewed. Reconnect Google Calendar from your account page, then try again.",
+      },
+    ]);
   });
 });

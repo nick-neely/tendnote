@@ -3,6 +3,7 @@ import type {
   ScheduledWorkflowDeliveryArtifact,
 } from "@tendnote/domain";
 import { aggregateArtifactScope } from "@tendnote/domain";
+import type { CalendarReaderForOwner } from "./calendar";
 import {
   listCalendarSuggestedFollowups,
   runCalendarSuggestionWorkflow,
@@ -19,6 +20,7 @@ export type { DiscordProactiveDeliverySender };
 export type GeneratePostMeetingAftercareInput = {
   ownerUserId: string;
   now?: Date;
+  calendarReaderFor?: CalendarReaderForOwner;
   deliverDiscord?: boolean;
   sender?: DiscordProactiveDeliverySender;
 };
@@ -38,6 +40,7 @@ export type PostMeetingAftercareWorkflowDeps = {
   runCalendarSuggestionWorkflow: (input: {
     ownerUserId: string;
     now?: Date;
+    calendarReaderFor?: CalendarReaderForOwner;
   }) => Promise<{ connected: boolean; generated: number }>;
   listCalendarSuggestedFollowups: (ownerUserId: string) => Promise<CalendarSuggestedFollowup[]>;
   deliverDiscordScheduledArtifact?: (input: {
@@ -93,6 +96,7 @@ async function runCalendarSuggestionsSafely(
     const result = await deps.runCalendarSuggestionWorkflow({
       ownerUserId: input.ownerUserId,
       now: input.now,
+      calendarReaderFor: input.calendarReaderFor,
     });
     return { ...result, error: null };
   } catch (error) {
@@ -167,6 +171,7 @@ export function generatePostMeetingAftercare(input: GeneratePostMeetingAftercare
 export type DispatchPostMeetingAftercareInput = {
   ownerUserId: string;
   now?: Date;
+  calendarReaderFor?: CalendarReaderForOwner;
   discordSender?: DiscordProactiveDeliverySender;
 };
 
@@ -174,6 +179,7 @@ export function dispatchPostMeetingAftercare(input: DispatchPostMeetingAftercare
   return generatePostMeetingAftercare({
     ownerUserId: input.ownerUserId,
     now: input.now,
+    calendarReaderFor: input.calendarReaderFor,
     ...(input.discordSender
       ? {
           deliverDiscord: true,

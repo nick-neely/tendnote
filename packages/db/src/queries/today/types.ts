@@ -1,4 +1,5 @@
 import type { TodayCandidate, TodayFeedback, TodayShortlistResponse } from "@tendnote/domain";
+import type { CalendarReaderForOwner } from "../calendar";
 
 export type TodayFeedbackRecord = TodayFeedback & {
   id: string;
@@ -36,6 +37,7 @@ export type TodayCandidateLoader = (input: {
   localDate: string;
   timeZone: string;
   now: Date;
+  calendarReaderFor?: CalendarReaderForOwner;
 }) => Promise<TodayCandidate[]>;
 
 export type TodayOptionalRanker = (input: {

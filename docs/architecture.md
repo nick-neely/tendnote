@@ -118,6 +118,14 @@ Eve sessions provide short-term multi-turn continuity; durable product state sta
 
 On Vercel, `withEve()` routes that prefix to the separate Eve service **before** Next filesystem routing. Next middleware therefore never sees these requests, which makes `channels/eve.ts` the hosted trust boundary: it reads the browser's Better Auth cookie, verifies the session using the shared database/Redis configuration, requires persisted Private Beta Access, charges the shared Eve ingress budget, and stamps the verified user id onto the session principal. Missing auth fails closed; only loopback development can resolve the configured demo owner (ADR 0194).
 
+The hosted Eve service also needs the same `BETTER_AUTH_SECRET`, `DATABASE_URL`,
+and `REDIS_URL` as the web service. For scheduled and other non-request Calendar
+reads, configure the same `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the
+Eve deployment. Eve registers Google only for Better Auth's server-side token
+resolution and refresh; the web deployment remains the sole owner of OAuth
+routes, callbacks, account linking, scopes, and Provider Connection state. Eve
+does not expose an OAuth route or keep a second token store (ADR 0224).
+
 ## Access and private beta
 
 Hosted access runs behind a Private Beta Access gate. A Tendnote-owned access profile in Postgres is authoritative: an admitted user stays admitted regardless of the flag. Unadmitted users are evaluated against a server-side Vercel Flags flag (`private-beta-access`) using the **trusted Better Auth session entity**, so the browser cannot influence targeting. A grant is persisted durably so admission survives later flag-provider failures, and an unavailable provider fails closed (ADR 0067).

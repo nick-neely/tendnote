@@ -29,15 +29,18 @@ describe("globalRecallAction", () => {
       ok: true,
       view: { query: "filter" },
     });
-    expect(searchGlobalRecall).toHaveBeenCalledWith({
-      ownerUserId: "owner-1",
-      query: "filter",
-      family: "all",
-      includeArchived: false,
-      includeRestricted: false,
-      offset: 0,
-      limit: 12,
-    });
+    expect(searchGlobalRecall).toHaveBeenCalledWith(
+      {
+        ownerUserId: "owner-1",
+        query: "filter",
+        family: "all",
+        includeArchived: false,
+        includeRestricted: false,
+        offset: 0,
+        limit: 12,
+      },
+      { readerFor: expect.any(Function) },
+    );
     expect(enforceProductBudgetSpy).toHaveBeenCalledWith({
       subject: "owner-1",
       costCategory: "embedding",

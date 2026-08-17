@@ -5,6 +5,7 @@ import type {
 } from "@tendnote/domain";
 import { aggregateArtifactScope } from "@tendnote/domain";
 import { generateBrief } from "./briefs";
+import type { CalendarReaderForOwner } from "./calendar";
 import {
   createDrizzleScheduledWorkflowDeliveryStore,
   createScheduledWorkflowDeliveryService,
@@ -18,6 +19,7 @@ export type GenerateMorningAgendaInput = {
   ownerUserId: string;
   localDate: string;
   now?: Date;
+  calendarReaderFor?: CalendarReaderForOwner;
   deliverDiscord?: boolean;
   sender?: DiscordProactiveDeliverySender;
 };
@@ -35,6 +37,7 @@ export type MorningAgendaWorkflowDeps = {
     localDate: string;
     generationReason: "scheduled";
     now?: Date;
+    calendarReaderFor?: CalendarReaderForOwner;
   }) => Promise<BriefWithItems>;
   deliverDiscordScheduledArtifact?: (input: {
     artifact: ScheduledWorkflowDeliveryArtifact;
@@ -53,6 +56,7 @@ export function createMorningAgendaWorkflow(deps: MorningAgendaWorkflowDeps) {
         localDate: input.localDate,
         generationReason: "scheduled",
         now: input.now,
+        calendarReaderFor: input.calendarReaderFor,
       });
       const artifact = toMorningAgendaArtifact(brief);
 

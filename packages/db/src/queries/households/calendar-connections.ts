@@ -59,6 +59,11 @@ export type HouseholdCalendarLifecycleDeps = {
   now?: () => Date;
 };
 
+export type HouseholdCalendarReadOptions = {
+  /** Runtime-owned reader composition for the connector's Better Auth grant. */
+  readerFor?: (connection: HouseholdCalendarConnection) => CalendarReader;
+};
+
 /**
  * The Household Calendar Connection lifecycle.
  *
@@ -225,6 +230,7 @@ export function createHouseholdCalendarLifecycle(deps: HouseholdCalendarLifecycl
      */
     async readHouseholdCalendars(
       input: HouseholdCalendarReadRequest,
+      options: HouseholdCalendarReadOptions = {},
     ): Promise<HouseholdCalendarRead> {
       const { householdId } = await requireActiveHousehold(input.callerUserId);
       const connections = await deps.calendars.listConnections({
@@ -235,7 +241,7 @@ export function createHouseholdCalendarLifecycle(deps: HouseholdCalendarLifecycl
       const families = await Promise.all(
         connections.map(async (connection) => {
           const summary = summarizeHouseholdCalendarConnection(connection);
-          const result = await readOne(connection, input);
+          const result = await readOne(connection, input, options.readerFor);
           return householdCalendarFamilyFromResult({ connection: summary, result });
         }),
       );
@@ -248,6 +254,7 @@ export function createHouseholdCalendarLifecycle(deps: HouseholdCalendarLifecycl
   async function readOne(
     connection: HouseholdCalendarConnection,
     request: HouseholdCalendarReadRequest,
+    readerFor: HouseholdCalendarReadOptions["readerFor"] = deps.readerFor,
   ): Promise<CalendarReadResult | null> {
     const ref = {
       ownerUserId: connection.connectorUserId,
@@ -259,7 +266,7 @@ export function createHouseholdCalendarLifecycle(deps: HouseholdCalendarLifecycl
       if (!(await deps.isConnectorConnected(ref))) {
         return null;
       }
-      return await deps.readerFor(connection).readCalendarEvents({
+      return await readerFor(connection).readCalendarEvents({
         ...ref,
         calendarId: connection.calendarId,
         timeMin: request.timeMin,

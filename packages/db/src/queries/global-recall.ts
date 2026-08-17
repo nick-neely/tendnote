@@ -1,5 +1,5 @@
 import { searchAssetsWithStatus } from "./asset-search";
-import { createDefaultGoogleCalendarReader, readConnectedOwnerCalendar } from "./calendar";
+import { type CalendarReaderForOwner, readConnectedOwnerCalendar } from "./calendar";
 import { searchHouseholdContextFacts, searchSelfContextFacts } from "./context-facts";
 import { searchFollowups } from "./followups";
 import { searchGiftPlans } from "./gift-plans";
@@ -13,9 +13,14 @@ export { createGlobalRecall } from "./global-recall/queries";
 export { toSelfContextResult } from "./global-recall/result-normalizers";
 export type * from "./global-recall/types";
 
-const calendarReader = createDefaultGoogleCalendarReader();
+export type GlobalRecallCalendarRuntime = {
+  readerFor: CalendarReaderForOwner;
+};
 
-export function createDefaultGlobalRecall(overrides: Partial<GlobalRecallDependencies> = {}) {
+export function createDefaultGlobalRecall(
+  overrides: Partial<GlobalRecallDependencies> = {},
+  calendarRuntime: GlobalRecallCalendarRuntime,
+) {
   return createGlobalRecall({
     searchSelfContextExact: ({ callerUserId, query, directlyRequested, includeArchived, limit }) =>
       searchSelfContextFacts(
@@ -62,15 +67,16 @@ export function createDefaultGlobalRecall(overrides: Partial<GlobalRecallDepende
           maxResults: 50,
           query,
         },
-        { reader: calendarReader },
+        { reader: calendarRuntime.readerFor(ownerUserId) },
       );
     },
     ...overrides,
   });
 }
 
-const defaultGlobalRecall = createDefaultGlobalRecall();
-
-export function searchGlobalRecall(input: SearchGlobalRecallRequest) {
-  return defaultGlobalRecall.search(input);
+export function searchGlobalRecall(
+  input: SearchGlobalRecallRequest,
+  calendarRuntime: GlobalRecallCalendarRuntime,
+) {
+  return createDefaultGlobalRecall({}, calendarRuntime).search(input);
 }

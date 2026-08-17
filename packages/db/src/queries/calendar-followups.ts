@@ -1,4 +1,4 @@
-import { createDefaultGoogleCalendarReader } from "./calendar";
+import type { CalendarReaderForOwner } from "./calendar";
 import {
   createDrizzleCalendarPeopleMatcher,
   createDrizzleCalendarSuggestionStore,
@@ -27,12 +27,6 @@ import type { CalendarEventSummary, CalendarSuggestedFollowup } from "@tendnote/
 
 const defaultReview = createCalendarSuggestionReview(createDrizzleCalendarSuggestionStore());
 const defaultMatcher = createDrizzleCalendarPeopleMatcher();
-const defaultWorkflow = createCalendarSuggestionWorkflow({
-  readerFor: () => createDefaultGoogleCalendarReader(),
-  review: defaultReview,
-  matcher: defaultMatcher,
-});
-
 /** Generate + persist fresh Calendar suggested follow-ups for an owner. */
 export async function generateCalendarSuggestions(
   input: { ownerUserId: string; events: readonly CalendarEventSummary[]; now?: Date },
@@ -60,6 +54,19 @@ export async function dismissCalendarSuggestedFollowup(input: { ownerUserId: str
 }
 
 /** Run the bounded production workflow that populates Calendar prompt nudges. */
-export async function runCalendarSuggestionWorkflow(input: { ownerUserId: string; now?: Date }) {
-  return defaultWorkflow.runCalendarSuggestionWorkflow(input);
+export async function runCalendarSuggestionWorkflow(input: {
+  ownerUserId: string;
+  now?: Date;
+  /** Runtime-owned Calendar reader composition for live cache misses. */
+  calendarReaderFor?: CalendarReaderForOwner;
+}) {
+  if (!input.calendarReaderFor) {
+    return { connected: false, generated: 0 };
+  }
+
+  return createCalendarSuggestionWorkflow({
+    readerFor: input.calendarReaderFor,
+    review: defaultReview,
+    matcher: defaultMatcher,
+  }).runCalendarSuggestionWorkflow(input);
 }

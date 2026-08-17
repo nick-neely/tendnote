@@ -1,10 +1,11 @@
 import type { HouseholdCalendarConnection } from "@tendnote/domain";
 import { createDefaultCalendarReader } from "./calendar";
-import { createDrizzleBetterAuthGoogleCalendarAccessTokenProvider } from "./calendar/access-token";
+import type { GoogleCalendarAccessTokenProvider } from "./calendar/access-token";
 import { createGoogleCalendarAdapter } from "./calendar/google-adapter";
-import type { CalendarProviderAdapter } from "./calendar/types";
+import type { CalendarConnectionRef, CalendarProviderAdapter } from "./calendar/types";
 import {
   createHouseholdCalendarLifecycle,
+  type HouseholdCalendarReadOptions,
   type HouseholdCalendarReadRequest,
 } from "./households/calendar-connections";
 import { createDrizzleHouseholdCalendarStore } from "./households/drizzle-calendar-store";
@@ -14,6 +15,7 @@ import { isProviderCapabilityConnected } from "./provider-connections";
 export {
   createHouseholdCalendarLifecycle,
   type HouseholdCalendarLifecycle,
+  type HouseholdCalendarReadOptions,
   type HouseholdCalendarReadRequest,
 } from "./households/calendar-connections";
 export type { HouseholdCalendarStore } from "./households/calendar-types";
@@ -36,14 +38,27 @@ const calendars = createDrizzleHouseholdCalendarStore();
 function readerForConnection(
   connection: HouseholdCalendarConnection,
   adapter?: CalendarProviderAdapter,
+  getAccessToken?: (ref: CalendarConnectionRef) => Promise<string>,
 ) {
   return createDefaultCalendarReader(
     adapter ??
       createGoogleCalendarAdapter({
-        getAccessToken: createDrizzleBetterAuthGoogleCalendarAccessTokenProvider(),
+        getAccessToken:
+          getAccessToken ??
+          (async () => {
+            throw new Error("Google Calendar access token is unavailable.");
+          }),
       }),
     { cacheStore: calendars.cacheStoreFor({ connectionId: connection.id }) },
   );
+}
+
+/** Build household readers with the connector owner's Better Auth lifecycle. */
+export function createHouseholdCalendarReaderFor(
+  getAccessToken: GoogleCalendarAccessTokenProvider,
+) {
+  return (connection: HouseholdCalendarConnection) =>
+    readerForConnection(connection, undefined, getAccessToken);
 }
 
 const defaultHouseholdCalendars = createHouseholdCalendarLifecycle({
@@ -84,6 +99,9 @@ export function listHouseholdCalendarConnections(input: { callerUserId: string }
  * provider context only. Nothing here is mirrored, synchronized, or written, and
  * a family that cannot be read never hides one that can.
  */
-export function readHouseholdCalendars(input: HouseholdCalendarReadRequest) {
-  return defaultHouseholdCalendars.readHouseholdCalendars(input);
+export function readHouseholdCalendars(
+  input: HouseholdCalendarReadRequest,
+  options?: HouseholdCalendarReadOptions,
+) {
+  return defaultHouseholdCalendars.readHouseholdCalendars(input, options);
 }

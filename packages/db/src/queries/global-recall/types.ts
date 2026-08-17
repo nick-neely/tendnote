@@ -1,5 +1,4 @@
 import type {
-  CalendarReadResult,
   ExactRecallResult,
   GlobalRecallInput,
   GlobalRecallResponse,
@@ -96,9 +95,7 @@ export type GlobalRecallDependencies = {
   readCalendar: (input: {
     ownerUserId: string;
     query: string;
-  }) => Promise<
-    OwnerCalendarReadOutcome | { connected: boolean; result: CalendarReadResult | null }
-  >;
+  }) => Promise<OwnerCalendarReadOutcome>;
 };
 
 export type GlobalRecall = {
