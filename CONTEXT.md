@@ -351,3 +351,11 @@ _Avoid_: Blocked user, generic audience exclusion, hidden member
 **Job Family**:
 A category of Postgres-owned background job that shares Tendnote's job execution mechanics — runtime mode, outbox delivery, queue publication, claim interpretation, terminal behavior, rate-limit deferral, and recovery — while keeping its own domain processor. The current job families are Suggested Memory extraction, Suggested General Action extraction, and semantic embedding, enumerated in a closed registry. A job family is not a generic event type, message topic, or queue.
 _Avoid_: Event type, message topic, queue, generic worker
+
+**Canonical Case Study**:
+The versioned repository document that makes Tendnote's bounded Phase 9a publication claim and links its inspectable evidence. It is the citable source of truth for the build story, not a README summary, launch post, marketing page, or second decision record.
+_Avoid_: Marketing page, launch thread, README section, alternate source of truth
+
+**Publication Companion**:
+A reader-friendly public presentation of the Canonical Case Study for Phase 9a distribution. It may improve discovery but repeats no unsupported claim, links to the exact source and evidence, and has no hosted-product commercial call to action.
+_Avoid_: Marketing site, sales page, signup funnel, independent case study
