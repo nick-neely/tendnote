@@ -1,6 +1,7 @@
 import { DEFAULT_CALENDAR_ID, PROVIDER_GOOGLE } from "@tendnote/domain";
 import {
   type CalendarReader,
+  type CalendarReaderForOwner,
   type OwnerCalendarReadOutcome,
   readConnectedOwnerCalendar,
 } from "../calendar";
@@ -23,6 +24,7 @@ export type CalendarSuggestionWorkflow = {
     ownerUserId: string;
     now?: Date;
     classify?: CalendarSuggestionClassifier;
+    calendarReaderFor?: CalendarReaderForOwner;
   }) => Promise<CalendarSuggestionWorkflowResult>;
 };
 
@@ -35,7 +37,7 @@ export type CalendarSuggestionWorkflow = {
  * action is created here.
  */
 export function createCalendarSuggestionWorkflow(deps: {
-  readerFor: (ownerUserId: string) => CalendarReader;
+  readerFor: CalendarReaderForOwner;
   review: CalendarSuggestionReview;
   matcher: CalendarPeopleMatcher;
   read?: (
@@ -75,7 +77,7 @@ export function createCalendarSuggestionWorkflow(deps: {
           query: null,
         },
         {
-          reader: deps.readerFor(input.ownerUserId),
+          reader: (input.calendarReaderFor ?? deps.readerFor)(input.ownerUserId),
           isConnected: deps.isConnected,
         },
       );

@@ -9,6 +9,7 @@ import {
 import { briefCadenceSchema } from "@tendnote/domain";
 import { z } from "zod";
 import { currentLocalDate } from "@/lib/brief-local-date";
+import { createOwnerCalendarReader } from "@/lib/integrations/calendar-runtime";
 import { runOwnerAction } from "@/lib/owner-action";
 
 // Default snooze defers a brief item by a week — long enough to clear it from the
@@ -43,6 +44,7 @@ export async function generateBriefAction(input: {
         cadence,
         localDate: currentLocalDate(),
         regenerate,
+        calendarReaderFor: createOwnerCalendarReader,
       }),
     affectedScopes: (outcome) => outcome.affectedScopes,
     result: (outcome) => ({

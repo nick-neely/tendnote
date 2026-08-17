@@ -73,6 +73,18 @@ describe("Phase 2C Calendar integration boundaries", () => {
     expect(server).toContain("encryptOAuthTokens");
   });
 
+  it("keeps the preview and Eve reads on the same shared token lifecycle seam", () => {
+    const preview = readFileSync(join(webSrc, "lib/integrations/calendar-preview-data.ts"), "utf8");
+    const runtime = readFileSync(join(webSrc, "lib/integrations/calendar-runtime.ts"), "utf8");
+    const agentCalendar = readFileSync(join(repoRoot, "apps/agent/agent/lib/calendar.ts"), "utf8");
+
+    expect(preview).toContain("readConnectedOwnerCalendar");
+    expect(preview).toContain("createOwnerCalendarReader");
+    expect(runtime).toContain("createBetterAuthGoogleCalendarAccessTokenProvider");
+    expect(agentCalendar).toContain("createBetterAuthGoogleCalendarAccessTokenProvider");
+    expect(agentCalendar).toContain("auth.api.getAccessToken");
+  });
+
   it("requests only the Calendar event-read scope from the base Google provider", () => {
     const social = readFileSync(join(webSrc, "lib/auth/social.ts"), "utf8");
     // The Google provider requests exactly one scope: the domain event-read constant.

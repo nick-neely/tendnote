@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { createDefaultGoogleCalendarReader, readConnectedOwnerCalendar } from "./calendar";
+import {
+  createBetterAuthGoogleCalendarAccessTokenProvider,
+  createDefaultGoogleCalendarReader,
+  readConnectedOwnerCalendar,
+} from "./calendar";
 import { CalendarAuthorizationError } from "./calendar/errors";
 import { createFailingCalendarAdapter, createFakeCalendarAdapter } from "./calendar/fake-adapter";
 import { createInMemoryCalendarCacheStore } from "./calendar/in-memory-store";
@@ -148,6 +152,82 @@ describe("readConnectedOwnerCalendar", () => {
     expect(Object.keys(outcome.result?.events[0] ?? {})).not.toContain("rawPayloadMustNotLeak");
     expect(tokenCalls).toEqual(["owner-1"]);
     expect(fetchSpy.mock.calls[0]?.[1]?.headers).toEqual({ authorization: "Bearer live-token" });
+    fetchSpy.mockRestore();
+  });
+
+  it("serves bounded stale cache when token lifecycle failure is transient", async () => {
+    let now = 1_000;
+    const cacheStore = createInMemoryCalendarCacheStore();
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [] }),
+      text: async () => "",
+    } as Response);
+    let tokenReads = 0;
+    const reader = createDefaultGoogleCalendarReader({
+      cacheStore,
+      getAccessToken: async () => {
+        tokenReads += 1;
+        if (tokenReads > 1) throw new Error("refresh endpoint timed out");
+        return "initial-token";
+      },
+      now: () => now,
+    });
+
+    await expect(
+      readConnectedOwnerCalendar(REQUEST, { reader, isConnected: async () => true }),
+    ).resolves.toMatchObject({ result: { source: "live", stale: false } });
+
+    now += 5 * 60 * 1000 + 1;
+    await expect(
+      readConnectedOwnerCalendar(REQUEST, { reader, isConnected: async () => true }),
+    ).resolves.toMatchObject({
+      connected: true,
+      result: { source: "cache", stale: true },
+    });
+    expect(tokenReads).toBe(2);
+    fetchSpy.mockRestore();
+  });
+
+  it("does not serve stale cache for a known revoked credential", async () => {
+    let now = 1_000;
+    const cacheStore = createInMemoryCalendarCacheStore();
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [] }),
+      text: async () => "",
+    } as Response);
+    let tokenReads = 0;
+    const tokenProvider = createBetterAuthGoogleCalendarAccessTokenProvider({
+      getAccessToken: async () => {
+        tokenReads += 1;
+        if (tokenReads > 1) {
+          throw { body: { code: "INVALID_GRANT" } };
+        }
+        return { accessToken: "initial-token" };
+      },
+    });
+    const reader = createDefaultGoogleCalendarReader({
+      cacheStore,
+      getAccessToken: tokenProvider,
+      now: () => now,
+    });
+
+    await expect(
+      readConnectedOwnerCalendar(REQUEST, { reader, isConnected: async () => true }),
+    ).resolves.toMatchObject({ result: { source: "live", stale: false } });
+
+    now += 5 * 60 * 1000 + 1;
+    await expect(
+      readConnectedOwnerCalendar(REQUEST, { reader, isConnected: async () => true }),
+    ).resolves.toEqual({
+      connected: true,
+      result: null,
+      requiresReauthorization: true,
+    });
+    expect(tokenReads).toBe(2);
     fetchSpy.mockRestore();
   });
 });

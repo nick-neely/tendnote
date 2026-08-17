@@ -108,7 +108,7 @@ Configuration is **per app**, not a single root file. Each process only loads en
 | File | Loaded by | Copy from | Notable vars |
 | --- | --- | --- | --- |
 | `apps/web/.env.local` | the web app (`next dev`, from `apps/web`) | `apps/web/.env.example` | all optional locally (Postgres, Redis, dev Better Auth secret) |
-| `apps/agent/.env.local` | the Eve agent (spawned by `withEve` from the web app, or `eve dev`) | `apps/agent/.env.example` | `AI_GATEWAY_API_KEY` (**required to drive the agent model**) |
+| `apps/agent/.env.local` | the Eve agent (spawned by `withEve` from the web app, or `eve dev`) | `apps/agent/.env.example` | `AI_GATEWAY_API_KEY` (**required to drive the agent model**); matching `BETTER_AUTH_*`, Redis, and Google lifecycle credentials for live Calendar reads |
 | `.env` (repo root) | `docker compose` only | `.env.example` | optional `TENDNOTE_POSTGRES_PORT` / `TENDNOTE_REDIS_PORT` overrides |
 
 Most app vars have working local defaults (Postgres, Redis, and a dev auth secret), so `AI_GATEWAY_API_KEY` (in `apps/agent/.env.local`) is the only one a typical local session needs — and only when running the conversational assistant. The web app's AI Gateway vars are server-only and optional; they matter when web server actions/pages should generate live snapshots or real embeddings, or when you explicitly opt into Today ranking, instead of using local fallbacks or enqueueing work for another process.
@@ -121,7 +121,7 @@ Household Invitations are the one email Tendnote sends. Locally you do not need 
 
 ## Google integrations
 
-Connecting Google Calendar or Gmail needs an operator to configure a Google Cloud OAuth client, consent screen, callback URLs, and the exact scopes Tendnote uses: Calendar event-read and Gmail compose. Set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `apps/web/.env.local`. This is human-in-the-loop work that code slices cannot complete. See [`google-setup.md`](google-setup.md) for the step-by-step guide and local/hosted smoke checklists.
+Connecting Google Calendar or Gmail needs an operator to configure a Google Cloud OAuth client, consent screen, callback URLs, and the exact scopes Tendnote uses: Calendar event-read and Gmail compose. Set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `apps/web/.env.local`. Eve also needs the same two credentials in `apps/agent/.env.local` when it must refresh an encrypted Calendar account during a non-request read or scheduled workflow. Eve uses those credentials only for Better Auth's lifecycle operation; the web app remains the owner of OAuth UI, callbacks, account linking, scopes, and reauthorization. This is human-in-the-loop work that code slices cannot complete. See [`google-setup.md`](google-setup.md) for the step-by-step guide and local/hosted smoke checklists.
 
 ## Discord
 

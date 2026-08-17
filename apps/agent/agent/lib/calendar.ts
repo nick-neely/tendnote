@@ -1,9 +1,23 @@
 import {
   type CalendarReader,
+  createBetterAuthGoogleCalendarAccessTokenProvider,
   createDefaultGoogleCalendarReader,
-  createDrizzleBetterAuthGoogleCalendarAccessTokenProvider,
   type GoogleCalendarAccessTokenProvider,
 } from "@tendnote/db/queries/calendar";
+import { getAgentAuth } from "./auth-server";
+
+/**
+ * Compose Eve's non-request Calendar token path with Better Auth's server-side
+ * access-token operation. No request headers are available or needed here:
+ * Better Auth accepts the explicitly scoped owner id, decrypts/refreshes the
+ * encrypted account token, and persists refreshed credentials itself.
+ */
+export function createAgentGoogleCalendarAccessTokenProvider(): GoogleCalendarAccessTokenProvider {
+  const auth = getAgentAuth();
+  return createBetterAuthGoogleCalendarAccessTokenProvider({
+    getAccessToken: ({ body }) => auth.api.getAccessToken({ body }),
+  });
+}
 
 /**
  * Eve's Calendar reader composition (Phase 2C, ADR-0074). Eve reads the connected
@@ -24,7 +38,7 @@ import {
  */
 export function createOwnerCalendarReader(
   ownerUserId: string,
-  getAccessToken: GoogleCalendarAccessTokenProvider = createDrizzleBetterAuthGoogleCalendarAccessTokenProvider(),
+  getAccessToken: GoogleCalendarAccessTokenProvider = createAgentGoogleCalendarAccessTokenProvider(),
 ): CalendarReader {
   return createDefaultGoogleCalendarReader({
     getAccessToken: (ref) => getAccessToken({ ...ref, ownerUserId }),

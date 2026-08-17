@@ -46,7 +46,14 @@ export type CalendarToolEvent = {
 
 export type CalendarToolResult =
   | { status: "not_connected"; source: "google_calendar"; readOnly: true; note: string; events: [] }
-  | { status: "unavailable"; source: "google_calendar"; readOnly: true; note: string; events: [] }
+  | {
+      status: "unavailable";
+      source: "google_calendar";
+      readOnly: true;
+      note: string;
+      events: [];
+      requiresReauthorization?: boolean;
+    }
   | {
       status: "ok";
       source: "google_calendar";
@@ -140,6 +147,16 @@ export async function runCalendarRead(
   }
 
   if (!outcome.result) {
+    if (outcome.requiresReauthorization) {
+      return {
+        status: "unavailable",
+        source: "google_calendar",
+        readOnly: true,
+        events: [],
+        requiresReauthorization: true,
+        note: "Google Calendar authorization needs to be renewed. Ask the user to reconnect Google Calendar from their account page, then try again; do not invent events.",
+      };
+    }
     return {
       status: "unavailable",
       source: "google_calendar",

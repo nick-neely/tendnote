@@ -4,6 +4,7 @@ import {
   todayRankingOutputSchema,
 } from "@tendnote/domain";
 import { affectedScopesForOwnerSurfaces } from "../affected-scopes";
+import type { CalendarReaderForOwner } from "../calendar";
 import type {
   TodayCandidateLoader,
   TodayFeedbackStore,
@@ -30,6 +31,7 @@ export function createTodayShortlistService(deps: {
     localDate: string;
     timeZone: string;
     now: Date;
+    calendarReaderFor?: CalendarReaderForOwner;
   }): Promise<{ candidates: TodayCandidate[]; limitations: string[] }> {
     const settled = await Promise.allSettled(deps.loadCandidateFamilies.map((load) => load(input)));
     const candidates: TodayCandidate[] = [];
@@ -73,6 +75,7 @@ export function createTodayShortlistService(deps: {
       ownerUserId: string;
       localDate: string;
       timeZone?: string;
+      calendarReaderFor?: CalendarReaderForOwner;
       candidateIdentity: string;
       reasonKey: string;
       now?: Date;
@@ -100,6 +103,7 @@ export function createTodayShortlistService(deps: {
       ownerUserId: string;
       localDate: string;
       timeZone?: string;
+      calendarReaderFor?: CalendarReaderForOwner;
       now?: Date;
       forceRefresh?: boolean;
     }): Promise<TodayShortlistResponse> {

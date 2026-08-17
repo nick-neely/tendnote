@@ -5,6 +5,7 @@ import {
 import type { RunDueBriefSchedulesInput } from "./brief-schedules/dispatcher";
 import { createBriefScheduleDispatcher } from "./brief-schedules/dispatcher";
 import { createDrizzleBriefScheduleStore } from "./brief-schedules/drizzle-store";
+import type { CalendarReaderForOwner } from "./calendar";
 import { type DiscordProactiveDeliverySender, generateMorningAgenda } from "./morning-agenda";
 import { generateWeeklyRelationshipReview } from "./weekly-relationship-review";
 
@@ -50,6 +51,8 @@ export type DispatchDueBriefsInput = RunDueBriefSchedulesInput & {
   // attempts Discord delivery through the configured workflow target.
   morningAgendaDiscordSender?: DiscordProactiveDeliverySender;
   weeklyRelationshipReviewDiscordSender?: DiscordProactiveDeliverySender;
+  /** Runtime-owned Calendar reader composition for live cache misses. */
+  calendarReaderFor?: CalendarReaderForOwner;
 };
 
 /**
@@ -70,7 +73,11 @@ export async function dispatchDueBriefs(input: DispatchDueBriefsInput = {}) {
     });
   }
 
-  if (!input.morningAgendaDiscordSender && !input.weeklyRelationshipReviewDiscordSender) {
+  if (
+    !input.morningAgendaDiscordSender &&
+    !input.weeklyRelationshipReviewDiscordSender &&
+    !input.calendarReaderFor
+  ) {
     return defaultBriefScheduleDispatcher.runDueBriefSchedules(input);
   }
 
@@ -78,11 +85,13 @@ export async function dispatchDueBriefs(input: DispatchDueBriefsInput = {}) {
     generationInput.cadence === "daily"
       ? generateMorningAgenda({
           ...generationInput,
+          calendarReaderFor: input.calendarReaderFor,
           deliverDiscord: true,
           sender: input.morningAgendaDiscordSender,
         }).then((result) => result.brief)
       : generateWeeklyRelationshipReview({
           ...generationInput,
+          calendarReaderFor: input.calendarReaderFor,
           ...(input.weeklyRelationshipReviewDiscordSender
             ? {
                 deliverDiscord: true,

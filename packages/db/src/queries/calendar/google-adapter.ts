@@ -10,7 +10,8 @@ import {
   calendarEventSummarySchema,
   calendarExcerpt,
 } from "@tendnote/domain";
-import { CalendarAuthorizationError } from "./errors";
+import { isGoogleCalendarReauthorizationFailure } from "./access-token";
+import { CalendarAuthorizationError, isCalendarAuthorizationError } from "./errors";
 import type {
   CalendarConnectionRef,
   CalendarProviderAdapter,
@@ -143,7 +144,13 @@ export function createGoogleCalendarAdapter(
           capabilityKey: input.capabilityKey,
         });
       } catch (error) {
-        throw new CalendarAuthorizationError("token", { cause: error });
+        if (isCalendarAuthorizationError(error)) throw error;
+        if (isGoogleCalendarReauthorizationFailure(error)) {
+          throw new CalendarAuthorizationError("token", { cause: error });
+        }
+        // Transport and generic Better Auth refresh failures remain transient so
+        // the shared reader can serve bounded stale cache.
+        throw error;
       }
 
       const params = new URLSearchParams({

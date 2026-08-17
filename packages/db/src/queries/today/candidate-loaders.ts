@@ -1,5 +1,5 @@
 import type { GeneralAction, SavedItem, Sensitivity, SourceRecord } from "@tendnote/domain";
-import type { OwnerCalendarReadOutcome } from "../calendar";
+import type { CalendarReaderForOwner, OwnerCalendarReadOutcome } from "../calendar";
 import type { RelationshipAgendaCandidate } from "../relationship-agenda";
 import { loadActionCandidates } from "./candidate-loaders/actions";
 import { loadCalendarCandidates } from "./candidate-loaders/calendar";
@@ -49,6 +49,7 @@ export type TodayCandidateLoaderDeps = {
     ownerUserId: string;
     timeMin: Date;
     timeMax: Date;
+    calendarReaderFor?: CalendarReaderForOwner;
   }) => Promise<OwnerCalendarReadOutcome>;
   listAdditionalReviews: (input: {
     ownerUserId: string;

@@ -4,6 +4,7 @@ import {
   globalRecallToolInputSchema,
 } from "@tendnote/domain/global-recall";
 import { defineTool } from "eve/tools";
+import { createOwnerCalendarReader } from "../lib/calendar";
 import { resolveOwnerUserId } from "../lib/owner";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
@@ -14,7 +15,9 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
     const response = globalRecallResponseSchema.parse(
-      await withModelSafeStoreErrors(() => searchGlobalRecall({ ...input, ownerUserId })),
+      await withModelSafeStoreErrors(() =>
+        searchGlobalRecall({ ...input, ownerUserId }, { readerFor: createOwnerCalendarReader }),
+      ),
     );
     return {
       ...response,

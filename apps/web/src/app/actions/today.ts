@@ -14,6 +14,7 @@ import {
 } from "@tendnote/db/queries/today";
 import { todayShortlistResponseSchema } from "@tendnote/domain/today";
 import { z } from "zod";
+import { createOwnerCalendarReader } from "@/lib/integrations/calendar-runtime";
 import { runOwnerAction } from "@/lib/owner-action";
 
 const localDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -35,7 +36,12 @@ export async function refreshTodayAction(input: { localDate: string }) {
       const context = await getOwnerTodayContext({ ownerUserId });
       if (parsed.localDate !== context.localDate)
         throw new Error("Today has rolled to a new local day.");
-      return getTodayShortlist({ ownerUserId, ...context, forceRefresh: true });
+      return getTodayShortlist({
+        ownerUserId,
+        ...context,
+        forceRefresh: true,
+        calendarReaderFor: createOwnerCalendarReader,
+      });
     },
     result: (shortlist) => todayShortlistResponseSchema.parse(shortlist),
   });
@@ -60,7 +66,13 @@ export async function suppressTodayItemAction(input: {
     },
     affectedScopes: ({ outcome }) => outcome.affectedScopes,
     result: async ({ context }, ownerUserId) =>
-      todayShortlistResponseSchema.parse(await getTodayShortlist({ ownerUserId, ...context })),
+      todayShortlistResponseSchema.parse(
+        await getTodayShortlist({
+          ownerUserId,
+          ...context,
+          calendarReaderFor: createOwnerCalendarReader,
+        }),
+      ),
   });
 }
 
@@ -82,7 +94,13 @@ export async function restoreTodayItemAction(input: {
     },
     affectedScopes: ({ outcome }) => outcome.affectedScopes,
     result: async ({ context }, ownerUserId) =>
-      todayShortlistResponseSchema.parse(await getTodayShortlist({ ownerUserId, ...context })),
+      todayShortlistResponseSchema.parse(
+        await getTodayShortlist({
+          ownerUserId,
+          ...context,
+          calendarReaderFor: createOwnerCalendarReader,
+        }),
+      ),
   });
 }
 
@@ -98,7 +116,12 @@ export async function actOnTodayItemAction(input: {
       const context = await getOwnerTodayContext({ ownerUserId });
       if (parsed.localDate !== context.localDate)
         throw new Error("Today has rolled to a new local day.");
-      const candidate = await getTodayCandidate({ ownerUserId, ...context, ...parsed });
+      const candidate = await getTodayCandidate({
+        ownerUserId,
+        ...context,
+        ...parsed,
+        calendarReaderFor: createOwnerCalendarReader,
+      });
       if (!candidate) throw new Error("Today item is no longer available.");
 
       const outcome =
@@ -122,6 +145,12 @@ export async function actOnTodayItemAction(input: {
       ...affectedScopesForOwnerSurfaces(ownerUserId),
     ],
     result: async ({ context }, ownerUserId) =>
-      todayShortlistResponseSchema.parse(await getTodayShortlist({ ownerUserId, ...context })),
+      todayShortlistResponseSchema.parse(
+        await getTodayShortlist({
+          ownerUserId,
+          ...context,
+          calendarReaderFor: createOwnerCalendarReader,
+        }),
+      ),
   });
 }

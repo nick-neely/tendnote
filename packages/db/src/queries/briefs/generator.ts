@@ -9,12 +9,17 @@ import {
   isBriefItemFeedbackActive,
   normalizeItemScope,
 } from "@tendnote/domain";
+import type { CalendarReaderForOwner } from "../calendar";
 import type {
   RelationshipAgendaCandidate,
   RelationshipAgendaInput,
   RelationshipAgendaKind,
 } from "../relationship-agenda/types";
-import type { BriefCalendarContextProvider, BriefCalendarHighlight } from "./calendar-context";
+import {
+  type BriefCalendarContextProvider,
+  type BriefCalendarHighlight,
+  createCalendarBriefContextProvider,
+} from "./calendar-context";
 import type { BriefSummaryAdapter } from "./summary-adapter";
 import type { BriefStore } from "./types";
 
@@ -165,6 +170,8 @@ export type GenerateBriefInput = {
   ignorePriorFeedback?: boolean;
   // Injectable clock for deterministic tests.
   now?: Date;
+  /** Runtime-owned Calendar reader composition for live cache misses. */
+  calendarReaderFor?: CalendarReaderForOwner;
 };
 
 function addUtcDays(date: Date, days: number): Date {
@@ -371,7 +378,10 @@ export function createBriefGenerator(
       // disconnected/unavailable calendar or any read error yields none, so the
       // brief is always created with its deterministic items (ADR-0081). Appended
       // after the agenda items so Calendar context never displaces follow-ups.
-      const calendarItems = await buildCalendarItems(options.calendarContext, {
+      const calendarContext = input.calendarReaderFor
+        ? createCalendarBriefContextProvider({ readerFor: input.calendarReaderFor })
+        : options.calendarContext;
+      const calendarItems = await buildCalendarItems(calendarContext, {
         ownerUserId: input.ownerUserId,
         windowStart,
         windowEnd,

@@ -14,6 +14,7 @@ export async function loadCalendarCandidates(
     ownerUserId: input.ownerUserId,
     timeMin: new Date(start.getTime() - RECENT_CALENDAR_DAYS * DAY_MS),
     timeMax: end,
+    calendarReaderFor: input.calendarReaderFor,
   });
   if (!outcome.result) return [];
   return outcome.result.events

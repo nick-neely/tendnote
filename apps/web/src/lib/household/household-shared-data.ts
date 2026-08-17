@@ -3,6 +3,7 @@ import "server-only";
 import { listActiveFollowups } from "@tendnote/db/queries/followups";
 import { listActiveGeneralActions } from "@tendnote/db/queries/general-actions";
 import {
+  createHouseholdCalendarReaderFor,
   listHouseholdCalendarConnections,
   readHouseholdCalendars,
 } from "@tendnote/db/queries/household-calendar";
@@ -20,6 +21,7 @@ import {
 } from "@tendnote/domain/household-calendar";
 import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
 import type { HouseholdEventPlanLinkCandidate } from "@/lib/household/household-event-plan-view";
+import { createWebGoogleCalendarAccessTokenProvider } from "@/lib/integrations/calendar-runtime";
 
 /**
  * The server reads behind the Household's Calendar and Event Plan planning
@@ -112,12 +114,17 @@ export async function readHouseholdCalendarSurface(
   const now = new Date();
 
   try {
-    const read = await readHouseholdCalendars({
-      callerUserId,
-      timeMin: new Date(now.getTime() - HOUSEHOLD_CALENDAR_LOOKBACK_MS),
-      timeMax: new Date(now.getTime() + HOUSEHOLD_CALENDAR_LOOKAHEAD_MS),
-      maxResults: HOUSEHOLD_CALENDAR_MAX_RESULTS,
-    });
+    const read = await readHouseholdCalendars(
+      {
+        callerUserId,
+        timeMin: new Date(now.getTime() - HOUSEHOLD_CALENDAR_LOOKBACK_MS),
+        timeMax: new Date(now.getTime() + HOUSEHOLD_CALENDAR_LOOKAHEAD_MS),
+        maxResults: HOUSEHOLD_CALENDAR_MAX_RESULTS,
+      },
+      {
+        readerFor: createHouseholdCalendarReaderFor(createWebGoogleCalendarAccessTokenProvider()),
+      },
+    );
     return { connections, read };
   } catch {
     return {

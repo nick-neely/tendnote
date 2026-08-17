@@ -1,7 +1,7 @@
 import { formatLocalDate } from "@tendnote/domain";
 import { listAssetReviewGroups } from "./assets";
 import { createDrizzleBriefScheduleStore } from "./brief-schedules/drizzle-store";
-import { createDefaultGoogleCalendarReader, readConnectedOwnerCalendar } from "./calendar";
+import { type CalendarReaderForOwner, readConnectedOwnerCalendar } from "./calendar";
 import { listCalendarSuggestedFollowups } from "./calendar-followups";
 import { listActiveGeneralActions, listSuggestedGeneralActionReviews } from "./general-actions";
 import { getRelationshipAgenda } from "./relationship-agenda";
@@ -38,6 +38,10 @@ const candidateLoaders = createTodayCandidateLoaders({
   listSavedItems: (input) => listSavedItems(input),
   getSourceRecord: (input) => sourceRecords.getSourceRecord(input),
   async readCalendar(input) {
+    if (!input.calendarReaderFor) {
+      return { connected: false, result: null };
+    }
+
     return readConnectedOwnerCalendar(
       {
         ownerUserId: input.ownerUserId,
@@ -47,7 +51,9 @@ const candidateLoaders = createTodayCandidateLoaders({
         timeMax: input.timeMax,
         maxResults: 20,
       },
-      { reader: createDefaultGoogleCalendarReader() },
+      {
+        reader: input.calendarReaderFor(input.ownerUserId),
+      },
     );
   },
   async listAdditionalReviews(input) {
@@ -121,6 +127,7 @@ export function getTodayShortlist(input: {
   timeZone?: string;
   now?: Date;
   forceRefresh?: boolean;
+  calendarReaderFor?: CalendarReaderForOwner;
 }) {
   return defaultTodayService.getTodayShortlist(input);
 }
@@ -132,6 +139,7 @@ export function getTodayCandidate(input: {
   candidateIdentity: string;
   reasonKey: string;
   now?: Date;
+  calendarReaderFor?: CalendarReaderForOwner;
 }) {
   return defaultTodayService.getTodayCandidate(input);
 }

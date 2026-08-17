@@ -4,7 +4,7 @@ import {
   DEFAULT_CALENDAR_ID,
   PROVIDER_GOOGLE,
 } from "@tendnote/domain";
-import { type CalendarReader, readConnectedOwnerCalendar } from "../calendar";
+import { type CalendarReaderForOwner, readConnectedOwnerCalendar } from "../calendar";
 
 /**
  * Calendar-derived brief context (Phase 2C, #112). Scheduled and manual brief
@@ -79,7 +79,7 @@ export function mapCalendarHighlights(
  * disconnected or temporarily-unavailable calendar simply returns no highlights.
  */
 export function createCalendarBriefContextProvider(deps: {
-  readerFor: (ownerUserId: string) => CalendarReader;
+  readerFor: CalendarReaderForOwner;
   isConnected?: (ref: {
     ownerUserId: string;
     providerKey: string;

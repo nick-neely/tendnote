@@ -116,7 +116,7 @@ describe("createGoogleCalendarAdapter", () => {
   it("classifies access-token retrieval failures as authorization failures", async () => {
     const adapter = createGoogleCalendarAdapter({
       getAccessToken: async () => {
-        throw new Error("Failed to get a valid access token");
+        throw { body: { code: "INVALID_GRANT" } };
       },
       fetchImpl: vi.fn(),
     });
@@ -127,5 +127,17 @@ describe("createGoogleCalendarAdapter", () => {
     await expect(adapter.listEvents({ ...CONNECTION, ...WINDOW })).rejects.toMatchObject({
       kind: "token",
     });
+  });
+
+  it("leaves generic token lifecycle failures transient for stale-cache fallback", async () => {
+    const error = new Error("Failed to get a valid access token");
+    const adapter = createGoogleCalendarAdapter({
+      getAccessToken: async () => {
+        throw error;
+      },
+      fetchImpl: vi.fn(),
+    });
+
+    await expect(adapter.listEvents({ ...CONNECTION, ...WINDOW })).rejects.toBe(error);
   });
 });

@@ -1,10 +1,6 @@
 import "server-only";
 
-import {
-  createDefaultCalendarReader,
-  createGoogleCalendarAdapter,
-  readConnectedOwnerCalendar,
-} from "@tendnote/db/queries/calendar";
+import { readConnectedOwnerCalendar } from "@tendnote/db/queries/calendar";
 import { recordProviderConnectionError } from "@tendnote/db/queries/provider-connections";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
@@ -13,6 +9,7 @@ import {
   type CalendarPreviewTarget,
   type CalendarPreviewView,
 } from "./calendar-preview";
+import { createOwnerCalendarReader } from "./calendar-runtime";
 
 // A glance-sized bounded window: recent (to catch an in-progress meeting) through
 // the next week, a handful of events.
@@ -43,26 +40,6 @@ export async function getOwnerCalendarPreview(
   const ref = { ownerUserId, providerKey: "google", capabilityKey: "calendar" };
   const targetEventId = target ? `${target.calendarId}:${target.providerEventId}` : undefined;
 
-  const [{ getAuth }, { headers }] = await Promise.all([
-    import("@/lib/auth/server"),
-    import("next/headers"),
-  ]);
-  const requestHeaders = await headers();
-
-  const adapter = createGoogleCalendarAdapter({
-    getAccessToken: async () => {
-      const token = await getAuth().api.getAccessToken({
-        body: { providerId: "google" },
-        headers: requestHeaders,
-      });
-      const accessToken = (token as { accessToken?: string } | null)?.accessToken;
-      if (!accessToken) {
-        throw new Error("No Google access token available.");
-      }
-      return accessToken;
-    },
-  });
-
   // Shared owner-scoped read: gates on the connection, reads the bounded window,
   // and degrades gracefully — the same seam Eve and the brief dispatcher use.
   const { connected, result, requiresReauthorization } = await readConnectedOwnerCalendar(
@@ -79,7 +56,7 @@ export async function getOwnerCalendarPreview(
       query: target?.query,
     },
     {
-      reader: createDefaultCalendarReader(adapter),
+      reader: createOwnerCalendarReader(ownerUserId),
       onAuthorizationFailure: async ({ ref, error }) => {
         // Keep runtime diagnostics useful without ever logging tokens or provider
         // payloads. The persisted message is similarly safe and user-actionable.

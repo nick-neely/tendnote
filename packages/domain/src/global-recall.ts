@@ -359,6 +359,8 @@ export const globalRecallLimitationSchema = z.object({
     "household_context",
     "gift_plans",
   ]),
+  /** Calendar-only guidance that the owner must reconnect the provider grant. */
+  requiresReauthorization: z.boolean().optional(),
   message: z.string().min(1),
 });
 

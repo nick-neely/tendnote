@@ -155,6 +155,7 @@ describe("Today web actions", () => {
       now: NOW,
       candidateIdentity: `follow_up:${FOLLOWUP_ID}`,
       reasonKey: "due:today",
+      calendarReaderFor: expect.any(Function),
     });
     expect(completeFollowup).toHaveBeenCalledWith({
       actorUserId: "owner-1",
