@@ -371,3 +371,7 @@ _Avoid_: Database dump, account backup, household export, provider migration
 **Self-Hosted Admission Mode**:
 The explicitly configured admission policy for an operator's own Vercel deployment: one configured bootstrap owner and their verified invited Household Members may enter Tendnote, while unrelated signups remain pending. It is distinct from hosted Private Beta Access and never inferred from unavailable Flags configuration.
 _Avoid_: Open signup, managed beta gate, missing-configuration fallback, multi-tenant hosting
+
+**Self-Hosted Bootstrap Owner**:
+The one Tendnote account whose authenticated email is configured by a deployment operator to receive the initial admission grant in Self-Hosted Admission Mode. It is neither the first visitor nor an application-wide administrator, and it does not make the deployment a hosted multi-tenant service.
+_Avoid_: First-signup bootstrap, root user, Vercel account, service administrator
