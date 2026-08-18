@@ -61,6 +61,26 @@ describe("runCalendarRead", () => {
     expect(result.note).toMatch(/unavailable/i);
   });
 
+  it("preserves reauthorization guidance when the owner's grant is unusable", async () => {
+    const result = await runCalendarRead(
+      { ownerUserId: "owner-1", input: {}, now: NOW },
+      {
+        read: fakeRead({
+          connected: true,
+          result: null,
+          requiresReauthorization: true,
+        }),
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: "unavailable",
+      requiresReauthorization: true,
+    });
+    expect(result.note).toMatch(/reconnect.*calendar|calendar.*reconnect/i);
+    expect(result.note).not.toMatch(/temporarily unavailable/i);
+  });
+
   it("returns minimized read-only events framed as provider-derived context", async () => {
     const read = fakeRead({
       connected: true,

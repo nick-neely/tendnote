@@ -1,4 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// This cache-contract test does not exercise Calendar reads. Keep the server-only
+// Better Auth runtime outside the collection graph while the production seam stays
+// injected into today-review-views.ts.
+vi.mock("@/lib/integrations/calendar-runtime", () => ({
+  createOwnerCalendarReader: vi.fn(),
+}));
+
 import { todayReviewCacheContract } from "./today-review-views";
 
 describe("Today and Review cache contract", () => {

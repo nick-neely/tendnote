@@ -1,7 +1,7 @@
 import type { CalendarReadResult } from "@tendnote/domain";
 import {
-  createDrizzleBetterAuthGoogleCalendarAccessTokenProvider,
   type GoogleCalendarAccessTokenProvider,
+  GoogleCalendarAccessTokenUnavailableError,
 } from "./calendar/access-token";
 import { createDrizzleCalendarCacheStore } from "./calendar/drizzle-store";
 import { type CalendarAuthorizationError, isCalendarAuthorizationError } from "./calendar/errors";
@@ -17,13 +17,15 @@ import type {
 import { isProviderCapabilityConnected } from "./provider-connections";
 
 export type {
-  BetterAuthGoogleAccountToken,
+  BetterAuthGoogleAccessTokenApi,
+  BetterAuthGoogleAccessTokenResult,
   GoogleCalendarAccessTokenProvider,
 } from "./calendar/access-token";
+export type CalendarReaderForOwner = (ownerUserId: string) => CalendarReader;
 export {
   createBetterAuthGoogleCalendarAccessTokenProvider,
-  createDrizzleBetterAuthGoogleCalendarAccessTokenProvider,
   GoogleCalendarAccessTokenUnavailableError,
+  isGoogleCalendarReauthorizationFailure,
 } from "./calendar/access-token";
 export { createDrizzleCalendarCacheStore } from "./calendar/drizzle-store";
 export {
@@ -78,7 +80,10 @@ export function createDefaultGoogleCalendarReader(options?: {
   now?: () => number;
 }) {
   const getAccessToken =
-    options?.getAccessToken ?? createDrizzleBetterAuthGoogleCalendarAccessTokenProvider();
+    options?.getAccessToken ??
+    (async () => {
+      throw new GoogleCalendarAccessTokenUnavailableError();
+    });
 
   return createDefaultCalendarReader(
     createGoogleCalendarAdapter({

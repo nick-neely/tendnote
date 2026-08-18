@@ -99,7 +99,11 @@ Google integrations reuse the same web-app env file as the other Better Auth
 providers: `apps/web/.env.local` locally, and project env vars in hosting.
 
 Set both Google values to enable Google capability connect buttons. Leave either
-unset and Google connect flows stay disabled.
+unset and Google connect flows stay disabled. Hosted Eve and local scheduled or
+non-request Calendar reads also need the same pair in `apps/agent/.env.local` so
+its lifecycle-only Better Auth instance can refresh encrypted account tokens;
+Eve exposes no Google OAuth UI, callback, sign-in, or account-linking route
+(ADR 0224).
 
 ```bash
 # apps/web/.env.local (local)
@@ -110,6 +114,15 @@ GOOGLE_CLIENT_SECRET=
 # callback URL exactly. Locally it defaults to http://localhost:3000.
 BETTER_AUTH_URL=http://localhost:3000
 BETTER_AUTH_SECRET=   # required in production; openssl rand -base64 32
+
+# apps/agent/.env.local (same values for non-request Calendar lifecycle reads)
+# Hosted Eve uses the production web origin instead of localhost below.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+BETTER_AUTH_URL=http://localhost:3000  # hosted Eve: https://<production-domain>
+BETTER_AUTH_SECRET=   # exactly the same value as the web app
+DATABASE_URL=         # exactly the same database as the web app
+REDIS_URL=            # exactly the same Redis as the web app
 ```
 
 - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are **server-only**. Never prefix
@@ -121,8 +134,8 @@ BETTER_AUTH_SECRET=   # required in production; openssl rand -base64 32
 ## 6. Local smoke checklist
 
 Run after the relevant code slices land, with `GOOGLE_CLIENT_ID` and
-`GOOGLE_CLIENT_SECRET` set in `apps/web/.env.local` and `pnpm dev` running on
-`:3000`.
+`GOOGLE_CLIENT_SECRET` set in both `apps/web/.env.local` and
+`apps/agent/.env.local`, and `pnpm dev` running on `:3000`.
 
 ### Calendar
 

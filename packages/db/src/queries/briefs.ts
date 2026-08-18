@@ -8,10 +8,6 @@ import {
 } from "./affected-scopes";
 import type { AcceptBriefSuggestedFollowupInput } from "./briefs/accept-followup";
 import { createBriefSuggestedFollowupAcceptance } from "./briefs/accept-followup";
-import {
-  type BriefCalendarContextProvider,
-  createCalendarBriefContextProvider,
-} from "./briefs/calendar-context";
 import { createDrizzleBriefLifecycleStore, createDrizzleBriefStore } from "./briefs/drizzle-store";
 import type { GenerateBriefInput } from "./briefs/generator";
 import { createBriefGenerator } from "./briefs/generator";
@@ -20,7 +16,7 @@ import { createBriefLifecycle } from "./briefs/lifecycle";
 import type { ManualBriefInput } from "./briefs/manual";
 import { createManualBriefGeneration } from "./briefs/manual";
 import { type BriefSummaryAdapter, createLlmBriefSummaryAdapter } from "./briefs/summary-adapter";
-import { createDefaultGoogleCalendarReader } from "./calendar";
+import type { CalendarReaderForOwner } from "./calendar";
 import { runCalendarSuggestionWorkflow } from "./calendar-followups";
 import { acceptSuggestedFollowup } from "./followups";
 import { getRelationshipAgenda } from "./relationship-agenda";
@@ -105,23 +101,20 @@ const defaultBriefSummaryAdapter = createDefaultBriefSummaryAdapter();
 // drizzle brief store and the drizzle relationship agenda. Schedule dispatch
 // (#72) and the manual web action (#69) call this shared default so they cannot
 // fork generator behavior.
-// Shared Calendar brief-context provider (#112, #116): brief generation reads
-// minimized highlights through the shared owner-scoped seam. Cache misses can read
-// live using the Better Auth account-token bridge; missing/expired/revoked tokens
-// or transient provider failures degrade to no highlights. No standalone Calendar
-// sync loop is added.
-const defaultCalendarBriefContext: BriefCalendarContextProvider =
-  createCalendarBriefContextProvider({
-    readerFor: () => createDefaultGoogleCalendarReader(),
-  });
-
 const defaultBriefGenerator = createBriefGenerator(
   createDrizzleBriefStore(),
   { getRelationshipAgenda },
-  { summaryAdapter: defaultBriefSummaryAdapter, calendarContext: defaultCalendarBriefContext },
+  { summaryAdapter: defaultBriefSummaryAdapter },
 );
 
-async function runCalendarSuggestionsBestEffort(input: { ownerUserId: string; now?: Date }) {
+async function runCalendarSuggestionsBestEffort(input: {
+  ownerUserId: string;
+  now?: Date;
+  calendarReaderFor?: CalendarReaderForOwner;
+}) {
+  if (!input.calendarReaderFor) {
+    return;
+  }
   try {
     await runCalendarSuggestionWorkflow(input);
   } catch {
@@ -133,7 +126,11 @@ async function runCalendarSuggestionsBestEffort(input: { ownerUserId: string; no
 
 export async function generateBrief(input: GenerateBriefInput) {
   const brief = await defaultBriefGenerator.generateBrief(input);
-  await runCalendarSuggestionsBestEffort({ ownerUserId: input.ownerUserId, now: input.now });
+  await runCalendarSuggestionsBestEffort({
+    ownerUserId: input.ownerUserId,
+    now: input.now,
+    calendarReaderFor: input.calendarReaderFor,
+  });
   return brief;
 }
 
@@ -144,7 +141,7 @@ export async function generateBrief(input: GenerateBriefInput) {
 const defaultManualBriefGeneration = createManualBriefGeneration(
   createDrizzleBriefLifecycleStore(),
   { getRelationshipAgenda },
-  { summaryAdapter: defaultBriefSummaryAdapter, calendarContext: defaultCalendarBriefContext },
+  { summaryAdapter: defaultBriefSummaryAdapter },
 );
 
 export async function generateManualBrief(
@@ -153,7 +150,11 @@ export async function generateManualBrief(
   MutationOutcome<Awaited<ReturnType<typeof defaultManualBriefGeneration.generateCurrentBrief>>>
 > {
   const brief = await defaultManualBriefGeneration.generateCurrentBrief(input);
-  await runCalendarSuggestionsBestEffort({ ownerUserId: input.ownerUserId, now: input.now });
+  await runCalendarSuggestionsBestEffort({
+    ownerUserId: input.ownerUserId,
+    now: input.now,
+    calendarReaderFor: input.calendarReaderFor,
+  });
   return {
     result: brief,
     affectedScopes:

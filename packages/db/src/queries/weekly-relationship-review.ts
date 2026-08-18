@@ -12,6 +12,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../client";
 import { briefs } from "../schema";
 import { generateBrief } from "./briefs";
+import type { CalendarReaderForOwner } from "./calendar";
 import { createDrizzleDraftStore } from "./drafts";
 import { getMemoryCuratorProposals } from "./memory-curator";
 import {
@@ -35,6 +36,7 @@ export type GenerateWeeklyRelationshipReviewInput = {
   ownerUserId: string;
   localDate: string;
   now?: Date;
+  calendarReaderFor?: CalendarReaderForOwner;
   deliverDiscord?: boolean;
   sender?: DiscordProactiveDeliverySender;
 };
@@ -53,6 +55,7 @@ export type WeeklyRelationshipReviewWorkflowDeps = {
     localDate: string;
     generationReason: "scheduled";
     now?: Date;
+    calendarReaderFor?: CalendarReaderForOwner;
   }) => Promise<BriefWithItems>;
   getMemoryCuratorProposals: (input: {
     ownerUserId: string;
@@ -82,6 +85,7 @@ export function createWeeklyRelationshipReviewWorkflow(deps: WeeklyRelationshipR
           localDate: input.localDate,
           generationReason: "scheduled",
           now: input.now,
+          calendarReaderFor: input.calendarReaderFor,
         }),
         deps.getMemoryCuratorProposals({
           ownerUserId: input.ownerUserId,

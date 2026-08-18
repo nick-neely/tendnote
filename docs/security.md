@@ -45,6 +45,15 @@ On Vercel, `/eve/v1/*` routes to the Eve service *before* Next filesystem routin
 
 Missing or invalid hosted auth fails closed.
 
+The Eve deployment uses the same `BETTER_AUTH_SECRET`, `DATABASE_URL`, and
+`REDIS_URL` as the web deployment so it reads the same users, encrypted account
+tokens, sessions, and provider state. It also receives the same
+`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` when scheduled or other non-request
+Calendar reads may refresh a token. This is a lifecycle-only Better Auth
+configuration: Eve has no Google OAuth route, callback, sign-in, account-linking
+hook, or second token store. The web deployment remains the owner of those
+product and consent boundaries (ADR 0224).
+
 ## Scope and visibility
 
 Every record carries a visibility scope: **private**, **shared with selected household members**, or **whole household**. Enforcement is deterministic and lives in the query layer, so retrieval, search, Eve tools, and UI all inherit it instead of each re-implementing it.

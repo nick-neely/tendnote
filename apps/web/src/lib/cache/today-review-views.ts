@@ -1,5 +1,6 @@
 import { getTodayShortlist } from "@tendnote/db/queries/today";
 import { cacheLife, cacheTag } from "next/cache";
+import { createOwnerCalendarReader } from "@/lib/integrations/calendar-runtime";
 import type { ReviewQueueFamily } from "@/lib/review-queue";
 import { loadOwnerReviewQueueFamily } from "@/lib/review-queue.server";
 import { tagsForAffectedScope } from "./affected-scope-tags";
@@ -59,7 +60,13 @@ async function cachedTodayShortlist(
   const contract = todayReviewCacheContract.today({ ownerUserId });
   cacheLife(cacheProfiles.interactive);
   cacheTag(...contract.tags);
-  return getTodayShortlist({ ownerUserId, localDate, timeZone, now: new Date(refreshedAt) });
+  return getTodayShortlist({
+    ownerUserId,
+    localDate,
+    timeZone,
+    now: new Date(refreshedAt),
+    calendarReaderFor: createOwnerCalendarReader,
+  });
 }
 
 export async function getCachedReviewQueueFamily(ownerUserId: string, family: ReviewQueueFamily) {

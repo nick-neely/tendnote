@@ -8,6 +8,7 @@ import {
 import { dispatchPostMeetingAftercare } from "@tendnote/db/queries/post-meeting-aftercare";
 import { defineSchedule } from "eve/schedules";
 import { createDiscordProactiveDeliverySender } from "../channels/discord";
+import { createOwnerCalendarReader } from "../lib/calendar";
 import { resolveScheduledOwnerUserIds } from "../lib/schedule-owners";
 
 const timezone = process.env.TENDNOTE_BRIEF_TIMEZONE ?? "UTC";
@@ -62,12 +63,14 @@ export default defineSchedule({
           await Promise.all([
             dispatchDueBriefs({
               ...briefDiscordOptions(discordSender),
+              calendarReaderFor: createOwnerCalendarReader,
             }).catch((error) => {
               console.error("Brief schedule dispatch failed.", error);
             }),
             ...ownerUserIds.flatMap((ownerUserId) => [
               dispatchPostMeetingAftercare({
                 ownerUserId,
+                calendarReaderFor: createOwnerCalendarReader,
                 ...discordDeliveryOption(discordSender),
               }).catch((error) => {
                 console.error("Post-meeting aftercare dispatch failed.", error);

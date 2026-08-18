@@ -1057,6 +1057,44 @@ describe("Global Recall", () => {
     });
   });
 
+  it("preserves Calendar reauthorization through its limitation contract", async () => {
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      readCalendar: async () => ({
+        connected: true,
+        result: null,
+        requiresReauthorization: true,
+      }),
+    });
+
+    const result = await recall.search({ ownerUserId: OWNER, query: "Maya calendar" });
+
+    expect(result.limitations).toEqual([
+      {
+        source: "calendar",
+        requiresReauthorization: true,
+        message:
+          "Google Calendar authorization needs to be renewed. Reconnect Google Calendar from your account page, then try again.",
+      },
+    ]);
+  });
+
+  it("keeps masked Calendar lifecycle failures on the generic transient message", async () => {
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      readCalendar: async () => ({ connected: true, result: null }),
+    });
+
+    const result = await recall.search({ ownerUserId: OWNER, query: "Maya calendar" });
+
+    expect(result.limitations).toEqual([
+      {
+        source: "calendar",
+        message: "Connected Calendar results could not be refreshed or confirmed.",
+      },
+    ]);
+  });
+
   it("keeps unaffected families usable without substituting Related results when Exact fails", async () => {
     const recall = createGlobalRecall({
       ...emptyDependencies,

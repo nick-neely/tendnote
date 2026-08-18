@@ -1,4 +1,5 @@
 import type { BriefCadence, BriefWithItems } from "@tendnote/domain";
+import type { CalendarReaderForOwner } from "../calendar";
 import {
   type BriefAgendaSource,
   type BriefGeneratorOptions,
@@ -16,6 +17,8 @@ export type ManualBriefInput = {
   // existing current brief is returned unchanged.
   regenerate?: boolean;
   now?: Date;
+  /** Runtime-owned Calendar reader composition for live cache misses. */
+  calendarReaderFor?: CalendarReaderForOwner;
 };
 
 export type ManualBriefResult = {
@@ -68,6 +71,7 @@ export function createManualBriefGeneration(
         regenerate: regenerating,
         generationReason: regenerating ? "regenerated" : "manual",
         now: input.now,
+        calendarReaderFor: input.calendarReaderFor,
       });
 
       const outcome: ManualBriefOutcome = regenerating ? "regenerated" : "created";

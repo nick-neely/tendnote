@@ -6,6 +6,7 @@ import {
   globalRecallInputSchema,
   globalRecallResponseSchema,
 } from "@tendnote/domain/global-recall";
+import { createOwnerCalendarReader } from "@/lib/integrations/calendar-runtime";
 import { runOwnerAction } from "@/lib/owner-action";
 
 /** Authenticated Web adapter over the shared owner-scoped Global Recall product seam. */
@@ -14,7 +15,8 @@ export async function globalRecallAction(input: GlobalRecallInput) {
     schema: globalRecallInputSchema,
     input,
     budget: { costCategory: "embedding" },
-    body: ({ ownerUserId, input: parsed }) => searchGlobalRecall({ ...parsed, ownerUserId }),
+    body: ({ ownerUserId, input: parsed }) =>
+      searchGlobalRecall({ ...parsed, ownerUserId }, { readerFor: createOwnerCalendarReader }),
     result: (response) => globalRecallResponseSchema.parse(response),
   });
 }
