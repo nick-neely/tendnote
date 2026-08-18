@@ -351,3 +351,27 @@ _Avoid_: Blocked user, generic audience exclusion, hidden member
 **Job Family**:
 A category of Postgres-owned background job that shares Tendnote's job execution mechanics — runtime mode, outbox delivery, queue publication, claim interpretation, terminal behavior, rate-limit deferral, and recovery — while keeping its own domain processor. The current job families are Suggested Memory extraction, Suggested General Action extraction, and semantic embedding, enumerated in a closed registry. A job family is not a generic event type, message topic, or queue.
 _Avoid_: Event type, message topic, queue, generic worker
+
+**Canonical Case Study**:
+The versioned repository document that makes Tendnote's bounded Phase 9a publication claim and links its inspectable evidence. It is the citable source of truth for the build story, not a README summary, launch post, marketing page, or second decision record.
+_Avoid_: Marketing page, launch thread, README section, alternate source of truth
+
+**Reader Evidence Path**:
+The intentional newcomer route from the README through the Canonical Case Study, its governing decision record, the exact evaluation evidence, and preserved history. It is a bounded technical orientation, not the Phase 9a planning workspace, a product tour, or an ADR dump.
+_Avoid_: Documentation tour, launch funnel, planning index
+
+**Publication Companion**:
+A reader-friendly public presentation of the Canonical Case Study for Phase 9a distribution. It may improve discovery but repeats no unsupported claim, links to the exact source and evidence, and has no hosted-product commercial call to action.
+_Avoid_: Marketing site, sales page, signup funnel, independent case study
+
+**Owner Data Export**:
+An explicitly requested, versioned portable archive of one member's durable Tendnote record graph, including their restricted content and owned Asset Evidence bytes. It is neither a backup of credentials or operational state nor a Household Workspace export, and it does not transfer records another member merely shared to the requester.
+_Avoid_: Database dump, account backup, household export, provider migration
+
+**Self-Hosted Admission Mode**:
+The explicitly configured admission policy for an operator's own Vercel deployment: one configured bootstrap owner and their verified invited Household Members may enter Tendnote, while unrelated signups remain pending. It is distinct from hosted Private Beta Access and never inferred from unavailable Flags configuration.
+_Avoid_: Open signup, managed beta gate, missing-configuration fallback, multi-tenant hosting
+
+**Self-Hosted Bootstrap Owner**:
+The one Tendnote account whose authenticated email is configured by a deployment operator to receive the initial admission grant in Self-Hosted Admission Mode. It is neither the first visitor nor an application-wide administrator, and it does not make the deployment a hosted multi-tenant service.
+_Avoid_: First-signup bootstrap, root user, Vercel account, service administrator
