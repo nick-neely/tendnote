@@ -24,6 +24,7 @@ const MESSAGE = {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("BETTER_AUTH_URL", "https://tendnote.example/app");
+  vi.stubEnv("TENDNOTE_EMAIL_FROM", "Tendnote <notifications@mail.tendnote.example>");
   vi.stubEnv("TENDNOTE_EMAIL_REPLY_TO", "support@example.test");
 });
 

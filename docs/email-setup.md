@@ -202,9 +202,9 @@ Paste the link into a browser to walk the recipient's side.
 
 **Locally, with a real send:**
 
-1. Add `RESEND_API_KEY=re_...` to `apps/web/.env.local` and restart `pnpm dev`.
+1. Add `RESEND_API_KEY=re_...`, `TENDNOTE_EMAIL_FROM="Tendnote <notifications@mail.<operator-domain>>"`, and `TENDNOTE_EMAIL_REPLY_TO=support@<operator-domain>` to `apps/web/.env.local`, then restart `pnpm dev`.
 2. Invite an address you own.
-3. Check the terminal for errors, then check the inbox.
+3. Check the terminal for errors, then check the inbox. A real-send attempt refuses unless all three operator values are configured.
 
 **What to check in the message that arrives:**
 

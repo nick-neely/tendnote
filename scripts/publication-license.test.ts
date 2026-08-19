@@ -23,8 +23,10 @@ const THIRD_PARTY_PATH_PREFIXES = [".agents/skills/impeccable/", ".claude/skills
 const CURRENT_TREE_MAINTAINER_PATTERNS = [
   { label: "former hosted origin", pattern: /\bstacklet\.app\b/i },
   { label: "Vercel deployment identifier", pattern: /\bdpl_[A-Za-z0-9]+\b/ },
+  { label: "Vercel project identifier", pattern: /\bprj_[A-Za-z0-9]+\b/ },
   { label: "maintainer Vercel host", pattern: /\bnick-neely\.vercel\.app\b/i },
   { label: "maintainer Vercel scope", pattern: /--scope\s+nick-neely\b/i },
+  { label: "maintainer RunsOn stack", pattern: /\bnick-neely\/\.github-private\b/i },
 ];
 
 function read(relativePath: string): string {
@@ -165,6 +167,9 @@ describe("fresh-clone publication gate", () => {
     expect(emailSetup).toMatch(/assumes Cloudflare DNS/i);
     expect(emailSetup).toContain("Cloudflare dashboard");
     expect(emailSetup).toMatch(/DNS only.*grey cloud/);
+    expect(emailSetup).toMatch(
+      /Locally, with a real send:[\s\S]*RESEND_API_KEY=re_[^\n]*[\s\S]*TENDNOTE_EMAIL_FROM=[^\n]*[\s\S]*TENDNOTE_EMAIL_REPLY_TO=[^\n]*/,
+    );
   });
 
   it("labels deployment records as historical evidence rather than configuration", () => {

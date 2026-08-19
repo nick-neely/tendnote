@@ -21,6 +21,7 @@ describe("choosing a transport", () => {
       decideTransactionalTransport({
         NODE_ENV: "production",
         RESEND_API_KEY: "re_live",
+        TENDNOTE_EMAIL_FROM: "Tendnote <notifications@mail.operator.example>",
         TENDNOTE_EMAIL_REPLY_TO: "support@example.test",
       }),
     ).toEqual({ kind: "resend", apiKey: "re_live" });
@@ -31,6 +32,7 @@ describe("choosing a transport", () => {
       decideTransactionalTransport({
         NODE_ENV: "development",
         RESEND_API_KEY: " re_dev ",
+        TENDNOTE_EMAIL_FROM: "Tendnote <notifications@mail.operator.example>",
         TENDNOTE_EMAIL_REPLY_TO: "support@example.test",
       }),
     ).toEqual({ kind: "resend", apiKey: "re_dev" });
@@ -78,6 +80,17 @@ describe("choosing a transport", () => {
     expect(choice.kind).toBe("unavailable");
     expect(choice.kind === "unavailable" && choice.reason).toMatch(/TENDNOTE_EMAIL_REPLY_TO/);
   });
+
+  it("refuses a configured provider when the operator sender is absent", () => {
+    const choice = decideTransactionalTransport({
+      NODE_ENV: "production",
+      RESEND_API_KEY: "re_live",
+      TENDNOTE_EMAIL_REPLY_TO: "support@operator.example",
+    });
+
+    expect(choice.kind).toBe("unavailable");
+    expect(choice.kind === "unavailable" && choice.reason).toMatch(/TENDNOTE_EMAIL_FROM/);
+  });
 });
 
 describe("who the mail is from", () => {
@@ -101,9 +114,20 @@ describe("who the mail is from", () => {
     expect(
       resolveSenderIdentity({
         NODE_ENV: "production",
+        TENDNOTE_EMAIL_FROM: "Tendnote <notifications@mail.operator.example>",
         TENDNOTE_EMAIL_REPLY_TO: "support@operator.example",
       }).replyTo,
     ).toBe("support@operator.example");
+  });
+
+  it("does not use the reserved sender for a real-send identity", () => {
+    expect(() =>
+      resolveSenderIdentity({
+        NODE_ENV: "production",
+        RESEND_API_KEY: "re_live",
+        TENDNOTE_EMAIL_REPLY_TO: "support@operator.example",
+      }),
+    ).toThrow(/TENDNOTE_EMAIL_FROM/);
   });
 
   it("lets a deployment that must not send as production override both", () => {

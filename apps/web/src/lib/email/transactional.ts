@@ -93,8 +93,15 @@ export function resolveSenderIdentity(env: EmailEnvironment): TransactionalSende
     );
   }
 
+  const from = env.TENDNOTE_EMAIL_FROM?.trim();
+  if (!from && (env.NODE_ENV === "production" || env.RESEND_API_KEY?.trim())) {
+    throw new EmailConfigurationError(
+      "TENDNOTE_EMAIL_FROM is not set, so Tendnote cannot send transactional email. Add the operator sender identity to this deployment's environment (see docs/email-setup.md).",
+    );
+  }
+
   return {
-    from: env.TENDNOTE_EMAIL_FROM?.trim() || DEFAULT_EMAIL_FROM,
+    from: from || DEFAULT_EMAIL_FROM,
     replyTo,
   };
 }
@@ -124,6 +131,13 @@ export function decideTransactionalTransport(env: EmailEnvironment): Transaction
         kind: "unavailable",
         reason:
           "TENDNOTE_EMAIL_REPLY_TO is not set, so Tendnote cannot send transactional email. Add the operator support mailbox to this deployment's environment (see docs/email-setup.md).",
+      };
+    }
+    if (!env.TENDNOTE_EMAIL_FROM?.trim()) {
+      return {
+        kind: "unavailable",
+        reason:
+          "TENDNOTE_EMAIL_FROM is not set, so Tendnote cannot send transactional email. Add the operator sender identity to this deployment's environment (see docs/email-setup.md).",
       };
     }
     return { kind: "resend", apiKey };
