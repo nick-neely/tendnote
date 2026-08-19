@@ -1,6 +1,8 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = resolve(import.meta.dirname, "..");
@@ -39,39 +41,70 @@ function sha256(relativePath: string): string {
     .digest("hex");
 }
 
-function currentTextFiles(directory = root, prefix = ""): string[] {
-  const ignoredDirectories = new Set([
-    ".git",
-    ".next",
-    ".turbo",
-    "coverage",
-    "dist",
-    "node_modules",
-  ]);
-  const files: string[] = [];
+function currentTextFiles(repositoryRoot = root, trackedPaths?: string[]): string[] {
+  const publishablePaths =
+    trackedPaths ??
+    execFileSync("git", ["ls-files", "-z"], {
+      cwd: repositoryRoot,
+    })
+      .toString()
+      .split("\0")
+      .filter(Boolean);
 
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) {
-      if (!ignoredDirectories.has(entry.name)) {
-        files.push(...currentTextFiles(resolve(directory, entry.name), relativePath));
-      }
-      continue;
-    }
-    if (!entry.isFile()) continue;
+  const files: string[] = [];
+  for (const relativePath of publishablePaths) {
     if (HISTORICAL_EVIDENCE_PATHS.has(relativePath)) continue;
-    // The fixture necessarily contains the forbidden patterns as regexes; scan
-    // every other current-tree text file, including untracked publication assets.
+    // The fixture necessarily contains the forbidden patterns as regexes.
     if (relativePath.endsWith("scripts/publication-license.test.ts")) continue;
     if (THIRD_PARTY_PATH_PREFIXES.some((path) => relativePath.startsWith(path))) continue;
-    if (readFileSync(resolve(directory, entry.name)).includes(0)) continue;
+    if (readFileSync(resolve(repositoryRoot, relativePath)).includes(0)) continue;
     files.push(relativePath);
   }
 
   return files.sort();
 }
 
+function findMaintainerDeploymentLeaks(repositoryRoot = root, trackedPaths?: string[]): string[] {
+  const leaks: string[] = [];
+
+  for (const file of currentTextFiles(repositoryRoot, trackedPaths)) {
+    const contents = readFileSync(resolve(repositoryRoot, file), "utf8");
+    for (const { label, pattern } of CURRENT_TREE_MAINTAINER_PATTERNS) {
+      if (pattern.test(contents)) leaks.push(`${label}: ${file}`);
+    }
+  }
+
+  return leaks;
+}
+
 describe("fresh-clone publication gate", () => {
+  it("scans tracked files while ignoring local artifacts and preserving nested coverage", () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), "tendnote-publication-"));
+    try {
+      writeFileSync(resolve(fixtureRoot, ".gitignore"), ".scratch/\n");
+      mkdirSync(resolve(fixtureRoot, "docs/reference"), { recursive: true });
+      writeFileSync(resolve(fixtureRoot, "docs/reference/config.md"), "canonical example\n");
+      mkdirSync(resolve(fixtureRoot, ".scratch/worktrees/other"), { recursive: true });
+      writeFileSync(
+        resolve(fixtureRoot, ".scratch/worktrees/other/generated.md"),
+        "stacklet.app should not be published\n",
+      );
+      const trackedPaths = [".gitignore", "docs/reference/config.md"];
+      expect(findMaintainerDeploymentLeaks(fixtureRoot, trackedPaths)).toEqual([]);
+
+      writeFileSync(
+        resolve(fixtureRoot, "docs/reference/nested.md"),
+        "stacklet.app must fail the publication gate\n",
+      );
+      trackedPaths.push("docs/reference/nested.md");
+      expect(findMaintainerDeploymentLeaks(fixtureRoot, trackedPaths)).toEqual([
+        "former hosted origin: docs/reference/nested.md",
+      ]);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
   it("identifies the complete outbound AGPL license", () => {
     const license = read("LICENSE");
     const packageManifest = JSON.parse(read("package.json")) as { license?: string };
@@ -139,16 +172,7 @@ describe("fresh-clone publication gate", () => {
   });
 
   it("keeps the current tree free of maintainer deployment values", () => {
-    const leaks: string[] = [];
-
-    for (const file of currentTextFiles()) {
-      const contents = read(file);
-      for (const { label, pattern } of CURRENT_TREE_MAINTAINER_PATTERNS) {
-        if (pattern.test(contents)) leaks.push(`${label}: ${file}`);
-      }
-    }
-
-    expect(leaks).toEqual([]);
+    expect(findMaintainerDeploymentLeaks()).toEqual([]);
     const currentConfig = [
       "apps/web/.env.example",
       "apps/agent/.env.example",
