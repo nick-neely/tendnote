@@ -26,12 +26,18 @@ jobs:
       github.event.client_payload.project.id == 'prj_hdGusP01mnLoDvQc3CQ1gha2at7E' &&
       github.event.client_payload.git.ref == 'main' &&
       github.event.client_payload.state.type == 'ready'
-    runs-on: ubuntu-latest
+    # On-demand, so nothing can interrupt the runner partway through applying
+    # migrations to the production database.
+    runs-on: runs-on=${{ github.run_id }}-release/runner=deploy
+    timeout-minutes: 15
     environment: production
     env:
       DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_DIRECT_URL }}
       DEPLOY_SHA: ${{ github.event.client_payload.git.sha }}
     steps:
+      - name: Set up RunsOn
+        uses: runs-on/action@v2
+
       - name: Report migration status to Vercel
         uses: vercel/repository-dispatch/actions/status@v1
         with:

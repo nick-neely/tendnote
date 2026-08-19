@@ -55,8 +55,12 @@ jobs:
     name: Promotion verify
     needs: verify
     if: always() && needs.verify.result != 'skipped'
-    runs-on: ubuntu-latest
+    runs-on: runs-on=${{ github.run_id }}-promotion-gate/runner=light
+    timeout-minutes: 5
     steps:
+      - name: Set up RunsOn
+        uses: runs-on/action@v2
+
       - name: Check promotion verification
         run: |
           if [[ "${{ needs.verify.result }}" != "success" ]]; then

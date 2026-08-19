@@ -32,7 +32,8 @@ jobs:
     if: >-
       github.event.action != 'labeled' ||
       github.event.label.name == 'full-ci'
-    runs-on: ubuntu-latest
+    runs-on: runs-on=${{ github.run_id }}-changes/runner=light
+    timeout-minutes: 5
     outputs:
       verify: ${{ steps.filter.outputs.verify }}
       tests: ${{ steps.filter.outputs.tests }}
@@ -42,6 +43,9 @@ jobs:
       database: ${{ steps.mode.outputs.database }}
       full_requested: ${{ steps.mode.outputs.full_requested }}
     steps:
+      - name: Set up RunsOn
+        uses: runs-on/action@v2
+
       - name: Check paths
         id: filter
         uses: dorny/paths-filter@v4
@@ -188,8 +192,12 @@ jobs:
       !cancelled() &&
       (github.event.action != 'labeled' ||
       github.event.label.name == 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: runs-on=${{ github.run_id }}-verify-gate/runner=light
+    timeout-minutes: 5
     steps:
+      - name: Set up RunsOn
+        uses: runs-on/action@v2
+
       - name: Check PR verification
         run: |
           if [[ "${{ needs.changes.result }}" != "success" ]]; then
@@ -219,8 +227,12 @@ jobs:
       needs.changes.result == 'success' &&
       (github.event.action != 'labeled' ||
       github.event.label.name == 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: runs-on=${{ github.run_id }}-qualification-gate/runner=light
+    timeout-minutes: 5
     steps:
+      - name: Set up RunsOn
+        uses: runs-on/action@v2
+
       - name: Check full CI qualification
         run: |
           if [[ "${{ needs.changes.outputs.full_requested }}" == "true" ]]; then

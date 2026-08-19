@@ -178,8 +178,14 @@ describe("CI workflow optimization contract", () => {
   it("shares one Chromium cache and primes it from the trusted default branch", () => {
     const reusable = read(".github/workflows/reusable-verify.yml");
     const prime = read(".github/workflows/playwright-cache.yml");
+    // `runner.os` is `Linux` on x64 and arm64 alike, so the architecture is part
+    // of the key: a cache primed on one and restored on the other yields browser
+    // binaries that fail at launch rather than at restore.
     const chromiumKey =
-      "$" + "{{ runner.os }}-playwright-chromium-$" + "{{ hashFiles('pnpm-lock.yaml') }}";
+      "$" +
+      "{{ runner.os }}-$" +
+      "{{ runner.arch }}-playwright-chromium-$" +
+      "{{ hashFiles('pnpm-lock.yaml') }}";
 
     expect(reusable.split(chromiumKey)).toHaveLength(3);
     expect(prime).toContain("push:");
