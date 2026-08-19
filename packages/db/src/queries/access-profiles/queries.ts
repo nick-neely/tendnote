@@ -15,10 +15,10 @@ function onboardingStateFromProfile(profile: AccessProfile): SelfContextOnboardi
 }
 
 /**
- * Shared Private Beta Access logic. This module owns the bootstrap and admission
- * rules; the store only persists rows. Pages, server actions, and Eve ingress
- * should branch on the {@link AccessDecision} returned by `checkAccess` and never
- * derive access from "oldest user" queries beyond the one-time bootstrap.
+ * Shared Private Beta Access persistence. Admission policy is resolved by the
+ * server boundary, while this module owns durable profile writes. Pages, server
+ * actions, and Eve ingress should branch on the {@link AccessDecision} returned
+ * by `checkAccess` and never derive access from user ordering.
  */
 export function createAccessProfileQueries(store: AccessProfileStore) {
   async function updateSelfContextOnboarding(input: {
@@ -37,6 +37,64 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
     });
     if (!updated) throw new Error("Failed to update Self Context setup.");
     return onboardingStateFromProfile(updated);
+  }
+
+  /** Durably grant one profile, preserving the source for audit and display. */
+  async function grantAccess(input: {
+    userId: string;
+    source: AccessSource;
+  }): Promise<AccessProfile> {
+    const existing = await store.getByUserId(input.userId);
+    const grantedAt = new Date();
+
+    if (!existing) {
+      const inserted = await store.insertIfAbsent({
+        userId: input.userId,
+        status: "granted",
+        source: input.source,
+        grantedAt,
+      });
+
+      if (inserted) {
+        return inserted;
+      }
+
+      const settled = await store.getByUserId(input.userId);
+      if (settled) {
+        return settled.status === "granted" ? settled : grantExisting(settled, input.source);
+      }
+
+      // A singleton-source conflict belongs to another user. Keep this caller
+      // pending instead of turning a uniqueness race into an admission error.
+      const pending = await store.insertIfAbsent({
+        userId: input.userId,
+        status: "pending",
+        source: null,
+        grantedAt: null,
+      });
+      if (pending) return pending;
+
+      const retry = await store.getByUserId(input.userId);
+      if (!retry) throw new Error("Failed to grant access profile.");
+      return retry.status === "granted" ? retry : grantExisting(retry, input.source);
+    }
+
+    if (existing.status === "granted") {
+      // A configured self-hosted owner may be transitioning from a legacy
+      // hosted/local grant. Reclassify only that explicit provenance; ordinary
+      // grants remain authoritative and retain their original audit source.
+      if (
+        input.source === "self_hosted_bootstrap" &&
+        existing.source !== "self_hosted_bootstrap" &&
+        existing.source !== "household_invitation"
+      ) {
+        return grantExisting(existing, input.source);
+      }
+
+      return existing;
+    }
+
+    return grantExisting(existing, input.source);
   }
 
   return {
@@ -67,15 +125,7 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
       return updated.householdCheckinEnabled;
     },
 
-    /**
-     * Ensure a signed-up user has an access profile. The very first profile ever
-     * created becomes the initial allowed owner (bootstrap); every later user
-     * starts pending until access is granted.
-     *
-     * Bootstrap is atomic: we attempt the singular bootstrap insert and let the
-     * store's uniqueness constraints decide the winner, so two concurrent first
-     * signups cannot both be admitted.
-     */
+    /** Ensure a signed-up user has a pending profile without granting access. */
     async ensureAccessProfile(input: { userId: string }): Promise<AccessProfile> {
       const existing = await store.getByUserId(input.userId);
 
@@ -83,18 +133,6 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
         return existing;
       }
 
-      const bootstrapped = await store.insertIfAbsent({
-        userId: input.userId,
-        status: "granted",
-        source: "bootstrap",
-        grantedAt: new Date(),
-      });
-
-      if (bootstrapped) {
-        return bootstrapped;
-      }
-
-      // The bootstrap is already taken, so this is a later signup: land pending.
       const pending = await store.insertIfAbsent({
         userId: input.userId,
         status: "pending",
@@ -114,6 +152,11 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
       }
 
       return settled;
+    },
+
+    /** Explicit local-only owner setup; production callers never use this path. */
+    async ensureLocalDevelopmentAccessProfile(input: { userId: string }): Promise<AccessProfile> {
+      return grantAccess({ userId: input.userId, source: "bootstrap" });
     },
 
     async getAccessProfile(input: { userId: string }): Promise<AccessProfile | null> {
@@ -180,38 +223,40 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
       return (await store.listByStatus("granted")).map((profile) => profile.userId);
     },
 
-    /**
-     * Durably grant access to a user, recording where the grant came from. Used by
-     * the bootstrap path, manual grants, and (later) beta-flag rollout. Upserts so
-     * a pending user becomes granted and a brand-new user is created as granted.
-     */
-    async grantAccess(input: { userId: string; source: AccessSource }): Promise<AccessProfile> {
-      const existing = await store.getByUserId(input.userId);
-      const grantedAt = new Date();
-
-      if (!existing) {
-        return store.create({
-          userId: input.userId,
-          status: "granted",
-          source: input.source,
-          grantedAt,
-        });
-      }
-
-      if (existing.status === "granted") {
-        return existing;
-      }
-
-      const updated = await store.update({
-        userId: input.userId,
-        patch: { status: "granted", source: input.source, grantedAt },
-      });
-
-      if (!updated) {
-        throw new Error("Failed to grant access profile.");
-      }
-
-      return updated;
-    },
+    /** Durably grant access, preserving its admission source. */
+    grantAccess,
   };
+
+  async function grantExisting(
+    existing: AccessProfile,
+    source: AccessSource,
+  ): Promise<AccessProfile> {
+    let updated: AccessProfile | null;
+    try {
+      updated = await store.update({
+        userId: existing.userId,
+        patch: { status: "granted", source, grantedAt: new Date() },
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      updated = null;
+    }
+
+    if (!updated) {
+      // Another singleton grant won the race. Re-read the profile and leave it
+      // pending if this user is still not admitted.
+      const settled = await store.getByUserId(existing.userId);
+      if (settled) return settled;
+      throw new Error("Failed to grant access profile.");
+    }
+
+    return updated;
+  }
+
+  function isUniqueConstraintError(error: unknown): boolean {
+    if (typeof error !== "object" || error === null) return false;
+
+    const candidate = error as { code?: unknown; cause?: { code?: unknown } };
+    return candidate.code === "23505" || candidate.cause?.code === "23505";
+  }
 }

@@ -9,7 +9,13 @@ export const accessStatusSchema = z.enum(["pending", "granted", "denied"]);
 export type AccessStatus = z.infer<typeof accessStatusSchema>;
 
 /** Explains where a granted access decision came from. */
-export const accessSourceSchema = z.enum(["bootstrap", "manual_grant", "beta_flag"]);
+export const accessSourceSchema = z.enum([
+  "bootstrap",
+  "self_hosted_bootstrap",
+  "household_invitation",
+  "manual_grant",
+  "beta_flag",
+]);
 
 export type AccessSource = z.infer<typeof accessSourceSchema>;
 

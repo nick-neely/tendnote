@@ -519,6 +519,13 @@
       "when": 1786833253215,
       "tag": "0073_audit_log_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1787177117316,
+      "tag": "0074_self_hosted_admission_access_sources",
+      "breakpoints": true
     }
   ]
 }

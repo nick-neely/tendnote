@@ -34,8 +34,9 @@ export type AccessProfilePatch = Partial<
 /**
  * Storage seam for Tendnote-owned access profiles. The query layer owns the
  * bootstrap/admission rules; adapters only persist and read rows. Adapters must
- * enforce two uniqueness constraints so bootstrap is race-safe: one profile per
- * `userId`, and at most one profile with `source: "bootstrap"`.
+ * enforce one profile per `userId`, and at most one profile for each singleton
+ * bootstrap source (`bootstrap` for local development and
+ * `self_hosted_bootstrap` for the configured production owner).
  */
 export type AccessProfileStore = {
   getByUserId: (userId: string) => Promise<AccessProfile | null>;
@@ -44,8 +45,8 @@ export type AccessProfileStore = {
   create: (input: PersistAccessProfileInput) => Promise<AccessProfile>;
   /**
    * Insert only if it violates no uniqueness constraint, returning `null` on
-   * conflict instead of throwing. Used for the atomic first-user bootstrap and
-   * for idempotent pending-profile creation.
+   * conflict instead of throwing. Used for singleton grants and idempotent
+   * pending-profile creation.
    */
   insertIfAbsent: (input: PersistAccessProfileInput) => Promise<AccessProfile | null>;
   update: (input: { userId: string; patch: AccessProfilePatch }) => Promise<AccessProfile | null>;
