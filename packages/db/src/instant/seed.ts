@@ -50,8 +50,8 @@ function ownerRows(owner: FixtureOwner) {
     },
     // Persisted admission is authoritative and short-circuits Private Beta
     // Access evaluation, so the rig never reaches the Vercel Flags adapter and
-    // needs no network. `manual_grant` rather than `bootstrap` because at most
-    // one bootstrap profile may exist and both owners must be admitted.
+    // needs no network. `manual_grant` rather than either singleton bootstrap
+    // source because both owners must be admitted.
     accessProfile: {
       userId: owner.userId,
       status: "granted" as const,

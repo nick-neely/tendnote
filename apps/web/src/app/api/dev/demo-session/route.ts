@@ -1,4 +1,4 @@
-import { ensureAccessProfile } from "@tendnote/db/queries/access-profiles";
+import { ensureLocalDevelopmentAccessProfile } from "@tendnote/db/queries/access-profiles";
 import { updateAuthUserEmail } from "@tendnote/db/queries/auth-users";
 import { serializeSignedCookie } from "better-call";
 import { localFallbackOwnerUserId } from "@/lib/access/access-state";
@@ -29,7 +29,7 @@ export async function POST() {
         emailVerified: true,
       });
 
-  await ensureAccessProfile({ userId: user.id });
+  await ensureLocalDevelopmentAccessProfile({ userId: user.id });
 
   const session = await context.internalAdapter.createSession(user.id);
   const cookie = await serializeSignedCookie(

@@ -24,14 +24,15 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
   }
 
   function hasConflict(input: Parameters<AccessProfileStore["create"]>[0]): boolean {
-    // Mirror the DB constraints: one profile per user, one bootstrap total.
+    // Mirror the DB constraints: one profile per user and one row for each
+    // singleton bootstrap source.
     if (profiles.has(input.userId)) {
       return true;
     }
 
     return (
-      input.source === "bootstrap" &&
-      [...profiles.values()].some((profile) => profile.source === "bootstrap")
+      (input.source === "bootstrap" || input.source === "self_hosted_bootstrap") &&
+      [...profiles.values()].some((profile) => profile.source === input.source)
     );
   }
 
@@ -66,6 +67,15 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       const existing = profiles.get(userId);
 
       if (!existing) {
+        return null;
+      }
+
+      if (
+        (patch.source === "bootstrap" || patch.source === "self_hosted_bootstrap") &&
+        [...profiles.values()].some(
+          (profile) => profile.userId !== userId && profile.source === patch.source,
+        )
+      ) {
         return null;
       }
 

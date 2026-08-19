@@ -17,7 +17,8 @@ export const accessProfiles = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     status: accessStatus("status").notNull().default("pending"),
     // Set when access is granted; explains whether admission came from the
-    // first-user bootstrap, a manual grant, or a beta flag rollout.
+    // local bootstrap, self-hosted bootstrap, Household invitation, manual
+    // grant, or beta flag rollout.
     source: accessSource("source"),
     grantedAt: timestamp("granted_at", { withTimezone: true }),
     selfContextOnboardingStatus: selfContextOnboardingStatus("self_context_onboarding_status")
@@ -33,11 +34,14 @@ export const accessProfiles = pgTable(
     ...timestamps,
   },
   (table) => [
-    // The "initial allowed owner" is singular: at most one bootstrap profile can
-    // ever exist. This partial unique index makes first-user bootstrap atomic so
-    // two concurrent first signups cannot both win admission.
+    // Local demo bootstrap and self-hosted bootstrap are each singleton sources.
+    // These partial unique indexes keep explicit owner grants race-safe without
+    // making ordinary pending profile creation depend on arrival order.
     uniqueIndex("access_profiles_single_bootstrap_idx")
       .on(table.source)
       .where(sql`${table.source} = 'bootstrap'`),
+    uniqueIndex("access_profiles_single_self_hosted_bootstrap_idx")
+      .on(table.source)
+      .where(sql`${table.source} = 'self_hosted_bootstrap'`),
   ],
 );

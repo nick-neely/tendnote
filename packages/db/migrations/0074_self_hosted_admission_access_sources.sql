@@ -1,0 +1,3 @@
+ALTER TYPE "public"."access_source" ADD VALUE 'self_hosted_bootstrap' BEFORE 'manual_grant';--> statement-breakpoint
+ALTER TYPE "public"."access_source" ADD VALUE 'household_invitation' BEFORE 'manual_grant';--> statement-breakpoint
+CREATE UNIQUE INDEX "access_profiles_single_self_hosted_bootstrap_idx" ON "access_profiles" USING btree ("source") WHERE "access_profiles"."source" = 'self_hosted_bootstrap';

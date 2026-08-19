@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./access": "./src/access.ts",
+    "./admission": "./src/admission.ts",
     "./assets": "./src/assets.ts",
     "./audit-retention": "./src/audit-retention.ts",
     "./brief-schedules": "./src/brief-schedules.ts",

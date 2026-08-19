@@ -1,8 +1,13 @@
 import { type AuthFn, ForbiddenError, localDev, UnauthenticatedError } from "eve/channels/auth";
 
 type SessionAuthDependencies = {
-  getSession: (headers: Headers) => Promise<{ user: { id: string } } | null>;
-  checkAccess: (userId: string) => Promise<{ admitted: boolean }>;
+  getSession: (headers: Headers) => Promise<{ user: { id: string; email?: string | null } } | null>;
+  /** Shared Web/Eve admission resolver; checkAccess is retained for narrow callers/tests. */
+  resolveAccess?: (entity: {
+    userId: string;
+    email?: string | null;
+  }) => Promise<{ admitted: boolean }>;
+  checkAccess?: (userId: string) => Promise<{ admitted: boolean }>;
   checkIngressBudget: (userId: string) => Promise<{ allowed: boolean }>;
 };
 
@@ -26,7 +31,12 @@ export function createTendnoteSessionAuth(deps: SessionAuthDependencies): AuthFn
     if (!session) return null;
 
     const userId = session.user.id;
-    if (!(await deps.checkAccess(userId)).admitted) {
+    const access = deps.resolveAccess
+      ? await deps.resolveAccess({ userId, email: session.user.email })
+      : deps.checkAccess
+        ? await deps.checkAccess(userId)
+        : { admitted: false };
+    if (!access.admitted) {
       throw new ForbiddenError({
         code: "private_beta_access_required",
         message: "Private Beta Access is required to use the assistant.",
