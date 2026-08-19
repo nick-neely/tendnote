@@ -6,6 +6,7 @@
 # costs nothing to state: without a resolvable base, `runner=<name>` matches no
 # runner and jobs sit unassigned until they time out.
 #
-# RunsOn reads this file from the current branch for private repositories, so a
-# branch may add or override presets here without landing on `main` first.
+# RunsOn reads this file from the current branch for private repositories, but
+# from the default branch only for public repositories. Before this repository
+# becomes public, `_extends` and any custom presets must already be on `main`.
 _extends: .github-private

@@ -63,7 +63,13 @@ jobs:
   database:
     name: Database
     if: inputs.run_database
-    runs-on: runs-on=${{ github.run_id }}-database/runner=default
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format('runs-on={0}-database/runner=default', github.run_id)
+      }}
     timeout-minutes: 10
     services:
       postgres:
@@ -84,6 +90,7 @@ jobs:
       # `extras: s3-cache`, but without this step `actions/cache` and the
       # `setup-node` pnpm cache silently keep talking to GitHub instead.
       - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: runs-on/action@v2
 
       - name: Checkout
@@ -111,10 +118,17 @@ jobs:
 
   quality:
     name: Quality
-    runs-on: runs-on=${{ github.run_id }}-quality/runner=default
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format('runs-on={0}-quality/runner=default', github.run_id)
+      }}
     timeout-minutes: 15
     steps:
       - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: runs-on/action@v2
 
       - name: Checkout
@@ -143,10 +157,17 @@ jobs:
   fast_tests:
     name: Fast affected tests
     if: ${{ inputs.run_tests && !inputs.run_full }}
-    runs-on: runs-on=${{ github.run_id }}-fast-tests/runner=big
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format('runs-on={0}-fast-tests/runner=big', github.run_id)
+      }}
     timeout-minutes: 20
     steps:
       - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: runs-on/action@v2
         with:
           show_costs: summary
@@ -184,10 +205,17 @@ jobs:
   test_fallow:
     name: Test and Fallow
     if: ${{ (inputs.run_tests || inputs.run_browser) && inputs.run_full }}
-    runs-on: runs-on=${{ github.run_id }}-test-fallow/runner=big
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format('runs-on={0}-test-fallow/runner=big', github.run_id)
+      }}
     timeout-minutes: 30
     steps:
       - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: runs-on/action@v2
         with:
           show_costs: summary
@@ -279,7 +307,16 @@ jobs:
     # `lowest-price` would then always pick the single cheapest AZ pool — the one
     # most likely to be reclaimed. `capacity-optimized` keeps spot pricing while
     # placing into the pool with the most headroom.
-    runs-on: runs-on=${{ github.run_id }}-instant/runner=default/cpu=2/family=m8a/spot=capacity-optimized
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format(
+          'runs-on={0}-instant/runner=default/cpu=2/family=m8a/spot=capacity-optimized',
+          github.run_id
+        )
+      }}
     # The rollout criterion is a wall-time one. Without this a hung `next start`
     # would sit on GitHub's six-hour default instead of failing the gate.
     #
@@ -321,6 +358,7 @@ jobs:
     # below rather than here, so there is one place to read them from.
     steps:
       - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: runs-on/action@v2
         with:
           show_costs: summary

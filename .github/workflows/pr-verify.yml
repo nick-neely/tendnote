@@ -32,7 +32,12 @@ jobs:
     if: >-
       github.event.action != 'labeled' ||
       github.event.label.name == 'full-ci'
-    runs-on: runs-on=${{ github.run_id }}-changes/runner=light
+    runs-on: >-
+      ${{
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format('runs-on={0}-changes/runner=light', github.run_id)
+      }}
     timeout-minutes: 5
     outputs:
       verify: ${{ steps.filter.outputs.verify }}
@@ -44,6 +49,7 @@ jobs:
       full_requested: ${{ steps.mode.outputs.full_requested }}
     steps:
       - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: runs-on/action@v2
 
       - name: Check paths
@@ -192,10 +198,16 @@ jobs:
       !cancelled() &&
       (github.event.action != 'labeled' ||
       github.event.label.name == 'full-ci')
-    runs-on: runs-on=${{ github.run_id }}-verify-gate/runner=light
+    runs-on: >-
+      ${{
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format('runs-on={0}-verify-gate/runner=light', github.run_id)
+      }}
     timeout-minutes: 5
     steps:
       - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: runs-on/action@v2
 
       - name: Check PR verification
@@ -227,10 +239,16 @@ jobs:
       needs.changes.result == 'success' &&
       (github.event.action != 'labeled' ||
       github.event.label.name == 'full-ci')
-    runs-on: runs-on=${{ github.run_id }}-qualification-gate/runner=light
+    runs-on: >-
+      ${{
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format('runs-on={0}-qualification-gate/runner=light', github.run_id)
+      }}
     timeout-minutes: 5
     steps:
       - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: runs-on/action@v2
 
       - name: Check full CI qualification
