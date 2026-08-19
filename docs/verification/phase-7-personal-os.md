@@ -1,5 +1,10 @@
 # Phase Seven Personal OS verification
 
+> **Historical qualification evidence.** The deployment identifier and tester
+> details below identify the run that produced this record. They are immutable
+> evidence, not current Tendnote configuration or a supported deployment target.
+> Current URLs must come from the configured canonical `BETTER_AUTH_URL`.
+
 This is the release evidence index for specification #264 and proof ticket #275. The durable
 behavioral contract remains `docs/prd.md`; this file names the executable proof and keeps physical
 device observations separate from simulated or provider-acceptance evidence.

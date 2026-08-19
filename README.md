@@ -95,6 +95,20 @@ CI runs a stricter path than `pnpm verify`: it collects Istanbul coverage (`pnpm
 
 Tendnote uses Biome for linting, formatting, and import organization. See [`docs/local-development.md`](docs/local-development.md#quality-gates) for individual commands, eval commands, and CI setup.
 
+## License and publication
+
+Tendnote is distributed under the [AGPL-3.0-only](LICENSE) license. The two
+Impeccable harness variants are redistributed under Apache-2.0; their upstream
+provenance, release pin, applicable NOTICE result, and exact paths are recorded
+in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The repeatable gate for
+future third-party bundles is [`docs/agents/third-party-bundles.md`](docs/agents/third-party-bundles.md).
+
+The repository keeps its complete git history. Deployment IDs and account
+scopes in older verification records are historical qualification evidence, not
+current configuration. Current URLs come from the configured canonical
+`BETTER_AUTH_URL`; copy [`apps/web/.env.example`](apps/web/.env.example) and
+replace its synthetic example values for an operator-owned deployment.
+
 ## Docs
 
 - [`docs/local-development.md`](docs/local-development.md) — setup, environment variables, evals, CI
@@ -104,4 +118,5 @@ Tendnote uses Biome for linting, formatting, and import organization. See [`docs
 - [`docs/google-setup.md`](docs/google-setup.md) — Google OAuth client setup
 - [`docs/discord-setup.md`](docs/discord-setup.md) — Discord app, capture, and delivery setup
 - [`docs/background-job-delivery.md`](docs/background-job-delivery.md) — production queue foundation
+- [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) — redistributed third-party provenance and licenses
 - [`docs/prd.md`](docs/prd.md) — product roadmap · [`AGENTS.md`](AGENTS.md) — agent-facing guidance

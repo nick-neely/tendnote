@@ -1,4 +1,3 @@
-import { HOUSEHOLD_SUPPORT_EMAIL } from "@tendnote/domain/household-governance";
 import {
   Body,
   Button,
@@ -23,6 +22,7 @@ export type HouseholdInvitationEmailProps = {
   inviterName: string | null;
   acceptUrl: string;
   expiresAt: Date;
+  supportEmail: string;
 };
 
 /** The subject line. Names the household, so the inbox row is already specific. */
@@ -80,6 +80,7 @@ function HouseholdInvitationEmail({
   inviterName,
   acceptUrl,
   expiresAt,
+  supportEmail,
 }: HouseholdInvitationEmailProps) {
   const deadline = INVITATION_DATE_FORMAT_UTC.format(expiresAt);
   const invitationLine = inviterName
@@ -172,12 +173,8 @@ function HouseholdInvitationEmail({
           </Text>
           <Text className="tn-muted" style={styles.captionLast}>
             Need help? Reply to this email or write to{" "}
-            <Link
-              className="tn-muted"
-              href={`mailto:${HOUSEHOLD_SUPPORT_EMAIL}`}
-              style={styles.footerLink}
-            >
-              {HOUSEHOLD_SUPPORT_EMAIL}
+            <Link className="tn-muted" href={`mailto:${supportEmail}`} style={styles.footerLink}>
+              {supportEmail}
             </Link>
             .
           </Text>
@@ -346,6 +343,7 @@ export default function HouseholdInvitationEmailPreview() {
       inviterName="Alex"
       acceptUrl="http://localhost:3000/join/preview-token"
       expiresAt={new Date("2026-08-15T09:00:00Z")}
+      supportEmail="support@example.test"
     />
   );
 }

@@ -1,5 +1,10 @@
 # Partial Prefetching navigation contract
 
+> **Historical qualification evidence.** Deployment IDs and account-specific
+> values below identify the run that produced this record. They are immutable
+> evidence, not current Tendnote configuration or a supported deployment target.
+> Current URLs must come from the configured canonical `BETTER_AUTH_URL`.
+
 This record captures the implementation evidence for issue #309 on the pinned
 Next.js 16.3 Preview. It deliberately does not treat a local development
 fallback as evidence for a production owner session.

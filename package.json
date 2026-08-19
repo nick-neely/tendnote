@@ -2,6 +2,7 @@
   "name": "tendnote",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.32.1",
   "scripts": {
     "dev": "EVE_BASE_URL=http://127.0.0.1:2000 turbo run dev --filter=@tendnote/web --filter=@tendnote/agent",
@@ -23,6 +24,7 @@
     "typecheck": "turbo typecheck",
     "test": "vitest run scripts/*.test.ts && turbo test",
     "test:affected": "vitest run scripts/*.test.ts && turbo test --affected",
+    "publication:check": "vitest run scripts/publication-license.test.ts",
     "test:browser": "pnpm --filter @tendnote/web test:browser",
     "test:instant": "pnpm --filter @tendnote/web test:instant",
     "test:instant:full": "pnpm --filter @tendnote/web test:instant:full",

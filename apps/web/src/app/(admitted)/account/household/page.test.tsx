@@ -24,8 +24,14 @@ vi.mock("@tendnote/db/queries/context-facts", () => ({ listHouseholdContextFacts
 vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwner }));
 vi.mock("next/navigation", () => ({ unstable_rethrow }));
 vi.mock("@/components/account/household-surface", () => ({
-  HouseholdSurface: ({ initialOverview }: { initialOverview: { name: string } | null }) => (
-    <div data-testid="household-surface">
+  HouseholdSurface: ({
+    initialOverview,
+    supportEmail,
+  }: {
+    initialOverview: { name: string } | null;
+    supportEmail: string | null;
+  }) => (
+    <div data-support-email={supportEmail ?? "missing"} data-testid="household-surface">
       {initialOverview ? `active: ${initialOverview.name}` : "no active household"}
     </div>
   ),
@@ -84,6 +90,7 @@ describe("Household route", () => {
     expect(requireAdmittedOwner).toHaveBeenCalledWith({ returnTo: "/account/household" });
     expect(getHouseholdOverviewForUser).toHaveBeenCalledWith({ userId: "owner-1" });
     expect(markup).toContain("no active household");
+    expect(markup).toContain('data-support-email="support@example.test"');
     expect(markup).toContain('href="/account"');
   });
 

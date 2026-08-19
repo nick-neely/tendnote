@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  HOUSEHOLD_RECOVERY_WINDOW_DAYS,
-  HOUSEHOLD_SUPPORT_EMAIL,
-} from "@tendnote/domain/household-governance";
+import { HOUSEHOLD_RECOVERY_WINDOW_DAYS } from "@tendnote/domain/household-governance";
 import type { HouseholdOverview } from "@tendnote/domain/household-overview";
 import { HOUSEHOLD_NAME_LIMIT } from "@tendnote/domain/household-policy";
 import { useRouter } from "next/navigation";
@@ -60,6 +57,7 @@ export function HouseholdSurface({
   governanceActions,
   memberActions,
   contextSection,
+  supportEmail,
 }: {
   initialOverview: HouseholdOverview | null;
   createHouseholdAction?: CreateHouseholdAction;
@@ -76,6 +74,8 @@ export function HouseholdSurface({
    * being the reader's to see.
    */
   contextSection?: React.ReactNode;
+  /** Operator-owned recovery contact, or null when production is misconfigured. */
+  supportEmail?: string | null;
 }) {
   const router = useRouter();
   const [overview, setOverview] = useState(initialOverview);
@@ -105,6 +105,7 @@ export function HouseholdSurface({
           invitationActions={invitationActions}
           memberActions={memberActions}
           onAnnounce={setAnnouncement}
+          supportEmail={supportEmail}
           // The action's own answer is the new Overview, so the seat count,
           // invitation rows, and every governance answer change on the press;
           // the server tree catches up underneath rather than being what the
@@ -125,6 +126,7 @@ export function HouseholdSurface({
             setEnding(null);
             setStartedFromEnding(true);
           }}
+          supportEmail={supportEmail}
         />
       ) : (
         <HouseholdActivation
@@ -164,9 +166,11 @@ export function HouseholdSurface({
 function HouseholdEnded({
   ending,
   onStartAnother,
+  supportEmail,
 }: {
   ending: HouseholdEnding;
   onStartAnother: () => void;
+  supportEmail?: string | null;
 }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
 
@@ -200,14 +204,22 @@ function HouseholdEnded({
             <>
               Everyone&rsquo;s access ended and its live invitations stopped working. What each
               person wrote stays theirs. For the next {HOUSEHOLD_RECOVERY_WINDOW_DAYS} days, support
-              can still put the household back &mdash; write to{" "}
-              <a
-                className="underline underline-offset-2 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/35 focus-visible:outline-none"
-                href={`mailto:${HOUSEHOLD_SUPPORT_EMAIL}`}
-              >
-                {HOUSEHOLD_SUPPORT_EMAIL}
-              </a>
-              . After that, what the household itself held is deleted.
+              can still put the household back
+              {supportEmail ? (
+                <>
+                  &mdash; write to{" "}
+                  <a
+                    className="underline underline-offset-2 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/35 focus-visible:outline-none"
+                    href={`mailto:${supportEmail}`}
+                  >
+                    {supportEmail}
+                  </a>
+                  .
+                </>
+              ) : (
+                ". The operator recovery contact is not configured for this deployment."
+              )}{" "}
+              After that, what the household itself held is deleted.
             </>
           )}
         </p>
