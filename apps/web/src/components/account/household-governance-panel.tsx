@@ -3,7 +3,6 @@
 import {
   HOUSEHOLD_RECOVERY_IS_SUPPORT_ONLY,
   HOUSEHOLD_RECOVERY_WINDOW_DAYS,
-  HOUSEHOLD_SUPPORT_EMAIL,
 } from "@tendnote/domain/household-governance";
 import type { HouseholdOverview } from "@tendnote/domain/household-overview";
 import { useId, useState, useTransition } from "react";
@@ -86,6 +85,7 @@ type PanelProps = {
   actions?: HouseholdGovernanceActions;
   onOverviewChange: HouseholdOverviewChange;
   onAnnounce: (message: string) => void;
+  supportEmail?: string | null;
 };
 
 function ErrorText({ id, message }: { id?: string; message: string }) {
@@ -209,6 +209,7 @@ export function HouseholdEndingsPanel({
   actions = {},
   onOverviewChange,
   onAnnounce,
+  supportEmail,
 }: PanelProps) {
   // Read off the answers rather than off the seat count alone, so the rule is
   // "hide the rows that could only be a refusal" rather than "a lone reader has
@@ -248,6 +249,7 @@ export function HouseholdEndingsPanel({
           onAnnounce={onAnnounce}
           onOverviewChange={onOverviewChange}
           overview={overview}
+          supportEmail={supportEmail}
         />
       </div>
     </section>
@@ -484,6 +486,7 @@ function DissolutionPhraseGate({
   onTyped,
   pending,
   phrase,
+  supportEmail,
   typed,
 }: {
   error: string | null;
@@ -491,19 +494,27 @@ function DissolutionPhraseGate({
   onTyped: (value: string) => void;
   pending: boolean;
   phrase: string;
+  supportEmail?: string | null;
   typed: string;
 }) {
   return (
     <>
       <p className="max-w-[65ch] text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
-        {HOUSEHOLD_RECOVERY_IS_SUPPORT_ONLY} If you need to, write to{" "}
-        <a
-          className="underline underline-offset-2 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/35 focus-visible:outline-none"
-          href={`mailto:${HOUSEHOLD_SUPPORT_EMAIL}`}
-        >
-          {HOUSEHOLD_SUPPORT_EMAIL}
-        </a>
-        .
+        {HOUSEHOLD_RECOVERY_IS_SUPPORT_ONLY}{" "}
+        {supportEmail ? (
+          <>
+            If you need to, write to{" "}
+            <a
+              className="underline underline-offset-2 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/35 focus-visible:outline-none"
+              href={`mailto:${supportEmail}`}
+            >
+              {supportEmail}
+            </a>
+            .
+          </>
+        ) : (
+          "The operator recovery contact is not configured for this deployment."
+        )}
       </p>
       <div className="flex flex-col gap-1.5">
         <Label
@@ -561,6 +572,7 @@ function DissolutionDialog({
   pending,
   phrase,
   stillWaitingOn,
+  supportEmail,
   typed,
 }: {
   canConfirm: boolean;
@@ -575,6 +587,7 @@ function DissolutionDialog({
   pending: boolean;
   phrase: string;
   stillWaitingOn: number;
+  supportEmail?: string | null;
   typed: string;
 }) {
   const othersLeft = stillWaitingOn - 1;
@@ -611,6 +624,7 @@ function DissolutionDialog({
             onTyped={onTyped}
             pending={pending}
             phrase={phrase}
+            supportEmail={supportEmail}
             typed={typed}
           />
         ) : null}
@@ -659,7 +673,13 @@ function DissolutionDialog({
  * the reading of them. The split is why none of them has to hold the whole of
  * agreement, withdrawal, and irreversible ending at once.
  */
-function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }: PanelProps) {
+function DissolutionRow({
+  overview,
+  actions = {},
+  onOverviewChange,
+  onAnnounce,
+  supportEmail,
+}: PanelProps) {
   const confirm = actions.confirmDissolution ?? defaultConfirmDissolutionAction;
   const cancel = actions.cancelDissolution ?? defaultCancelDissolutionAction;
   const errorId = useId();
@@ -793,6 +813,7 @@ function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }
           pending={pending}
           phrase={phrase}
           stillWaitingOn={stillWaitingOn}
+          supportEmail={supportEmail}
           typed={typed}
         />
       )}

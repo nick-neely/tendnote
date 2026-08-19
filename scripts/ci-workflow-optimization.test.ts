@@ -229,9 +229,8 @@ describe("CI workflow optimization contract", () => {
     expect(workflow).toContain("vercel/repository-dispatch/actions/status@v1");
     expect(workflow).toContain("vercel/repository-dispatch/actions/checkout@v1");
     expect(workflow).toContain("github.event.client_payload.environment == 'production'");
-    expect(workflow).toContain(
-      "github.event.client_payload.project.id == 'prj_hdGusP01mnLoDvQc3CQ1gha2at7E'",
-    );
+    expect(workflow).toContain("github.event.client_payload.project.id == vars.VERCEL_PROJECT_ID");
+    expect(workflow).not.toMatch(/github\.event\.client_payload\.project\.id\s*==\s*'prj_/);
     expect(workflow).toContain("github.event.client_payload.git.ref == 'main'");
     expect(workflow).toContain("github.event.client_payload.state.type == 'ready'");
     expect(workflow).toContain("pnpm install --frozen-lockfile --filter @tendnote/db...");

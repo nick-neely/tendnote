@@ -3,7 +3,9 @@
 > **Human-in-the-loop setup.** This guide creates the Resend account, verifies
 > the sending domain, and adds the DNS records that let Tendnote's mail reach an
 > inbox. None of it can be done by an agent or by code: it needs an operator with
-> access to the Resend dashboard and the Cloudflare zone for `stacklet.app`.
+> access to the Resend dashboard and a Cloudflare DNS zone for the operator's
+> domain. This runbook assumes Cloudflare DNS; other providers need their own
+> equivalent record-entry procedure.
 
 Tendnote sends one kind of email today - a **Household Invitation**. It is
 transactional in the strict sense: a person typed an address, an explicit Owner
@@ -23,15 +25,15 @@ providers touches that file and the selection in
 
 | Thing | Value | Why this one |
 | --- | --- | --- |
-| Sending domain | `mail.stacklet.app` | A dedicated subdomain, so transactional reputation is earned and lost separately from anything the apex domain ever sends. |
-| From address | `Tendnote <notifications@mail.stacklet.app>` | A real named sender, not `noreply@`. People answer a message about being invited into someone's home. |
-| Reply-To | `support@stacklet.app` | The monitored inbox already routed by Cloudflare Email Routing, and the same address every household surface shows. |
-| App origin | `https://tendnote.stacklet.app` | Where the invitation link points. Set by `BETTER_AUTH_URL`, never by an inbound `Host` header. |
+| Sending domain | `mail.example.com` | A dedicated subdomain, so transactional reputation is earned and lost separately from anything the apex domain ever sends. Replace the reserved example domain with the operator's verified domain. |
+| From address | `Tendnote <notifications@mail.example.com>` | A real named sender, not `noreply@`. People answer a message about being invited into someone's home. |
+| Reply-To | `support@example.com` | The monitored inbox, and the same address every household surface shows. Replace it with an operator-owned support mailbox. |
+| App origin | `<BETTER_AUTH_URL>` (for example, `https://tendnote.example`) | Where the invitation link points. Set by the configured canonical origin, never by an inbound `Host` header. |
 
-**The apex domain is not touched.** `support@stacklet.app` keeps working exactly
-as it does now: Cloudflare Email Routing owns the `MX` records on
-`stacklet.app`, and every record below is on `mail.stacklet.app` or deeper.
-Inbound routing and outbound sending do not collide.
+**The apex domain is not touched.** Keep the operator's support mailbox and
+transactional sender on the intended domains. Inbound routing and outbound
+sending do not collide when the dedicated `mail.<operator-domain>` subdomain is
+used for sending.
 
 ---
 
@@ -40,7 +42,7 @@ Inbound routing and outbound sending do not collide.
 1. Sign up at [resend.com](https://resend.com). The free tier covers 3,000
    emails/month and 100/day, which is far more than private beta needs.
 2. Go to **Domains -> Add Domain**.
-3. Enter `mail.stacklet.app`. Enter the subdomain, **not** `stacklet.app`.
+3. Enter `mail.<operator-domain>`. Enter the subdomain, **not** the apex domain.
 4. Pick the region closest to the Vercel deployment. The region is baked into the
    DNS values Resend gives you, so decide before adding records.
 5. Resend shows a table of DNS records. Leave that page open; section 2 is how to
@@ -48,12 +50,12 @@ Inbound routing and outbound sending do not collide.
 
 ## 2. Add the DNS records in Cloudflare
 
-Open the Cloudflare dashboard, select the **`stacklet.app`** zone, and go to
+Open the Cloudflare dashboard, select the operator's zone, and go to
 **DNS -> Records**.
 
 **The name field is the trap.** Cloudflare names records relative to the zone
 apex, and Resend names them relative to the domain you registered with it. Resend
-will say `send`; in a `stacklet.app` zone that must be entered as `send.mail`.
+will say `send`; in the operator's zone that must be entered as `send.mail`.
 Get this wrong and verification sits at "pending" forever with no error.
 
 Every record below is **DNS only** (grey cloud). Cloudflare does not proxy `TXT`
@@ -64,7 +66,7 @@ or `MX`, but check the toggle anyway if you add a `CNAME` variant.
 | 1 | `MX` | `send.mail` | the `feedback-smtp.<region>.amazonses.com` host Resend shows | `10` | The bounce return path. Without it Resend cannot see bounces and SPF cannot align. |
 | 2 | `TXT` | `send.mail` | `v=spf1 include:amazonses.com ~all` | - | SPF for the return path. |
 | 3 | `TXT` | `resend._domainkey.mail` | the long `p=MIGfMA0GCSqGSIb3...` value Resend shows | - | DKIM. **The dashboard is the authority here** - see the note below before you type anything. |
-| 4 | `TXT` | `_dmarc.mail` | `v=DMARC1; p=none; rua=mailto:support@stacklet.app` | - | DMARC. See the rollout note below. |
+| 4 | `TXT` | `_dmarc.mail` | `v=DMARC1; p=none; rua=mailto:support@example.com` | - | DMARC. Replace the synthetic mailbox with the operator's monitored address. |
 
 Notes on each:
 
@@ -82,14 +84,14 @@ Notes on each:
   or `CNAME`, so the shape is theirs to change and may differ by region or by how
   the domain was created. Whatever it shows - one record or several, `TXT` or
   `CNAME` - reproduce every DKIM row's type, name, and value exactly, applying
-  the same name rule as everything else here (drop the `.stacklet.app` suffix,
+  the same name rule as everything else here (drop the operator domain suffix,
   keep the `.mail`). Verification will not pass on a record you invented.
 - **Record 4** is optional for Resend's verification but not optional for
   deliverability. Gmail and Yahoo have required authenticated mail since February
   2024, and a domain with no DMARC record is treated worse than one with
   `p=none`. Because DMARC falls back to the organizational domain, a record on
-  `_dmarc.mail` lets `mail.stacklet.app` carry its own policy without changing
-  anything for `stacklet.app`.
+  `_dmarc.mail` lets the dedicated sending subdomain carry its own policy
+  without changing anything for the operator's apex domain.
 
 **Set TTL to Auto (or 300s) while you are setting up.** Raise it once the domain
 verifies and stays verified.
@@ -99,14 +101,14 @@ verifies and stays verified.
 From any machine, after a minute or two:
 
 ```bash
-dig TXT send.mail.stacklet.app +short
-dig MX  send.mail.stacklet.app +short
-dig TXT resend._domainkey.mail.stacklet.app +short
-dig TXT _dmarc.mail.stacklet.app +short
+dig TXT send.mail.<operator-domain> +short
+dig MX  send.mail.<operator-domain> +short
+dig TXT resend._domainkey.mail.<operator-domain> +short
+dig TXT _dmarc.mail.<operator-domain> +short
 ```
 
 If the dashboard gave you `CNAME` DKIM records instead, query those names with
-`dig CNAME <name>.stacklet.app +short` rather than the `TXT` line above.
+`dig CNAME <name>.<operator-domain> +short` rather than the `TXT` line above.
 
 Each should print the value you entered. No output means the record is missing or
 the name was entered relative to the wrong domain - re-read the name column
@@ -118,7 +120,7 @@ Then press **Verify DNS Records** in Resend. The domain should move to
 ### DMARC rollout
 
 Start at `p=none` and leave it there for at least a week of real sends. Read the
-aggregate reports arriving at `support@stacklet.app`, confirm every source is
+aggregate reports arriving at the operator's support mailbox, confirm every source is
 Tendnote, then tighten:
 
 ```
@@ -134,7 +136,7 @@ destroys mail rather than warning you about it.
 2. Name it for the deployment it belongs to (`tendnote-production`,
    `tendnote-preview`).
 3. Set permission to **Sending access** and restrict it to the
-   `mail.stacklet.app` domain. Tendnote never lists domains, reads emails, or
+   `mail.<operator-domain>` domain. Tendnote never lists domains, reads emails, or
    manages contacts, so full access is a standing hazard for no benefit.
 4. Copy the key. Resend shows it once.
 
@@ -147,9 +149,9 @@ reputation.
 | Variable | Where | Required | Notes |
 | --- | --- | --- | --- |
 | `RESEND_API_KEY` | Vercel project env, or `apps/web/.env.local` | Yes in production | Its presence is what selects the Resend transport. |
-| `TENDNOTE_EMAIL_FROM` | Same | No | Defaults to `Tendnote <notifications@mail.stacklet.app>`. Set it only for a deployment that must not send as production. |
-| `TENDNOTE_EMAIL_REPLY_TO` | Same | No | Defaults to `support@stacklet.app`. |
-| `BETTER_AUTH_URL` | Same | Yes in production | The origin the invitation link is built from. It must be the real HTTPS origin; the link is a capability and is never built from a request header. |
+| `TENDNOTE_EMAIL_FROM` | Same | Yes for real sends | Set to `Tendnote <notifications@mail.example.com>` with the operator's verified domain; the repository default is a reserved example address. |
+| `TENDNOTE_EMAIL_REPLY_TO` | Same | Yes for real sends | Set to the operator's monitored support mailbox; the repository default is synthetic. |
+| `BETTER_AUTH_URL` | Same | Yes in production | The configured canonical HTTPS origin the invitation link is built from. It is never built from a request header. |
 
 In Vercel: **Project -> Settings -> Environment Variables**. Add
 `RESEND_API_KEY` to Production. Add a **separate** key to Preview, or leave
@@ -163,7 +165,7 @@ than mailing real people from a branch.
 | Environment | `RESEND_API_KEY` | Transport |
 | --- | --- | --- |
 | `test` | anything | Operator log. The test runner never sends, whatever is in your shell. |
-| any | set | **Resend.** A key is what turns real sending on, so a smoke test works anywhere. |
+| any | set, with `TENDNOTE_EMAIL_REPLY_TO` | **Resend.** Both explicit operator values are required; otherwise it refuses. |
 | not production | unset | Operator log: the message is written to the server log, link and all. |
 | production | unset | **Refuses**, by name, naming the variable and this document. The attempt is recorded `failed` and the Owner is told delivery did not happen. |
 
@@ -200,15 +202,15 @@ Paste the link into a browser to walk the recipient's side.
 
 **Locally, with a real send:**
 
-1. Add `RESEND_API_KEY=re_...` to `apps/web/.env.local` and restart `pnpm dev`.
+1. Add `RESEND_API_KEY=re_...`, `TENDNOTE_EMAIL_FROM="Tendnote <notifications@mail.<operator-domain>>"`, and `TENDNOTE_EMAIL_REPLY_TO=support@<operator-domain>` to `apps/web/.env.local`, then restart `pnpm dev`.
 2. Invite an address you own.
-3. Check the terminal for errors, then check the inbox.
+3. Check the terminal for errors, then check the inbox. A real-send attempt refuses unless all three operator values are configured.
 
 **What to check in the message that arrives:**
 
 - [ ] It landed in the inbox, not in spam.
-- [ ] The sender reads `Tendnote`, the address is `@mail.stacklet.app`.
-- [ ] Replying to it goes to `support@stacklet.app`.
+- [ ] The sender reads `Tendnote`, from the operator's verified `mail.<operator-domain>` domain.
+- [ ] Replying to it goes to the operator's configured support mailbox.
 - [ ] The **Join** button works and lands on `/join/...` at the right origin.
 - [ ] The pasteable link below the button is the same URL.
 - [ ] Open the raw source (Gmail: **Show original**) and confirm the

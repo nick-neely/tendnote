@@ -5,8 +5,10 @@ import { createResendSender } from "@/lib/email/resend";
 import { renderHouseholdInvitationEmail } from "@/lib/email/templates/household-invitation";
 import {
   decideTransactionalTransport,
+  EmailTransportUnavailableError,
   operatorLogSender,
   resolveSenderIdentity,
+  resolveSupportEmail,
   type TransactionalSender,
   unavailableSender,
 } from "@/lib/email/transactional";
@@ -52,13 +54,21 @@ export type HouseholdInvitationTransport = (
  */
 export function getHouseholdInvitationTransport(): HouseholdInvitationTransport {
   const send = selectSender();
+  const supportEmail = resolveSupportEmail(process.env);
 
   return async (message) => {
+    if (!supportEmail) {
+      throw new EmailTransportUnavailableError(
+        "TENDNOTE_EMAIL_REPLY_TO is not set, so Tendnote cannot send or display a recovery contact. Add the operator support mailbox to this deployment's environment (see docs/email-setup.md).",
+      );
+    }
+
     const content = await renderHouseholdInvitationEmail({
       householdName: message.householdName,
       inviterName: message.inviterName,
       acceptUrl: message.acceptUrl,
       expiresAt: message.expiresAt,
+      supportEmail,
     });
 
     return send({ ...content, to: message.to, idempotencyKey: message.deliveryId });
