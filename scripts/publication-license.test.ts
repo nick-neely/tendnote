@@ -188,6 +188,34 @@ describe("fresh-clone publication gate", () => {
     expect(gate).toContain("not legal advice");
   });
 
+  it("publishes a bounded private vulnerability reporting path", () => {
+    const entryPoint = read("SECURITY.md");
+    const canonical = read("docs/security.md");
+
+    expect(entryPoint).toContain("https://github.com/nick-neely/tendnote/security/advisories");
+    expect(entryPoint).toMatch(/sole reporting channel/i);
+    expect(entryPoint).toMatch(/credentials[\s\S]*private records[\s\S]*personal data/i);
+    expect(entryPoint).toMatch(/public Issues[\s\S]*pull requests/i);
+    expect(entryPoint).toMatch(/seven calendar days/i);
+    expect(entryPoint).toMatch(/best-effort acknowledgement/i);
+    expect(entryPoint).toMatch(/not a remediation deadline/i);
+    expect(entryPoint).not.toMatch(/has been (?:certified|audited)/i);
+    expect(entryPoint).not.toMatch(/comprehensive security coverage/i);
+    expect(entryPoint).not.toMatch(/blanket security claim/i);
+
+    expect(canonical).toContain("## Deterministic controls and their limits");
+    expect(canonical).toContain("**Query**");
+    expect(canonical).toContain("**Ownership**");
+    expect(canonical).toContain("**Review**");
+    expect(canonical).toContain("**Approval**");
+    expect(canonical).toContain("**Fail closed**");
+    expect(canonical).toMatch(/model-policy boundary/i);
+    expect(canonical).toContain("## Self-host operator responsibilities");
+    expect(canonical).toMatch(/backups and recovery/i);
+    expect(canonical).toMatch(/security updates/i);
+    expect(existsSync(resolve(root, "SECURITY.md"))).toBe(true);
+  });
+
   it("keeps the current tree free of maintainer deployment values", () => {
     expect(findMaintainerDeploymentLeaks()).toEqual([]);
     const currentConfig = [
