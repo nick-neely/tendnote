@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { createResendSender, type ResendEmails, ResendSendError } from "./resend";
 
 const IDENTITY = {
-  from: "Tendnote <notifications@mail.stacklet.app>",
-  replyTo: "support@stacklet.app",
+  from: "Tendnote <notifications@mail.tendnote.example>",
+  replyTo: "support@tendnote.example",
 };
 
 const EMAIL = {

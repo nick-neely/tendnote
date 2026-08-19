@@ -74,8 +74,8 @@ describe("the transport the app is handed", () => {
 
     const [payload, options] = resendSend.mock.calls[0] ?? [];
     expect(payload.to).toBe("sam@example.com");
-    expect(payload.from).toBe("Tendnote <notifications@mail.stacklet.app>");
-    expect(payload.replyTo).toBe("support@stacklet.app");
+    expect(payload.from).toBe("Tendnote <notifications@mail.tendnote.example>");
+    expect(payload.replyTo).toBe("support@tendnote.example");
     expect(payload.subject).toBe("You're invited to The Neely house on Tendnote");
     expect(payload.html).toContain(MESSAGE.acceptUrl);
     expect(payload.text).toContain(MESSAGE.acceptUrl);

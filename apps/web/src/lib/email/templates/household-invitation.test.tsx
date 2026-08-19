@@ -52,7 +52,7 @@ describe("what the invitation says", () => {
   it("identifies the sender and why this arrived, and gives a way to answer", () => {
     expect(rendered.text).toContain("Why you received this");
     expect(rendered.text).toContain("Alex invited this email address");
-    expect(rendered.text).toContain("support@stacklet.app");
+    expect(rendered.text).toContain("support@tendnote.example");
   });
 });
 

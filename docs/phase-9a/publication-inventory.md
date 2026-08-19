@@ -108,20 +108,18 @@ retained deliberately for a promotion window, so deletion is not automatic.
 
 Low severity. Execution detail for the publication slice, not a decision.
 
-### 4. `stacklet.app` hardcoded in source and configuration
+### 4. Former hosted origin in source and configuration
 
-Nine tracked files reference the current deployment host, including source
-rather than only configuration: `apps/web/src/lib/email/transactional.ts`,
-`packages/domain/src/household-governance.ts`, `apps/web/.env.example`, and
-`docs/email-setup.md`.
+The pre-publication tree contained the maintainer's hosted origin in nine
+tracked files, including source rather than only configuration. Ticket #470
+replaces those current-tree values with reserved synthetic examples and makes
+operational URLs derive from the configured canonical `BETTER_AUTH_URL`.
 
-Not sensitive. Two reasons it still matters:
-
-- A repository promising self-hosting (ADR 0225) with the maintainer's hosted
-  domain compiled into source is a poor first impression and a likely source of
-  self-hoster confusion. **This is a fact for [#454](https://github.com/nick-neely/tendnote/issues/454)**, which decides self-hosted
-  admission and deployment configuration.
-- It changes when `tendnote.com` lands ([#456](https://github.com/nick-neely/tendnote/issues/456)).
+This was not sensitive credential material, and the original value remains
+recoverable from immutable history under ADR 0229. It is intentionally not
+repeated here because this inventory is part of the current reader-facing tree;
+the historical qualification records that retain deployment IDs are labeled as
+historical evidence and are not configuration.
 
 ### 5. Author email in commit metadata
 

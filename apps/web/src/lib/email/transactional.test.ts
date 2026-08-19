@@ -64,9 +64,9 @@ describe("who the mail is from", () => {
   it("sends from the transactional subdomain and replies to the support inbox", () => {
     expect(resolveSenderIdentity({})).toEqual({
       from: DEFAULT_EMAIL_FROM,
-      replyTo: "support@stacklet.app",
+      replyTo: "support@tendnote.example",
     });
-    expect(DEFAULT_EMAIL_FROM).toContain("@mail.stacklet.app");
+    expect(DEFAULT_EMAIL_FROM).toContain("@mail.tendnote.example");
     // A monitored mailbox, not a `noreply@`: people answer a message about being
     // invited into someone's home.
     expect(DEFAULT_EMAIL_FROM).not.toMatch(/noreply|no-reply|donotreply/i);

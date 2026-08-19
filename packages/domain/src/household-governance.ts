@@ -97,7 +97,7 @@ export const HOUSEHOLD_RECOVERY_IS_SUPPORT_ONLY =
  * sending are separate concerns and only the sending one needs its own
  * reputation. Transactional mail replies here too, so the two cannot diverge.
  */
-export const HOUSEHOLD_SUPPORT_EMAIL = "support@stacklet.app";
+export const HOUSEHOLD_SUPPORT_EMAIL = "support@tendnote.example";
 
 /**
  * What someone is told when the household they were acting on is no longer one

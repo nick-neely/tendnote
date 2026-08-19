@@ -49,7 +49,10 @@ export class EmailTransportUnavailableError extends Error {
  */
 export type TransactionalSenderIdentity = { from: string; replyTo: string };
 
-export const DEFAULT_EMAIL_FROM = "Tendnote <notifications@mail.stacklet.app>";
+// A reserved example domain prevents a fresh clone from sending as a
+// maintainer-owned address. Operators must set this and the reply address for
+// a real deployment (see docs/email-setup.md).
+export const DEFAULT_EMAIL_FROM = "Tendnote <notifications@mail.tendnote.example>";
 
 /**
  * Exactly the variables this module reads, named rather than taking the whole
