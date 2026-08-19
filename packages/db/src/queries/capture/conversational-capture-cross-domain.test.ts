@@ -493,6 +493,7 @@ describe("cross-domain conversational Capture", () => {
     );
     const capture = createConversationalCapture(store, {
       createSuggestedMemory,
+      getPerson: vi.fn().mockResolvedValue({ id: "person-priya", displayName: "Priya" }),
       resolveVisibility: createCaptureVisibilityResolver({
         listMemberships: store.listActiveHouseholdMembershipsForUser,
         listMembers: vi.fn().mockResolvedValue([]),
@@ -570,6 +571,7 @@ describe("cross-domain conversational Capture", () => {
     const capture = createConversationalCapture(store, {
       createApprovedMemory,
       createSuggestedMemory,
+      getPerson: vi.fn().mockResolvedValue({ id: "person-priya", displayName: "Priya" }),
       searchPeople: vi.fn().mockResolvedValue([{ id: "person-priya", displayName: "Priya" }]),
       resolveVisibility: createCaptureVisibilityResolver({
         listMemberships: store.listActiveHouseholdMembershipsForUser,
@@ -635,6 +637,7 @@ describe("cross-domain conversational Capture", () => {
       createApprovedMemory,
       createGeneralAction,
       createSuggestedMemory,
+      getPerson: vi.fn().mockResolvedValue({ id: "person-priya", displayName: "Priya" }),
     });
 
     const result = await capture.capture({
@@ -680,6 +683,67 @@ describe("cross-domain conversational Capture", () => {
         },
       ],
     });
+  });
+
+  it("rejects an unresolved inferred Person sentinel before the review mutation", async () => {
+    const store = createInMemorySavedItemLifecycleStore();
+    const createGeneralAction = vi
+      .fn()
+      .mockImplementation(async (input) => actionMutationOutcome({ ...input, status: "open" }));
+    const createSuggestedMemory = vi.fn();
+    const getPerson = vi.fn().mockResolvedValue(null);
+    const capture = createConversationalCapture(store, {
+      createGeneralAction,
+      createSuggestedMemory,
+      getPerson,
+    });
+
+    const result = await capture.capture({
+      authority: "explicit",
+      interactionId: "unresolved-inferred-memory",
+      inferredSuggestions: [
+        {
+          kind: "memory",
+          personId: "new",
+          personName: "Priya",
+          content: "Priya might prefer oat milk",
+        },
+      ],
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      originalText: "I need to buy oat milk",
+      surface: "eve",
+    });
+
+    expect(getPerson).toHaveBeenCalledWith({ ownerUserId: "owner-1", personId: "new" });
+    expect(createSuggestedMemory).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      sourceRecord: { status: "active", content: "I need to buy oat milk" },
+      confirmation: { destination: "Actions" },
+    });
+    expect(result.outcomes).toBeUndefined();
+  });
+
+  it("rejects an explicit Memory when the resolved Person no longer exists", async () => {
+    const store = createInMemorySavedItemLifecycleStore();
+    const createApprovedMemory = vi.fn();
+    const capture = createConversationalCapture(store, {
+      createApprovedMemory,
+      getPerson: vi.fn().mockResolvedValue(null),
+      searchPeople: vi.fn().mockResolvedValue([{ id: "person-priya", displayName: "Priya" }]),
+    });
+
+    await expect(
+      capture.capture({
+        authority: "explicit",
+        interactionId: "stale-resolved-memory",
+        inputMode: "typed",
+        ownerUserId: "owner-1",
+        originalText: "Remember that Priya prefers oat milk",
+        surface: "eve",
+      }),
+    ).rejects.toThrow("Memory capture requires a resolved person.");
+    expect(createApprovedMemory).not.toHaveBeenCalled();
   });
 
   it("reroutes a newly captured minimal Person through its guarded delete lifecycle", async () => {
