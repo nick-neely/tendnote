@@ -20,7 +20,7 @@ async function createHarness(evaluateFlag: PrivateBetaFlagEvaluator) {
     evaluateFlag,
   });
 
-  const bootstrap = await queries.ensureAccessProfile({ userId: BOOTSTRAP_USER });
+  const bootstrap = await queries.ensureLocalDevelopmentAccessProfile({ userId: BOOTSTRAP_USER });
   if (bootstrap.status !== "granted") {
     throw new Error("Expected the first user to bootstrap as granted.");
   }
@@ -112,5 +112,30 @@ describe("private beta access resolver", () => {
     const admitted = await resolver.resolveAccess(githubUser);
     expect(admitted.admitted).toBe(true);
     expect(admitted.profile?.source).toBe("beta_flag");
+  });
+
+  it("admits the configured self-hosted owner through the same Web seam", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    const evaluateFlag = vi.fn<PrivateBetaFlagEvaluator>().mockResolvedValue(true);
+    const resolver = createPrivateBetaAccessResolver({
+      accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
+      evaluateFlag,
+      policy: {
+        mode: "self-hosted",
+        valid: true,
+        bootstrapOwnerEmail: "owner@example.com",
+      },
+    });
+
+    const decision = await resolver.resolveAccess({
+      userId: "owner-user",
+      email: " Owner@Example.com ",
+    });
+
+    expect(decision).toMatchObject({
+      admitted: true,
+      profile: { source: "self_hosted_bootstrap" },
+    });
+    expect(evaluateFlag).not.toHaveBeenCalled();
   });
 });

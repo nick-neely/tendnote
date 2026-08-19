@@ -3,20 +3,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   createSession,
   createUser,
-  ensureAccessProfile,
+  ensureLocalDevelopmentAccessProfile,
   findUserById,
   serializeSignedCookie,
   updateAuthUserEmail,
 } = vi.hoisted(() => ({
   createSession: vi.fn(),
   createUser: vi.fn(),
-  ensureAccessProfile: vi.fn(),
+  ensureLocalDevelopmentAccessProfile: vi.fn(),
   findUserById: vi.fn(),
   serializeSignedCookie: vi.fn(),
   updateAuthUserEmail: vi.fn(),
 }));
 
-vi.mock("@tendnote/db/queries/access-profiles", () => ({ ensureAccessProfile }));
+vi.mock("@tendnote/db/queries/access-profiles", () => ({ ensureLocalDevelopmentAccessProfile }));
 vi.mock("@tendnote/db/queries/auth-users", () => ({ updateAuthUserEmail }));
 vi.mock("better-call", () => ({ serializeSignedCookie }));
 vi.mock("@/lib/auth/server", () => ({
@@ -44,7 +44,7 @@ import { POST } from "./route";
 beforeEach(() => {
   createSession.mockReset();
   createUser.mockReset();
-  ensureAccessProfile.mockReset();
+  ensureLocalDevelopmentAccessProfile.mockReset();
   findUserById.mockReset();
   serializeSignedCookie.mockReset();
   updateAuthUserEmail.mockReset();
@@ -70,7 +70,7 @@ describe("POST /api/dev/demo-session", () => {
       name: "Local development",
       emailVerified: true,
     });
-    expect(ensureAccessProfile).toHaveBeenCalledWith({ userId: "demo-user" });
+    expect(ensureLocalDevelopmentAccessProfile).toHaveBeenCalledWith({ userId: "demo-user" });
     expect(createSession).toHaveBeenCalledWith("demo-user");
     expect(serializeSignedCookie).toHaveBeenCalledWith(
       "better-auth.session_token",
@@ -116,7 +116,7 @@ describe("POST /api/dev/demo-session", () => {
 
     expect(response.status).toBe(204);
     expect(createUser).not.toHaveBeenCalled();
-    expect(ensureAccessProfile).toHaveBeenCalledWith({ userId: "demo-user" });
+    expect(ensureLocalDevelopmentAccessProfile).toHaveBeenCalledWith({ userId: "demo-user" });
     expect(createSession).toHaveBeenCalledWith("demo-user");
   });
 
@@ -133,7 +133,7 @@ describe("POST /api/dev/demo-session", () => {
       email: "person@example.com",
       userId: "demo-user",
     });
-    expect(ensureAccessProfile).toHaveBeenCalledWith({ userId: "demo-user" });
+    expect(ensureLocalDevelopmentAccessProfile).toHaveBeenCalledWith({ userId: "demo-user" });
     expect(createSession).toHaveBeenCalledWith("demo-user");
   });
 

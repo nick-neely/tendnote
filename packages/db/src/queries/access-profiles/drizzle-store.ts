@@ -35,8 +35,8 @@ export function createDrizzleAccessProfileStore(): AccessProfileStore {
 
     async insertIfAbsent(input) {
       // `onConflictDoNothing` covers every unique constraint: the `userId` primary
-      // key and the partial unique bootstrap index. A conflict yields no row, which
-      // we surface as `null` so the query layer can fall back.
+      // key and the singleton bootstrap indexes. A conflict yields no row, which
+      // we surface as `null` so the query layer can settle on the existing row.
       const [profile] = await getDb()
         .insert(accessProfiles)
         .values(input)
