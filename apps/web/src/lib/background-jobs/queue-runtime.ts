@@ -88,6 +88,16 @@ export const BACKGROUND_JOB_QUEUE_CONFIG = {
     rateLimitKey: "background-job:reminder-push",
     costCategory: "push-delivery",
   },
+  owner_data_export: {
+    topic: BACKGROUND_JOB_TOPICS.owner_data_export,
+    consumerGroup: "tendnote-owner-data-export-processor",
+    maxConcurrency: 1,
+    maxMessagesPerSecond: 1,
+    visibilityTimeoutSeconds: 600,
+    retryAfterSeconds: 60,
+    rateLimitKey: "background-job:owner-data-export",
+    costCategory: "server-action",
+  },
 } satisfies Record<
   BackgroundJobKind,
   {
@@ -368,7 +378,8 @@ function parseBackgroundJobQueuePayload(payload: unknown): BackgroundJobQueuePay
       candidate.jobKind !== "embedding" &&
       candidate.jobKind !== "action_extraction" &&
       candidate.jobKind !== "context_fact_extraction" &&
-      candidate.jobKind !== "reminder_push")
+      candidate.jobKind !== "reminder_push" &&
+      candidate.jobKind !== "owner_data_export")
   ) {
     return null;
   }

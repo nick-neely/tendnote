@@ -6,6 +6,7 @@ const {
   resolveAccountView,
   getOwnerProviderConnections,
   getOwnerCalendarPreview,
+  getLatestOwnerDataExportJob,
   listReminderInstallations,
   unstable_rethrow,
 } = vi.hoisted(() => ({
@@ -16,13 +17,19 @@ const {
   resolveAccountView: vi.fn(),
   getOwnerProviderConnections: vi.fn(),
   getOwnerCalendarPreview: vi.fn().mockResolvedValue({ state: "hidden" }),
+  getLatestOwnerDataExportJob: vi.fn().mockResolvedValue(null),
   listReminderInstallations: vi.fn().mockResolvedValue([]),
   unstable_rethrow: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ redirect, unstable_rethrow }));
+vi.mock("server-only", () => ({}));
+vi.mock("@/app/actions/owner-data-export", () => ({
+  requestOwnerDataExportAction: vi.fn(),
+}));
 vi.mock("@/lib/access/current-access", () => ({ getCurrentAccess }));
 vi.mock("@tendnote/db/queries/reminders", () => ({ listReminderInstallations }));
+vi.mock("@tendnote/db/queries/owner-data-export", () => ({ getLatestOwnerDataExportJob }));
 vi.mock("@/lib/access/account-summary", () => ({ resolveAccountView }));
 vi.mock("@/lib/access/access-state", () => ({ localFallbackOwnerUserId: () => undefined }));
 vi.mock("@/lib/integrations/provider-connections", () => ({ getOwnerProviderConnections }));
@@ -56,6 +63,7 @@ beforeEach(() => {
   resolveAccountView.mockReset();
   getOwnerProviderConnections.mockReset();
   getOwnerCalendarPreview.mockReset().mockResolvedValue({ state: "hidden" });
+  getLatestOwnerDataExportJob.mockReset().mockResolvedValue(null);
   listReminderInstallations.mockReset().mockResolvedValue([]);
   redirect.mockClear();
   unstable_rethrow.mockReset();

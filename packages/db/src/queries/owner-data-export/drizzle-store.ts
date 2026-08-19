@@ -1,0 +1,258 @@
+import { and, asc, desc, eq, lte, or, sql } from "drizzle-orm";
+import { getDb } from "../../client";
+import { ownerDataExportArtifacts, ownerDataExportJobs } from "../../schema";
+import type {
+  EnqueueOwnerDataExportJobInput,
+  OwnerDataExportArtifactStore,
+  OwnerDataExportJobStore,
+} from "./types";
+
+const DEFAULT_LEASE_DURATION_MS = 10 * 60 * 1000;
+const RETRY_DELAY_MS = 5 * 60 * 1000;
+
+function scrubError(error: string) {
+  return error.replace(/\s+/g, " ").trim().slice(0, 500);
+}
+
+export function createDrizzleOwnerDataExportJobStore(): OwnerDataExportJobStore {
+  return {
+    async enqueue(input: EnqueueOwnerDataExportJobInput) {
+      const now = input.now ?? new Date();
+      const idempotencyKey =
+        input.idempotencyKey ?? `owner-data-export:${input.ownerUserId}:${crypto.randomUUID()}`;
+      const [created] = await getDb()
+        .insert(ownerDataExportJobs)
+        .values({ ownerUserId: input.ownerUserId, idempotencyKey, runAfter: now })
+        .onConflictDoNothing({
+          target: [ownerDataExportJobs.ownerUserId, ownerDataExportJobs.idempotencyKey],
+        })
+        .returning();
+      if (created) return { job: created, created: true };
+
+      const [existing] = await getDb()
+        .select()
+        .from(ownerDataExportJobs)
+        .where(
+          and(
+            eq(ownerDataExportJobs.ownerUserId, input.ownerUserId),
+            eq(ownerDataExportJobs.idempotencyKey, idempotencyKey),
+          ),
+        )
+        .limit(1);
+      if (!existing) throw new Error("Failed to create owner data export job.");
+      return { job: existing, created: false };
+    },
+    async get(input) {
+      const filters = [eq(ownerDataExportJobs.id, input.jobId)];
+      if (input.ownerUserId) filters.push(eq(ownerDataExportJobs.ownerUserId, input.ownerUserId));
+      const [job] = await getDb()
+        .select()
+        .from(ownerDataExportJobs)
+        .where(and(...filters))
+        .limit(1);
+      return job ?? null;
+    },
+    async getLatestForOwner(input) {
+      const [job] = await getDb()
+        .select()
+        .from(ownerDataExportJobs)
+        .where(eq(ownerDataExportJobs.ownerUserId, input.ownerUserId))
+        .orderBy(desc(ownerDataExportJobs.createdAt), desc(ownerDataExportJobs.id))
+        .limit(1);
+      return job ?? null;
+    },
+    async claim(input) {
+      const now = input.now ?? new Date();
+      const leaseDurationMs = input.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
+      const staleBefore = new Date(now.getTime() - leaseDurationMs);
+      const [job] = await getDb()
+        .update(ownerDataExportJobs)
+        .set({
+          status: "running",
+          attempts: sql`${ownerDataExportJobs.attempts} + 1`,
+          claimedAt: now,
+          lastError: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(ownerDataExportJobs.id, input.jobId),
+            or(
+              and(
+                or(
+                  eq(ownerDataExportJobs.status, "pending"),
+                  eq(ownerDataExportJobs.status, "failed"),
+                ),
+                lte(ownerDataExportJobs.runAfter, now),
+              ),
+              and(
+                eq(ownerDataExportJobs.status, "running"),
+                lte(ownerDataExportJobs.claimedAt, staleBefore),
+              ),
+            ),
+          ),
+        )
+        .returning();
+      return job ?? null;
+    },
+    async claimNext(input) {
+      const now = input.now ?? new Date();
+      const leaseDurationMs = input.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
+      const staleBefore = new Date(now.getTime() - leaseDurationMs);
+      const [candidate] = await getDb()
+        .select({ id: ownerDataExportJobs.id })
+        .from(ownerDataExportJobs)
+        .where(
+          or(
+            and(
+              or(
+                eq(ownerDataExportJobs.status, "pending"),
+                eq(ownerDataExportJobs.status, "failed"),
+              ),
+              lte(ownerDataExportJobs.runAfter, now),
+            ),
+            and(
+              eq(ownerDataExportJobs.status, "running"),
+              lte(ownerDataExportJobs.claimedAt, staleBefore),
+            ),
+          ),
+        )
+        .orderBy(asc(ownerDataExportJobs.runAfter), asc(ownerDataExportJobs.createdAt))
+        .limit(1);
+      return candidate ? this.claim({ jobId: candidate.id, now, leaseDurationMs }) : null;
+    },
+    async markCompleted(input) {
+      const completedAt = input.completedAt ?? new Date();
+      const [job] = await getDb()
+        .update(ownerDataExportJobs)
+        .set({
+          status: "completed",
+          completedAt,
+          artifactExpiresAt: input.artifactExpiresAt,
+          claimedAt: null,
+          lastError: null,
+          updatedAt: completedAt,
+        })
+        .where(eq(ownerDataExportJobs.id, input.jobId))
+        .returning();
+      if (!job) throw new Error("Owner data export job not found.");
+      return job;
+    },
+    async markFailed(input) {
+      const [job] = await getDb()
+        .update(ownerDataExportJobs)
+        .set({
+          status: "failed",
+          lastError: scrubError(input.error),
+          runAfter: input.runAfter,
+          claimedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(ownerDataExportJobs.id, input.jobId))
+        .returning();
+      if (!job) throw new Error("Owner data export job not found.");
+      return job;
+    },
+    async markExpired(input) {
+      const now = input.now ?? new Date();
+      const [job] = await getDb()
+        .update(ownerDataExportJobs)
+        .set({ status: "expired", artifactExpiresAt: null, updatedAt: now })
+        .where(
+          and(
+            eq(ownerDataExportJobs.id, input.jobId),
+            eq(ownerDataExportJobs.status, "completed"),
+            lte(ownerDataExportJobs.artifactExpiresAt, now),
+          ),
+        )
+        .returning();
+      return job ?? null;
+    },
+    async listExpired(input) {
+      const now = input.now ?? new Date();
+      return getDb()
+        .select()
+        .from(ownerDataExportJobs)
+        .where(
+          and(
+            eq(ownerDataExportJobs.status, "completed"),
+            lte(ownerDataExportJobs.artifactExpiresAt, now),
+          ),
+        )
+        .orderBy(asc(ownerDataExportJobs.artifactExpiresAt))
+        .limit(input.limit);
+    },
+  };
+}
+
+export function createDrizzleOwnerDataExportArtifactStore(): OwnerDataExportArtifactStore {
+  return {
+    async put(input) {
+      const now = new Date();
+      const [artifact] = await getDb()
+        .insert(ownerDataExportArtifacts)
+        .values({
+          jobId: input.jobId,
+          ownerUserId: input.ownerUserId,
+          bytes: input.bytes,
+          expiresAt: input.expiresAt,
+        })
+        .onConflictDoUpdate({
+          target: ownerDataExportArtifacts.jobId,
+          set: {
+            ownerUserId: input.ownerUserId,
+            bytes: input.bytes,
+            expiresAt: input.expiresAt,
+            updatedAt: now,
+          },
+        })
+        .returning();
+      if (!artifact) throw new Error("Failed to persist owner data export artifact.");
+      return artifact;
+    },
+    async get(input) {
+      const now = input.now ?? new Date();
+      const [artifact] = await getDb()
+        .select()
+        .from(ownerDataExportArtifacts)
+        .where(
+          and(
+            eq(ownerDataExportArtifacts.jobId, input.jobId),
+            eq(ownerDataExportArtifacts.ownerUserId, input.ownerUserId),
+            // Do not reveal whether a mismatched/unknown artifact exists.
+            // The expiry predicate keeps the object store itself authoritative.
+            sql`${ownerDataExportArtifacts.expiresAt} > ${now}`,
+          ),
+        )
+        .limit(1);
+      return artifact ?? null;
+    },
+    async delete(input) {
+      await getDb()
+        .delete(ownerDataExportArtifacts)
+        .where(eq(ownerDataExportArtifacts.jobId, input.jobId));
+    },
+    async deleteExpired(input) {
+      const now = input.now ?? new Date();
+      if (input.limit <= 0) return 0;
+      const expired = await getDb()
+        .select({ jobId: ownerDataExportArtifacts.jobId })
+        .from(ownerDataExportArtifacts)
+        .where(lte(ownerDataExportArtifacts.expiresAt, now))
+        .orderBy(asc(ownerDataExportArtifacts.expiresAt))
+        .limit(input.limit);
+      if (expired.length === 0) return 0;
+      await getDb()
+        .delete(ownerDataExportArtifacts)
+        .where(
+          sql`${ownerDataExportArtifacts.jobId} in (${sql.join(
+            expired.map((item) => sql`${item.jobId}`),
+            sql`, `,
+          )})`,
+        );
+      return expired.length;
+    },
+  };
+}
+
+export { RETRY_DELAY_MS as OWNER_DATA_EXPORT_RETRY_DELAY_MS };
