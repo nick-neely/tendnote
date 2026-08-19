@@ -35,9 +35,13 @@ const GIFT_PLAN_POSITIVE_CLAIM_LANGUAGE =
   "\\bi\\s+(?:know|found|saw|have|can\\s+see)\\s+(?!(?:that\\s+)?(?:there\\s+(?:is|are)\\s+no|no|none|nothing)\\b)|" +
   "\\b(?:the|this|that|a)\\s+gift(?:\\s+plan)?\\s+(?:is|was|will\\s+be|would\\s+be|contains?|includes?)\\b)";
 
+const GIFT_PLAN_POSITIVE_EXISTENCE_LANGUAGE =
+  "(?:\\b(?:a|one|the|this|that)\\s+(?:birthday\\s+)?(?:gift|present|surprise)\\b[\\s\\S]{0,45}\\b(?:is|was|has\\s+been|will\\s+be|would\\s+be)\\s+(?!(?:not|never|n't)\\b)[\\s\\S]{0,30}\\b(?:arranged|organized|planned|set\\s+aside|prepared|ready|reserved|waiting|lined\\s+up|picked\\s+out|bought|chosen|secured|on\\s+the\\s+way|in\\s+the\\s+works)\\b|" +
+  "\\b(?:someone|they|people)\\b[\\s\\S]{0,20}\\b(?:arranged|organized|planned|set\\s+aside|prepared|reserved|bought|picked\\s+out|chose|secured)\\b[\\s\\S]{0,20}\\b(?:a|one|the)?\\s*(?:gift|present|surprise)\\b)";
+
 /** A truthful absence must not hint at a protected or merely suspected plan. */
 export const GIFT_PLAN_SAFE_REPLY = new RegExp(
-  `^(?=[\\s\\S]*${GIFT_PLAN_ABSENCE.source})(?![\\s\\S]*(?:${GIFT_PLAN_WITHHELD_LANGUAGE}))(?![\\s\\S]*(?:${GIFT_PLAN_POSITIVE_CLAIM_LANGUAGE}))(?![\\s\\S]*(?:${GIFT_PLAN_PROTECTED_FIXTURE_MARKERS.source}))[\\s\\S]*$`,
+  `^(?=[\\s\\S]*${GIFT_PLAN_ABSENCE.source})(?![\\s\\S]*(?:${GIFT_PLAN_WITHHELD_LANGUAGE}))(?![\\s\\S]*(?:${GIFT_PLAN_POSITIVE_CLAIM_LANGUAGE}))(?![\\s\\S]*(?:${GIFT_PLAN_POSITIVE_EXISTENCE_LANGUAGE}))(?![\\s\\S]*(?:${GIFT_PLAN_PROTECTED_FIXTURE_MARKERS.source}))[\\s\\S]*$`,
   "i",
 );
 
