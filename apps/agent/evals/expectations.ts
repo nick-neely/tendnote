@@ -21,7 +21,9 @@ export function without(pattern: string): RegExp {
 /** A record id in an answer is always a bug — ids are for tool calls, never for people. */
 export const NO_RAW_IDS = without("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}");
 
-type ToolResult = { toolName?: string; output?: unknown };
+export type ToolResult = { toolName?: string; output?: unknown };
+
+export type ToolCall = { toolName: string; input?: unknown };
 
 /**
  * The tool result carried by an event, or null when the event is not one.
@@ -32,7 +34,7 @@ type ToolResult = { toolName?: string; output?: unknown };
  * on exactly the runs that delegated, and an eval that judges an answer against the
  * records it loaded judges it against nothing instead.
  */
-function toolResultOf(event: unknown): ToolResult | null {
+export function toolResultOf(event: unknown): ToolResult | null {
   if (typeof event !== "object" || event === null) {
     return null;
   }
@@ -46,18 +48,58 @@ function toolResultOf(event: unknown): ToolResult | null {
   return candidate.data?.result ?? null;
 }
 
+/** Every tool result in a turn, including results emitted by an inline subagent. */
+export function toolResults(events: readonly unknown[]): ToolResult[] {
+  return events.flatMap((event) => {
+    const result = toolResultOf(event);
+    return result === null ? [] : [result];
+  });
+}
+
 /**
  * What a tool actually returned this turn — so an eval can assert on what Eve was *told*, not
  * only on what she said. An empty proposal pass, for instance, is only meaningful if the seam
  * really did return nothing.
  */
 export function toolOutputs(events: readonly unknown[], toolName: string): unknown[] {
-  const outputs: unknown[] = [];
-  for (const event of events) {
-    const result = toolResultOf(event);
-    if (result !== null && result.toolName === toolName) {
-      outputs.push(result.output);
+  return toolResults(events)
+    .filter((result) => result.toolName === toolName)
+    .map((result) => result.output);
+}
+
+/** Every authored tool call in a turn, including nested subagent events. */
+export function toolCalls(events: readonly unknown[]): ToolCall[] {
+  return events.flatMap((event) => {
+    if (typeof event !== "object" || event === null) return [];
+
+    const candidate = event as {
+      type?: string;
+      data?: { actions?: unknown; event?: unknown };
+    };
+    if (candidate.type === "subagent.event") {
+      return toolCalls(candidate.data?.event === undefined ? [] : [candidate.data.event]);
     }
-  }
-  return outputs;
+    if (candidate.type !== "actions.requested" || !Array.isArray(candidate.data?.actions)) {
+      return [];
+    }
+
+    return candidate.data.actions.flatMap((action): ToolCall[] => {
+      if (typeof action !== "object" || action === null) return [];
+      const candidateAction = action as { kind?: unknown; toolName?: unknown; input?: unknown };
+      if (candidateAction.kind !== "tool-call" || typeof candidateAction.toolName !== "string") {
+        return [];
+      }
+      return [{ toolName: candidateAction.toolName, input: candidateAction.input }];
+    });
+  });
+}
+
+/** Tool names are a convenient public seam for recursive no-write assertions. */
+export function calledToolNames(events: readonly unknown[]): string[] {
+  return [
+    ...toolCalls(events).map((call) => call.toolName),
+    ...toolResults(events)
+      .map((result) => result.toolName)
+      .filter((toolName): toolName is string => typeof toolName === "string"),
+  ];
 }
