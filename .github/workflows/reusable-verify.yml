@@ -86,25 +86,6 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      # `runs-on/action@v2` echoes the pre-swap GitHub cache URLs back as
-      # `ZCTIONS_CACHE_URL` / `ZCTIONS_RESULTS_URL`. The renamed prefix sidesteps
-      # the runner's masking of `ACTIONS_*`, printing the embedded per-job token
-      # in clear text - which matters once these logs are public. Registering the
-      # values first makes the runner redact them wherever they appear. Harmless
-      # no-op if RunsOn stops exporting the variables to steps.
-      - name: Mask RunsOn cache URLs
-        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        shell: bash
-        run: |
-          for name in ZCTIONS_CACHE_URL ZCTIONS_RESULTS_URL; do
-            value="${!name:-}"
-            if [ -n "$value" ]; then
-              echo "::add-mask::$value"
-              echo "masked $name"
-            else
-              echo "$name not exported to steps; nothing to mask"
-            fi
-          done
       # Activates the S3-backed Magic Cache. The runner preset carries
       # `extras: s3-cache`, but without this step `actions/cache` and the
       # `setup-node` pnpm cache silently keep talking to GitHub instead.
@@ -146,25 +127,6 @@ jobs:
       }}
     timeout-minutes: 15
     steps:
-      # `runs-on/action@v2` echoes the pre-swap GitHub cache URLs back as
-      # `ZCTIONS_CACHE_URL` / `ZCTIONS_RESULTS_URL`. The renamed prefix sidesteps
-      # the runner's masking of `ACTIONS_*`, printing the embedded per-job token
-      # in clear text - which matters once these logs are public. Registering the
-      # values first makes the runner redact them wherever they appear. Harmless
-      # no-op if RunsOn stops exporting the variables to steps.
-      - name: Mask RunsOn cache URLs
-        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        shell: bash
-        run: |
-          for name in ZCTIONS_CACHE_URL ZCTIONS_RESULTS_URL; do
-            value="${!name:-}"
-            if [ -n "$value" ]; then
-              echo "::add-mask::$value"
-              echo "masked $name"
-            else
-              echo "$name not exported to steps; nothing to mask"
-            fi
-          done
       - name: Set up RunsOn
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: runs-on/action@v2
@@ -204,25 +166,6 @@ jobs:
       }}
     timeout-minutes: 20
     steps:
-      # `runs-on/action@v2` echoes the pre-swap GitHub cache URLs back as
-      # `ZCTIONS_CACHE_URL` / `ZCTIONS_RESULTS_URL`. The renamed prefix sidesteps
-      # the runner's masking of `ACTIONS_*`, printing the embedded per-job token
-      # in clear text - which matters once these logs are public. Registering the
-      # values first makes the runner redact them wherever they appear. Harmless
-      # no-op if RunsOn stops exporting the variables to steps.
-      - name: Mask RunsOn cache URLs
-        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        shell: bash
-        run: |
-          for name in ZCTIONS_CACHE_URL ZCTIONS_RESULTS_URL; do
-            value="${!name:-}"
-            if [ -n "$value" ]; then
-              echo "::add-mask::$value"
-              echo "masked $name"
-            else
-              echo "$name not exported to steps; nothing to mask"
-            fi
-          done
       - name: Set up RunsOn
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: runs-on/action@v2
@@ -271,25 +214,6 @@ jobs:
       }}
     timeout-minutes: 30
     steps:
-      # `runs-on/action@v2` echoes the pre-swap GitHub cache URLs back as
-      # `ZCTIONS_CACHE_URL` / `ZCTIONS_RESULTS_URL`. The renamed prefix sidesteps
-      # the runner's masking of `ACTIONS_*`, printing the embedded per-job token
-      # in clear text - which matters once these logs are public. Registering the
-      # values first makes the runner redact them wherever they appear. Harmless
-      # no-op if RunsOn stops exporting the variables to steps.
-      - name: Mask RunsOn cache URLs
-        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        shell: bash
-        run: |
-          for name in ZCTIONS_CACHE_URL ZCTIONS_RESULTS_URL; do
-            value="${!name:-}"
-            if [ -n "$value" ]; then
-              echo "::add-mask::$value"
-              echo "masked $name"
-            else
-              echo "$name not exported to steps; nothing to mask"
-            fi
-          done
       - name: Set up RunsOn
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: runs-on/action@v2
@@ -433,25 +357,6 @@ jobs:
     # tier selects the browser projects. Both are set by the package scripts
     # below rather than here, so there is one place to read them from.
     steps:
-      # `runs-on/action@v2` echoes the pre-swap GitHub cache URLs back as
-      # `ZCTIONS_CACHE_URL` / `ZCTIONS_RESULTS_URL`. The renamed prefix sidesteps
-      # the runner's masking of `ACTIONS_*`, printing the embedded per-job token
-      # in clear text - which matters once these logs are public. Registering the
-      # values first makes the runner redact them wherever they appear. Harmless
-      # no-op if RunsOn stops exporting the variables to steps.
-      - name: Mask RunsOn cache URLs
-        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        shell: bash
-        run: |
-          for name in ZCTIONS_CACHE_URL ZCTIONS_RESULTS_URL; do
-            value="${!name:-}"
-            if [ -n "$value" ]; then
-              echo "::add-mask::$value"
-              echo "masked $name"
-            else
-              echo "$name not exported to steps; nothing to mask"
-            fi
-          done
       - name: Set up RunsOn
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: runs-on/action@v2
