@@ -17,11 +17,18 @@ const mocks = vi.hoisted(() => ({
   listActiveGeneralActions: vi.fn(),
   listPausedGeneralActions: vi.fn(),
   listResolvedGeneralActions: vi.fn(),
+  listGeneralActionAreas: vi.fn(),
   getOwnerTodayContext: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/followups", () => ({
   listActiveFollowups: mocks.listActiveFollowups,
+}));
+// `list_general_actions` reads the owner's Areas alongside the ledger. Unmocked
+// that is a real query, so the suite passed only where a Postgres happened to be
+// listening on the configured URL and failed in CI, where none is.
+vi.mock("@tendnote/db/queries/general-action-areas", () => ({
+  listGeneralActionAreas: mocks.listGeneralActionAreas,
 }));
 vi.mock("@tendnote/db/queries/general-actions", () => ({
   listActiveGeneralActions: mocks.listActiveGeneralActions,
@@ -83,6 +90,7 @@ beforeEach(() => {
   mocks.listActiveFollowups.mockResolvedValue([]);
   mocks.listActiveGeneralActions.mockResolvedValue([]);
   mocks.listResolvedGeneralActions.mockResolvedValue([]);
+  mocks.listGeneralActionAreas.mockResolvedValue([]);
 });
 
 describe("ownerLocalDayStart", () => {

@@ -65,6 +65,10 @@ describe("semantic retrieval product-route boundaries", () => {
       "pending",
       "people",
       "people/[personId]",
+      // The Phase 9a launch prototype (#457). A public, self-contained mock with
+      // no data access at all, so it reaches neither proved reads nor semantic
+      // retrieval.
+      "prototype/phase-9a-launch",
       "reminders/open",
       "reset-password",
       "saved-items",
