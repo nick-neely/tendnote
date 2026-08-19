@@ -163,12 +163,16 @@ describe("fresh-clone publication gate", () => {
 
   it("keeps the email setup path explicit about its Cloudflare prerequisite", () => {
     const emailSetup = read("docs/email-setup.md");
+    const localDevelopment = read("docs/local-development.md");
 
     expect(emailSetup).toMatch(/assumes Cloudflare DNS/i);
     expect(emailSetup).toContain("Cloudflare dashboard");
     expect(emailSetup).toMatch(/DNS only.*grey cloud/);
     expect(emailSetup).toMatch(
       /Locally, with a real send:[\s\S]*RESEND_API_KEY=re_[^\n]*[\s\S]*TENDNOTE_EMAIL_FROM=[^\n]*[\s\S]*TENDNOTE_EMAIL_REPLY_TO=[^\n]*/,
+    );
+    expect(localDevelopment).toMatch(
+      /Setting `RESEND_API_KEY`, `TENDNOTE_EMAIL_FROM`, and an explicit `TENDNOTE_EMAIL_REPLY_TO` turns real sending on/,
     );
   });
 

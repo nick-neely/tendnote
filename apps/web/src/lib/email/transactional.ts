@@ -74,15 +74,20 @@ export type EmailEnvironment = {
 /**
  * The address shown to a person and used for replies comes from the operator's
  * explicit configuration. A production deployment without it has no truthful
- * recovery door, so it returns `null`; non-production paths use a reserved test
- * address that cannot route to a real mailbox.
+ * recovery door, so it returns `null`. A reserved test address is available only
+ * to the test runner and the non-sending operator-log path; it can never satisfy
+ * a real provider send.
  */
 export function resolveSupportEmail(
-  env: Pick<EmailEnvironment, "NODE_ENV" | "TENDNOTE_EMAIL_REPLY_TO">,
+  env: Pick<EmailEnvironment, "NODE_ENV" | "RESEND_API_KEY" | "TENDNOTE_EMAIL_REPLY_TO">,
 ): string | null {
   const configured = env.TENDNOTE_EMAIL_REPLY_TO?.trim();
   if (configured) return configured;
-  return env.NODE_ENV === "production" ? null : SYNTHETIC_SUPPORT_EMAIL;
+  const hasRealProvider = Boolean(env.RESEND_API_KEY?.trim());
+  if (env.NODE_ENV === "test" || (env.NODE_ENV !== "production" && !hasRealProvider)) {
+    return SYNTHETIC_SUPPORT_EMAIL;
+  }
+  return null;
 }
 
 export function resolveSenderIdentity(env: EmailEnvironment): TransactionalSenderIdentity {

@@ -91,6 +91,17 @@ describe("choosing a transport", () => {
     expect(choice.kind).toBe("unavailable");
     expect(choice.kind === "unavailable" && choice.reason).toMatch(/TENDNOTE_EMAIL_FROM/);
   });
+
+  it("refuses a development real send when the operator reply contact is absent", () => {
+    const choice = decideTransactionalTransport({
+      NODE_ENV: "development",
+      RESEND_API_KEY: "re_dev",
+      TENDNOTE_EMAIL_FROM: "Tendnote <notifications@mail.operator.example>",
+    });
+
+    expect(choice.kind).toBe("unavailable");
+    expect(choice.kind === "unavailable" && choice.reason).toMatch(/TENDNOTE_EMAIL_REPLY_TO/);
+  });
 });
 
 describe("who the mail is from", () => {
