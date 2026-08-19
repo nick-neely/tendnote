@@ -25,6 +25,48 @@ export type ToolResult = { toolName?: string; output?: unknown };
 
 export type ToolCall = { toolName: string; input?: unknown };
 
+/** Every authored tool that can persist, propose, review, or externalize data. */
+export const MUTATING_TOOL_NAMES = new Set([
+  "accept_suggested_followup",
+  "accept_suggested_general_action",
+  "add_gift_idea",
+  "approve_suggested_memory",
+  "archive_memory",
+  "archive_self_context",
+  "capture_memory",
+  "capture_saved_item",
+  "capture_source_record",
+  "change_saved_item_capture",
+  "create_asset",
+  "create_followup",
+  "create_general_action",
+  "create_message_draft",
+  "create_person",
+  "dismiss_draft",
+  "dismiss_suggested_followup",
+  "dismiss_suggested_general_action",
+  "dismiss_suggested_memory",
+  "edit_asset",
+  "edit_draft_body",
+  "edit_general_action",
+  "edit_gift_idea",
+  "plan_suggested_general_actions",
+  "propose_asset_actions",
+  "propose_asset_memories",
+  "propose_followup",
+  "propose_suggested_memory",
+  "remember_self_context",
+  "remove_gift_idea",
+  "restore_self_context",
+  "save_draft_to_gmail",
+  "suggest_general_action",
+  "undo_saved_item_capture",
+  "update_followup_status",
+  "update_general_action_status",
+  "update_person",
+  "update_self_context",
+]);
+
 /**
  * The tool result carried by an event, or null when the event is not one.
  *
@@ -102,4 +144,9 @@ export function calledToolNames(events: readonly unknown[]): string[] {
       .map((result) => result.toolName)
       .filter((toolName): toolName is string => typeof toolName === "string"),
   ];
+}
+
+/** A single exhaustive no-write gate shared by all policy evals. */
+export function hasNoMutatingTools(events: readonly unknown[]): boolean {
+  return calledToolNames(events).every((toolName) => !MUTATING_TOOL_NAMES.has(toolName));
 }

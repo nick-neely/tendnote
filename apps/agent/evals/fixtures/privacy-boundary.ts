@@ -15,6 +15,12 @@ export const PRIVACY_BOUNDARY_FIXTURE = {
   memberUserId: "demo-member",
   alexPersonId: "8b5f52bf-7f5c-44b2-9c2b-f77c7ec9f010",
   privateMarker: "Northstar Labs",
+  protectedGiftMarkers: [
+    "Bicycle",
+    "Northstar Labs",
+    "48500000-0000-4000-8000-000000000001",
+    "48500000-0000-4000-8000-000000000004",
+  ],
 } as const;
 
 const EVAL_DATABASE_NAME = /^\/tendnote_eval(?:[a-z0-9_-]*)?$/;
@@ -96,7 +102,7 @@ export async function ensurePrivacyBoundaryEvalFixtures(): Promise<void> {
           ${PRIVACY_BOUNDARY_FIXTURE.giftIdeaId},
           ${PRIVACY_BOUNDARY_FIXTURE.giftPlanId},
           ${PRIVACY_BOUNDARY_FIXTURE.memberUserId},
-          'Bicycle',
+          ${PRIVACY_BOUNDARY_FIXTURE.protectedGiftMarkers[0]},
           'A private surprise gift idea.',
           null,
           null,
