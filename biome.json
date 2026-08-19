@@ -18,6 +18,7 @@
       "!!**/dist",
       "!!**/playwright-report",
       "!!**/test-results",
+      "!!**/evidence/**/raw",
       "!!**/packages/db/migrations"
     ]
   },

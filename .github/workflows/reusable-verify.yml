@@ -63,7 +63,14 @@ jobs:
   database:
     name: Database
     if: inputs.run_database
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format('runs-on={0}-database/runner=default', github.run_id)
+      }}
+    timeout-minutes: 10
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -79,6 +86,13 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
+      # Activates the S3-backed Magic Cache. The runner preset carries
+      # `extras: s3-cache`, but without this step `actions/cache` and the
+      # `setup-node` pnpm cache silently keep talking to GitHub instead.
+      - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+        uses: runs-on/action@v2
+
       - name: Checkout
         uses: actions/checkout@v5
 
@@ -104,8 +118,19 @@ jobs:
 
   quality:
     name: Quality
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format('runs-on={0}-quality/runner=default', github.run_id)
+      }}
+    timeout-minutes: 15
     steps:
+      - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+        uses: runs-on/action@v2
+
       - name: Checkout
         uses: actions/checkout@v5
 
@@ -132,8 +157,21 @@ jobs:
   fast_tests:
     name: Fast affected tests
     if: ${{ inputs.run_tests && !inputs.run_full }}
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format('runs-on={0}-fast-tests/runner=big', github.run_id)
+      }}
+    timeout-minutes: 20
     steps:
+      - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+        uses: runs-on/action@v2
+        with:
+          show_costs: summary
+
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -167,8 +205,21 @@ jobs:
   test_fallow:
     name: Test and Fallow
     if: ${{ (inputs.run_tests || inputs.run_browser) && inputs.run_full }}
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format('runs-on={0}-test-fallow/runner=big', github.run_id)
+      }}
+    timeout-minutes: 30
     steps:
+      - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+        uses: runs-on/action@v2
+        with:
+          show_costs: summary
+
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -194,7 +245,10 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('pnpm-lock.yaml') }}
+          # `runner.os` is `Linux` on both x64 and arm64, so the architecture has
+          # to be in the key: restoring x64 browser binaries onto a Graviton
+          # runner fails at launch rather than at restore.
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install Chromium and system dependencies
         if: ${{ inputs.run_browser && steps.playwright-cache.outputs.cache-hit != 'true' }}
@@ -207,8 +261,13 @@ jobs:
       # This is the canonical CI test pass. Fallow uses the merged V8 map for
       # exact per-function CRAP scores, so running a second non-coverage test
       # job would repeat the same suites without adding another behavior gate.
-      # Workspaces stay serial within this two-core runner; concurrent Vitest
-      # processes can destabilize async DOM tests under coverage.
+      # `collect-test-coverage.mjs` holds itself to two concurrent workspaces
+      # whatever the runner, because concurrent Vitest processes have
+      # destabilized async DOM tests under coverage before. The `big` preset most
+      # reliably buys faster install and build; it also takes each workspace's
+      # `--maxWorkers=50%` from roughly one worker to four or eight, which is the
+      # same hazard one level down and is not yet proven here. If new flakes show
+      # up under coverage on `big`, turn `--maxWorkers` down before anything else.
       - name: Run tests with coverage
         if: ${{ inputs.run_tests }}
         run: pnpm coverage:ci
@@ -240,7 +299,24 @@ jobs:
   instant_matrix:
     name: Instant matrix
     if: ${{ inputs.run_full && inputs.run_instant }}
-    runs-on: ubuntu-latest
+    # Pinned rather than left to the preset's 2-4 CPU range across four instance
+    # families. Every number this job records is a navigation timing margin, so a
+    # runner shape that varies run to run turns the recorded trend into a reading
+    # of AWS capacity. `m8a.large` is 2 vCPU, the shape `workers: 1` assumes.
+    # The pin collapses the pool to one instance type, and the preset's inherited
+    # `lowest-price` would then always pick the single cheapest AZ pool — the one
+    # most likely to be reclaimed. `capacity-optimized` keeps spot pricing while
+    # placing into the pool with the most headroom.
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format(
+          'runs-on={0}-instant/runner=default/cpu=2/family=m8a/spot=capacity-optimized',
+          github.run_id
+        )
+      }}
     # The rollout criterion is a wall-time one. Without this a hung `next start`
     # would sit on GitHub's six-hour default instead of failing the gate.
     #
@@ -248,7 +324,12 @@ jobs:
     # (its Playwright cache key is `all`, not `chromium`) that installs three
     # engines with system dependencies before it builds — and that first run is
     # the mandatory WebKit evidence, so it must not be the run that times out.
-    timeout-minutes: ${{ inputs.full_browser_matrix && 30 || 15 }}
+    #
+    # The routine budget is 20 rather than 15 because the move to the S3 cache
+    # backend makes the first runs fully cold — pnpm store, Chromium, and
+    # `next build` on the pinned two-vCPU shape — and 15 was already only about
+    # three times the warm-cache duration.
+    timeout-minutes: ${{ inputs.full_browser_matrix && 30 || 20 }}
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -276,6 +357,12 @@ jobs:
     # tier selects the browser projects. Both are set by the package scripts
     # below rather than here, so there is one place to read them from.
     steps:
+      - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+        uses: runs-on/action@v2
+        with:
+          show_costs: summary
+
       - name: Checkout
         uses: actions/checkout@v5
 
@@ -299,7 +386,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Cache promotion browsers
         id: playwright-cache-all
@@ -307,7 +394,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-all-${{ hashFiles('pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-all-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install browsers
         if: >-
@@ -348,7 +435,7 @@ jobs:
       # an answer if the passing runs are kept too.
       - name: Upload recorded diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: instant-matrix-diagnostics
           path: |
@@ -359,7 +446,7 @@ jobs:
 
       - name: Upload failure traces
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: instant-matrix-traces
           path: apps/web/.instant/test-results

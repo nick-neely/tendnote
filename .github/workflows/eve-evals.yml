@@ -31,7 +31,10 @@ env:
 jobs:
   evaluate:
     name: Eve model evaluations
-    runs-on: ubuntu-latest
+    # On-demand rather than spot: the bound below exceeds the hour in which AWS
+    # does not bill an interrupted spot instance, and an interruption late in a
+    # run discards the model credits it already spent.
+    runs-on: runs-on=${{ github.run_id }}-eve-evals/runner=deploy
     # The deterministic tag runs one eval at a time against a live model, and
     # resamples every failure twice. This is a manual-dispatch workflow, so the
     # bound is here to stop a hung run from burning an hour of minutes, not to
@@ -64,6 +67,9 @@ jobs:
       AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
       TENDNOTE_EVAL_DATABASE_URL: postgresql://tendnote:tendnote@localhost:5432/tendnote_eval
     steps:
+      - name: Set up RunsOn
+        uses: runs-on/action@v2
+
       - name: Checkout
         uses: actions/checkout@v5
 

@@ -130,6 +130,27 @@ describe("CI workflow optimization contract", () => {
     expect(workflow).not.toContain("- converted_to_draft");
   });
 
+  it("routes fork pull requests to GitHub-hosted runners", () => {
+    const workflows = [
+      read(".github/workflows/pr-verify.yml"),
+      read(".github/workflows/promotion-verify.yml"),
+      read(".github/workflows/reusable-verify.yml"),
+    ].join("\n");
+    const runnerDeclarations = workflows.match(/^\s+runs-on:/gm) ?? [];
+    const forkFallbacks =
+      workflows.match(
+        /github\.event\.pull_request\.head\.repo\.fork &&\s*\n\s*'ubuntu-latest' \|\|/g,
+      ) ?? [];
+    const guardedRunsOnSetupSteps =
+      workflows.match(
+        /name: Set up RunsOn\s*\n\s+if: \$\{\{ github\.event_name != 'pull_request' \|\| !github\.event\.pull_request\.head\.repo\.fork \}\}\s*\n\s+uses: runs-on\/action@v2/g,
+      ) ?? [];
+
+    expect(runnerDeclarations).toHaveLength(9);
+    expect(forkFallbacks).toHaveLength(runnerDeclarations.length);
+    expect(guardedRunsOnSetupSteps).toHaveLength(runnerDeclarations.length);
+  });
+
   it("auto-qualifies documentation-only commits without running full CI", () => {
     const workflow = read(".github/workflows/pr-verify.yml");
 
@@ -178,8 +199,14 @@ describe("CI workflow optimization contract", () => {
   it("shares one Chromium cache and primes it from the trusted default branch", () => {
     const reusable = read(".github/workflows/reusable-verify.yml");
     const prime = read(".github/workflows/playwright-cache.yml");
+    // `runner.os` is `Linux` on x64 and arm64 alike, so the architecture is part
+    // of the key: a cache primed on one and restored on the other yields browser
+    // binaries that fail at launch rather than at restore.
     const chromiumKey =
-      "$" + "{{ runner.os }}-playwright-chromium-$" + "{{ hashFiles('pnpm-lock.yaml') }}";
+      "$" +
+      "{{ runner.os }}-$" +
+      "{{ runner.arch }}-playwright-chromium-$" +
+      "{{ hashFiles('pnpm-lock.yaml') }}";
 
     expect(reusable.split(chromiumKey)).toHaveLength(3);
     expect(prime).toContain("push:");

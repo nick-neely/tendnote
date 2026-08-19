@@ -55,8 +55,19 @@ jobs:
     name: Promotion verify
     needs: verify
     if: always() && needs.verify.result != 'skipped'
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.fork &&
+        'ubuntu-latest' ||
+        format('runs-on={0}-promotion-gate/runner=light', github.run_id)
+      }}
+    timeout-minutes: 5
     steps:
+      - name: Set up RunsOn
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+        uses: runs-on/action@v2
+
       - name: Check promotion verification
         run: |
           if [[ "${{ needs.verify.result }}" != "success" ]]; then

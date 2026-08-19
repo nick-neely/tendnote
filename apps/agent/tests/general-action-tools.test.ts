@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   resumeGeneralAction: vi.fn(),
   editGeneralAction: vi.fn(),
   requestBackgroundAffectedScopeReconciliation: vi.fn(),
+  listGeneralActionAreas: vi.fn(),
   getOwnerTodayContext: vi.fn(),
 }));
 
@@ -33,13 +34,19 @@ const { withDatabaseTransaction } = vi.hoisted(() => ({
   withDatabaseTransaction: vi.fn(<T>(run: () => Promise<T>) => run()),
 }));
 
-// Partial: `list_general_actions` reaches the real client through the Areas store, so
-// only the boundary is replaced.
+// Partial, so only the transaction boundary is replaced and the rest of the
+// client module keeps its real shape.
 vi.mock("@tendnote/db/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tendnote/db/client")>()),
   withDatabaseTransaction,
 }));
 vi.mock("@tendnote/db/queries/general-actions", () => mocks);
+// `list_general_actions` reads the owner's Areas alongside the ledger. Unmocked
+// that is a real query, so the suite passed only where a Postgres happened to be
+// listening on the configured URL and failed in CI, where none is.
+vi.mock("@tendnote/db/queries/general-action-areas", () => ({
+  listGeneralActionAreas: mocks.listGeneralActionAreas,
+}));
 // The ledger's date windows are measured against the OWNER's day, so the list tool
 // reads it. Mocked here so this suite stays a pure unit test of the filters.
 vi.mock("@tendnote/db/queries/today", () => ({
@@ -107,6 +114,7 @@ function mutationOutcome<TResult>(result: TResult) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.listGeneralActionAreas.mockResolvedValue([]);
   mocks.getOwnerTodayContext.mockResolvedValue({
     localDate: new Intl.DateTimeFormat("en-CA", { timeZone: "UTC" }).format(new Date()),
     timeZone: "UTC",

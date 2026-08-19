@@ -109,15 +109,18 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
-  // One worker on CI, deliberately. A GitHub-hosted runner is a two-vCPU
-  // machine that is already hosting the measured `next start` alongside the
-  // browser, so a second worker means two headless Chromiums and a server
+  // One worker on CI, deliberately. CI pins this job to a two-vCPU runner
+  // (`m8a.large`) that is already hosting the measured `next start` alongside
+  // the browser, so a second worker means two headless Chromiums and a server
   // contending for two cores — and every number this suite records is then a
   // reading of the runner rather than of the application. Measured: the same
   // rows that failed CI at two workers (`Today to Review` at 127 ms, `person
   // detail to Today` at 621 ms) come back at 35–57 ms on one core with one
-  // worker. The tier still runs alongside the other verification jobs, which is
-  // where ADR 0210's parallelism requirement actually lives.
+  // worker. Widening the runner would not change that; it is the ratio of
+  // workers to cores that matters, which is why the workflow pins the shape
+  // rather than letting the runner preset float. The tier still runs alongside
+  // the other verification jobs, which is where ADR 0210's parallelism
+  // requirement actually lives.
   workers: process.env.CI ? 1 : undefined,
   reporter: [["list"], ["json", { outputFile: "./.instant/results.json" }]],
   globalSetup: "./tests/instant/support/global-setup.ts",

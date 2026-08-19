@@ -1,0 +1,12 @@
+# RunsOn runner configuration for this repository.
+#
+# The presets every job names (`default`, `big`, `light`, `deploy`) are defined
+# centrally in nick-neely/.github-private. The stack is configured to extend
+# from that repo automatically, but `_extends` is the documented mechanism and
+# costs nothing to state: without a resolvable base, `runner=<name>` matches no
+# runner and jobs sit unassigned until they time out.
+#
+# RunsOn reads this file from the current branch for private repositories, but
+# from the default branch only for public repositories. Before this repository
+# becomes public, `_extends` and any custom presets must already be on `main`.
+_extends: .github-private
