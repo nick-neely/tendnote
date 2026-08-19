@@ -7,6 +7,23 @@ const request = new Request("https://app.tendnote.test/eve/v1/session", {
 });
 
 describe("hosted Eve session authentication", () => {
+  it("passes the verified session identity through the shared admission decision", async () => {
+    const resolveAccess = vi.fn().mockResolvedValue({ admitted: true });
+    const auth = createTendnoteSessionAuth({
+      getSession: vi.fn().mockResolvedValue({
+        user: { id: "user-123", email: "owner@example.com" },
+      }),
+      resolveAccess,
+      checkIngressBudget: vi.fn().mockResolvedValue({ allowed: true }),
+    });
+
+    await expect(auth(request)).resolves.toMatchObject({ principalId: "user-123" });
+    expect(resolveAccess).toHaveBeenCalledWith({
+      userId: "user-123",
+      email: "owner@example.com",
+    });
+  });
+
   it("scopes an admitted session to its verified Better Auth user", async () => {
     const auth = createTendnoteSessionAuth({
       getSession: vi.fn().mockResolvedValue({ user: { id: "user-123" } }),

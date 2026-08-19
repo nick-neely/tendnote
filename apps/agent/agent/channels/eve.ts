@@ -1,12 +1,18 @@
-import { checkAccess } from "@tendnote/db/queries/access-profiles";
+import { checkAccess, grantAccess } from "@tendnote/db/queries/access-profiles";
 import { eveChannel } from "eve/channels/eve";
 import { getAgentAuth } from "../lib/auth-server";
-import { createLocalOwnerAuth, createTendnoteSessionAuth } from "../lib/eve-auth";
+import { createLocalOwnerAuth, createTendnoteAdmissionAuth } from "../lib/eve-auth";
 import { getAgentRateLimiter } from "../lib/rate-limit";
 
-const hostedSessionAuth = createTendnoteSessionAuth({
+const hostedSessionAuth = createTendnoteAdmissionAuth({
+  admission: {
+    accessProfiles: { checkAccess, grantAccess },
+    // Eve's hosted boundary has no independent Flags targeting surface. Hosted
+    // access is therefore persisted-first and fail-closed; Web persists any
+    // successful Flags grant before both surfaces consume it.
+    evaluateFlag: async () => false,
+  },
   getSession: (headers) => getAgentAuth().api.getSession({ headers }),
-  checkAccess: (userId) => checkAccess({ userId }),
   checkIngressBudget: (userId) =>
     getAgentRateLimiter().check({ subject: userId, costCategory: "eve-ingress" }),
 });

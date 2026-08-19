@@ -2,6 +2,13 @@ import { createDrizzleAccessProfileStore } from "./access-profiles/drizzle-store
 import { createAccessProfileQueries } from "./access-profiles/queries";
 import type { AccessSource } from "./access-profiles/types";
 
+export type {
+  AccessProfileGateway,
+  AdmissionEntity,
+  AdmissionResolverDependencies,
+  HostedFlagEvaluator,
+} from "./access-profiles/admission";
+export { createAdmissionResolver } from "./access-profiles/admission";
 export { createDrizzleAccessProfileStore } from "./access-profiles/drizzle-store";
 export { createInMemoryAccessProfileStore } from "./access-profiles/in-memory-store";
 export { createAccessProfileQueries } from "./access-profiles/queries";
@@ -11,6 +18,11 @@ const defaultAccessProfileQueries = createAccessProfileQueries(createDrizzleAcce
 
 export async function ensureAccessProfile(input: { userId: string }) {
   return defaultAccessProfileQueries.ensureAccessProfile(input);
+}
+
+/** Local development only: explicitly grant the configured demo owner. */
+export async function ensureLocalDevelopmentAccessProfile(input: { userId: string }) {
+  return defaultAccessProfileQueries.ensureLocalDevelopmentAccessProfile(input);
 }
 
 export async function getAccessProfile(input: { userId: string }) {

@@ -10,6 +10,10 @@ export function accessSourceLabel(source: AccessSource | null): string {
   switch (source) {
     case "bootstrap":
       return "Initial owner";
+    case "self_hosted_bootstrap":
+      return "Self-hosted owner";
+    case "household_invitation":
+      return "Household invitation";
     case "beta_flag":
       return "Beta invite";
     case "manual_grant":
