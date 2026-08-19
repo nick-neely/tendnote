@@ -29,11 +29,23 @@ describe("Fallow CI coverage contract (#193)", () => {
     expect(collector).toContain('["exec", "vitest", "run", "scripts"]');
   });
 
-  it("bounds workspace processes, sizes each Vitest process, and drains in-flight work", () => {
+  it("starts the longest coverage suites first without increasing concurrency", () => {
     const collector = read("scripts/collect-test-coverage.mjs");
+    const workspaceBlock = collector.match(/const workspaces = \[([\s\S]*?)\n\];/)?.[1];
+    const scheduledDirectories = [...(workspaceBlock?.matchAll(/directory: "([^"]+)"/g) ?? [])].map(
+      ([, directory]) => directory,
+    );
 
     expect(collector).toContain("const maxConcurrentWorkspaces = 2;");
     expect(collector).toContain('"--maxWorkers=50%"');
+    expect(scheduledDirectories).toEqual([
+      "apps/web",
+      "apps/agent",
+      "packages/db",
+      "packages/domain",
+      "packages/auth",
+      "packages/rate-limit",
+    ]);
     // Failure stops new queue assignments, while allSettled drains processes
     // already running before the collector surfaces the error.
     expect(collector).toContain("Promise.allSettled");

@@ -8,13 +8,16 @@ const { createCoverageMap } = istanbulCoverage;
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const coverageRoot = join(repoRoot, "coverage");
+// Keep the longest suites at the front of the shared queue. With two workers,
+// starting them together avoids leaving the web suite as a long serial tail
+// after the small packages have already completed.
 const workspaces = [
+  { directory: "apps/web", include: ["src/**/*.{ts,tsx}"] },
+  { directory: "apps/agent", include: ["agent/**/*.ts", "scripts/**/*.mjs"] },
+  { directory: "packages/db", include: ["src/**/*.ts"] },
+  { directory: "packages/domain", include: ["src/**/*.ts"] },
   { directory: "packages/auth", include: ["src/**/*.ts"] },
   { directory: "packages/rate-limit", include: ["src/**/*.ts"] },
-  { directory: "packages/domain", include: ["src/**/*.ts"] },
-  { directory: "packages/db", include: ["src/**/*.ts"] },
-  { directory: "apps/agent", include: ["agent/**/*.ts", "scripts/**/*.mjs"] },
-  { directory: "apps/web", include: ["src/**/*.{ts,tsx}"] },
 ];
 // Run at most two workspace coverage processes at once. Each child Vitest
 // process receives its own --maxWorkers=50% setting, so this bounds
