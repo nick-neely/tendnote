@@ -120,4 +120,88 @@ describe("shared admission resolver", () => {
       queries.grantAccess({ userId: OTHER.userId, source: "self_hosted_bootstrap" }),
     ).resolves.toMatchObject({ status: "pending", source: null });
   });
+
+  it("makes persisted authority source-aware when a hosted database becomes self-hosted", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    await queries.grantAccess({ userId: OWNER.userId, source: "manual_grant" });
+    await queries.grantAccess({ userId: "legacy-bootstrap", source: "bootstrap" });
+    await queries.grantAccess({ userId: "legacy-manual", source: "manual_grant" });
+    await queries.grantAccess({ userId: "legacy-beta", source: "beta_flag" });
+    await queries.grantAccess({ userId: "invited-user", source: "household_invitation" });
+
+    const resolver = createAdmissionResolver({
+      accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
+      evaluateFlag: vi.fn().mockResolvedValue(false),
+      policy: {
+        mode: "self-hosted",
+        valid: true,
+        bootstrapOwnerEmail: "owner@example.com",
+      },
+    });
+
+    const ownerDecision = await resolver.resolveAccess(OWNER);
+    const legacyDecisions = await Promise.all(
+      ["legacy-bootstrap", "legacy-manual", "legacy-beta"].map((userId) =>
+        resolver.resolveAccess({ userId, email: "legacy@example.com" }),
+      ),
+    );
+    const invitationDecision = await resolver.resolveAccess({
+      userId: "invited-user",
+      email: "member@example.com",
+    });
+
+    expect(ownerDecision).toMatchObject({
+      admitted: true,
+      profile: { source: "self_hosted_bootstrap" },
+    });
+    expect(legacyDecisions).toEqual([
+      expect.objectContaining({
+        admitted: false,
+        status: "pending",
+        profile: expect.objectContaining({ source: "bootstrap" }),
+      }),
+      expect.objectContaining({
+        admitted: false,
+        status: "pending",
+        profile: expect.objectContaining({ source: "manual_grant" }),
+      }),
+      expect.objectContaining({
+        admitted: false,
+        status: "pending",
+        profile: expect.objectContaining({ source: "beta_flag" }),
+      }),
+    ]);
+    expect(invitationDecision).toMatchObject({
+      admitted: true,
+      profile: { source: "household_invitation" },
+    });
+    await expect(queries.getAccessProfile({ userId: OWNER.userId })).resolves.toMatchObject({
+      source: "self_hosted_bootstrap",
+    });
+    await expect(queries.getAccessProfile({ userId: "legacy-beta" })).resolves.toMatchObject({
+      source: "beta_flag",
+      status: "granted",
+    });
+  });
+
+  it("does not re-admit a legacy owner when the self-hosted singleton is already claimed", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    await queries.grantAccess({ userId: OWNER.userId, source: "manual_grant" });
+    await queries.grantAccess({ userId: "other-owner", source: "self_hosted_bootstrap" });
+    const resolver = createAdmissionResolver({
+      accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
+      evaluateFlag: vi.fn().mockResolvedValue(false),
+      policy: {
+        mode: "self-hosted",
+        valid: true,
+        bootstrapOwnerEmail: "owner@example.com",
+      },
+    });
+
+    await expect(resolver.resolveAccess(OWNER)).resolves.toMatchObject({
+      admitted: false,
+      status: "pending",
+      profile: { source: "manual_grant" },
+    });
+  });
 });

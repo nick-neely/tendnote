@@ -80,6 +80,17 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
     }
 
     if (existing.status === "granted") {
+      // A configured self-hosted owner may be transitioning from a legacy
+      // hosted/local grant. Reclassify only that explicit provenance; ordinary
+      // grants remain authoritative and retain their original audit source.
+      if (
+        input.source === "self_hosted_bootstrap" &&
+        existing.source !== "self_hosted_bootstrap" &&
+        existing.source !== "household_invitation"
+      ) {
+        return grantExisting(existing, input.source);
+      }
+
       return existing;
     }
 
