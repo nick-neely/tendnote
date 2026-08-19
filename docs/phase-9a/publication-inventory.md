@@ -95,6 +95,10 @@ and a NOTICE, or exclude the skill directories from the published tree.
 
 ### 3. Vercel deployment identifiers and account scope in verification docs
 
+> **Historical qualification evidence.** The identifiers and account scope
+> below document the runs that produced the original records. They are immutable
+> evidence, not current Tendnote configuration or a supported deployment target.
+
 Three `dpl_*` identifiers appear in `docs/verification/`:
 
 - `dpl_Ck8imQpQWV9yRgHpu6D5PJbPi1qu` in `nextjs-16-3-partial-prefetching.md`

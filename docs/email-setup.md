@@ -3,7 +3,9 @@
 > **Human-in-the-loop setup.** This guide creates the Resend account, verifies
 > the sending domain, and adds the DNS records that let Tendnote's mail reach an
 > inbox. None of it can be done by an agent or by code: it needs an operator with
-> access to the Resend dashboard and the DNS provider for the operator's domain.
+> access to the Resend dashboard and a Cloudflare DNS zone for the operator's
+> domain. This runbook assumes Cloudflare DNS; other providers need their own
+> equivalent record-entry procedure.
 
 Tendnote sends one kind of email today - a **Household Invitation**. It is
 transactional in the strict sense: a person typed an address, an explicit Owner
@@ -48,7 +50,7 @@ used for sending.
 
 ## 2. Add the DNS records in Cloudflare
 
-Open the operator's DNS dashboard, select the operator's zone, and go to
+Open the Cloudflare dashboard, select the operator's zone, and go to
 **DNS -> Records**.
 
 **The name field is the trap.** Cloudflare names records relative to the zone
@@ -163,7 +165,7 @@ than mailing real people from a branch.
 | Environment | `RESEND_API_KEY` | Transport |
 | --- | --- | --- |
 | `test` | anything | Operator log. The test runner never sends, whatever is in your shell. |
-| any | set | **Resend.** A key is what turns real sending on, so a smoke test works anywhere. |
+| any | set, with `TENDNOTE_EMAIL_REPLY_TO` | **Resend.** Both explicit operator values are required; otherwise it refuses. |
 | not production | unset | Operator log: the message is written to the server log, link and all. |
 | production | unset | **Refuses**, by name, naming the variable and this document. The attempt is recorded `failed` and the Owner is told delivery did not happen. |
 

@@ -22,7 +22,8 @@ record) before committing the bundle:
 4. **NOTICE review.** Inspect the pinned upstream release for a `NOTICE` file
    and any required source-form notices. Preserve applicable NOTICE material in
    the repository attribution record; explicitly record when no NOTICE file is
-   present.
+   present. If the notice identifies nested third-party work, repeat this gate
+   for that work and preserve its complete license and exact derived paths too.
 5. **Provenance date.** Record the UTC retrieval or recheck date and the
    copyright holder(s) named by the upstream release.
 6. **Exact tracked paths.** List every repository path that redistributes the

@@ -24,6 +24,7 @@ const MESSAGE = {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("BETTER_AUTH_URL", "https://tendnote.example/app");
+  vi.stubEnv("TENDNOTE_EMAIL_REPLY_TO", "support@example.test");
 });
 
 afterEach(() => {
@@ -75,7 +76,7 @@ describe("the transport the app is handed", () => {
     const [payload, options] = resendSend.mock.calls[0] ?? [];
     expect(payload.to).toBe("sam@example.com");
     expect(payload.from).toBe("Tendnote <notifications@mail.tendnote.example>");
-    expect(payload.replyTo).toBe("support@tendnote.example");
+    expect(payload.replyTo).toBe("support@example.test");
     expect(payload.subject).toBe("You're invited to The Neely house on Tendnote");
     expect(payload.html).toContain(MESSAGE.acceptUrl);
     expect(payload.text).toContain(MESSAGE.acceptUrl);

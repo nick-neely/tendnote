@@ -8,6 +8,7 @@ const INVITATION = {
   inviterName: "Alex",
   acceptUrl: "https://tendnote.test/join/one-time-secret",
   expiresAt: new Date("2026-08-15T09:00:00Z"),
+  supportEmail: "support@example.test",
 };
 
 const rendered = await renderHouseholdInvitationEmail(INVITATION);
@@ -52,7 +53,7 @@ describe("what the invitation says", () => {
   it("identifies the sender and why this arrived, and gives a way to answer", () => {
     expect(rendered.text).toContain("Why you received this");
     expect(rendered.text).toContain("Alex invited this email address");
-    expect(rendered.text).toContain("support@tendnote.example");
+    expect(rendered.text).toContain("support@example.test");
   });
 });
 

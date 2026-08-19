@@ -6,6 +6,8 @@ import {
   EmailTransportUnavailableError,
   operatorLogSender,
   resolveSenderIdentity,
+  resolveSupportEmail,
+  SYNTHETIC_SUPPORT_EMAIL,
   unavailableSender,
 } from "./transactional";
 
@@ -16,13 +18,21 @@ afterEach(() => {
 describe("choosing a transport", () => {
   it("sends through Resend as soon as a key is present", () => {
     expect(
-      decideTransactionalTransport({ NODE_ENV: "production", RESEND_API_KEY: "re_live" }),
+      decideTransactionalTransport({
+        NODE_ENV: "production",
+        RESEND_API_KEY: "re_live",
+        TENDNOTE_EMAIL_REPLY_TO: "support@example.test",
+      }),
     ).toEqual({ kind: "resend", apiKey: "re_live" });
 
     // Also outside production: a preview deployment and a developer smoke test
     // both need a way to send one real message.
     expect(
-      decideTransactionalTransport({ NODE_ENV: "development", RESEND_API_KEY: " re_dev " }),
+      decideTransactionalTransport({
+        NODE_ENV: "development",
+        RESEND_API_KEY: " re_dev ",
+        TENDNOTE_EMAIL_REPLY_TO: "support@example.test",
+      }),
     ).toEqual({ kind: "resend", apiKey: "re_dev" });
   });
 
@@ -58,18 +68,42 @@ describe("choosing a transport", () => {
     expect(choice.kind === "unavailable" && choice.reason).toMatch(/RESEND_API_KEY/);
     expect(choice.kind === "unavailable" && choice.reason).toMatch(/docs\/email-setup\.md/);
   });
+
+  it("refuses a configured provider when the operator support contact is absent", () => {
+    const choice = decideTransactionalTransport({
+      NODE_ENV: "production",
+      RESEND_API_KEY: "re_live",
+    });
+
+    expect(choice.kind).toBe("unavailable");
+    expect(choice.kind === "unavailable" && choice.reason).toMatch(/TENDNOTE_EMAIL_REPLY_TO/);
+  });
 });
 
 describe("who the mail is from", () => {
   it("sends from the transactional subdomain and replies to the support inbox", () => {
+    expect(resolveSupportEmail({})).toBe(SYNTHETIC_SUPPORT_EMAIL);
+    expect(resolveSupportEmail({ NODE_ENV: "production" })).toBeNull();
     expect(resolveSenderIdentity({})).toEqual({
       from: DEFAULT_EMAIL_FROM,
-      replyTo: "support@tendnote.example",
+      replyTo: SYNTHETIC_SUPPORT_EMAIL,
     });
     expect(DEFAULT_EMAIL_FROM).toContain("@mail.tendnote.example");
     // A monitored mailbox, not a `noreply@`: people answer a message about being
     // invited into someone's home.
     expect(DEFAULT_EMAIL_FROM).not.toMatch(/noreply|no-reply|donotreply/i);
+  });
+
+  it("uses the operator contact for displayed and reply addresses", () => {
+    expect(resolveSupportEmail({ TENDNOTE_EMAIL_REPLY_TO: " support@operator.example " })).toBe(
+      "support@operator.example",
+    );
+    expect(
+      resolveSenderIdentity({
+        NODE_ENV: "production",
+        TENDNOTE_EMAIL_REPLY_TO: "support@operator.example",
+      }).replyTo,
+    ).toBe("support@operator.example");
   });
 
   it("lets a deployment that must not send as production override both", () => {

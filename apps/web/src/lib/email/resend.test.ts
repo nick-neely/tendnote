@@ -4,7 +4,7 @@ import { createResendSender, type ResendEmails, ResendSendError } from "./resend
 
 const IDENTITY = {
   from: "Tendnote <notifications@mail.tendnote.example>",
-  replyTo: "support@tendnote.example",
+  replyTo: "support@example.test",
 };
 
 const EMAIL = {

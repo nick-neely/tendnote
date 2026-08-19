@@ -420,6 +420,7 @@ describe("ending the household", () => {
       <HouseholdSurface
         governanceActions={{ confirmDissolution }}
         initialOverview={twoOwners({ confirmed: 1, awaitingUserIds: ["ana"] })}
+        supportEmail="support@example.test"
       />,
     );
 
@@ -437,8 +438,8 @@ describe("ending the household", () => {
     expect(boundary.textContent).toMatch(/no way for anyone else here to take it over/i);
     // A boundary that names support has to say how to reach them.
     expect(
-      within(boundary).getByRole("link", { name: "support@tendnote.example" }).getAttribute("href"),
-    ).toBe("mailto:support@tendnote.example");
+      within(boundary).getByRole("link", { name: "support@example.test" }).getAttribute("href"),
+    ).toBe("mailto:support@example.test");
 
     const endIt = dialog.getByRole("button", { name: "End it" });
     expect(endIt.dataset.variant).toBe("destructive");
@@ -517,6 +518,7 @@ describe("ending the household", () => {
       <HouseholdSurface
         governanceActions={{ confirmDissolution }}
         initialOverview={twoOwners({ confirmed: 1, awaitingUserIds: ["ana"] })}
+        supportEmail="support@example.test"
       />,
     );
 
@@ -529,9 +531,30 @@ describe("ending the household", () => {
     await waitFor(() => {
       expect(screen.getByText(/support can still put the household back/i)).toBeTruthy();
     });
-    expect(
-      screen.getByRole("link", { name: "support@tendnote.example" }).getAttribute("href"),
-    ).toBe("mailto:support@tendnote.example");
+    expect(screen.getByRole("link", { name: "support@example.test" }).getAttribute("href")).toBe(
+      "mailto:support@example.test",
+    );
+  });
+
+  it("does not invent a recovery address when the operator has not configured one", async () => {
+    const confirmDissolution = vi.fn().mockResolvedValue({
+      ok: true,
+      view: { dissolution: { unanimous: true }, view: null },
+    });
+    render(
+      <HouseholdSurface
+        governanceActions={{ confirmDissolution }}
+        initialOverview={twoOwners({ confirmed: 1, awaitingUserIds: ["ana"] })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "End this household" }));
+    const dialog = within(screen.getByRole("alertdialog"));
+
+    expect(dialog.queryByRole("link")).toBeNull();
+    expect(dialog.getByText(/handled by support/i).textContent).toMatch(
+      /contact is not configured/i,
+    );
   });
 
   it("shows a member the boundary rather than the button", () => {

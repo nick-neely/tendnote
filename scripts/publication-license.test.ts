@@ -1,11 +1,72 @@
-import { existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = resolve(import.meta.dirname, "..");
 
+// These documents preserve immutable qualification evidence from earlier
+// deployments. They are deliberately excluded from the current-tree scan so
+// a historical record cannot be rewritten into misleading present-tense
+// configuration; the separate test below requires each one to say so.
+const HISTORICAL_EVIDENCE_PATHS = new Set([
+  "docs/phase-9a/publication-inventory.md",
+  "docs/verification/nextjs-16-3-partial-prefetching.md",
+  "docs/verification/nextjs-16-3-preview-qualification.md",
+  "docs/verification/phase-7-personal-os.md",
+]);
+// These two directories are byte-preserved upstream payloads. Their provenance
+// and licenses are checked above; scanning their source text for old maintainer
+// values would treat third-party history as current Tendnote configuration.
+const THIRD_PARTY_PATH_PREFIXES = [".agents/skills/impeccable/", ".claude/skills/impeccable/"];
+
+const CURRENT_TREE_MAINTAINER_PATTERNS = [
+  { label: "former hosted origin", pattern: /\bstacklet\.app\b/i },
+  { label: "Vercel deployment identifier", pattern: /\bdpl_[A-Za-z0-9]+\b/ },
+  { label: "maintainer Vercel host", pattern: /\bnick-neely\.vercel\.app\b/i },
+  { label: "maintainer Vercel scope", pattern: /--scope\s+nick-neely\b/i },
+];
+
 function read(relativePath: string): string {
   return readFileSync(resolve(root, relativePath), "utf8");
+}
+
+function sha256(relativePath: string): string {
+  return createHash("sha256")
+    .update(readFileSync(resolve(root, relativePath)))
+    .digest("hex");
+}
+
+function currentTextFiles(directory = root, prefix = ""): string[] {
+  const ignoredDirectories = new Set([
+    ".git",
+    ".next",
+    ".turbo",
+    "coverage",
+    "dist",
+    "node_modules",
+  ]);
+  const files: string[] = [];
+
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      if (!ignoredDirectories.has(entry.name)) {
+        files.push(...currentTextFiles(resolve(directory, entry.name), relativePath));
+      }
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    if (HISTORICAL_EVIDENCE_PATHS.has(relativePath)) continue;
+    // The fixture necessarily contains the forbidden patterns as regexes; scan
+    // every other current-tree text file, including untracked publication assets.
+    if (relativePath.endsWith("scripts/publication-license.test.ts")) continue;
+    if (THIRD_PARTY_PATH_PREFIXES.some((path) => relativePath.startsWith(path))) continue;
+    if (readFileSync(resolve(directory, entry.name)).includes(0)) continue;
+    files.push(relativePath);
+  }
+
+  return files.sort();
 }
 
 describe("fresh-clone publication gate", () => {
@@ -15,10 +76,10 @@ describe("fresh-clone publication gate", () => {
     const readme = read("README.md");
 
     expect(packageManifest.license).toBe("AGPL-3.0-only");
-    expect(license).toContain("GNU AFFERO GENERAL PUBLIC LICENSE");
-    expect(license).toContain("Version 3, 19 November 2007");
-    expect(license).toContain("13. Remote Network Interaction");
-    expect(license).toContain("END OF TERMS AND CONDITIONS");
+    expect(license).toHaveLength(34523);
+    expect(sha256("LICENSE")).toBe(
+      "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+    );
     expect(readme).toContain("[AGPL-3.0-only](LICENSE)");
   });
 
@@ -26,16 +87,37 @@ describe("fresh-clone publication gate", () => {
     const notices = read("THIRD_PARTY_NOTICES.md");
     const apacheLicense = read("LICENSES/Apache-2.0.txt");
 
-    expect(apacheLicense).toContain("Apache License");
-    expect(apacheLicense).toContain("Version 2.0, January 2004");
-    expect(apacheLicense).toContain("Copyright 2025 Paul Bakaus");
+    expect(apacheLicense).toHaveLength(10766);
+    expect(sha256("LICENSES/Apache-2.0.txt")).toBe(
+      "02bb8c3b4e70190e3986c0404ad2fd8d639b4f534252d82379cc1b502b6d1812",
+    );
+    expect(read("LICENSES/Impeccable-NOTICE.md")).toHaveLength(503);
+    expect(sha256("LICENSES/Impeccable-NOTICE.md")).toBe(
+      "c60a093c2845fd9fb82f9c6f742ece31f379f8190b535309d32d66c45ccffdcb",
+    );
+    expect(read("LICENSES/MIT.txt")).toHaveLength(1056);
+    expect(sha256("LICENSES/MIT.txt")).toBe(
+      "1126322e2cc8d165adc4c792eeb195717de2bcc7b39be1ce77959d78e87ef685",
+    );
     expect(notices).toContain("pbakaus/impeccable");
     expect(notices).toContain("skill-v4.0.2");
     expect(notices).toMatch(/Retrieved:\*\*? 2026-08-19/);
     expect(notices).toContain("Copyright 2025 Paul Bakaus");
-    expect(notices).toMatch(/No NOTICE file is present in that\s+upstream release/);
+    expect(notices).toContain("NOTICE.md");
+    expect(notices).toContain("LICENSES/Impeccable-NOTICE.md");
+    expect(notices).toContain("ehmo/platform-design-skills");
+    expect(notices).toContain("LICENSES/MIT.txt");
+    expect(notices).toContain("Original license: MIT");
     expect(notices).toContain(".agents/skills/impeccable/");
     expect(notices).toContain(".claude/skills/impeccable/");
+    for (const path of [
+      ".agents/skills/impeccable/reference/ios.md",
+      ".agents/skills/impeccable/reference/android.md",
+      ".claude/skills/impeccable/reference/ios.md",
+      ".claude/skills/impeccable/reference/android.md",
+    ]) {
+      expect(notices).toContain(path);
+    }
     for (const variant of [".agents/skills/impeccable/", ".claude/skills/impeccable/"]) {
       expect(existsSync(resolve(root, variant, "SKILL.md"))).toBe(true);
       expect(read(`${variant}SKILL.md`)).toContain("version: 4.0.2");
@@ -54,26 +136,40 @@ describe("fresh-clone publication gate", () => {
     expect(gate).toContain("not legal advice");
   });
 
-  it("keeps current configuration examples maintainer-neutral", () => {
-    const currentFiles = [
+  it("keeps the current tree free of maintainer deployment values", () => {
+    const leaks: string[] = [];
+
+    for (const file of currentTextFiles()) {
+      const contents = read(file);
+      for (const { label, pattern } of CURRENT_TREE_MAINTAINER_PATTERNS) {
+        if (pattern.test(contents)) leaks.push(`${label}: ${file}`);
+      }
+    }
+
+    expect(leaks).toEqual([]);
+    const currentConfig = [
       "apps/web/.env.example",
       "apps/agent/.env.example",
-      "apps/web/src/lib/email/transactional.ts",
-      "packages/domain/src/household-governance.ts",
       "docs/email-setup.md",
-    ];
-    const currentTree = currentFiles.map((file) => read(file)).join("\n");
+    ]
+      .map(read)
+      .join("\n");
+    expect(currentConfig).toContain("BETTER_AUTH_URL");
+    expect(currentConfig).toContain("<BETTER_AUTH_URL>");
+    expect(currentConfig).toContain("example.com");
+  });
 
-    expect(currentTree).not.toContain("stacklet.app");
-    expect(currentTree).not.toContain("nick-neely");
-    expect(currentTree).not.toMatch(/dpl_[A-Za-z0-9]+/);
-    expect(currentTree).toContain("BETTER_AUTH_URL");
-    expect(currentTree).toContain("<BETTER_AUTH_URL>");
-    expect(currentTree).toContain("example.com");
+  it("keeps the email setup path explicit about its Cloudflare prerequisite", () => {
+    const emailSetup = read("docs/email-setup.md");
+
+    expect(emailSetup).toMatch(/assumes Cloudflare DNS/i);
+    expect(emailSetup).toContain("Cloudflare dashboard");
+    expect(emailSetup).toMatch(/DNS only.*grey cloud/);
   });
 
   it("labels deployment records as historical evidence rather than configuration", () => {
     for (const file of [
+      "docs/phase-9a/publication-inventory.md",
       "docs/verification/nextjs-16-3-partial-prefetching.md",
       "docs/verification/nextjs-16-3-preview-qualification.md",
       "docs/verification/phase-7-personal-os.md",

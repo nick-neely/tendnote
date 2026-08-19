@@ -117,7 +117,7 @@ The root `.env` is read **only** by `docker compose`; Next.js and `eve dev` do n
 
 ## Transactional email
 
-Household Invitations are the one email Tendnote sends. Locally you do not need a provider: with no `RESEND_API_KEY` set, the whole message — subject, body, and the acceptance link — is written to the `next dev` terminal, so you can walk the recipient's side by pasting the link into a browser. Setting `RESEND_API_KEY` turns real sending on in any environment, which is how you smoke-test one send; `vitest` never sends whatever is configured. Production without the key refuses by name rather than writing a live capability URL into a hosted log. Sending domain, DNS records, and the send checklist: [`email-setup.md`](email-setup.md).
+Household Invitations are the one email Tendnote sends. Locally you do not need a provider: with no `RESEND_API_KEY` set, the whole message — subject, body, and the acceptance link — is written to the `next dev` terminal, so you can walk the recipient's side by pasting the link into a browser. Setting `RESEND_API_KEY` plus an explicit `TENDNOTE_EMAIL_REPLY_TO` turns real sending on in any environment, which is how you smoke-test one send; `vitest` never sends whatever is configured. Production without either value refuses by name rather than writing a live capability URL into a hosted log. Sending domain, DNS records, and the send checklist: [`email-setup.md`](email-setup.md).
 
 ## Google integrations
 

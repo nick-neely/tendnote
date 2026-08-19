@@ -1,5 +1,3 @@
-import { HOUSEHOLD_SUPPORT_EMAIL } from "@tendnote/domain/household-governance";
-
 /** One rendered message, independent of who is going to carry it. */
 export type TransactionalEmailContent = {
   subject: string;
@@ -31,6 +29,13 @@ export type TransactionalSender = (
  */
 export class EmailTransportUnavailableError extends Error {
   override name = "EmailTransportUnavailableError";
+}
+
+/** A non-routable address used only by tests and local operator logs. */
+export const SYNTHETIC_SUPPORT_EMAIL = "support@example.test";
+
+export class EmailConfigurationError extends Error {
+  override name = "EmailConfigurationError";
 }
 
 /**
@@ -66,10 +71,31 @@ export type EmailEnvironment = {
   TENDNOTE_EMAIL_REPLY_TO?: string;
 };
 
+/**
+ * The address shown to a person and used for replies comes from the operator's
+ * explicit configuration. A production deployment without it has no truthful
+ * recovery door, so it returns `null`; non-production paths use a reserved test
+ * address that cannot route to a real mailbox.
+ */
+export function resolveSupportEmail(
+  env: Pick<EmailEnvironment, "NODE_ENV" | "TENDNOTE_EMAIL_REPLY_TO">,
+): string | null {
+  const configured = env.TENDNOTE_EMAIL_REPLY_TO?.trim();
+  if (configured) return configured;
+  return env.NODE_ENV === "production" ? null : SYNTHETIC_SUPPORT_EMAIL;
+}
+
 export function resolveSenderIdentity(env: EmailEnvironment): TransactionalSenderIdentity {
+  const replyTo = resolveSupportEmail(env);
+  if (!replyTo) {
+    throw new EmailConfigurationError(
+      "TENDNOTE_EMAIL_REPLY_TO is not set, so Tendnote cannot send or display a recovery contact. Add the operator support mailbox to this deployment's environment (see docs/email-setup.md).",
+    );
+  }
+
   return {
     from: env.TENDNOTE_EMAIL_FROM?.trim() || DEFAULT_EMAIL_FROM,
-    replyTo: env.TENDNOTE_EMAIL_REPLY_TO?.trim() || HOUSEHOLD_SUPPORT_EMAIL,
+    replyTo,
   };
 }
 
@@ -92,7 +118,16 @@ export function decideTransactionalTransport(env: EmailEnvironment): Transaction
   if (env.NODE_ENV === "test") return { kind: "operator-log" };
 
   const apiKey = env.RESEND_API_KEY?.trim();
-  if (apiKey) return { kind: "resend", apiKey };
+  if (apiKey) {
+    if (!resolveSupportEmail(env)) {
+      return {
+        kind: "unavailable",
+        reason:
+          "TENDNOTE_EMAIL_REPLY_TO is not set, so Tendnote cannot send transactional email. Add the operator support mailbox to this deployment's environment (see docs/email-setup.md).",
+      };
+    }
+    return { kind: "resend", apiKey };
+  }
 
   // Production with no key is a misconfiguration, not a mode. It fails loudly
   // and by name rather than falling back to a transport that would write a live
