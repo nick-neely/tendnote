@@ -41,15 +41,13 @@ function sha256(relativePath: string): string {
     .digest("hex");
 }
 
-function currentTextFiles(repositoryRoot = root, trackedPaths?: string[]): string[] {
-  const publishablePaths =
-    trackedPaths ??
-    execFileSync("git", ["ls-files", "-z"], {
-      cwd: repositoryRoot,
-    })
-      .toString()
-      .split("\0")
-      .filter(Boolean);
+function currentTextFiles(repositoryRoot = root): string[] {
+  const publishablePaths = execFileSync("git", ["ls-files", "-z"], {
+    cwd: repositoryRoot,
+  })
+    .toString()
+    .split("\0")
+    .filter(Boolean);
 
   const files: string[] = [];
   for (const relativePath of publishablePaths) {
@@ -64,10 +62,10 @@ function currentTextFiles(repositoryRoot = root, trackedPaths?: string[]): strin
   return files.sort();
 }
 
-function findMaintainerDeploymentLeaks(repositoryRoot = root, trackedPaths?: string[]): string[] {
+function findMaintainerDeploymentLeaks(repositoryRoot = root): string[] {
   const leaks: string[] = [];
 
-  for (const file of currentTextFiles(repositoryRoot, trackedPaths)) {
+  for (const file of currentTextFiles(repositoryRoot)) {
     const contents = readFileSync(resolve(repositoryRoot, file), "utf8");
     for (const { label, pattern } of CURRENT_TREE_MAINTAINER_PATTERNS) {
       if (pattern.test(contents)) leaks.push(`${label}: ${file}`);
@@ -89,15 +87,34 @@ describe("fresh-clone publication gate", () => {
         resolve(fixtureRoot, ".scratch/worktrees/other/generated.md"),
         "stacklet.app should not be published\n",
       );
-      const trackedPaths = [".gitignore", "docs/reference/config.md"];
-      expect(findMaintainerDeploymentLeaks(fixtureRoot, trackedPaths)).toEqual([]);
+      execFileSync("git", ["init", "--quiet"], { cwd: fixtureRoot });
+      execFileSync("git", ["config", "user.name", "Publication test"], { cwd: fixtureRoot });
+      execFileSync("git", ["config", "user.email", "publication@example.test"], {
+        cwd: fixtureRoot,
+      });
+      execFileSync("git", ["add", ".gitignore", "docs/reference/config.md"], {
+        cwd: fixtureRoot,
+      });
+      execFileSync("git", ["commit", "--quiet", "-m", "seed"], { cwd: fixtureRoot });
+
+      expect(() =>
+        execFileSync(
+          "git",
+          ["check-ignore", "--quiet", "--no-index", ".scratch/worktrees/other/generated.md"],
+          {
+            cwd: fixtureRoot,
+          },
+        ),
+      ).not.toThrow();
+      expect(findMaintainerDeploymentLeaks(fixtureRoot)).toEqual([]);
 
       writeFileSync(
         resolve(fixtureRoot, "docs/reference/nested.md"),
         "stacklet.app must fail the publication gate\n",
       );
-      trackedPaths.push("docs/reference/nested.md");
-      expect(findMaintainerDeploymentLeaks(fixtureRoot, trackedPaths)).toEqual([
+      execFileSync("git", ["add", "docs/reference/nested.md"], { cwd: fixtureRoot });
+      execFileSync("git", ["commit", "--quiet", "-m", "add nested leak"], { cwd: fixtureRoot });
+      expect(findMaintainerDeploymentLeaks(fixtureRoot)).toEqual([
         "former hosted origin: docs/reference/nested.md",
       ]);
     } finally {
