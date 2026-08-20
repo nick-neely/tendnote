@@ -20,16 +20,22 @@ const DELEGATED_ACTION_EDIT = [
 
 export function assertCurrentTurnAuthorizesGeneralActionEdit(input: {
   readonly message: string | null;
-}) {
+}): { authorized: true } | { authorized: false; guidance: string } {
   const message = input.message;
   if (!message) {
-    throw new Error("The current user message is unavailable; the Action edit was not authorized.");
+    return {
+      authorized: false,
+      guidance: "Ask the user to name one specific Action and the exact change they want.",
+    };
   }
   if (DELEGATED_ACTION_EDIT.some((pattern) => pattern.test(message))) {
-    throw new Error(
-      "The user delegated the Action or value choice; ask for one specific Action and change instead.",
-    );
+    return {
+      authorized: false,
+      guidance:
+        "The user delegated the Action or value choice. Ask for one specific Action and a user-supplied value; do not choose either for them.",
+    };
   }
+  return { authorized: true };
 }
 
 export function currentAuthenticatedTurnMessage(turnId: string): string | null {

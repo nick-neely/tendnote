@@ -1,6 +1,6 @@
 import { defineEval } from "eve/evals";
 import { includes, satisfies } from "eve/evals/expect";
-import { toolOutputs, without } from "../expectations";
+import { hasNoRuntimeFailures, without } from "../expectations";
 
 export function memoryCleanupReplyMatchesCount(reply: string, count: number) {
   return count === 0
@@ -8,6 +8,26 @@ export function memoryCleanupReplyMatchesCount(reply: string, count: number) {
         reply,
       )
     : /\b(?:review|approv(?:e|al)|sign[ -]?off|go-ahead|consent|proposal|suggest)\b/i.test(reply);
+}
+
+export function curatorProposalCount(events: readonly unknown[]): number | null {
+  const counts = events.flatMap((event) => {
+    if (typeof event !== "object" || event === null) return [];
+    const candidate = event as {
+      type?: unknown;
+      data?: { subagentName?: unknown; output?: unknown };
+    };
+    if (
+      candidate.type !== "subagent.completed" ||
+      candidate.data?.subagentName !== "memory_curator" ||
+      typeof candidate.data.output !== "string"
+    ) {
+      return [];
+    }
+    const match = /^PROPOSAL_COUNT:\s*(\d+)\b/m.exec(candidate.data.output);
+    return match?.[1] === undefined ? [] : [Number(match[1])];
+  });
+  return counts.length === 1 && Number.isSafeInteger(counts[0]) ? (counts[0] ?? null) : null;
 }
 
 export default defineEval({
@@ -18,9 +38,8 @@ export default defineEval({
 
     let proposalCount: number | null = null;
 
-    t.succeeded();
     t.calledSubagent("memory_curator", {
-      output: /review|cleanup|memor(y|ies)/i,
+      output: /PROPOSAL_COUNT:\s*\d+/i,
     });
     t.notCalledTool("approve_suggested_memory");
     t.notCalledTool("dismiss_suggested_memory");
@@ -28,15 +47,9 @@ export default defineEval({
     t.notCalledTool("capture_source_record");
     t.notCalledTool("create_followup");
     t.notCalledTool("create_message_draft");
-    t.eventsSatisfy("the reply follows the actual cleanup proposal count", (events) => {
-      const outputs = toolOutputs(events, "propose_memory_cleanup");
-      if (outputs.length !== 1) return false;
-      const output = outputs[0];
-      if (typeof output !== "object" || output === null) return false;
-      const proposals = (output as { proposals?: unknown }).proposals;
-      if (!Array.isArray(proposals)) return false;
-      proposalCount = proposals.length;
-      return true;
+    t.eventsSatisfy("one completed curator reports its proposal count", (events) => {
+      proposalCount = curatorProposalCount(events);
+      return hasNoRuntimeFailures(events) && proposalCount !== null;
     });
     t.check(
       t.reply,

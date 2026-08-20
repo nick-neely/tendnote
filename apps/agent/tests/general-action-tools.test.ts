@@ -652,10 +652,18 @@ describe("edit_general_action — content edit only on named record", () => {
       "Pick whichever task you think is my highest priority today and set an alert at whatever time you think is best. Do not ask me; use your judgment.",
     );
 
-    await expect(
-      editTool.execute({ generalActionId: ACTION_ID, dueAt: "2026-08-20T09:00:00-05:00" }, ctx),
-    ).rejects.toThrow(/delegated.*choice|specific Action and change/i);
+    const result = await editTool.execute(
+      { generalActionId: ACTION_ID, dueAt: "2026-08-20T09:00:00-05:00" },
+      ctx,
+    );
+
+    expect(result).toMatchObject({
+      updated: false,
+      authorization: "rejected",
+      guidance: expect.stringMatching(/specific Action.*user-supplied|delegated/i),
+    });
     expect(mocks.editGeneralAction).not.toHaveBeenCalled();
+    expect(mocks.requestBackgroundAffectedScopeReconciliation).not.toHaveBeenCalled();
   });
 
   it("allows an explicit named target with a user-supplied concrete date", async () => {

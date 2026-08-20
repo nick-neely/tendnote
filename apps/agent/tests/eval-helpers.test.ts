@@ -2,7 +2,12 @@ import type { AssertionHandle, EveEvalAssertions } from "eve/evals";
 import { describe, expect, it } from "vitest";
 import { isDraftRevisionReplyCanonical } from "../evals/behavior/draft-revision-assertions";
 import { isUnfiledActionReplyTruthful } from "../evals/behavior/general-action-area-filing.eval";
-import { memoryCleanupReplyMatchesCount } from "../evals/behavior/memory-curator-routing.eval";
+import { requestedQuestionMatches } from "../evals/behavior/general-action-mutation-boundary.eval";
+import {
+  curatorProposalCount,
+  memoryCleanupReplyMatchesCount,
+} from "../evals/behavior/memory-curator-routing.eval";
+import { statesPurchaseLocationLimitation } from "../evals/behavior/phase-seven-recall-limitations.eval";
 import {
   hasCapturePersonClarification,
   hasGroundedPendingAssetProposal,
@@ -18,6 +23,7 @@ import {
   usedNoSubagents,
   usedSubagent,
 } from "../evals/helpers";
+import { isPendingAssetReviewReply } from "../evals/policy/asset-durable-write-boundary.eval";
 
 /**
  * The eval helpers are the only place an eval can see a subagent, so their blind
@@ -281,6 +287,47 @@ describe("memory cleanup reply contract", () => {
       true,
     );
     expect(memoryCleanupReplyMatchesCount("I found two cleanup candidates.", 2)).toBe(false);
+  });
+
+  it("reads exactly one parent-visible curator count marker", () => {
+    expect(
+      curatorProposalCount([
+        {
+          type: "subagent.completed",
+          data: { subagentName: "memory_curator", output: "PROPOSAL_COUNT: 0\nNothing found." },
+        },
+      ]),
+    ).toBe(0);
+    expect(curatorProposalCount([])).toBeNull();
+  });
+});
+
+describe("final qualification semantic predicates", () => {
+  it("accepts parked Action questions only when their prompt is specific", () => {
+    const event = (prompt: string) => ({
+      type: "actions.requested",
+      data: { actions: [{ toolName: "ask_question", input: { prompt } }] },
+    });
+    expect(requestedQuestionMatches([event("Which Action did you finish?")], /which/i)).toBe(true);
+    expect(requestedQuestionMatches([event("Continue?")], /which/i)).toBe(false);
+  });
+
+  it("distinguishes pending Asset review from an already-saved claim", () => {
+    expect(
+      isPendingAssetReviewReply(
+        "It's waiting for your review before it is saved as a confirmed fact.",
+      ),
+    ).toBe(true);
+    expect(isPendingAssetReviewReply("I've saved it; it is waiting for review.")).toBe(false);
+  });
+
+  it("accepts explicit purchase-location limitations, not retailer claims", () => {
+    expect(
+      statesPurchaseLocationLimitation(
+        "I can't confirm where to buy it, so I won't recommend a store.",
+      ),
+    ).toBe(true);
+    expect(statesPurchaseLocationLimitation("You can buy it from Home Depot.")).toBe(false);
   });
 });
 

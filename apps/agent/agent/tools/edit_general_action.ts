@@ -64,9 +64,16 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const turnId = ctx.session.turn.id;
-    assertCurrentTurnAuthorizesGeneralActionEdit({
+    const authorization = assertCurrentTurnAuthorizesGeneralActionEdit({
       message: currentAuthenticatedTurnMessage(turnId),
     });
+    if (!authorization.authorized) {
+      return {
+        updated: false as const,
+        authorization: "rejected" as const,
+        guidance: authorization.guidance,
+      };
+    }
     const ownerUserId = resolveOwnerUserId(ctx);
 
     const outcome = await withModelSafeStoreErrors(() =>
@@ -78,10 +85,16 @@ export default defineTool({
     );
     await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
 
-    return { action: toGeneralActionRef(outcome.result) };
+    return { updated: true as const, action: toGeneralActionRef(outcome.result) };
   },
   // A content edit has no card of its own — the model confirms what changed in prose.
   toModelOutput(output) {
+    if (output.updated === false) {
+      return {
+        type: "json" as const,
+        value: output,
+      };
+    }
     return {
       type: "json" as const,
       value: {
