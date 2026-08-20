@@ -72,7 +72,7 @@ describe("operator-owned self-hosted admission proof", () => {
       ],
     });
     const householdLifecycle = createHouseholdLifecycle(invitationStore.households);
-    await householdLifecycle.createHousehold({
+    const { household } = await householdLifecycle.createHousehold({
       ownerUserId: OWNER.id,
       name: "Operator home",
     });
@@ -86,15 +86,27 @@ describe("operator-owned self-hosted admission proof", () => {
       policy,
     };
 
-    // The configured owner wins by identity, not by arrival order. Every
-    // concurrent first visit observes the same one durable source.
+    // Signup creates the unrelated account's pending profile before its first
+    // admitted-surface visit races the configured owner's first visit.
+    await queries.ensureAccessProfile({ userId: UNRELATED.id });
+
+    // The configured owner wins by identity, not by arrival order. Race the
+    // configured owner and an unrelated identity together: only the owner may
+    // create the one durable self-hosted source.
     const ownerResolver = createPrivateBetaAccessResolver(admission);
-    const ownerDecisions = await Promise.all(
-      Array.from({ length: 8 }, () =>
+    const firstVisits = await Promise.all([
+      ...Array.from({ length: 8 }, () =>
         ownerResolver.resolveAccess({ userId: OWNER.id, email: OWNER.email }),
       ),
-    );
+      ...Array.from({ length: 8 }, () =>
+        ownerResolver.resolveAccess({ userId: UNRELATED.id, email: UNRELATED.email }),
+      ),
+    ]);
+    const ownerDecisions = firstVisits.slice(0, 8);
+    const unrelatedDecisions = firstVisits.slice(8);
     expect(ownerDecisions.every((decision) => decision.admitted)).toBe(true);
+    expect(unrelatedDecisions.every((decision) => !decision.admitted)).toBe(true);
+    expect(unrelatedDecisions.every((decision) => decision.status === "pending")).toBe(true);
     expect(new Set(ownerDecisions.map((decision) => decision.profile?.source))).toEqual(
       new Set(["self_hosted_bootstrap"]),
     );
@@ -102,6 +114,11 @@ describe("operator-owned self-hosted admission proof", () => {
       status: "granted",
       source: "self_hosted_bootstrap",
     });
+    await expect(queries.getAccessProfile({ userId: UNRELATED.id })).resolves.toMatchObject({
+      status: "pending",
+      source: null,
+    });
+    await expect(queries.listAdmittedOwnerUserIds()).resolves.toEqual([OWNER.id]);
     await assertSharedBoundary({
       admission,
       user: OWNER,
@@ -111,7 +128,6 @@ describe("operator-owned self-hosted admission proof", () => {
 
     // An unrelated signup is created as pending and stays pending even though
     // a hosted Flags evaluator would return true. Self-hosted mode never calls it.
-    await queries.ensureAccessProfile({ userId: UNRELATED.id });
     const unrelatedDecision = await assertSharedBoundary({
       admission,
       user: UNRELATED,
@@ -133,13 +149,30 @@ describe("operator-owned self-hosted admission proof", () => {
       ownerUserId: OWNER.id,
       email: INVITEE.email,
     });
+    const accepted = await invitations.acceptInvitation({
+      secret: sent.secret,
+      userId: INVITEE.id,
+      userEmail: INVITEE.email,
+    });
+    expect(accepted).toEqual({ householdId: household.id });
     await expect(
-      invitations.acceptInvitation({
-        secret: sent.secret,
+      invitationStore.getInvitationById({ invitationId: sent.invitation.id }),
+    ).resolves.toMatchObject({
+      state: "accepted",
+      acceptedByUserId: INVITEE.id,
+      resolvedAt: expect.any(Date),
+    });
+    await expect(
+      invitationStore.households.getHouseholdMembership({
+        householdId: household.id,
         userId: INVITEE.id,
-        userEmail: INVITEE.email,
       }),
-    ).resolves.toEqual(expect.objectContaining({ householdId: expect.any(String) }));
+    ).resolves.toMatchObject({
+      role: "member",
+      status: "active",
+      acceptedAt: expect.any(Date),
+      removedAt: null,
+    });
     await expect(queries.getAccessProfile({ userId: INVITEE.id })).resolves.toMatchObject({
       status: "granted",
       source: "household_invitation",

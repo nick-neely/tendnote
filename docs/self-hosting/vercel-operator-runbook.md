@@ -20,6 +20,10 @@ Before configuring admission, the operator owns and has separately verified:
 - a transaction-capable Neon Postgres database (`DATABASE_URL`) and a
   Redis-compatible service (`REDIS_URL`), both reachable from the Vercel
   runtime;
+- one canonical HTTPS Better Auth origin (`BETTER_AUTH_URL`) and one private
+  production `BETTER_AUTH_SECRET`; Web and Eve must use the same auth secret,
+  database, Redis, and canonical origin so they verify the same sessions and
+  persisted Access Decisions;
 - model access through the configured Vercel AI Gateway (for example,
   `AI_GATEWAY_API_KEY` and a chosen `TENDNOTE_AGENT_MODEL`);
 - the OAuth application(s) used by the enabled Better Auth integrations, such
@@ -54,6 +58,22 @@ variable to the one Better Auth email that will be the configured bootstrap owne
 for this deployment. Do not set a comma-separated list, an internal user id, a
 hostname, or a Vercel account name.
 
+The Web and Eve Vercel runtimes receive the same values for the shared auth and
+state dependencies. These placeholders are intentionally synthetic; replace
+them only in the private Vercel environment:
+
+```bash
+BETTER_AUTH_URL=https://app.example.test
+BETTER_AUTH_SECRET=<private-32-character-value>
+DATABASE_URL=<private-neon-connection-string>
+REDIS_URL=<private-redis-connection-string>
+```
+
+Set all four values in both runtimes. `BETTER_AUTH_SECRET` must be at least 32
+characters and must never be committed. `DATABASE_URL` must point to the same
+transaction-capable Neon database, and `REDIS_URL` to the same Redis service;
+separate values would make Web and Eve disagree about sessions or admission.
+
 The policy is deliberately explicit:
 
 - An absent `TENDNOTE_ADMISSION_MODE` means `hosted`. Hosted Private Beta
@@ -84,11 +104,20 @@ pnpm db:check
 pnpm verify
 ```
 
-Then, in the operator-owned Vercel project(s), configure the canonical origin,
-transaction-capable database, Redis, model, OAuth, and mail values listed
-above. Keep secrets in Vercel's private environment settings. Do not create a
-deploy button, copy a secret into the repository, or assume a container image
-or platform-neutral deployment path exists.
+From a trusted shell with `DATABASE_URL` pointed at the operator's private Neon
+database, apply the committed schema before the first production deploy:
+
+```bash
+pnpm db:migrate
+```
+
+Review the target connection and migration output before continuing. This is an
+operator-run database step, not a deploy button or an automatic platform
+provisioner. Then, in the operator-owned Vercel project(s), configure the
+canonical origin, transaction-capable database, Redis, model, OAuth, and mail
+values listed above. Keep secrets in Vercel's private environment settings. Do
+not create a deploy button, copy a secret into the repository, or assume a
+container image or platform-neutral deployment path exists.
 
 With `TENDNOTE_ADMISSION_MODE=self-hosted` and the synthetic email replaced by
 the operator's real private value:
