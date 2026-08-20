@@ -43,6 +43,50 @@ function jsonResource(entries: Map<string, string>, path: string) {
   return parsed.records;
 }
 
+type ExportRow = Record<string, unknown>;
+
+type OwnerBoundaryCase = {
+  path: string;
+  includedIds: readonly string[];
+  excludedIds: readonly string[];
+  ownerField?: string;
+  isOwnedRow?: (row: ExportRow) => boolean;
+};
+
+function assertOwnerBoundaries(entries: Map<string, string>, cases: readonly OwnerBoundaryCase[]) {
+  for (const boundary of cases) {
+    const rows = jsonResource(entries, boundary.path) as ExportRow[];
+    const ids = rows.map((row) => String(row.id));
+    expect(new Set(ids), `${boundary.path} emitted ids`).toEqual(new Set(boundary.includedIds));
+    for (const excludedId of boundary.excludedIds) {
+      expect(ids, `${boundary.path} excludes ${excludedId}`).not.toContain(excludedId);
+    }
+    if (boundary.ownerField) {
+      expect(
+        rows.every((row) => row[boundary.ownerField as string] === OWNER),
+        `${boundary.path} ${boundary.ownerField} ownership`,
+      ).toBe(true);
+    }
+    if (boundary.isOwnedRow) {
+      expect(rows.every(boundary.isOwnedRow), `${boundary.path} relationship ownership`).toBe(true);
+    }
+  }
+}
+
+function assertLifecycleCoverage(
+  entries: Map<string, string>,
+  cases: readonly { path: string; field: "status" | "lifecycle"; values: readonly string[] }[],
+) {
+  for (const lifecycle of cases) {
+    const observed = (jsonResource(entries, lifecycle.path) as ExportRow[]).map((row) =>
+      String(row[lifecycle.field]),
+    );
+    expect(new Set(observed), `${lifecycle.path} ${lifecycle.field} lifecycle`).toEqual(
+      new Set(lifecycle.values),
+    );
+  }
+}
+
 const OPERATIONAL_CANDIDATE_IDS = [
   "neutral-provider-connection",
   "neutral-session-row",
@@ -59,10 +103,7 @@ const OPERATIONAL_CANDIDATE_IDS = [
  * export family loaders intentionally return only their typed durable graph, so these
  * rows can be present at the adapter seam without becoming portable resources.
  */
-function withOperationalCandidates<T extends object>(
-  context: T,
-  sideEffects?: { externalNotification: () => void; externalDraftCreation: () => void },
-) {
+function withOperationalCandidates<T extends object>(context: T) {
   return Object.assign(context, {
     providerConnections: [
       {
@@ -112,8 +153,6 @@ function withOperationalCandidates<T extends object>(
         path: "resources/audit-rows-v1.json",
       },
     ],
-    externalNotification: sideEffects?.externalNotification,
-    externalDraftCreation: sideEffects?.externalDraftCreation,
   });
 }
 
@@ -247,6 +286,37 @@ function relationshipContext(): OwnerDataExportRelationshipContext {
     },
   ].map((value) => asRecord<OwnerDataExportRelationshipContext["followups"][number]>(value));
 
+  const mention = {
+    id: "mention-owned-unresolved",
+    sourceRecordId: memorySource,
+    mentionText: "Ada",
+    candidatePersonIds: [person.id, "person-other-owner"],
+    status: "unresolved",
+    resolvedPersonId: null,
+    createdAt: NOW,
+    resolvedAt: null,
+  };
+  const unresolvedMentions = [
+    mention,
+    ...(["resolved", "dismissed"] as const).map((status) => ({
+      ...mention,
+      id: `mention-owned-${status}`,
+      status,
+      resolvedPersonId: status === "resolved" ? person.id : null,
+      resolvedAt: status === "resolved" ? NOW : null,
+    })),
+    {
+      ...mention,
+      id: "mention-other-owner",
+      sourceRecordId: "source-other-owner",
+      mentionText: "Grace",
+      candidatePersonIds: ["person-other-owner"],
+      status: "unresolved",
+    },
+  ].map((value) =>
+    asRecord<OwnerDataExportRelationshipContext["unresolvedMentions"][number]>(value),
+  );
+
   const contextFact = {
     id: "context-owned-suggested",
     subject: { kind: "self", userId: OWNER },
@@ -318,18 +388,7 @@ function relationshipContext(): OwnerDataExportRelationshipContext {
         createdAt: NOW,
       }),
     ],
-    unresolvedMentions: [
-      asRecord<OwnerDataExportRelationshipContext["unresolvedMentions"][number]>({
-        id: "mention-owned",
-        sourceRecordId: memorySource,
-        mentionText: "Ada",
-        candidatePersonIds: [person.id, "person-other-owner"],
-        status: "unresolved",
-        resolvedPersonId: person.id,
-        createdAt: NOW,
-        resolvedAt: null,
-      }),
-    ],
+    unresolvedMentions,
     interactions: [
       asRecord<OwnerDataExportRelationshipContext["interactions"][number]>({
         id: "interaction-owned",
@@ -414,6 +473,22 @@ function actionsPlanningContext(): OwnerDataExportActionsPlanningContext {
     createdAt: NOW,
     updatedAt: NOW,
   };
+  const actionStatuses = [
+    "open",
+    "deferred",
+    "completed",
+    "dismissed",
+    "archived",
+    "paused",
+    "suggested",
+    "ignored",
+  ] as const;
+  const ownedActions = actionStatuses.map((status) => ({
+    ...action,
+    id: status === "deferred" ? action.id : `action-owned-${status}`,
+    status,
+    completedAt: status === "completed" ? NOW : null,
+  }));
   const savedItem = {
     id: "saved-owned",
     ownerUserId: OWNER,
@@ -436,6 +511,12 @@ function actionsPlanningContext(): OwnerDataExportActionsPlanningContext {
     createdAt: NOW,
     updatedAt: NOW,
   };
+  const savedItemStatuses = ["active", "archived"] as const;
+  const ownedSavedItems = savedItemStatuses.map((status) => ({
+    ...savedItem,
+    id: status === "archived" ? savedItem.id : `saved-owned-${status}`,
+    status,
+  }));
   const giftPlan = {
     id: "gift-plan-owned",
     ownerUserId: OWNER,
@@ -452,9 +533,42 @@ function actionsPlanningContext(): OwnerDataExportActionsPlanningContext {
     createdAt: NOW,
     updatedAt: NOW,
   };
+  const giftPlanStatuses = ["active", "celebrated", "archived"] as const;
+  const ownedGiftPlans = giftPlanStatuses.map((status) => ({
+    ...giftPlan,
+    id: status === "celebrated" ? giftPlan.id : `gift-plan-owned-${status}`,
+    status,
+  }));
+  const messageDraft = {
+    id: "draft-internal-approved",
+    personId: "person-owned",
+    ownerUserId: OWNER,
+    channel: "email",
+    purpose: "check_in",
+    body: "How is the lecture going?",
+    status: "approved",
+    sourceRefs: [
+      {
+        kind: "source_record",
+        id: "source-owned-active",
+        label: "Lecture note",
+        trust: "logged_context",
+      },
+    ],
+    createdAt: NOW,
+    updatedAt: NOW,
+  };
+  const messageDraftStatuses = ["draft", "approved", "dismissed", "sent_manually"] as const;
+  const ownedMessageDrafts = messageDraftStatuses.map((status) => ({
+    ...messageDraft,
+    id: `draft-internal-${status}`,
+    status,
+  }));
   return {
     generalActions: [
-      asRecord<OwnerDataExportActionsPlanningContext["generalActions"][number]>(action),
+      ...ownedActions.map((value) =>
+        asRecord<OwnerDataExportActionsPlanningContext["generalActions"][number]>(value),
+      ),
       asRecord<OwnerDataExportActionsPlanningContext["generalActions"][number]>({
         ...action,
         id: "action-household-native",
@@ -479,12 +593,42 @@ function actionsPlanningContext(): OwnerDataExportActionsPlanningContext {
         createdAt: NOW,
         updatedAt: NOW,
       }),
+      asRecord<OwnerDataExportActionsPlanningContext["generalActionAreas"][number]>({
+        id: "area-owned-archived",
+        ownerUserId: OWNER,
+        name: "Archived Area",
+        sortOrder: 1,
+        archivedAt: NOW,
+        createdAt: NOW,
+        updatedAt: NOW,
+      }),
+      asRecord<OwnerDataExportActionsPlanningContext["generalActionAreas"][number]>({
+        id: "area-other-owner",
+        ownerUserId: OTHER_OWNER,
+        name: "Other Member Area",
+        sortOrder: 2,
+        archivedAt: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+      }),
     ],
     generalActionPeople: [
       asRecord<OwnerDataExportActionsPlanningContext["generalActionPeople"][number]>({
         id: "action-person-owned",
         generalActionId: action.id,
         personId: "person-owned",
+        createdAt: NOW,
+      }),
+      asRecord<OwnerDataExportActionsPlanningContext["generalActionPeople"][number]>({
+        id: "action-person-other-action",
+        generalActionId: "action-other-owner",
+        personId: "person-other-owner",
+        createdAt: NOW,
+      }),
+      asRecord<OwnerDataExportActionsPlanningContext["generalActionPeople"][number]>({
+        id: "action-person-foreign-person",
+        generalActionId: action.id,
+        personId: "person-other-owner",
         createdAt: NOW,
       }),
     ],
@@ -507,6 +651,15 @@ function actionsPlanningContext(): OwnerDataExportActionsPlanningContext {
         assetMemoryId: null,
         createdAt: NOW,
       }),
+      asRecord<OwnerDataExportActionsPlanningContext["generalActionAssets"][number]>({
+        id: "action-asset-other-action",
+        createdByUserId: OTHER_OWNER,
+        generalActionId: "action-other-owner",
+        assetId: "asset-other-owner",
+        hintLabel: "Other member asset",
+        assetMemoryId: null,
+        createdAt: NOW,
+      }),
     ],
     generalActionEvents: [
       asRecord<OwnerDataExportActionsPlanningContext["generalActionEvents"][number]>({
@@ -523,9 +676,20 @@ function actionsPlanningContext(): OwnerDataExportActionsPlanningContext {
         },
         createdAt: NOW,
       }),
+      asRecord<OwnerDataExportActionsPlanningContext["generalActionEvents"][number]>({
+        id: "action-event-other-owner",
+        generalActionId: "action-other-owner",
+        ownerUserId: OTHER_OWNER,
+        kind: "completed",
+        actorUserId: OTHER_OWNER,
+        detailJson: { status: "completed" },
+        createdAt: NOW,
+      }),
     ],
     savedItems: [
-      asRecord<OwnerDataExportActionsPlanningContext["savedItems"][number]>(savedItem),
+      ...ownedSavedItems.map((value) =>
+        asRecord<OwnerDataExportActionsPlanningContext["savedItems"][number]>(value),
+      ),
       asRecord<OwnerDataExportActionsPlanningContext["savedItems"][number]>({
         ...savedItem,
         id: "saved-other-owner",
@@ -551,6 +715,15 @@ function actionsPlanningContext(): OwnerDataExportActionsPlanningContext {
         detailJson: { destinationKind: "general_action", destinationRecordId: action.id },
         createdAt: NOW,
       }),
+      asRecord<OwnerDataExportActionsPlanningContext["savedItemEvents"][number]>({
+        id: "saved-event-other-owner",
+        savedItemId: "saved-other-owner",
+        ownerUserId: OTHER_OWNER,
+        kind: "archived",
+        actorUserId: OTHER_OWNER,
+        detailJson: { status: "archived" },
+        createdAt: NOW,
+      }),
     ],
     savedItemOutcomes: [
       asRecord<OwnerDataExportActionsPlanningContext["savedItemOutcomes"][number]>({
@@ -561,29 +734,41 @@ function actionsPlanningContext(): OwnerDataExportActionsPlanningContext {
         idempotencyKey: "promotion-1",
         createdAt: NOW,
       }),
-    ],
-    messageDrafts: [
-      asRecord<OwnerDataExportActionsPlanningContext["messageDrafts"][number]>({
-        id: "draft-internal",
-        personId: "person-owned",
-        ownerUserId: OWNER,
-        channel: "email",
-        purpose: "check_in",
-        body: "How is the lecture going?",
-        status: "approved",
-        sourceRefs: [
-          {
-            kind: "source_record",
-            id: "source-owned-active",
-            label: "Lecture note",
-            trust: "logged_context",
-          },
-        ],
+      asRecord<OwnerDataExportActionsPlanningContext["savedItemOutcomes"][number]>({
+        id: "saved-outcome-other-owner",
+        savedItemId: "saved-other-owner",
+        destinationKind: "general_action",
+        destinationRecordId: "action-other-owner",
+        idempotencyKey: "promotion-other-owner",
         createdAt: NOW,
-        updatedAt: NOW,
       }),
     ],
-    giftPlans: [asRecord<OwnerDataExportActionsPlanningContext["giftPlans"][number]>(giftPlan)],
+    messageDrafts: [
+      ...ownedMessageDrafts.map((value) =>
+        asRecord<OwnerDataExportActionsPlanningContext["messageDrafts"][number]>(value),
+      ),
+      asRecord<OwnerDataExportActionsPlanningContext["messageDrafts"][number]>({
+        ...messageDraft,
+        id: "draft-other-owner",
+        personId: "person-other-owner",
+        ownerUserId: OTHER_OWNER,
+        status: "draft",
+        body: "Other member draft must not be exported.",
+      }),
+    ],
+    giftPlans: [
+      ...ownedGiftPlans.map((value) =>
+        asRecord<OwnerDataExportActionsPlanningContext["giftPlans"][number]>(value),
+      ),
+      asRecord<OwnerDataExportActionsPlanningContext["giftPlans"][number]>({
+        ...giftPlan,
+        id: "gift-plan-other-owner",
+        ownerUserId: OTHER_OWNER,
+        subjectName: "Grace",
+        subjectPersonId: "person-other-owner",
+        status: "active",
+      }),
+    ],
     giftIdeas: [
       asRecord<OwnerDataExportActionsPlanningContext["giftIdeas"][number]>({
         id: "gift-idea-contribution",
@@ -599,6 +784,20 @@ function actionsPlanningContext(): OwnerDataExportActionsPlanningContext {
         createdAt: NOW,
         updatedAt: NOW,
       }),
+      asRecord<OwnerDataExportActionsPlanningContext["giftIdeas"][number]>({
+        id: "gift-idea-other-owner",
+        giftPlanId: "gift-plan-other-owner",
+        contributorUserId: OTHER_OWNER,
+        title: "Other member gift idea",
+        note: "Other member plan only",
+        url: null,
+        claimedByUserId: null,
+        claimedAt: null,
+        lastActorUserId: OTHER_OWNER,
+        revision: 1,
+        createdAt: NOW,
+        updatedAt: NOW,
+      }),
     ],
     giftPlanEvents: [
       asRecord<OwnerDataExportActionsPlanningContext["giftPlanEvents"][number]>({
@@ -607,6 +806,14 @@ function actionsPlanningContext(): OwnerDataExportActionsPlanningContext {
         kind: "idea_claimed",
         actorUserId: OTHER_OWNER,
         detailJson: { giftIdeaId: "gift-idea-contribution" },
+        createdAt: NOW,
+      }),
+      asRecord<OwnerDataExportActionsPlanningContext["giftPlanEvents"][number]>({
+        id: "gift-event-other-owner",
+        giftPlanId: "gift-plan-other-owner",
+        kind: "created",
+        actorUserId: OTHER_OWNER,
+        detailJson: {},
         createdAt: NOW,
       }),
     ],
@@ -618,6 +825,15 @@ function actionsPlanningContext(): OwnerDataExportActionsPlanningContext {
         recordId: action.id,
         sharedWithUserId: OTHER_OWNER,
         sharedByUserId: OWNER,
+        createdAt: NOW,
+      }),
+      asRecord<OwnerDataExportActionsPlanningContext["recordShares"][number]>({
+        id: "share-foreign-action",
+        householdId: HOUSEHOLD,
+        recordKind: "general_action",
+        recordId: "action-other-owner",
+        sharedWithUserId: OWNER,
+        sharedByUserId: OTHER_OWNER,
         createdAt: NOW,
       }),
       asRecord<OwnerDataExportActionsPlanningContext["recordShares"][number]>({
@@ -701,6 +917,12 @@ function assetsContext(): OwnerDataExportAssetsContext {
     createdAt: NOW,
     updatedAt: NOW,
   };
+  const assetMemoryStatuses = ["suggested", "active", "dismissed"] as const;
+  const ownedAssetMemories = assetMemoryStatuses.map((status) => ({
+    ...assetMemory,
+    id: status === "active" ? assetMemory.id : `asset-memory-owned-${status}`,
+    status,
+  }));
   const evidence = {
     id: "evidence-owned",
     assetId: asset.id,
@@ -730,10 +952,26 @@ function assetsContext(): OwnerDataExportAssetsContext {
       asRecord<OwnerDataExportAssetsContext["assets"][number]>(asset),
       asRecord<OwnerDataExportAssetsContext["assets"][number]>({
         ...asset,
+        id: "asset-owned-active",
+        name: "Active Refrigerator",
+        status: "active",
+        archivedAt: null,
+      }),
+      asRecord<OwnerDataExportAssetsContext["assets"][number]>({
+        ...asset,
         id: "asset-owned-suggested",
         name: "Replacement Filter",
         kind: "item",
         status: "suggested",
+        scope: "private",
+        householdId: null,
+        archivedAt: null,
+      }),
+      asRecord<OwnerDataExportAssetsContext["assets"][number]>({
+        ...asset,
+        id: "asset-owned-dismissed",
+        name: "Dismissed Refrigerator",
+        status: "dismissed",
         scope: "private",
         householdId: null,
         archivedAt: null,
@@ -755,7 +993,9 @@ function assetsContext(): OwnerDataExportAssetsContext {
       }),
     ],
     assetMemories: [
-      asRecord<OwnerDataExportAssetsContext["assetMemories"][number]>(assetMemory),
+      ...ownedAssetMemories.map((value) =>
+        asRecord<OwnerDataExportAssetsContext["assetMemories"][number]>(value),
+      ),
       asRecord<OwnerDataExportAssetsContext["assetMemories"][number]>({
         ...assetMemory,
         id: "asset-memory-household-native",
@@ -839,6 +1079,28 @@ function assetsContext(): OwnerDataExportAssetsContext {
         updatedAt: NOW,
       }),
       asRecord<OwnerDataExportAssetsContext["assetLinks"][number]>({
+        id: "asset-link-owned-suggested",
+        ownerUserId: OWNER,
+        fromAssetId: "asset-owned-active",
+        toAssetId: asset.id,
+        relation: "uses",
+        status: "suggested",
+        sourceRecordId: "source-owned-active",
+        createdAt: NOW,
+        updatedAt: NOW,
+      }),
+      asRecord<OwnerDataExportAssetsContext["assetLinks"][number]>({
+        id: "asset-link-owned-dismissed",
+        ownerUserId: OWNER,
+        fromAssetId: "asset-owned-dismissed",
+        toAssetId: asset.id,
+        relation: "covers",
+        status: "dismissed",
+        sourceRecordId: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+      }),
+      asRecord<OwnerDataExportAssetsContext["assetLinks"][number]>({
         id: "asset-link-foreign",
         ownerUserId: OWNER,
         fromAssetId: asset.id,
@@ -857,6 +1119,14 @@ function assetsContext(): OwnerDataExportAssetsContext {
         assetId: asset.id,
         personId: "person-owned",
         relation: "services",
+        createdAt: NOW,
+      }),
+      asRecord<OwnerDataExportAssetsContext["assetPersonLinks"][number]>({
+        id: "asset-person-other-owner",
+        ownerUserId: OTHER_OWNER,
+        assetId: "asset-other-owner",
+        personId: "person-other-owner",
+        relation: "uses",
         createdAt: NOW,
       }),
       asRecord<OwnerDataExportAssetsContext["assetPersonLinks"][number]>({
@@ -879,23 +1149,13 @@ describe("owner data export qualification", () => {
   it("qualifies the owner graph through processing, ZIP inspection, isolation, and expiry", async () => {
     const jobs = createInMemoryOwnerDataExportJobStore();
     const artifacts = createInMemoryOwnerDataExportArtifactStore(jobs);
-    const externalNotification = vi.fn();
-    const externalDraftCreation = vi.fn();
     const loadRelationshipContext = vi.fn(async () =>
-      withOperationalCandidates(relationshipContext(), {
-        externalNotification,
-        externalDraftCreation,
-      }),
+      withOperationalCandidates(relationshipContext()),
     );
     const loadActionsPlanningContext = vi.fn(async () =>
-      withOperationalCandidates(actionsPlanningContext(), {
-        externalNotification,
-        externalDraftCreation,
-      }),
+      withOperationalCandidates(actionsPlanningContext()),
     );
-    const loadAssetsContext = vi.fn(async () =>
-      withOperationalCandidates(assetsContext(), { externalNotification, externalDraftCreation }),
-    );
+    const loadAssetsContext = vi.fn(async () => withOperationalCandidates(assetsContext()));
     const generate = async (input: Parameters<typeof generateOwnerDataExportArchive>[0]) =>
       generateOwnerDataExportArchive({
         ...input,
@@ -920,8 +1180,6 @@ describe("owner data export qualification", () => {
     expect(loadRelationshipContext).toHaveBeenCalledOnce();
     expect(loadActionsPlanningContext).toHaveBeenCalledOnce();
     expect(loadAssetsContext).toHaveBeenCalledOnce();
-    expect(externalNotification).not.toHaveBeenCalled();
-    expect(externalDraftCreation).not.toHaveBeenCalled();
     expect(requested.processResult?.job).toMatchObject({
       ownerUserId: OWNER,
       status: "completed",
@@ -1018,14 +1276,22 @@ describe("owner data export qualification", () => {
     ]);
     expect(
       jsonResource(entries, "resources/relationship/unresolved-person-mentions-v1.json"),
-    ).toEqual([
-      expect.objectContaining({
-        id: "mention-owned",
-        sourceRecordId: "source-owned-active",
-        candidatePersonIds: ["person-owned"],
-        resolvedPersonId: "person-owned",
-      }),
-    ]);
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "mention-owned-unresolved",
+          sourceRecordId: "source-owned-active",
+          candidatePersonIds: ["person-owned"],
+          resolvedPersonId: null,
+        }),
+        expect.objectContaining({
+          id: "mention-owned-resolved",
+          status: "resolved",
+          resolvedPersonId: "person-owned",
+        }),
+        expect.objectContaining({ id: "mention-owned-dismissed", status: "dismissed" }),
+      ]),
+    );
     expect(jsonResource(entries, "resources/relationship/interactions-v1.json")).toEqual([
       expect.objectContaining({
         id: "interaction-owned",
@@ -1046,20 +1312,6 @@ describe("owner data export qualification", () => {
         }),
       ]),
     );
-    expect(
-      new Set(
-        jsonResource(entries, "resources/relationship/source-records-v1.json").map(
-          (row) => (row as { status: string }).status,
-        ),
-      ),
-    ).toEqual(new Set(["pending_resolution", "active", "dismissed", "archived"]));
-    expect(
-      new Set(
-        jsonResource(entries, "resources/relationship/memories-v1.json").map(
-          (row) => (row as { status: string }).status,
-        ),
-      ),
-    ).toEqual(new Set(["suggested", "approved", "dismissed", "archived"]));
     expect(jsonResource(entries, "resources/relationship/memories-v1.json")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1073,13 +1325,6 @@ describe("owner data export qualification", () => {
         }),
       ]),
     );
-    expect(
-      new Set(
-        jsonResource(entries, "resources/relationship/follow-ups-v1.json").map(
-          (row) => (row as { status: string }).status,
-        ),
-      ),
-    ).toEqual(new Set(["suggested", "open", "snoozed", "completed", "dismissed", "archived"]));
     expect(jsonResource(entries, "resources/relationship/follow-ups-v1.json")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1092,13 +1337,6 @@ describe("owner data export qualification", () => {
         }),
       ]),
     );
-    expect(
-      new Set(
-        jsonResource(entries, "resources/context/context-facts-v1.json").map(
-          (row) => (row as { lifecycle: string }).lifecycle,
-        ),
-      ),
-    ).toEqual(new Set(["suggested", "active", "archived"]));
     expect(jsonResource(entries, "resources/context/context-facts-v1.json")).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "context-household-native" })]),
     );
@@ -1113,21 +1351,26 @@ describe("owner data export qualification", () => {
       ]),
     );
 
-    expect(jsonResource(entries, "resources/actions/general-actions-v1.json")).toEqual([
-      expect.objectContaining({
-        id: "action-owned",
-        ownerUserId: OWNER,
-        ownership: "member_owned",
-        areaId: "area-owned",
-        sourceRecordId: "source-owned-active",
-        scope: "shared",
-        householdId: HOUSEHOLD,
-        responsibilityHolderUserId: OWNER,
-      }),
-    ]);
-    expect(jsonResource(entries, "resources/actions/general-action-areas-v1.json")).toEqual([
-      expect.objectContaining({ id: "area-owned", ownerUserId: OWNER, name: "Home" }),
-    ]);
+    expect(jsonResource(entries, "resources/actions/general-actions-v1.json")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "action-owned",
+          ownerUserId: OWNER,
+          ownership: "member_owned",
+          areaId: "area-owned",
+          sourceRecordId: "source-owned-active",
+          scope: "shared",
+          householdId: HOUSEHOLD,
+          responsibilityHolderUserId: OWNER,
+        }),
+      ]),
+    );
+    expect(jsonResource(entries, "resources/actions/general-action-areas-v1.json")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "area-owned", ownerUserId: OWNER, name: "Home" }),
+        expect.objectContaining({ id: "area-owned-archived", ownerUserId: OWNER }),
+      ]),
+    );
     expect(jsonResource(entries, "resources/actions/general-action-people-v1.json")).toEqual([
       expect.objectContaining({
         id: "action-person-owned",
@@ -1156,16 +1399,19 @@ describe("owner data export qualification", () => {
         }),
       }),
     ]);
-    expect(jsonResource(entries, "resources/saved-items/saved-items-v1.json")).toEqual([
-      expect.objectContaining({
-        id: "saved-owned",
-        ownerUserId: OWNER,
-        status: "archived",
-        sourceRecordId: "source-owned-active",
-        scope: "private",
-        householdId: null,
-      }),
-    ]);
+    expect(jsonResource(entries, "resources/saved-items/saved-items-v1.json")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "saved-owned",
+          ownerUserId: OWNER,
+          status: "archived",
+          sourceRecordId: "source-owned-active",
+          scope: "private",
+          householdId: null,
+        }),
+        expect.objectContaining({ id: "saved-owned-active", status: "active" }),
+      ]),
+    );
     expect(jsonResource(entries, "resources/saved-items/saved-item-events-v1.json")).toEqual([
       expect.objectContaining({
         id: "saved-event",
@@ -1182,19 +1428,23 @@ describe("owner data export qualification", () => {
         destinationRecordId: "action-owned",
       }),
     ]);
-    expect(jsonResource(entries, "resources/drafts/message-drafts-v1.json")).toEqual([
-      expect.objectContaining({ id: "draft-internal", status: "approved" }),
-    ]);
-    expect(jsonResource(entries, "resources/gift-plans/gift-plans-v1.json")).toEqual([
-      expect.objectContaining({
-        id: "gift-plan-owned",
-        ownerUserId: OWNER,
-        status: "celebrated",
-        subjectPersonId: "person-owned",
-        scope: "shared",
-        householdId: HOUSEHOLD,
-      }),
-    ]);
+    expect(jsonResource(entries, "resources/drafts/message-drafts-v1.json")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "draft-internal-approved", status: "approved" }),
+      ]),
+    );
+    expect(jsonResource(entries, "resources/gift-plans/gift-plans-v1.json")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "gift-plan-owned",
+          ownerUserId: OWNER,
+          status: "celebrated",
+          subjectPersonId: "person-owned",
+          scope: "shared",
+          householdId: HOUSEHOLD,
+        }),
+      ]),
+    );
     expect(jsonResource(entries, "resources/gift-plans/gift-plan-ideas-v1.json")).toEqual([
       expect.objectContaining({
         id: "gift-idea-contribution",
@@ -1247,18 +1497,20 @@ describe("owner data export qualification", () => {
         expect.objectContaining({ id: "asset-owned-suggested", status: "suggested" }),
       ]),
     );
-    expect(jsonResource(entries, "resources/assets/asset-memories-v1.json")).toEqual([
-      expect.objectContaining({
-        id: "asset-memory-owned",
-        assetId: "asset-owned",
-        ownerUserId: OWNER,
-        sourceRecordId: "source-owned-active",
-        scope: "private",
-        ownership: "member_owned",
-        householdId: null,
-        sensitivity: "restricted",
-      }),
-    ]);
+    expect(jsonResource(entries, "resources/assets/asset-memories-v1.json")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "asset-memory-owned",
+          assetId: "asset-owned",
+          ownerUserId: OWNER,
+          sourceRecordId: "source-owned-active",
+          scope: "private",
+          ownership: "member_owned",
+          householdId: null,
+          sensitivity: "restricted",
+        }),
+      ]),
+    );
     expect(jsonResource(entries, "resources/assets/assets-v1.json")).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "asset-household-native" }),
@@ -1292,17 +1544,19 @@ describe("owner data export qualification", () => {
       "resources/assets/evidence/evidence-owned/manual.pdf",
     );
     expect([...storedEvidence]).toStrictEqual([0, 1, 2, 3, 255, 254, 0, 9]);
-    expect(jsonResource(entries, "resources/assets/asset-links-v1.json")).toEqual([
-      expect.objectContaining({
-        id: "asset-link-owned",
-        ownerUserId: OWNER,
-        fromAssetId: "asset-owned-suggested",
-        toAssetId: "asset-owned",
-        relation: "fits",
-        sourceRecordId: "source-owned-active",
-        status: "active",
-      }),
-    ]);
+    expect(jsonResource(entries, "resources/assets/asset-links-v1.json")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "asset-link-owned",
+          ownerUserId: OWNER,
+          fromAssetId: "asset-owned-suggested",
+          toAssetId: "asset-owned",
+          relation: "fits",
+          sourceRecordId: "source-owned-active",
+          status: "active",
+        }),
+      ]),
+    );
     expect(jsonResource(entries, "resources/assets/asset-person-links-v1.json")).toEqual([
       expect.objectContaining({
         id: "asset-person-owned",
@@ -1311,6 +1565,317 @@ describe("owner data export qualification", () => {
         personId: "person-owned",
         relation: "services",
       }),
+    ]);
+
+    assertLifecycleCoverage(entries, [
+      {
+        path: "resources/relationship/source-records-v1.json",
+        field: "status",
+        values: ["pending_resolution", "active", "dismissed", "archived"],
+      },
+      {
+        path: "resources/relationship/memories-v1.json",
+        field: "status",
+        values: ["suggested", "approved", "dismissed", "archived"],
+      },
+      {
+        path: "resources/relationship/unresolved-person-mentions-v1.json",
+        field: "status",
+        values: ["unresolved", "resolved", "dismissed"],
+      },
+      {
+        path: "resources/relationship/follow-ups-v1.json",
+        field: "status",
+        values: ["suggested", "open", "snoozed", "completed", "dismissed", "archived"],
+      },
+      {
+        path: "resources/context/context-facts-v1.json",
+        field: "lifecycle",
+        values: ["suggested", "active", "archived"],
+      },
+      {
+        path: "resources/actions/general-actions-v1.json",
+        field: "status",
+        values: [
+          "open",
+          "deferred",
+          "completed",
+          "dismissed",
+          "archived",
+          "paused",
+          "suggested",
+          "ignored",
+        ],
+      },
+      {
+        path: "resources/saved-items/saved-items-v1.json",
+        field: "status",
+        values: ["active", "archived"],
+      },
+      {
+        path: "resources/drafts/message-drafts-v1.json",
+        field: "status",
+        values: ["draft", "approved", "dismissed", "sent_manually"],
+      },
+      {
+        path: "resources/gift-plans/gift-plans-v1.json",
+        field: "status",
+        values: ["active", "celebrated", "archived"],
+      },
+      {
+        path: "resources/assets/assets-v1.json",
+        field: "status",
+        values: ["active", "archived", "suggested", "dismissed"],
+      },
+      {
+        path: "resources/assets/asset-memories-v1.json",
+        field: "status",
+        values: ["suggested", "active", "dismissed"],
+      },
+      {
+        path: "resources/assets/asset-links-v1.json",
+        field: "status",
+        values: ["suggested", "active", "dismissed"],
+      },
+    ]);
+    expect(
+      new Set(
+        (
+          jsonResource(entries, "resources/actions/general-action-areas-v1.json") as ExportRow[]
+        ).map((row) => (row.archivedAt === null ? "active" : "archived")),
+      ),
+    ).toEqual(new Set(["active", "archived"]));
+
+    assertOwnerBoundaries(entries, [
+      {
+        path: "resources/people/people-v1.json",
+        includedIds: ["person-owned"],
+        excludedIds: ["person-other-owner"],
+        ownerField: "ownerUserId",
+      },
+      {
+        path: "resources/people/contact-methods-v1.json",
+        includedIds: ["contact-owned"],
+        excludedIds: ["contact-other-owner"],
+        isOwnedRow: (row) => row.personId === "person-owned",
+      },
+      {
+        path: "resources/relationship/source-records-v1.json",
+        includedIds: [
+          "source-owned-active",
+          "source-owned-pending_resolution",
+          "source-owned-dismissed",
+          "source-owned-archived",
+        ],
+        excludedIds: ["source-other-owner"],
+        ownerField: "ownerUserId",
+      },
+      {
+        path: "resources/relationship/source-record-people-v1.json",
+        includedIds: ["source-person-owned"],
+        excludedIds: ["source-person-other"],
+        isOwnedRow: (row) =>
+          row.sourceRecordId === "source-owned-active" && row.personId === "person-owned",
+      },
+      {
+        path: "resources/relationship/unresolved-person-mentions-v1.json",
+        includedIds: [
+          "mention-owned-unresolved",
+          "mention-owned-resolved",
+          "mention-owned-dismissed",
+        ],
+        excludedIds: ["mention-other-owner"],
+        isOwnedRow: (row) =>
+          row.sourceRecordId === "source-owned-active" &&
+          (row.candidatePersonIds as string[]).every((id) => id === "person-owned"),
+      },
+      {
+        path: "resources/relationship/interactions-v1.json",
+        includedIds: ["interaction-owned"],
+        excludedIds: ["interaction-other-owner"],
+        ownerField: "ownerUserId",
+      },
+      {
+        path: "resources/relationship/memories-v1.json",
+        includedIds: [
+          "memory-owned-approved",
+          "memory-owned-suggested",
+          "memory-owned-dismissed",
+          "memory-owned-archived",
+        ],
+        excludedIds: ["memory-other-owner"],
+        ownerField: "ownerUserId",
+      },
+      {
+        path: "resources/relationship/follow-ups-v1.json",
+        includedIds: [
+          "followup-owned-open",
+          "followup-owned-suggested",
+          "followup-owned-snoozed",
+          "followup-owned-completed",
+          "followup-owned-dismissed",
+          "followup-owned-archived",
+        ],
+        excludedIds: ["followup-other-owner"],
+        ownerField: "ownerUserId",
+      },
+      {
+        path: "resources/context/context-facts-v1.json",
+        includedIds: ["context-owned-suggested", "context-owned-active", "context-owned-archived"],
+        excludedIds: ["context-household-native", "context-other-owner"],
+        isOwnedRow: (row) =>
+          (row.subject as { kind?: string; userId?: string }).kind === "self" &&
+          (row.subject as { userId?: string }).userId === OWNER,
+      },
+      {
+        path: "resources/actions/general-actions-v1.json",
+        includedIds: [
+          "action-owned",
+          "action-owned-open",
+          "action-owned-completed",
+          "action-owned-dismissed",
+          "action-owned-archived",
+          "action-owned-paused",
+          "action-owned-suggested",
+          "action-owned-ignored",
+        ],
+        excludedIds: ["action-household-native", "action-other-owner"],
+        ownerField: "ownerUserId",
+      },
+      {
+        path: "resources/actions/general-action-areas-v1.json",
+        includedIds: ["area-owned", "area-owned-archived"],
+        excludedIds: ["area-other-owner"],
+        ownerField: "ownerUserId",
+      },
+      {
+        path: "resources/actions/general-action-people-v1.json",
+        includedIds: ["action-person-owned"],
+        excludedIds: ["action-person-other-action", "action-person-foreign-person"],
+        isOwnedRow: (row) =>
+          row.generalActionId === "action-owned" && row.personId === "person-owned",
+      },
+      {
+        path: "resources/actions/general-action-assets-v1.json",
+        includedIds: ["action-asset-owned"],
+        excludedIds: ["action-asset-household", "action-asset-other-action"],
+        isOwnedRow: (row) =>
+          row.generalActionId === "action-owned" &&
+          row.assetId === "asset-owned" &&
+          row.assetMemoryId === "asset-memory-owned",
+      },
+      {
+        path: "resources/actions/general-action-events-v1.json",
+        includedIds: ["action-event"],
+        excludedIds: ["action-event-other-owner"],
+        ownerField: "ownerUserId",
+      },
+      {
+        path: "resources/saved-items/saved-items-v1.json",
+        includedIds: ["saved-owned", "saved-owned-active"],
+        excludedIds: ["saved-other-owner", "saved-household-native"],
+        ownerField: "ownerUserId",
+      },
+      {
+        path: "resources/saved-items/saved-item-events-v1.json",
+        includedIds: ["saved-event"],
+        excludedIds: ["saved-event-other-owner"],
+        ownerField: "ownerUserId",
+      },
+      {
+        path: "resources/saved-items/saved-item-outcomes-v1.json",
+        includedIds: ["saved-outcome"],
+        excludedIds: ["saved-outcome-other-owner"],
+        isOwnedRow: (row) =>
+          row.savedItemId === "saved-owned" && row.destinationRecordId === "action-owned",
+      },
+      {
+        path: "resources/drafts/message-drafts-v1.json",
+        includedIds: [
+          "draft-internal-draft",
+          "draft-internal-approved",
+          "draft-internal-dismissed",
+          "draft-internal-sent_manually",
+        ],
+        excludedIds: ["draft-other-owner"],
+        ownerField: "ownerUserId",
+      },
+      {
+        path: "resources/gift-plans/gift-plans-v1.json",
+        includedIds: ["gift-plan-owned", "gift-plan-owned-active", "gift-plan-owned-archived"],
+        excludedIds: ["gift-plan-other-owner"],
+        ownerField: "ownerUserId",
+      },
+      {
+        path: "resources/gift-plans/gift-plan-ideas-v1.json",
+        includedIds: ["gift-idea-contribution"],
+        excludedIds: ["gift-idea-other-owner"],
+        isOwnedRow: (row) => row.giftPlanId === "gift-plan-owned",
+      },
+      {
+        path: "resources/gift-plans/gift-plan-events-v1.json",
+        includedIds: ["gift-event"],
+        excludedIds: ["gift-event-other-owner"],
+        isOwnedRow: (row) => row.giftPlanId === "gift-plan-owned",
+      },
+      {
+        path: "resources/sharing/record-shares-v1.json",
+        includedIds: ["share-from-owner", "share-to-owner"],
+        excludedIds: ["share-only-record", "share-foreign-action"],
+        isOwnedRow: (row) => row.recordId === "action-owned",
+      },
+      {
+        path: "resources/assets/assets-v1.json",
+        includedIds: [
+          "asset-owned",
+          "asset-owned-active",
+          "asset-owned-suggested",
+          "asset-owned-dismissed",
+        ],
+        excludedIds: ["asset-household-native", "asset-other-owner"],
+        ownerField: "ownerUserId",
+      },
+      {
+        path: "resources/assets/asset-memories-v1.json",
+        includedIds: [
+          "asset-memory-owned",
+          "asset-memory-owned-suggested",
+          "asset-memory-owned-dismissed",
+        ],
+        excludedIds: ["asset-memory-household-native", "asset-memory-other-owner"],
+        ownerField: "ownerUserId",
+        isOwnedRow: (row) =>
+          row.assetId !== "asset-household-native" && row.assetId !== "asset-other-owner",
+      },
+      {
+        path: "resources/assets/asset-evidence-v1.json",
+        includedIds: ["evidence-owned", "evidence-owned-note"],
+        excludedIds: ["evidence-household-native", "evidence-other-owner"],
+        ownerField: "ownerUserId",
+        isOwnedRow: (row) =>
+          row.assetId !== "asset-household-native" && row.assetId !== "asset-other-owner",
+      },
+      {
+        path: "resources/assets/asset-links-v1.json",
+        includedIds: [
+          "asset-link-owned",
+          "asset-link-owned-suggested",
+          "asset-link-owned-dismissed",
+        ],
+        excludedIds: ["asset-link-foreign"],
+        ownerField: "ownerUserId",
+        isOwnedRow: (row) =>
+          (row.fromAssetId === "asset-owned" ||
+            String(row.fromAssetId).startsWith("asset-owned-")) &&
+          row.toAssetId === "asset-owned",
+      },
+      {
+        path: "resources/assets/asset-person-links-v1.json",
+        includedIds: ["asset-person-owned"],
+        excludedIds: ["asset-person-foreign", "asset-person-other-owner"],
+        ownerField: "ownerUserId",
+        isOwnedRow: (row) => row.assetId === "asset-owned" && row.personId === "person-owned",
+      },
     ]);
 
     const inventory = entries.get("inventory.txt") ?? "";
@@ -1331,10 +1896,12 @@ describe("owner data export qualification", () => {
       "resources/external-drafts-v1.json",
     ];
     expect([...entries.keys()]).not.toEqual(expect.arrayContaining(excludedOperationalPaths));
-    const exportedResourceText = [...entries.values()].join("\n");
-    for (const candidateId of OPERATIONAL_CANDIDATE_IDS) {
-      expect(exportedResourceText).not.toContain(candidateId);
-    }
+    expect([...entries.keys()]).not.toEqual(
+      expect.arrayContaining([
+        "resources/assets/evidence/evidence-household-native/furnace.png",
+        "resources/assets/evidence/evidence-other-owner/manual.pdf",
+      ]),
+    );
 
     const evidenceResource = manifest.resources.find(
       (resource) => resource.path === "resources/assets/asset-evidence-v1.json",

@@ -46,8 +46,6 @@ const state = vi.hoisted(() => ({
   messages: [] as BackgroundJobQueueSendInput[],
   send: null as ((input: BackgroundJobQueueSendInput) => Promise<{ messageId: string }>) | null,
   generate: null as OwnerDataExportModule["generateOwnerDataExportArchive"] | null,
-  externalNotification: null as (() => void) | null,
-  externalDraftCreation: null as (() => void) | null,
   enqueue: null as
     | ((input: OwnerDataExportEnqueueInput) => Promise<OwnerDataExportEnqueueResult>)
     | null,
@@ -55,6 +53,47 @@ const state = vi.hoisted(() => ({
     | ((input: OwnerDataExportProcessInput) => Promise<OwnerDataExportProcessResult>)
     | null,
 }));
+
+/**
+ * These are the actual provider boundaries that would turn this Account journey
+ * into an external side effect. The factories throw if production code imports
+ * one, so adding notification/Gmail draft work to enqueue, consume, or download
+ * fails before the journey can report success. The flags make the negative
+ * contract explicit in the assertion below rather than relying on ZIP text.
+ */
+const externalAdapterBoundary = vi.hoisted(() => ({
+  gmailDraftWebAdapterImported: false,
+  gmailDraftDbAdapterImported: false,
+  invitationDeliveryImported: false,
+  transactionalEmailImported: false,
+  resendImported: false,
+  webPushImported: false,
+}));
+
+vi.mock("@/lib/integrations/gmail-drafts", () => {
+  externalAdapterBoundary.gmailDraftWebAdapterImported = true;
+  throw new Error("Owner data export must not import the Gmail draft adapter.");
+});
+vi.mock("@tendnote/db/queries/gmail-drafts", () => {
+  externalAdapterBoundary.gmailDraftDbAdapterImported = true;
+  throw new Error("Owner data export must not import the Gmail draft DB adapter.");
+});
+vi.mock("@/lib/household/invitation-delivery", () => {
+  externalAdapterBoundary.invitationDeliveryImported = true;
+  throw new Error("Owner data export must not import notification delivery.");
+});
+vi.mock("@/lib/email/transactional", () => {
+  externalAdapterBoundary.transactionalEmailImported = true;
+  throw new Error("Owner data export must not import transactional email.");
+});
+vi.mock("@/lib/email/resend", () => {
+  externalAdapterBoundary.resendImported = true;
+  throw new Error("Owner data export must not import Resend.");
+});
+vi.mock("@/lib/background-jobs/web-push", () => {
+  externalAdapterBoundary.webPushImported = true;
+  throw new Error("Owner data export must not import Web Push.");
+});
 
 vi.mock("@tendnote/db/queries/owner-data-export", async () => {
   const actual = await vi.importActual<OwnerDataExportModule>(
@@ -119,7 +158,7 @@ function account() {
   };
 }
 
-function relationshipContext(externalNotification: () => void, externalDraftCreation: () => void) {
+function relationshipContext() {
   return {
     people: [
       {
@@ -153,8 +192,6 @@ function relationshipContext(externalNotification: () => void, externalDraftCrea
     queueRows: [{ id: "neutral-queue-row", ownerUserId: OWNER }],
     deliveryRows: [{ id: "neutral-delivery-row", ownerUserId: OWNER }],
     auditRows: [{ id: "neutral-audit-row", ownerUserId: OWNER }],
-    externalNotification,
-    externalDraftCreation,
   } as OwnerDataExportRelationshipContext;
 }
 
@@ -176,16 +213,12 @@ describe("owner data export Account journey", () => {
       return { messageId: "owner-export-message" };
     });
     state.send = send;
-    const externalNotification = vi.fn();
-    const externalDraftCreation = vi.fn();
-    state.externalNotification = externalNotification;
-    state.externalDraftCreation = externalDraftCreation;
     const generate = vi.fn(
       async (input: Parameters<OwnerDataExportModule["generateOwnerDataExportArchive"]>[0]) =>
         actual.generateOwnerDataExportArchive({
           ...input,
           account: account(),
-          relationshipContext: relationshipContext(externalNotification, externalDraftCreation),
+          relationshipContext: relationshipContext(),
         }),
     );
     generate.mockRejectedValueOnce(new Error("temporary export processing failure"));
@@ -274,8 +307,14 @@ describe("owner data export Account journey", () => {
       ),
     ).resolves.toMatchObject({ status: "published" });
     expect(state.generate).toHaveBeenCalledTimes(2);
-    expect(state.externalNotification).not.toHaveBeenCalled();
-    expect(state.externalDraftCreation).not.toHaveBeenCalled();
+    expect(externalAdapterBoundary).toEqual({
+      gmailDraftWebAdapterImported: false,
+      gmailDraftDbAdapterImported: false,
+      invitationDeliveryImported: false,
+      transactionalEmailImported: false,
+      resendImported: false,
+      webPushImported: false,
+    });
 
     const jobId = (requested as { ok: true; view: { id: string } }).view.id;
     admittedOwnerOrNullSpy.mockResolvedValue(OWNER);
