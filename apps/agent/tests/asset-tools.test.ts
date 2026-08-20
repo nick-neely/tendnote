@@ -276,6 +276,7 @@ describe("get_asset_context tool", () => {
     const modelView = getAssetContextTool.toModelOutput?.(output) as {
       value: {
         assetId: string;
+        facts: Array<{ memoryId: string }>;
         snapshot: { available: boolean; guidance: string };
         guidance: string;
       };
@@ -284,7 +285,10 @@ describe("get_asset_context tool", () => {
     expect(modelView.value.snapshot.available).toBe(true);
     expect(modelView.value.snapshot.guidance).toMatch(/not source of truth/i);
     expect(modelView.value.assetId).toBe(ASSET_ID);
+    expect(modelView.value.facts[0]?.memoryId).toBe(MEMORY_ID);
     expect(modelView.value.guidance).toMatch(/propose_asset_actions/);
+    expect(modelView.value.guidance).toMatch(/assetMemoryIds.*memoryId/i);
+    expect(modelView.value.guidance).toMatch(/do not stop/i);
     expect(modelView.value.guidance).toMatch(/before replying|review card/i);
     expect(modelView.value.guidance).toMatch(/never use create_general_action|inferred timing/i);
   });
@@ -366,12 +370,13 @@ describe("propose_asset_actions tool", () => {
       affectedScopes: [],
     });
 
-    await proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx);
+    await proposeAssetActionsTool.execute({ assetId: ASSET_ID, assetMemoryIds: [MEMORY_ID] }, ctx);
 
     expect(proposeAssetMemoryActions).toHaveBeenCalledWith(
       expect.objectContaining({
         actorUserId: "user-1",
         assetId: ASSET_ID,
+        assetMemoryIds: [MEMORY_ID],
         source: "assistant",
       }),
     );
@@ -420,7 +425,10 @@ describe("propose_asset_actions tool", () => {
       affectedScopes: [],
     });
 
-    const output = await proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx);
+    const output = await proposeAssetActionsTool.execute(
+      { assetId: ASSET_ID, assetMemoryIds: [MEMORY_ID] },
+      ctx,
+    );
     const proposal = output.proposed[0]?.action;
 
     expect(proposal?.status).toBe("suggested");
@@ -441,12 +449,30 @@ describe("propose_asset_actions tool", () => {
     expect(proposeAssetMemoryActions).not.toHaveBeenCalled();
   });
 
+  it("requires reviewed-memory grounding instead of scanning an asset implicitly", () => {
+    expect(inputParser(proposeAssetActionsTool).safeParse({ assetId: ASSET_ID }).success).toBe(
+      false,
+    );
+    expect(
+      inputParser(proposeAssetActionsTool).safeParse({
+        assetId: ASSET_ID,
+        assetMemoryIds: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      inputParser(proposeAssetActionsTool).safeParse({
+        assetId: ASSET_ID,
+        assetMemoryIds: [MEMORY_ID],
+      }).success,
+    ).toBe(true);
+  });
+
   it("never hands the model a raw database error", async () => {
     proposeAssetMemoryActions.mockRejectedValue(LEAKY_STORE_ERROR);
 
-    await expect(proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx)).rejects.toThrow(
-      /could not read the user's records/i,
-    );
+    await expect(
+      proposeAssetActionsTool.execute({ assetId: ASSET_ID, assetMemoryIds: [MEMORY_ID] }, ctx),
+    ).rejects.toThrow(/could not read the user's records/i);
   });
 
   it("still passes a curated domain refusal through to the model", async () => {
@@ -456,9 +482,9 @@ describe("propose_asset_actions tool", () => {
       new AssetValidationError("This asset is archived. Restore it before proposing reminders."),
     );
 
-    await expect(proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx)).rejects.toThrow(
-      /archived/i,
-    );
+    await expect(
+      proposeAssetActionsTool.execute({ assetId: ASSET_ID, assetMemoryIds: [MEMORY_ID] }, ctx),
+    ).rejects.toThrow(/archived/i);
   });
 });
 

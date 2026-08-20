@@ -57,6 +57,14 @@ describe("asset reminder proposals are review-gated (#203)", () => {
     expect(authored).toMatch(/already passed proposes nothing/i);
   });
 
+  it("requires every proposal call to carry reviewed-memory grounding", () => {
+    const source = effectiveToolSource(join(process.cwd(), "agent/tools/propose_asset_actions.ts"));
+
+    expect(authored).toMatch(/assetMemoryIds.*exact `?memoryId/i);
+    expect(source).toMatch(/\.array\(z\.uuid\(\)\)\s*\.min\(1\)/s);
+    expect(source).toMatch(/stop after get_asset_context/i);
+  });
+
   it("forbids re-pushing a proposal the user already turned down", () => {
     // The no-nag rule. The seam refuses to re-propose a dismissed memory; the guidance
     // must stop Eve from "trying again" to force one past the user by other means.

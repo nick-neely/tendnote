@@ -113,6 +113,9 @@ export default defineTool({
                   "(model, serial, filter size, price, date) from it — use `facts`.",
               },
         facts: output.facts.map((fact) => ({
+          // Grounding handle for `propose_asset_actions`. This stays out of prose under
+          // the standing raw-id rule, but the next tool call must be able to copy it.
+          memoryId: fact.memoryId,
           label: fact.label,
           value: fact.value,
           notes: fact.notes,
@@ -129,7 +132,7 @@ export default defineTool({
         })),
         rendered: "The asset and its details are shown to the user in a card.",
         guidance:
-          "Don't relist the facts, evidence, or actions — the card shows them. Answer what was asked in a line or two; an exact stored value may be quoted when it is the answer. If the user asked what reminder timing to use or you are about to recommend timing inferred from a reviewed detail, this read is not the answer: call propose_asset_actions now with this assetId before replying. That creates the review card; never use create_general_action or attach a Reminder Schedule for inferred timing.",
+          "Don't relist the facts, evidence, or actions — the card shows them. Answer what was asked in a line or two; an exact stored value may be quoted when it is the answer. If the user asked what reminder timing to use or you are about to recommend timing inferred from a reviewed detail, this read is not the answer: call propose_asset_actions now with this assetId and assetMemoryIds containing the relevant facts' memoryId values before replying. Do not stop after this context read. That creates the review card; never use create_general_action or attach a Reminder Schedule for inferred timing.",
       },
     };
   },

@@ -15,9 +15,9 @@ const inputSchema = z.object({
     ),
   assetMemoryIds: z
     .array(z.uuid())
-    .optional()
+    .min(1)
     .describe(
-      "Optionally narrow the pass to specific reviewed details (e.g. only the warranty). Omit to consider every dated or recurring detail on the asset.",
+      "One or more reviewed Asset Memory ids copied exactly from `search_assets` or `get_asset_context`. Pass the `memoryId` for every dated or recurring detail this proposal should consider (for example, `[the warranty memoryId]`). Never omit this field, pass an asset id here, or invent an id.",
     ),
 });
 
@@ -38,7 +38,7 @@ const inputSchema = z.object({
  * the user resolved it — is never re-proposed, so asking twice cannot nag.
  */
 export default defineTool({
-  description: `Propose SUGGESTED General Actions from an Asset's reviewed details — warranty expiries, renewal dates, maintenance and replacement intervals. Use this for questions about what reminders an asset's reviewed details suggest ('should I set a reminder for the fridge filter?', 'what reminders should the fridge have?', 'anything I should be reminded about for the car?'), including a question asking what reminder timing you would recommend. An explicit instruction to add or set a reminder belongs to create_general_action, not this proposal tool. After search_assets or get_asset_context resolves the Asset, call propose_asset_actions immediately in the same turn and before replying if you are about to recommend inferred timing; do not merely explain a date or ask whether the user wants a proposal. This call creates the review artifact. Reading the asset's details with get_asset_context does NOT answer that question — this tool is what decides, because it alone knows which details already proposed a reminder. Proposes at most ${MAX_ASSET_ACTION_PROPOSALS} per pass, and NEVER creates an active action or Reminder Schedule: each proposal is a review card the user accepts or dismisses. A detail that already proposed an action is not proposed again, so calling this twice is safe and silent. Do NOT use it to add a reminder the user explicitly asked for — that is create_general_action. Returns the proposed actions; refer to them by title, never raw ids.`,
+  description: `Propose SUGGESTED General Actions from an Asset's reviewed details — warranty expiries, renewal dates, maintenance and replacement intervals. Use this for questions about what reminders an asset's reviewed details suggest ('should I set a reminder for the fridge filter?', 'what reminders should the fridge have?', 'anything I should be reminded about for the car?'), including a question asking what reminder timing you would recommend. An explicit instruction to add or set a reminder belongs to create_general_action, not this proposal tool. After search_assets or get_asset_context resolves the Asset, call propose_asset_actions immediately in the same turn and before replying if you are about to recommend inferred timing; do not merely explain a date, stop after get_asset_context, or ask whether the user wants a proposal. Pass assetMemoryIds containing the exact memoryId of each reviewed dated or recurring detail being considered; this required grounding is available in both search_assets results and get_asset_context facts. This call creates the review artifact. Reading the asset's details with get_asset_context does NOT answer that question — this tool is what decides, because it alone knows which details already proposed a reminder. Proposes at most ${MAX_ASSET_ACTION_PROPOSALS} per pass, and NEVER creates an active action or Reminder Schedule: each proposal is a review card the user accepts or dismisses. A detail that already proposed an action is not proposed again, so calling this twice is safe and silent. Do NOT use it to add a reminder the user explicitly asked for — that is create_general_action. Returns the proposed actions; refer to them by title, never raw ids.`,
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

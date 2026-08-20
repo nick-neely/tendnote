@@ -92,7 +92,9 @@ lookup, asset facts, and asset creation live in the `recall` skill.)
   out", "what should I be keeping on top of for the car?"), or right after they add a
   dated or recurring detail to an asset, including a question asking what timing you
   would recommend. Pass the `assetId` **copied from a `search_assets` result**; narrow
-  with the `memoryId`s from that same result when the user names one detail. After one
+  with `assetMemoryIds` containing the exact `memoryId`s from that same result for every
+  dated or recurring detail being considered; this grounding field is required, even
+  when there is only one detail. After one
   result resolves the Asset, call `propose_asset_actions` in the same turn before
   replying with inferred timing. Do not answer with a date alone or ask whether the
   user wants a proposal — the tool call is what creates the review artifact. Each
