@@ -55,6 +55,7 @@ const cases: readonly CapturePrecedenceCase[] = [
     tags: ["deterministic", "behavior", "capture", "people", "clarification", "phase-seven"],
     prompt: "Use Capture: remind me to follow up with Sam tomorrow.",
     originalText: /follow up with Sam/i,
+    expectsPersonClarification: true,
     forbidden: ["create_person"],
   },
   {

@@ -20,7 +20,7 @@ export default defineEval({
   tags: ["deterministic", "behavior", "self-context", "direct-write", "phase-seven-point-five"],
   async test(t) {
     const first = await t.send(
-      "Remember that I run a small software consultancy. Save this about me.",
+      "Remember that I volunteer at the community garden every Saturday. Save this about me.",
     );
 
     first.expectOk();
@@ -48,7 +48,7 @@ export default defineEval({
     // proving that a fresh fact can be created. It must still reach the direct
     // write seam when the equivalent active fact already exists.
     const repeated = await t.send(
-      "Please remember that same fact again: I run a small software consultancy. Save this about me.",
+      "Please remember that same fact again: I volunteer at the community garden every Saturday. Save this about me.",
     );
 
     t.succeeded();

@@ -973,6 +973,45 @@ describe("Context Fact product contract", () => {
     expect(store.records.size).toBe(1);
   });
 
+  it("reuses an exact equivalent across provenance without replacing its evidence", async () => {
+    const store = createInMemoryContextFactStore();
+    const queries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OWNER),
+    });
+    const originalProvenance = {
+      channel: "onboarding" as const,
+      origin: "direct" as const,
+      sourceRecordId: null,
+    };
+    const created = await queries.createSelfContextFact({
+      callerUserId: OWNER,
+      category: "work",
+      content: "I run a software consultancy.",
+      provenance: originalProvenance,
+    });
+
+    const duplicate = await queries.createSelfContextFact({
+      callerUserId: OWNER,
+      category: "work",
+      content: "I run a software consultancy.",
+      provenance: {
+        channel: "capture",
+        origin: "direct",
+        sourceRecordId: "11111111-1111-4111-8111-111111111111",
+      },
+    });
+
+    expect(duplicate).toMatchObject({
+      decision: "existing",
+      result: {
+        id: created.result.id,
+        provenance: { channel: "onboarding", origin: "direct" },
+      },
+      affectedScopes: [],
+    });
+    expect(store.records.size).toBe(1);
+  });
+
   it("archives out of active reads, restores through an expected inverse, and rejects stale undo", async () => {
     const store = createInMemoryContextFactStore();
     const queries = createContextFactQueries(store, {
