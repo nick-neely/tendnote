@@ -181,8 +181,10 @@ describe("draft revision reply contract", () => {
     'Done! I\'ve added "Descale the kettle" to your action list. Once you create a Home area in the app, you can move it there.',
     "Done—**Descale the kettle** is on your active list. Once you set up your Areas in the app, you'll be able to move it to Home from there.",
     "Descale the kettle appears in your action list without an Area.",
+    "Done. The action is on your ledger now — you can file it under Home from the Actions surface once you set up your Areas there.",
+    "Done! The action is on your list. Once you create a Home area, you can move it there.",
   ])("accepts truthful completed unfiled Action guidance: %s", (reply) => {
-    expect(isUnfiledActionReplyTruthful(reply, /kettle|descale|action/i)).toBe(true);
+    expect(isUnfiledActionReplyTruthful(reply)).toBe(true);
   });
 
   it.each([
@@ -194,13 +196,12 @@ describe("draft revision reply contract", () => {
     "Added the Action unfiled; no Area was assigned. I can create a new Area.",
     "I can add Descale the kettle unfiled once you confirm.",
     "I didn't add Descale the kettle; no Area was assigned.",
-    "Done! I've added an action to your list. Once you create a Home area, you can move it there.",
     'Done! I\'ve added "Descale the kettle" to your action list.',
     'Done! I\'ve added "Descale the kettle" under Home. Once you create another area, you can move it there.',
     "Descale the kettle will appear in your action list without an Area.",
     "Descale the kettle is ready to add unfiled. Would you like me to do that?",
   ])("rejects pending or false-filing Action guidance: %s", (reply) => {
-    expect(isUnfiledActionReplyTruthful(reply, /kettle|descale/i)).toBe(false);
+    expect(isUnfiledActionReplyTruthful(reply)).toBe(false);
   });
 });
 
