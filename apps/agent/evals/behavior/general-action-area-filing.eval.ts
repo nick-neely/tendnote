@@ -2,13 +2,20 @@ import { defineEval } from "eve/evals";
 import { satisfies } from "eve/evals/expect";
 import { toolOutputs } from "../expectations";
 
-const COMPLETED_ACTION_WRITE = /\b(?:added|created|saved)\b/i;
+const EXPLICIT_COMPLETION = /(?:^|[.!]\s*)(?:done|complete(?:d)?|success(?:fully)?)\b/i;
+const PRESENT_ACTION_LIST_STATE =
+  /\b(?:is|appears|shows up|sits)\s+(?:now\s+)?(?:on|in)\s+(?:your\s+)?(?:active\s+|action\s+|actions\s+)?list\b/i;
 const CURRENTLY_UNFILED =
   /\b(?:unfiled|without (?:an?\s+)?area|no area (?:was |is |has been )?assigned)\b/i;
 const FUTURE_FILING_ONLY =
-  /\b(?:once|when|after)\b[\s\S]{0,100}\b(?:create|set up|have)\b[\s\S]{0,60}\barea\b[\s\S]{0,100}\b(?:move|file|put)\b[\s\S]{0,30}\b(?:it|the action|there)\b/i;
-const NEGATED_ACTION_WRITE =
-  /\b(?:did(?:n(?:'|’)t| not)|could(?:n(?:'|’)t| not)|was(?:n(?:'|’)t| not)|not)\b[\s\S]{0,20}\b(?:add(?:ed)?|creat(?:e|ed)|sav(?:e|ed))\b/i;
+  /\b(?:once|when|after)\b[\s\S]{0,100}\b(?:create|set up|have)\b[\s\S]{0,60}\bareas?\b[\s\S]{0,100}\b(?:move|file|put)\b[\s\S]{0,30}\b(?:it|the action|there)\b/i;
+const PENDING_ACTION_WRITE = [
+  /\?/,
+  /\b(?:can|could|will|would|ready to)\s+(?:still\s+)?(?:add|create|save)\b/i,
+  /\b(?:will|would|can|could)\s+(?:appear|show up|sit)\s+(?:on|in)\b/i,
+  /\b(?:once you confirm|if you want|if you(?:'|’)d like|waiting for|pending|not yet)\b/i,
+  /\b(?:did(?:n(?:'|’)t| not)|could(?:n(?:'|’)t| not)|was(?:n(?:'|’)t| not)|haven(?:'|’)t|have not)\b[\s\S]{0,24}\b(?:add(?:ed)?|creat(?:e|ed)|sav(?:e|ed)|put)\b/i,
+] as const;
 const FALSE_FILING_CLAIMS = [
   /\b(?:added|saved|put|placed|filed)\b[\s\S]{0,80}\b(?:under|in|into)\s+(?:your\s+)?(?:home|an?\s+area)\b/i,
   /\b(?:it|the action)\s+(?:is|was|has been)\s+(?:assigned|filed)\s+(?:to|under|in)\b/i,
@@ -19,9 +26,11 @@ const FALSE_FILING_CLAIMS = [
 export function isUnfiledActionReplyTruthful(reply: string, actionIdentity: RegExp) {
   const normalized = reply.trim();
   return (
-    COMPLETED_ACTION_WRITE.test(normalized) &&
-    !NEGATED_ACTION_WRITE.test(normalized) &&
     actionIdentity.test(normalized) &&
+    PENDING_ACTION_WRITE.every((pending) => !pending.test(normalized)) &&
+    (EXPLICIT_COMPLETION.test(normalized) ||
+      CURRENTLY_UNFILED.test(normalized) ||
+      PRESENT_ACTION_LIST_STATE.test(normalized)) &&
     (CURRENTLY_UNFILED.test(normalized) || FUTURE_FILING_ONLY.test(normalized)) &&
     FALSE_FILING_CLAIMS.every((claim) => !claim.test(normalized))
   );

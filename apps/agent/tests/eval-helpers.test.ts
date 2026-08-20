@@ -176,42 +176,31 @@ describe("draft revision reply contract", () => {
     ).toBe(false);
   });
 
-  it("accepts truthful unfiled Action guidance after the required confirmation", () => {
-    expect(
-      isUnfiledActionReplyTruthful(
-        "Added the action unfiled; no Area was assigned. Once you open Actions in the app and set up your Home area, you can file it there.",
-        /kettle|action/i,
-      ),
-    ).toBe(true);
-    expect(
-      isUnfiledActionReplyTruthful(
-        'Done! I\'ve added "Descale the kettle" to your action list. Once you create a Home area in the app, you can move it there.',
-        /kettle|descale/i,
-      ),
-    ).toBe(true);
+  it.each([
+    "Added the action unfiled; no Area was assigned. Once you open Actions in the app and set up your Home area, you can file it there.",
+    'Done! I\'ve added "Descale the kettle" to your action list. Once you create a Home area in the app, you can move it there.',
+    "Done—**Descale the kettle** is on your active list. Once you set up your Areas in the app, you'll be able to move it to Home from there.",
+    "Descale the kettle appears in your action list without an Area.",
+  ])("accepts truthful completed unfiled Action guidance: %s", (reply) => {
+    expect(isUnfiledActionReplyTruthful(reply, /kettle|descale|action/i)).toBe(true);
   });
 
-  it("rejects filing claims, missing completion or identity, and deceptive future guidance", () => {
-    for (const contradictoryReply of [
-      "Added the Action unfiled; no Area was assigned. I filed it under Home.",
-      "Added the Action unfiled; no Area was assigned. The action was assigned to Home.",
-      "Added the Action unfiled; no Area was assigned. Saved it under Home.",
-      "Added the Action unfiled; no Area was assigned. Put it in your Home area.",
-      "Added the Action unfiled; no Area was assigned. Placed it under Home.",
-      "Added the Action unfiled; no Area was assigned. I can create a new Area.",
-    ]) {
-      expect(isUnfiledActionReplyTruthful(contradictoryReply, /action/i)).toBe(false);
-    }
-
-    for (const deceptiveReply of [
-      "I can add Descale the kettle unfiled once you confirm.",
-      "I didn't add Descale the kettle; no Area was assigned.",
-      "Done! I've added an action to your list. Once you create a Home area, you can move it there.",
-      'Done! I\'ve added "Descale the kettle" to your action list.',
-      'Done! I\'ve added "Descale the kettle" under Home. Once you create another area, you can move it there.',
-    ]) {
-      expect(isUnfiledActionReplyTruthful(deceptiveReply, /kettle|descale/i)).toBe(false);
-    }
+  it.each([
+    "Added the Action unfiled; no Area was assigned. I filed it under Home.",
+    "Added the Action unfiled; no Area was assigned. The action was assigned to Home.",
+    "Added the Action unfiled; no Area was assigned. Saved it under Home.",
+    "Added the Action unfiled; no Area was assigned. Put it in your Home area.",
+    "Added the Action unfiled; no Area was assigned. Placed it under Home.",
+    "Added the Action unfiled; no Area was assigned. I can create a new Area.",
+    "I can add Descale the kettle unfiled once you confirm.",
+    "I didn't add Descale the kettle; no Area was assigned.",
+    "Done! I've added an action to your list. Once you create a Home area, you can move it there.",
+    'Done! I\'ve added "Descale the kettle" to your action list.',
+    'Done! I\'ve added "Descale the kettle" under Home. Once you create another area, you can move it there.',
+    "Descale the kettle will appear in your action list without an Area.",
+    "Descale the kettle is ready to add unfiled. Would you like me to do that?",
+  ])("rejects pending or false-filing Action guidance: %s", (reply) => {
+    expect(isUnfiledActionReplyTruthful(reply, /kettle|descale/i)).toBe(false);
   });
 });
 
