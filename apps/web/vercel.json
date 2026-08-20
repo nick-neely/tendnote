@@ -31,6 +31,14 @@
           "topic": "tendnote-reminder-push-v1"
         }
       ]
+    },
+    "src/app/api/queue/owner-data-export/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "tendnote-owner-data-export-v1"
+        }
+      ]
     }
   },
   "routes": [
