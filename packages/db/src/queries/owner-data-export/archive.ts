@@ -22,8 +22,9 @@ const INCLUDED_FAMILIES = ["account profile"] as const;
 const EXCLUSIONS = [
   "Household Workspace records, rosters, and records owned by another member",
   "records merely shared to the requester",
+  "Household-native records and generated Orientation Context (which is not source truth)",
   "credentials, sessions, OAuth tokens, and provider connection state",
-  "calendar caches, generated snapshots, embeddings, queues, deliveries, and internal audit rows",
+  "raw provider payloads, calendar caches, generated snapshots, embeddings, queues, deliveries, and internal audit rows",
 ] as const;
 
 export type OwnerDataExportArchive = {
@@ -254,6 +255,18 @@ function zip(entries: ArchiveEntry[], now: Date) {
 }
 
 function inventory(account: OwnerDataExportAccount, manifest: OwnerDataExportManifest) {
+  const resources = manifest.resources.map((resource) => {
+    const count =
+      resource.recordCount === undefined
+        ? ""
+        : `, ${resource.recordCount} record${resource.recordCount === 1 ? "" : "s"}`;
+    const sensitivity = resource.sensitivity ? `, sensitivity ${resource.sensitivity}` : "";
+    const files =
+      resource.fileCount === undefined
+        ? ""
+        : `, ${resource.fileCount} file${resource.fileCount === 1 ? "" : "s"}, ${resource.fileByteCount ?? 0} evidence bytes`;
+    return `- ${resource.path}${count}${files}${sensitivity}`;
+  });
   return [
     "Tendnote Owner Data Export",
     `Schema: ${manifest.schemaVersion}`,
@@ -261,7 +274,9 @@ function inventory(account: OwnerDataExportAccount, manifest: OwnerDataExportMan
     `Expires: ${manifest.expiresAt}`,
     "",
     `Account: ${account.name} <${account.email}>`,
-    "Included: account profile (one record)",
+    `Included families: ${manifest.includedFamilies.join(", ")}`,
+    "Included resources:",
+    ...resources,
     "",
     "This archive is an explicitly requested owner export. It is not a backup",
     "of credentials or operational state. Reconnect provider integrations after",
@@ -312,7 +327,8 @@ export function buildOwnerDataExportArchive(input: {
     notes: [
       "Import is not included in this release.",
       "A future Household Workspace export requires separate authorization.",
-      "Restricted records in later resources are labelled in their own metadata.",
+      "Restricted records are labelled in their own resource metadata.",
+      "Reconnect provider integrations after moving this data to another deployment.",
     ],
   };
   const entries: ArchiveEntry[] = [

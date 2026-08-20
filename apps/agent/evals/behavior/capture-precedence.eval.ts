@@ -24,6 +24,8 @@ type CapturePrecedenceCase = {
   readonly prompt: string;
   /** The wording Capture must retain as source evidence. */
   readonly originalText: RegExp;
+  /** Additional Capture input invariants for this case. */
+  readonly captureInput?: Record<string, unknown>;
   /**
    * The destination-specific tools this sentence tempts. Every one is a tool
    * that exists and could serve a clause in the prompt: a ban on an unreachable
@@ -54,6 +56,7 @@ const cases: readonly CapturePrecedenceCase[] = [
     prompt:
       "Use Capture: remember that Priya prefers oat milk; track asset refrigerator filter: model EDR4RXD1.",
     originalText: /remember.*track asset/is,
+    captureInput: { inferredSuggestions: (value: unknown) => value === undefined },
     forbidden: ["capture_memory", "create_asset"],
   },
   {
@@ -63,6 +66,7 @@ const cases: readonly CapturePrecedenceCase[] = [
     prompt:
       "Add Priya; remember that Priya prefers oat milk; and track asset refrigerator water filter: model EDR4RXD1.",
     originalText: /Add Priya.*remember.*track asset/is,
+    captureInput: { inferredSuggestions: (value: unknown) => value === undefined },
     forbidden: ["create_person", "capture_memory", "create_asset"],
   },
   {
@@ -98,6 +102,7 @@ export default cases.map((testCase) =>
           // for the household, so none of them may carry the audience field - the
           // positive case lives in `policy/capture-shared-audience`.
           requestedScope: (value: unknown) => value === undefined,
+          ...testCase.captureInput,
         },
         count: 1,
       });

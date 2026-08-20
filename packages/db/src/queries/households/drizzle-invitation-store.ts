@@ -4,7 +4,9 @@ import {
   householdInvitationDeliveries,
   householdInvitations,
   householdWorkspaces,
+  user,
 } from "../../schema";
+import { createDrizzleAccessProfileStore } from "../access-profiles/drizzle-store";
 import { createDrizzleHouseholdCalendarStore } from "./drizzle-calendar-store";
 import { createDrizzleHouseholdStore } from "./drizzle-store";
 import type { HouseholdInvitationStore } from "./invitation-types";
@@ -16,6 +18,7 @@ export function createDrizzleHouseholdInvitationStore(
 ): HouseholdInvitationStore {
   return {
     households: createDrizzleHouseholdStore(resolveDb),
+    accessProfiles: createDrizzleAccessProfileStore(resolveDb),
     identities: createDrizzleHouseholdIdentityStore(resolveDb),
     // Same `resolveDb`, so `withTransaction` re-binds these with everything else
     // and a departure's scheduled-work and calendar cleanup both land in the
@@ -27,6 +30,21 @@ export function createDrizzleHouseholdInvitationStore(
       return resolveDb().transaction(async (tx) =>
         fn(createDrizzleHouseholdInvitationStore(() => tx)),
       );
+    },
+
+    /**
+     * Account serialization comes before the household row lock in acceptance.
+     * Locking the Better Auth user row is what makes two invitations to two
+     * households compete for the one-household admission rule.
+     */
+    async lockUser(input) {
+      const [row] = await resolveDb()
+        .select({ id: user.id })
+        .from(user)
+        .where(eq(user.id, input.userId))
+        .limit(1)
+        .for("update");
+      return Boolean(row);
     },
 
     /**
