@@ -486,14 +486,15 @@ async function persistInferredCaptureReviews(
 ) {
   const outcomes: CaptureOutcomeResult[] = [];
   for (const suggestion of parsedInput.inferredSuggestions ?? []) {
-    outcomes.push(
-      await createInferredCaptureReview({
-        deps,
-        ownerUserId: parsedInput.ownerUserId,
-        sourceRecordId,
-        suggestion,
-      }),
-    );
+    const outcome = await createInferredCaptureReview({
+      deps,
+      ownerUserId: parsedInput.ownerUserId,
+      sourceRecordId,
+      suggestion,
+    });
+    // Unknown-person suggestions remain represented by the source evidence,
+    // but never become a durable Memory or a misleading review card.
+    if (outcome) outcomes.push(outcome);
   }
   return outcomes;
 }

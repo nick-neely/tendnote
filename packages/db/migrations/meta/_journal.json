@@ -533,6 +533,13 @@
       "when": 1787181808393,
       "tag": "0075_owner_data_export_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1787199650118,
+      "tag": "0076_self_hosted_admission_bootstrap_index",
+      "breakpoints": true
     }
   ]
 }

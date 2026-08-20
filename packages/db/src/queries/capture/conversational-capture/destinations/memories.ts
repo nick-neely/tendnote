@@ -9,6 +9,18 @@ export async function createMemoryDestination(
   if (!input.resolvedPerson || !input.deps.createApprovedMemory) {
     throw new Error("Memory capture is unavailable.");
   }
+  // The route resolver already searched for this person, but keep the durable
+  // destination owner-scoped as well. A memory must never trust an id that was
+  // synthesized by a caller or carried over from a model turn.
+  const knownPerson = input.deps.getPerson
+    ? await input.deps.getPerson({
+        ownerUserId: input.ownerUserId,
+        personId: input.resolvedPerson.id,
+      })
+    : input.resolvedPerson;
+  if (!knownPerson || knownPerson.id !== input.resolvedPerson.id) {
+    throw new Error("Memory capture requires a resolved person.");
+  }
   const outcome = await input.deps.createApprovedMemory({
     ownerUserId: input.ownerUserId,
     personId: input.resolvedPerson.id,
@@ -23,7 +35,7 @@ export async function createMemoryDestination(
     destination: "Memories",
     groundedBySourceRecordId: input.sourceRecordId,
     interpreted: {
-      person: input.resolvedPerson.displayName,
+      person: knownPerson.displayName,
       authority: "Approved",
       scope: input.visibility.label,
     },
@@ -52,6 +64,16 @@ export async function createSuggestedMemoryReview(input: {
   if (!input.deps.createSuggestedMemory) {
     throw new Error("Suggested Memory capture is unavailable.");
   }
+  // Inferred suggestions carry model-provided ids, so unlike an explicit
+  // Memory route they cannot rely on the route resolver's search result. A
+  // suggestion is reviewable only after this owner-scoped lookup confirms the
+  // exact Person exists. Unknown ids and sentinels such as "new" are rejected
+  // before the durable-memory mutation is even called.
+  const knownPerson = await input.deps.getPerson?.({
+    ownerUserId: input.ownerUserId,
+    personId: input.suggestion.personId,
+  });
+  if (!knownPerson || knownPerson.id !== input.suggestion.personId) return null;
   const outcome = await input.deps.createSuggestedMemory({
     ownerUserId: input.ownerUserId,
     personId: input.suggestion.personId,
@@ -69,7 +91,7 @@ export async function createSuggestedMemoryReview(input: {
       groundedBySourceRecordId: input.sourceRecordId,
       interpreted: {
         record: "Memory",
-        name: `Memory for ${input.suggestion.personName}`,
+        name: `Memory for ${knownPerson.displayName}`,
         authority: "Needs review",
         scope: "Only me",
       },

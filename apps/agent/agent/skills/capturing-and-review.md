@@ -22,6 +22,12 @@ ambiguous person or vague timing yourself. If the user immediately corrects or u
 the completed capture, use `change_saved_item_capture` or `undo_saved_item_capture` with
 the exact `changeTarget` or `undoTarget` Capture returned.
 
+An inferred Memory attached to Capture is still review-only, but it may carry a
+`personId` only when that exact id came from a known `search_people` result. Never
+invent a person id or pass placeholders such as `new`, `pending`, or
+`will-resolve`; leave an unresolved person in Capture's source-evidence review
+path instead of routing it to a Memory destination.
+
 # Adding people
 
 Before linking any context to a person, use `search_people` to find existing matches.

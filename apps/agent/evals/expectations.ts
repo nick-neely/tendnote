@@ -21,7 +21,51 @@ export function without(pattern: string): RegExp {
 /** A record id in an answer is always a bug — ids are for tool calls, never for people. */
 export const NO_RAW_IDS = without("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}");
 
-type ToolResult = { toolName?: string; output?: unknown };
+export type ToolResult = { toolName?: string; output?: unknown };
+
+export type ToolCall = { toolName: string; input?: unknown };
+
+/** Every authored tool that can persist, propose, review, or externalize data. */
+export const MUTATING_TOOL_NAMES = new Set([
+  "accept_suggested_followup",
+  "accept_suggested_general_action",
+  "add_gift_idea",
+  "approve_suggested_memory",
+  "archive_memory",
+  "archive_self_context",
+  "capture_memory",
+  "capture_saved_item",
+  "capture_source_record",
+  "change_saved_item_capture",
+  "create_asset",
+  "create_followup",
+  "create_general_action",
+  "create_message_draft",
+  "create_person",
+  "dismiss_draft",
+  "dismiss_suggested_followup",
+  "dismiss_suggested_general_action",
+  "dismiss_suggested_memory",
+  "edit_asset",
+  "edit_draft_body",
+  "edit_general_action",
+  "edit_gift_idea",
+  "plan_suggested_general_actions",
+  "propose_asset_actions",
+  "propose_asset_memories",
+  "propose_followup",
+  "propose_suggested_memory",
+  "remember_self_context",
+  "remove_gift_idea",
+  "restore_self_context",
+  "save_draft_to_gmail",
+  "suggest_general_action",
+  "undo_saved_item_capture",
+  "update_followup_status",
+  "update_general_action_status",
+  "update_person",
+  "update_self_context",
+]);
 
 /**
  * The tool result carried by an event, or null when the event is not one.
@@ -32,7 +76,7 @@ type ToolResult = { toolName?: string; output?: unknown };
  * on exactly the runs that delegated, and an eval that judges an answer against the
  * records it loaded judges it against nothing instead.
  */
-function toolResultOf(event: unknown): ToolResult | null {
+export function toolResultOf(event: unknown): ToolResult | null {
   if (typeof event !== "object" || event === null) {
     return null;
   }
@@ -46,20 +90,65 @@ function toolResultOf(event: unknown): ToolResult | null {
   return candidate.data?.result ?? null;
 }
 
+/** Every tool result in a turn, including results emitted by an inline subagent. */
+export function toolResults(events: readonly unknown[]): ToolResult[] {
+  return events.flatMap((event) => {
+    const result = toolResultOf(event);
+    return result === null ? [] : [result];
+  });
+}
+
 /**
  * What a tool actually returned this turn — so an eval can assert on what Eve was *told*, not
  * only on what she said. An empty proposal pass, for instance, is only meaningful if the seam
  * really did return nothing.
  */
 export function toolOutputs(events: readonly unknown[], toolName: string): unknown[] {
-  const outputs: unknown[] = [];
-  for (const event of events) {
-    const result = toolResultOf(event);
-    if (result !== null && result.toolName === toolName) {
-      outputs.push(result.output);
+  return toolResults(events)
+    .filter((result) => result.toolName === toolName)
+    .map((result) => result.output);
+}
+
+/** Every authored tool call in a turn, including nested subagent events. */
+export function toolCalls(events: readonly unknown[]): ToolCall[] {
+  return events.flatMap((event) => {
+    if (typeof event !== "object" || event === null) return [];
+
+    const candidate = event as {
+      type?: string;
+      data?: { actions?: unknown; event?: unknown };
+    };
+    if (candidate.type === "subagent.event") {
+      return toolCalls(candidate.data?.event === undefined ? [] : [candidate.data.event]);
     }
-  }
-  return outputs;
+    if (candidate.type !== "actions.requested" || !Array.isArray(candidate.data?.actions)) {
+      return [];
+    }
+
+    return candidate.data.actions.flatMap((action): ToolCall[] => {
+      if (typeof action !== "object" || action === null) return [];
+      const candidateAction = action as { kind?: unknown; toolName?: unknown; input?: unknown };
+      if (candidateAction.kind !== "tool-call" || typeof candidateAction.toolName !== "string") {
+        return [];
+      }
+      return [{ toolName: candidateAction.toolName, input: candidateAction.input }];
+    });
+  });
+}
+
+/** Tool names are a convenient public seam for recursive no-write assertions. */
+export function calledToolNames(events: readonly unknown[]): string[] {
+  return [
+    ...toolCalls(events).map((call) => call.toolName),
+    ...toolResults(events)
+      .map((result) => result.toolName)
+      .filter((toolName): toolName is string => typeof toolName === "string"),
+  ];
+}
+
+/** A single exhaustive no-write gate shared by all policy evals. */
+export function hasNoMutatingTools(events: readonly unknown[]): boolean {
+  return calledToolNames(events).every((toolName) => !MUTATING_TOOL_NAMES.has(toolName));
 }
 
 /**
