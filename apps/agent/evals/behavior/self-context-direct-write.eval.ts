@@ -14,6 +14,21 @@ export default defineEval({
     first.calledTool("remember_self_context");
     first.notCalledTool("capture_saved_item");
     first.notCalledTool("capture_memory");
+    first.eventsSatisfy("the first direct write creates the fact", (events) =>
+      toolOutputs(events, "remember_self_context").some((output) => {
+        if (typeof output !== "object" || output === null) return false;
+        const candidate = output as {
+          decision?: unknown;
+          created?: unknown;
+          reusedExisting?: unknown;
+        };
+        return (
+          candidate.decision === "created" &&
+          candidate.created === true &&
+          candidate.reusedExisting === false
+        );
+      }),
+    );
 
     // A second explicit request proves the idempotent branch instead of merely
     // proving that a fresh fact can be created. It must still reach the direct
@@ -29,6 +44,13 @@ export default defineEval({
     repeated.notCalledTool("capture_memory");
     repeated.notCalledTool("list_self_context");
     repeated.notCalledTool("get_self_context_fact");
+    repeated.notCalledTool("update_self_context");
+    repeated.notCalledTool("archive_self_context");
+    repeated.notCalledTool("restore_self_context");
+    repeated.notCalledTool("archive_memory");
+    repeated.notCalledTool("propose_suggested_memory");
+    repeated.notCalledTool("approve_suggested_memory");
+    repeated.notCalledTool("dismiss_suggested_memory");
     repeated.eventsSatisfy("the repeated direct write reuses the existing fact", (events) =>
       toolOutputs(events, "remember_self_context").some((output) => {
         if (typeof output !== "object" || output === null) return false;

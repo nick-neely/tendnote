@@ -1,5 +1,6 @@
 import type { AssertionHandle, EveEvalAssertions } from "eve/evals";
 import { describe, expect, it } from "vitest";
+import { DRAFT_REVISION_UNSAFE_CLAIMS } from "../evals/behavior/draft-revision-assertions";
 import { toolOutputs } from "../evals/expectations";
 import {
   firstSubagentIndex,
@@ -121,6 +122,39 @@ describe("eval subagent visibility", () => {
     expect(firstSubagentIndex(events, "privacy_guard")).toBe(1);
     expect(firstToolRequestIndex(events, "capture_memory")).toBe(-1);
     expect(firstSubagentIndex(events, "message_drafter")).toBe(-1);
+  });
+});
+
+describe("draft revision wording guard", () => {
+  it("rejects bare externalization, approval, and sent claims", () => {
+    const safeReply = new RegExp(
+      `^(?![\\s\\S]*(?:${DRAFT_REVISION_UNSAFE_CLAIMS}))[\\s\\S]*$`,
+      "i",
+    );
+
+    for (const unsafeReply of [
+      "I put the revision in a Gmail draft.",
+      "Approved.",
+      "The message was sent.",
+      "The updated note has been sent.",
+    ]) {
+      expect(unsafeReply).not.toMatch(safeReply);
+    }
+  });
+
+  it("keeps truthful boundary and prior-approval wording valid", () => {
+    const safeReply = new RegExp(
+      `^(?![\\s\\S]*(?:${DRAFT_REVISION_UNSAFE_CLAIMS}))[\\s\\S]*$`,
+      "i",
+    );
+
+    for (const boundaryReply of [
+      "The internal Tendnote draft remains unapproved; nothing was approved, exported, or sent, and it is not an external or Gmail draft.",
+      "The previously approved draft was edited internally; the prior approval no longer covers this wording.",
+      "The draft is not approved and was not sent.",
+    ]) {
+      expect(boundaryReply).toMatch(safeReply);
+    }
   });
 });
 

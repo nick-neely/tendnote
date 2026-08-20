@@ -36,9 +36,17 @@ export default defineEval({
         // No Area exists, so no Area may be claimed. An invented uuid is a rejected
         // write; a retyped one belongs to somebody else's row.
         areaId: (value: unknown) => value === undefined,
+        reminderSchedule: (value: unknown) => value === undefined,
       },
     });
     t.toolOrder(["list_general_action_areas", "create_general_action"]);
+    t.eventsSatisfy("the Area lookup actually returned no Areas", (events) =>
+      toolOutputs(events, "list_general_action_areas").some((output) => {
+        if (typeof output !== "object" || output === null) return false;
+        const result = output as { count?: unknown; areas?: unknown };
+        return result.count === 0 && Array.isArray(result.areas) && result.areas.length === 0;
+      }),
+    );
     t.eventsSatisfy("the explicit Action was persisted without an Area", (events) =>
       toolOutputs(events, "create_general_action").some((output) => {
         if (typeof output !== "object" || output === null) return false;
@@ -46,13 +54,15 @@ export default defineEval({
         return action?.area === null || action?.areaId === null;
       }),
     );
+    t.notCalledTool("suggest_general_action");
+    t.notCalledTool("plan_suggested_general_actions");
     t.check(t.reply, includes(/(created|added|saved|active|unfiled)/i));
     // And it does not report a filing that did not happen, or offer an Area it cannot make.
     t.check(
       t.reply,
       includes(
         without(
-          "filed (it )?under (your )?Home|in your Home area|I(’|')?ve created (a|an|the) [a-z ]*area|create (a|an) (new )?area for you|I(’|')?ll (create|add) (a|an) (new )?area",
+          "filed (it )?under (your )?Home|(?:added|saved|put|placed) (?:it|the (?:action|task)|that) (?:under|in) (?:your )?Home|in your Home area|I(’|')?ve created (a|an|the) [a-z ]*area|create (a|an) (new )?area for you|I(’|')?ll (create|add) (a|an) (new )?area",
         ),
       ),
     );
