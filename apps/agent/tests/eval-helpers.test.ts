@@ -5,6 +5,7 @@ import { isUnfiledActionReplyTruthful } from "../evals/behavior/general-action-a
 import {
   hasCapturePersonClarification,
   hasGroundedPendingAssetProposal,
+  hasNoRuntimeFailures,
   isNonEmptyUuidArray,
   isPrivateOrOmitted,
   toolOutputs,
@@ -247,6 +248,19 @@ describe("Capture private-default evaluation contract", () => {
           clarification: { field: "person", question: "Who?" },
         }),
       ]),
+    ).toBe(false);
+  });
+
+  it("accepts a healthy parked clarification but rejects runtime failures", () => {
+    expect(
+      hasNoRuntimeFailures([
+        { type: "session.waiting", data: { wait: "input" } },
+        { type: "action.result", data: { status: "completed" } },
+      ]),
+    ).toBe(true);
+    expect(hasNoRuntimeFailures([{ type: "session.failed", data: { error: "boom" } }])).toBe(false);
+    expect(
+      hasNoRuntimeFailures([{ type: "subagent.event", data: { event: { type: "step.errored" } } }]),
     ).toBe(false);
   });
 });

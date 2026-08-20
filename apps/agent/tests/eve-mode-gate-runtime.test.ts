@@ -162,7 +162,7 @@ async function buildRuntimeToolSets(current: Principal | null) {
     ["web_fetch", authoredWebFetch],
   ]);
   const providerTools = await tools.buildToolSetWithProviderTools({
-    modelReference: { id: "anthropic/claude-haiku-4.5" },
+    modelReference: { id: "anthropic/claude-sonnet-5" },
     tools: staticTools,
     webSearchProvider: "exa",
   });

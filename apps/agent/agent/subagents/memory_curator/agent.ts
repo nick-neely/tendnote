@@ -6,5 +6,5 @@ export default defineAgent({
   model:
     process.env.TENDNOTE_MEMORY_CURATOR_MODEL ??
     process.env.TENDNOTE_AGENT_MODEL ??
-    "anthropic/claude-haiku-4.5",
+    "anthropic/claude-sonnet-5",
 });

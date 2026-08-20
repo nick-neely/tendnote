@@ -351,7 +351,7 @@ function writeSummary(summary) {
 
 const agentModels = listFromEnv(
   "TENDNOTE_MODEL_COMPARISON_AGENT_MODELS",
-  process.env.TENDNOTE_AGENT_MODEL ?? "anthropic/claude-haiku-4.5",
+  process.env.TENDNOTE_AGENT_MODEL ?? "anthropic/claude-sonnet-5",
 );
 const judgeModels = listFromEnv(
   "TENDNOTE_MODEL_COMPARISON_JUDGE_MODELS",

@@ -165,6 +165,25 @@ export function isPrivateOrOmitted(value: unknown): boolean {
   return value === undefined || value === "private";
 }
 
+/** A parked clarification is healthy only when the event stream itself contains no failure. */
+export function hasNoRuntimeFailures(events: readonly unknown[]): boolean {
+  return events.every((event) => {
+    if (typeof event !== "object" || event === null) return true;
+    const candidate = event as { type?: unknown; data?: { event?: unknown } };
+    if (candidate.type === "subagent.event") {
+      return hasNoRuntimeFailures(
+        candidate.data?.event === undefined ? [] : [candidate.data.event],
+      );
+    }
+    return (
+      typeof candidate.type !== "string" ||
+      (!candidate.type.endsWith(".failed") &&
+        !candidate.type.endsWith(".errored") &&
+        candidate.type !== "error")
+    );
+  });
+}
+
 /** Proves Capture kept an unresolved named Person inside its reviewable clarification path. */
 export function hasCapturePersonClarification(events: readonly unknown[]): boolean {
   return toolOutputs(events, "capture_saved_item").some(

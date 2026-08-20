@@ -59,7 +59,7 @@ type DraftAdapterEnv = Record<string, string | undefined>;
  */
 export function createDefaultDraftAdapter(env: DraftAdapterEnv = process.env): DraftAdapter {
   const modelId =
-    env.TENDNOTE_DRAFT_MODEL ?? env.TENDNOTE_AGENT_MODEL ?? "anthropic/claude-haiku-4.5";
+    env.TENDNOTE_DRAFT_MODEL ?? env.TENDNOTE_AGENT_MODEL ?? "anthropic/claude-sonnet-5";
   const hasGatewayCredentials = Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
 
   if (!hasGatewayCredentials) {

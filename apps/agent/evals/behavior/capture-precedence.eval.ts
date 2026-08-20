@@ -1,5 +1,9 @@
 import { defineEval } from "eve/evals";
-import { hasCapturePersonClarification, isPrivateOrOmitted } from "../expectations";
+import {
+  hasCapturePersonClarification,
+  hasNoRuntimeFailures,
+  isPrivateOrOmitted,
+} from "../expectations";
 
 /**
  * Global Capture precedence, as one table.
@@ -101,14 +105,22 @@ export default cases.map((testCase) =>
     async test(t) {
       await t.send(testCase.prompt);
 
-      t.succeeded();
+      if (testCase.expectsPersonClarification) {
+        // A focused Person clarification deliberately parks for owner input. Eve's
+        // generic `succeeded` assertion rejects that healthy waiting state, so this
+        // case proves the exact call, clarification result, and failure-free stream
+        // directly instead.
+        t.eventsSatisfy("the clarification parked without a runtime failure", hasNoRuntimeFailures);
+      } else {
+        t.succeeded();
+      }
       t.calledTool("capture_saved_item", {
         input: {
           originalText: testCase.originalText,
           // Capture is private by default. None of these sentences says the capture is
           // for the household, so none of them may carry the audience field - the
           // positive case lives in `policy/capture-shared-audience`.
-          requestedScope: (value: unknown) => value === undefined,
+          requestedScope: isPrivateOrOmitted,
           ...testCase.captureInput,
         },
         count: 1,

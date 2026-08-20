@@ -20,7 +20,7 @@ export function createAiSdkTodayRanker(
   options: { env?: TodayRankerEnv; model?: string; timeoutMs?: number } = {},
 ): TodayOptionalRanker {
   const env = options.env ?? process.env;
-  const model = options.model ?? env.TENDNOTE_AGENT_MODEL ?? "anthropic/claude-haiku-4.5";
+  const model = options.model ?? env.TENDNOTE_AGENT_MODEL ?? "anthropic/claude-sonnet-5";
   const timeoutMs = options.timeoutMs ?? 2_000;
   return async (input) => {
     if (!hasTodayRankerCredentials(env)) throw new Error("Eve ranking credentials unavailable.");

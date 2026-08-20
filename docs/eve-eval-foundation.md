@@ -221,7 +221,7 @@ Tendnote records" is unfalsifiable without the records beside it.
 Model-comparison runs are explicit and outside normal CI:
 
 - `pnpm --filter @tendnote/agent eval:model-comparison` runs the deterministic and judged eval tags for each configured candidate pair.
-- `TENDNOTE_MODEL_COMPARISON_AGENT_MODELS` is a comma-separated list of agent model IDs. It defaults to `TENDNOTE_AGENT_MODEL` or `anthropic/claude-haiku-4.5`.
+- `TENDNOTE_MODEL_COMPARISON_AGENT_MODELS` is a comma-separated list of agent model IDs. It defaults to `TENDNOTE_AGENT_MODEL` or `anthropic/claude-sonnet-5`.
 - `TENDNOTE_MODEL_COMPARISON_JUDGE_MODELS` is a comma-separated list of judge model IDs. It defaults to `TENDNOTE_JUDGE_MODEL` or `openai/gpt-5.4-mini`.
 - The command skips with a clear message when neither `AI_GATEWAY_API_KEY` nor `VERCEL_OIDC_TOKEN` is available.
 - The default JSON report is `.eve/evals/model-comparison/summary.json`; override with `TENDNOTE_MODEL_COMPARISON_OUT`.

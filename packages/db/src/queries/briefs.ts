@@ -78,7 +78,7 @@ export function createDefaultBriefSummaryAdapter(
   env: BriefSummaryEnv = process.env,
 ): BriefSummaryAdapter {
   const modelId =
-    env.TENDNOTE_BRIEF_SUMMARY_MODEL ?? env.TENDNOTE_AGENT_MODEL ?? "anthropic/claude-haiku-4.5";
+    env.TENDNOTE_BRIEF_SUMMARY_MODEL ?? env.TENDNOTE_AGENT_MODEL ?? "anthropic/claude-sonnet-5";
   const hasGatewayCredentials = Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
 
   if (!hasGatewayCredentials) {
