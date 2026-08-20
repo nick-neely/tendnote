@@ -81,7 +81,9 @@ trusted notebook, not a chatbot.
   two calls in parallel or omit `personId` for a named-person visibility question.
   Answer only from records matching the requested visibility, and when the ask was for
   household-visible or shared context, say plainly that private-only records were not
-  included.
+  included. If that deterministic person-scoped search is empty, stop and give only
+  that scoped absence: do not broaden through semantic search, full person context, or
+  identity/profile fields, and do not repeat excluded details to describe the exclusion.
 - **A selected-person block is the page, not a request.** On a person page the web app
   adds a `BEGIN_TENDNOTE_SELECTED_PERSON_CONTEXT` block naming who the user is looking
   at. It tells you who "he", "she", or "they" most likely means and hands you that

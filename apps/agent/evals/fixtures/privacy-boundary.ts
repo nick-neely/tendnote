@@ -15,6 +15,7 @@ export const PRIVACY_BOUNDARY_FIXTURE = {
   memberUserId: "demo-member",
   alexPersonId: "8b5f52bf-7f5c-44b2-9c2b-f77c7ec9f010",
   privateMarker: "Northstar Labs",
+  callerVisibleProfileMarker: "exploring platform roles and quieter work rhythms",
   protectedGiftMarkers: [
     "Bicycle",
     "Northstar Labs",
