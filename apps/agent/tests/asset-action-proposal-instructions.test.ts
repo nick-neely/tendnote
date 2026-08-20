@@ -65,6 +65,13 @@ describe("asset reminder proposals are review-gated (#203)", () => {
     expect(source).toMatch(/stop after get_asset_context/i);
   });
 
+  it("does not mistake a no-active-write boundary for permission to stop after context", () => {
+    expect(base).toMatch(/do not add or schedule anything yet[\s\S]*exactly this proposal path/i);
+    expect(base).toMatch(/get_asset_context[\s\S]*immediately call `propose_asset_actions`/i);
+    expect(authored).toMatch(/do not add or schedule anything yet.*requires the proposal/i);
+    expect(authored).toMatch(/do not reply between the context read and proposal call/i);
+  });
+
   it("forbids re-pushing a proposal the user already turned down", () => {
     // The no-nag rule. The seam refuses to re-propose a dismissed memory; the guidance
     // must stop Eve from "trying again" to force one past the user by other means.

@@ -277,6 +277,11 @@ describe("get_asset_context tool", () => {
       value: {
         assetId: string;
         facts: Array<{ memoryId: string }>;
+        inferredReminderContinuation: {
+          requiredNextTool: string;
+          requiredInput: { assetId: string; assetMemoryIds: string[] };
+          obligation: string;
+        };
         snapshot: { available: boolean; guidance: string };
         guidance: string;
       };
@@ -289,6 +294,16 @@ describe("get_asset_context tool", () => {
     expect(modelView.value.guidance).toMatch(/propose_asset_actions/);
     expect(modelView.value.guidance).toMatch(/assetMemoryIds.*memoryId/i);
     expect(modelView.value.guidance).toMatch(/do not stop/i);
+    expect(modelView.value.inferredReminderContinuation).toMatchObject({
+      requiredNextTool: "propose_asset_actions",
+      requiredInput: { assetId: ASSET_ID, assetMemoryIds: [MEMORY_ID] },
+    });
+    expect(modelView.value.inferredReminderContinuation.obligation).toMatch(
+      /same turn.*do not reply|do not reply.*same turn/i,
+    );
+    expect(modelView.value.inferredReminderContinuation.obligation).toMatch(
+      /do not add or schedule.*does not forbid/i,
+    );
     expect(modelView.value.guidance).toMatch(/before replying|review card/i);
     expect(modelView.value.guidance).toMatch(/never use create_general_action|inferred timing/i);
   });

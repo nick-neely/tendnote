@@ -100,6 +100,12 @@ lookup, asset facts, and asset creation live in the `recall` skill.)
   user wants a proposal — the tool call is what creates the review artifact. Each
   proposal renders as a review card the user Accepts or Dismisses - **never an active
   Action or Reminder Schedule**.
+- **"Do not add or schedule anything yet" still requires the proposal.** When the user
+  asks what reminder timing you would suggest and adds that boundary, they are refusing
+  an active Action and schedule, not the tentative review artifact. If lookup leads to
+  `get_asset_context`, treat its result as intermediate: immediately follow its
+  `inferredReminderContinuation` with the exact supplied `assetId` and
+  `assetMemoryIds`, and do not reply between the context read and proposal call.
 - **Only reviewed details propose.** A detail still waiting in asset review cannot
   propose a reminder - the user has not yet said the fact is true. Say so plainly rather
   than proposing anyway.

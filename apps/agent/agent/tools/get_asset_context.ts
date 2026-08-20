@@ -130,9 +130,22 @@ export default defineTool({
           status: action.status,
           dueAt: action.dueAt,
         })),
+        // A copy-ready continuation prevents the model from treating a context read as
+        // completion when the user's actual request was an inferred reminder proposal.
+        // The proposal seam safely ignores reviewed details that carry no timing.
+        inferredReminderContinuation: {
+          when: "The current user asked what reminder or reminder timing this Asset's reviewed details suggest, including when they said not to add or schedule anything yet.",
+          requiredNextTool: "propose_asset_actions",
+          requiredInput: {
+            assetId: output.assetId,
+            assetMemoryIds: output.facts.map((fact) => fact.memoryId),
+          },
+          obligation:
+            "Call this next tool immediately in this same turn. This context result is intermediate: do not reply before the review proposal call. 'Do not add or schedule anything yet' forbids an active Action or Reminder Schedule; it does not forbid this tentative review proposal.",
+        },
         rendered: "The asset and its details are shown to the user in a card.",
         guidance:
-          "Don't relist the facts, evidence, or actions — the card shows them. Answer what was asked in a line or two; an exact stored value may be quoted when it is the answer. If the user asked what reminder timing to use or you are about to recommend timing inferred from a reviewed detail, this read is not the answer: call propose_asset_actions now with this assetId and assetMemoryIds containing the relevant facts' memoryId values before replying. Do not stop after this context read. That creates the review card; never use create_general_action or attach a Reminder Schedule for inferred timing.",
+          "Don't relist the facts, evidence, or actions — the card shows them. Answer what was asked in a line or two; an exact stored value may be quoted when it is the answer. If the user asked what reminder timing to use or you are about to recommend timing inferred from a reviewed detail, this read is INTERMEDIATE, not the answer: before replying, follow inferredReminderContinuation immediately by calling propose_asset_actions with its exact assetId and assetMemoryIds copied from the facts' memoryId values. Do not stop or reply first. 'Do not add or schedule anything yet' means use this review-only continuation; it is not permission to stop after context. Never use create_general_action or attach a Reminder Schedule for inferred timing.",
       },
     };
   },
