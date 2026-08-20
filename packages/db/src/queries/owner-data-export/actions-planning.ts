@@ -481,11 +481,18 @@ function validateDraftReference(
     }
     return;
   }
-  if (ref.kind === "followup" && !grounding.followupIds.has(ref.id)) {
-    throw new Error(
-      `Owner data export message draft ${draftId} references follow-up ${ref.id} outside the owner export.`,
-    );
+  if (ref.kind === "followup") {
+    if (!grounding.followupIds.has(ref.id)) {
+      throw new Error(
+        `Owner data export message draft ${draftId} references follow-up ${ref.id} outside the owner export.`,
+      );
+    }
+    return;
   }
+  const unsupportedKind = (ref as { kind?: unknown }).kind;
+  throw new Error(
+    `Owner data export message draft ${draftId} has unsupported source reference kind ${String(unsupportedKind)}.`,
+  );
 }
 
 function validateDraftReferences(

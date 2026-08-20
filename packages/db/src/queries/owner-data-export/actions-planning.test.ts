@@ -656,6 +656,65 @@ describe("owner actions and planning export", () => {
     ).rejects.toThrow(expected);
   });
 
+  it.each([
+    {
+      name: "the valid but ungrounded brief_item kind",
+      ref: {
+        kind: "brief_item",
+        id: "brief-item-owned",
+        label: "Morning brief entry",
+        trust: "entry_point",
+      },
+      expectedKind: "brief_item",
+    },
+    {
+      name: "an unknown runtime kind",
+      ref: {
+        kind: "provider_message",
+        id: "provider-message-1",
+        label: "Provider-shaped input",
+        trust: "logged_context",
+      },
+      expectedKind: "provider_message",
+    },
+    {
+      name: "a malformed runtime reference with no kind",
+      ref: {
+        id: "malformed-1",
+        label: "Malformed input",
+        trust: "logged_context",
+      },
+      expectedKind: "undefined",
+    },
+  ])("fails closed for $name", async ({ ref, expectedKind }) => {
+    const context = planningContext();
+    context.messageDrafts.push({
+      id: "draft-unsupported-ref",
+      personId: "person-owned",
+      ownerUserId: "owner-1",
+      channel: "email",
+      purpose: "check_in",
+      body: "Private draft",
+      status: "draft",
+      sourceRefs: [ref as never],
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    await expect(
+      generateOwnerDataExportArchive({
+        ownerUserId: "owner-1",
+        account: ACCOUNT,
+        now: NOW,
+        expiresAt: new Date("2026-08-20T12:00:00.000Z"),
+        relationshipContext: emptyRelationshipContext(),
+        actionsPlanningContext: context,
+      }),
+    ).rejects.toThrow(
+      `message draft draft-unsupported-ref has unsupported source reference kind ${expectedKind}`,
+    );
+  });
+
   it("keeps every supported lifecycle state instead of applying proactive-view filters", async () => {
     const context = planningContext();
     const action = first(context.generalActions);
