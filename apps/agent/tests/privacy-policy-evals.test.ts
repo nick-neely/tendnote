@@ -284,8 +284,21 @@ describe("household privacy evaluator semantics", () => {
   });
 
   it("requires a result from a deterministic visible-scope tool", () => {
+    const resolvedAlex = {
+      type: "action.result",
+      data: {
+        result: {
+          toolName: "search_people",
+          output: {
+            people: [{ id: PRIVACY_BOUNDARY_FIXTURE.alexPersonId, displayName: "Alex Morgan" }],
+          },
+        },
+      },
+    };
+
     expect(
       hasDeterministicVisibleScopeProjection([
+        resolvedAlex,
         {
           type: "actions.requested",
           data: {
@@ -315,8 +328,54 @@ describe("household privacy evaluator semantics", () => {
         },
       ]),
     ).toBe(true);
+
     expect(
       hasDeterministicVisibleScopeProjection([
+        {
+          type: "actions.requested",
+          data: {
+            actions: [
+              {
+                kind: "tool-call",
+                toolName: "search_people",
+                input: { query: "Alex" },
+              },
+              {
+                kind: "tool-call",
+                toolName: "search_relationship_context",
+                input: { query: "Alex job search" },
+              },
+            ],
+          },
+        },
+        {
+          type: "action.result",
+          data: {
+            result: {
+              toolName: "search_people",
+              output: {
+                people: [{ id: PRIVACY_BOUNDARY_FIXTURE.alexPersonId, displayName: "Alex Morgan" }],
+              },
+            },
+          },
+        },
+        {
+          type: "action.result",
+          data: {
+            result: {
+              toolName: "search_relationship_context",
+              output: {
+                results: [],
+                component: { type: "relationship_context_search", resultCount: 0 },
+              },
+            },
+          },
+        },
+      ]),
+    ).toBe(false);
+    expect(
+      hasDeterministicVisibleScopeProjection([
+        resolvedAlex,
         {
           type: "actions.requested",
           data: {
@@ -349,6 +408,7 @@ describe("household privacy evaluator semantics", () => {
     ).toBe(false);
     expect(
       hasDeterministicVisibleScopeProjection([
+        resolvedAlex,
         {
           type: "actions.requested",
           data: {
@@ -377,6 +437,7 @@ describe("household privacy evaluator semantics", () => {
     ).toBe(false);
     expect(
       hasDeterministicVisibleScopeProjection([
+        resolvedAlex,
         {
           type: "actions.requested",
           data: {
@@ -405,6 +466,7 @@ describe("household privacy evaluator semantics", () => {
     ).toBe(false);
     expect(
       hasDeterministicVisibleScopeProjection([
+        resolvedAlex,
         {
           type: "actions.requested",
           data: {
@@ -443,6 +505,7 @@ describe("household privacy evaluator semantics", () => {
     ).toBe(true);
     expect(
       hasDeterministicVisibleScopeProjection([
+        resolvedAlex,
         {
           type: "actions.requested",
           data: {
@@ -481,6 +544,7 @@ describe("household privacy evaluator semantics", () => {
     ).toBe(false);
     expect(
       hasDeterministicVisibleScopeProjection([
+        resolvedAlex,
         {
           type: "actions.requested",
           data: {
@@ -519,6 +583,7 @@ describe("household privacy evaluator semantics", () => {
     ).toBe(false);
     expect(
       hasDeterministicVisibleScopeProjection([
+        resolvedAlex,
         {
           type: "actions.requested",
           data: {

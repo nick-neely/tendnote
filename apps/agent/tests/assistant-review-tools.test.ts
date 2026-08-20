@@ -210,6 +210,7 @@ describe("instructions steer capture vs save vs review", () => {
     expect(instructions).toMatch(/exact stored-context recall/i);
     expect(instructions).toMatch(/fuzzy stored-context recall/i);
     expect(instructions).toMatch(/meaning rather than exact wording/i);
+    expect(instructions).toMatch(/never batch the lookup and its dependent call in parallel/i);
   });
 
   it("keeps semantic recall separate from proactive agenda ranking", () => {
