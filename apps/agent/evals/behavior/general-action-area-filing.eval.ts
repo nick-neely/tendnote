@@ -1,6 +1,8 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
-import { toolOutputs, without } from "../expectations";
+import { toolOutputs } from "../expectations";
+
+const CANONICAL_UNFILED_ACTION_REPLY = /^Added the Action unfiled; no Area was assigned\.$/i;
 
 /**
  * `areaId` was fillable by four tools and produceable by none, until
@@ -27,7 +29,7 @@ export default defineEval({
 
     t.succeeded();
     // The one source of a real Area handle, consulted before filing.
-    t.calledTool("list_general_action_areas");
+    t.calledTool("list_general_action_areas", { count: 1 });
     // The action is still created - refusing the whole request because the filing is
     // impossible would be the other way to fail this.
     t.calledTool("create_general_action", {
@@ -38,6 +40,7 @@ export default defineEval({
         areaId: (value: unknown) => value === undefined,
         reminderSchedule: (value: unknown) => value === undefined,
       },
+      count: 1,
     });
     t.toolOrder(["list_general_action_areas", "create_general_action"]);
     t.eventsSatisfy("the Area lookup actually returned no Areas", (events) =>
@@ -50,21 +53,14 @@ export default defineEval({
     t.eventsSatisfy("the explicit Action was persisted without an Area", (events) =>
       toolOutputs(events, "create_general_action").some((output) => {
         if (typeof output !== "object" || output === null) return false;
-        const action = (output as { action?: { area?: unknown; areaId?: unknown } }).action;
-        return action?.area === null || action?.areaId === null;
+        const action = (output as { action?: { areaId?: unknown; status?: unknown } }).action;
+        return action?.areaId === null && action.status === "open";
       }),
     );
     t.notCalledTool("suggest_general_action");
     t.notCalledTool("plan_suggested_general_actions");
-    t.check(t.reply, includes(/(created|added|saved|active|unfiled)/i));
-    // And it does not report a filing that did not happen, or offer an Area it cannot make.
-    t.check(
-      t.reply,
-      includes(
-        without(
-          "filed (it )?under (your |my |the )?Home(?: area)?|(?:added|saved|put|placed|left) (?:it|the (?:action|task)|that) (?:under|in|to) (?:your |my |the )?Home(?: area)?|in (?:your |my |the )?Home area|I(’|')?ve created (a|an|the) [a-z ]*area|create (a|an) (new )?area for you|I(’|')?ll (create|add) (a|an) (new )?area",
-        ),
-      ),
-    );
+    // The structured result proves the state; this anchored confirmation prevents
+    // an extra sentence from claiming that the Action was filed after all.
+    t.check(t.reply, includes(CANONICAL_UNFILED_ACTION_REPLY));
   },
 });

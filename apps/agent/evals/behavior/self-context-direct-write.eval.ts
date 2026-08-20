@@ -24,7 +24,7 @@ export default defineEval({
     );
 
     first.expectOk();
-    first.calledTool("remember_self_context");
+    first.calledTool("remember_self_context", { count: 1 });
     for (const tool of ALTERNATE_SELF_CONTEXT_WRITES) {
       first.notCalledTool(tool);
     }
@@ -53,7 +53,7 @@ export default defineEval({
 
     t.succeeded();
     repeated.expectOk();
-    repeated.calledTool("remember_self_context");
+    repeated.calledTool("remember_self_context", { count: 1 });
     repeated.notCalledTool("list_self_context");
     repeated.notCalledTool("get_self_context_fact");
     for (const tool of ALTERNATE_SELF_CONTEXT_WRITES) {

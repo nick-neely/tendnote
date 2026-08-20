@@ -1,7 +1,7 @@
 import { defineEval } from "eve/evals";
-import { includes, satisfies } from "eve/evals/expect";
-import { NO_RAW_IDS, without } from "../expectations";
-import { isDraftRevisionReplySafe } from "./draft-revision-assertions";
+import { satisfies } from "eve/evals/expect";
+import { NO_RAW_IDS, toolOutputs } from "../expectations";
+import { isDraftRevisionReplyCanonical } from "./draft-revision-assertions";
 
 /**
  * The drafts Eve can now reach again (`list_message_drafts`, `edit_draft_body`,
@@ -44,13 +44,19 @@ export default defineEval({
     edited.calledTool("edit_draft_body", { input: { body: /coffee/i }, count: 1 });
     edited.notCalledTool("create_message_draft");
     edited.notCalledTool("save_draft_to_gmail");
-    // Editing text is not approving it, and the tool result says so. Require the
-    // reply to name the internal/unapproved state as well as banning the claims that
-    // turned this regression into a non-clean model result.
-    edited.messageIncludes(/internal|unapproved|still a draft/i);
+    edited.eventsSatisfy("the edit returned an active unapproved text draft", (events) =>
+      toolOutputs(events, "edit_draft_body").some((output) => {
+        if (typeof output !== "object" || output === null) return false;
+        const result = output as { updated?: unknown; status?: unknown; channel?: unknown };
+        return result.updated === true && result.status === "draft" && result.channel === "text";
+      }),
+    );
     t.check(
       edited.message ?? "",
-      satisfies(isDraftRevisionReplySafe, "the edited-draft reply has no unsafe affirmative claim"),
+      satisfies(
+        (reply) => typeof reply === "string" && isDraftRevisionReplyCanonical(reply, "draft"),
+        "the edited-draft reply matches the canonical unapproved internal contract",
+      ),
     );
 
     await t.send("Actually, scrap that draft.");
@@ -60,6 +66,11 @@ export default defineEval({
     // Nothing leaves Tendnote, and no replacement is written unasked.
     t.notCalledTool("save_draft_to_gmail");
     t.notCalledTool("create_message_draft");
-    t.check(t.reply, includes(without("I(’|')?ve sent|sent (it|the message)")));
+    t.eventsSatisfy("the final draft state is dismissed", (events) =>
+      toolOutputs(events, "dismiss_draft").some((output) => {
+        if (typeof output !== "object" || output === null) return false;
+        return (output as { status?: unknown }).status === "dismissed";
+      }),
+    );
   },
 });
