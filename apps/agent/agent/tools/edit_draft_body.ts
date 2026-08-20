@@ -41,11 +41,14 @@ const inputSchema = z.object({
  * describing text they have read, which is why the result reports it back.
  *
  * Nothing here sends. `save_draft_to_gmail` remains the only path out of Tendnote and
- * still runs the same explicit approval gate the web surface does (ADR 0092).
+ * still runs the same explicit approval gate the web surface does (ADR 0092). The
+ * model-facing confirmation repeats the internal/unapproved boundary because a
+ * natural-language "done" after this call must never turn into readiness, an external
+ * draft, or a send claim.
  */
 export default defineTool({
   description:
-    "Rewrite the body of one of the user's existing Tendnote message drafts, when they ask for a change in the current turn ('make it shorter', 'take out the bit about the move', 'warmer opening'). Requires a draftId from `list_message_drafts` or from creating it. Send the COMPLETE new text: start from what the draft says now and apply only what they asked for this turn - never regenerate the message from scratch, never quietly improve wording they did not mention, and never fold in facts they did not ask you to add. Do NOT use this to write a new draft (`create_message_draft`) or to act on your own idea of a better message. An already-approved draft can still be edited when the user asks for the change - say that the approval no longer covers the new wording. A dismissed or already-sent draft cannot be edited at all, and the attempt is refused. This changes text only: it does not approve, dismiss, send, or export anything, and saving to Gmail is still `save_draft_to_gmail` with its own approval gate. Returns the updated draft reference; say what you changed, briefly.",
+    "Rewrite the body of one of the user's existing Tendnote message drafts, when they ask for a change in the current turn ('make it shorter', 'take out the bit about the move', 'warmer opening'). Requires a draftId from `list_message_drafts` or from creating it. Send the COMPLETE new text: start from what the draft says now and apply only what they asked for this turn - never regenerate the message from scratch, never quietly improve wording they did not mention, and never fold in facts they did not ask you to add. Do NOT use this to write a new draft (`create_message_draft`) or to act on your own idea of a better message. An already-approved draft can still be edited when the user asks for the change - say that the old approval no longer covers the new wording. A dismissed or already-sent draft cannot be edited at all, and the attempt is refused. This is an internal, text-only edit: an unapproved draft remains an unapproved Tendnote draft; it is never ready to send, an external or Gmail draft, or sent. Nothing is approved, exported, or sent by this call, and saving to Gmail is still `save_draft_to_gmail` with its own approval gate. Returns the updated draft reference; say what you changed, briefly.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
@@ -77,10 +80,17 @@ export default defineTool({
         draftId: output.draftId,
         status: output.status,
         guidance:
-          "The draft now says what you sent. Confirm the change in one short line rather " +
-          "than reprinting the message. Nothing was approved, sent, or exported - the " +
-          "status above is unchanged by this edit - and `draftId` stays the handle for " +
-          "later calls; never write it in your reply.",
+          output.status === "approved"
+            ? "The internal Tendnote draft now has the requested text. Confirm the change " +
+              "in one short line rather than reprinting the message. The prior approval no " +
+              "longer covers this wording; nothing was exported or sent, and this is not an " +
+              "external or Gmail draft. `draftId` stays the handle for later calls; never " +
+              "write it in your reply."
+            : "The internal Tendnote draft now has the requested text. Confirm the change " +
+              "in one short line rather than reprinting the message. It remains an " +
+              "unapproved draft: nothing was approved, exported, or sent, and this is not " +
+              "an external or Gmail draft. `draftId` stays the handle for later calls; " +
+              "never write it in your reply.",
       },
     };
   },
