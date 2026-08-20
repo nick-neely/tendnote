@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { asTestTool } from "./test-tool";
+import { asTestTool, toolModelValue } from "./test-tool";
 
 const {
   captureSourceRecord,
@@ -109,5 +109,26 @@ describe("capture_source_record tool (casual note → logged context)", () => {
     const result = await tool.execute({ retainedContent: "Quick note." }, ctx);
 
     expect(result.sourceRecord.id).toBe("source-3");
+  });
+
+  it("hands a noticed-person fact to the proposal tool before Eve replies", async () => {
+    captureSourceRecordForPersonWithEmbeddingDelivery.mockResolvedValue(
+      sourceRecordResult("source-4"),
+    );
+    enqueueAndPublishExtractionJob.mockResolvedValue(undefined);
+
+    const result = await tool.execute(
+      {
+        retainedContent: "Priya mentioned her sister is moving to Denver in August.",
+        personId: "11111111-1111-1111-1111-111111111111",
+      },
+      ctx,
+    );
+    const modelView = toolModelValue(tool, result);
+
+    expect(modelView.sourceRecordId).toBe("source-4");
+    expect(modelView.guidance).toMatch(/propose_suggested_memory/);
+    expect(modelView.guidance).toMatch(/before replying|review card/i);
+    expect(modelView.guidance).toMatch(/do not stop|do not merely promise/i);
   });
 });

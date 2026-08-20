@@ -1,6 +1,6 @@
 import { AssetValidationError } from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { asTestTool } from "./test-tool";
+import { asTestTool, toolModelValue } from "./test-tool";
 
 const { searchAssets } = vi.hoisted(() => ({ searchAssets: vi.fn() }));
 const { getAssetSnapshot } = vi.hoisted(() => ({ getAssetSnapshot: vi.fn() }));
@@ -193,6 +193,8 @@ describe("search_assets tool", () => {
     // Reaching a tool is not licence to print an id: the reply-side rule is carried by
     // the guidance here and by `instructions/base.md`, not by hiding the id.
     expect(modelView.value.guidance).toMatch(/never write an id in your reply/i);
+    expect(modelView.value.guidance).toMatch(/propose_asset_actions/);
+    expect(modelView.value.guidance).toMatch(/before replying|date alone/i);
   });
 
   it("offers a memory handle only for records that are Asset Memories", async () => {
@@ -272,11 +274,14 @@ describe("get_asset_context tool", () => {
 
     const output = await getAssetContextTool.execute({ assetId: ASSET_ID }, ctx);
     const modelView = getAssetContextTool.toModelOutput?.(output) as {
-      value: { snapshot: { available: boolean; guidance: string } };
+      value: { snapshot: { available: boolean; guidance: string }; guidance: string };
     };
 
     expect(modelView.value.snapshot.available).toBe(true);
     expect(modelView.value.snapshot.guidance).toMatch(/not source of truth/i);
+    expect(modelView.value.guidance).toMatch(/propose_asset_actions/);
+    expect(modelView.value.guidance).toMatch(/before replying|review card/i);
+    expect(modelView.value.guidance).toMatch(/never use create_general_action|inferred timing/i);
   });
 
   it("degrades to the facts alone when the snapshot is stale or missing", async () => {
@@ -364,6 +369,44 @@ describe("propose_asset_actions tool", () => {
         assetId: ASSET_ID,
         source: "assistant",
       }),
+    );
+  });
+
+  it("returns Suggested Actions as review artifacts, never active reminders", async () => {
+    const ACTION_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    proposeAssetMemoryActions.mockResolvedValue({
+      result: {
+        asset: { id: ASSET_ID, name: "Kitchen refrigerator" },
+        proposed: [
+          {
+            reason: "warranty",
+            assetMemoryId: MEMORY_ID,
+            action: {
+              id: ACTION_ID,
+              title: "Review the refrigerator warranty",
+              status: "suggested",
+              dueAt: new Date("2027-03-14T00:00:00.000Z"),
+              deferUntil: null,
+              recurrence: null,
+              areaId: null,
+              linkedPeople: [],
+              scope: "private",
+            },
+          },
+        ],
+        alreadySpokenFor: 0,
+      },
+      affectedScopes: [],
+    });
+
+    const output = await proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx);
+    const proposal = output.proposed[0]?.action;
+
+    expect(proposal?.status).toBe("suggested");
+    expect(output).not.toHaveProperty("reminderSchedule");
+    expect(output).not.toHaveProperty("schedule");
+    expect(toolModelValue(proposeAssetActionsTool, output).guidance).toMatch(
+      /not active actions until the user accepts/i,
     );
   });
 

@@ -90,10 +90,14 @@ lookup, asset facts, and asset creation live in the `recall` skill.)
 - **Use `propose_asset_actions`** when the user asks what reminders an asset should have
   ("should I set a reminder for the fridge filter?", "remind me before the warranty runs
   out", "what should I be keeping on top of for the car?"), or right after they add a
-  dated or recurring detail to an asset. Pass the `assetId` **copied from a
-  `search_assets` result**; narrow with the `memoryId`s from that same result when the
-  user names one detail. Each proposal renders as a review card the user Accepts or
-  Dismisses - **never an active Action**.
+  dated or recurring detail to an asset, including a question asking what timing you
+  would recommend. Pass the `assetId` **copied from a `search_assets` result**; narrow
+  with the `memoryId`s from that same result when the user names one detail. After one
+  result resolves the Asset, call `propose_asset_actions` in the same turn before
+  replying with inferred timing. Do not answer with a date alone or ask whether the
+  user wants a proposal — the tool call is what creates the review artifact. Each
+  proposal renders as a review card the user Accepts or Dismisses - **never an active
+  Action or Reminder Schedule**.
 - **Only reviewed details propose.** A detail still waiting in asset review cannot
   propose a reminder - the user has not yet said the fact is true. Say so plainly rather
   than proposing anyway.

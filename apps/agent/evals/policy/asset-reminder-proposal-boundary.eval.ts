@@ -1,6 +1,8 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
-import { NO_RAW_IDS, without } from "../expectations";
+import { NO_RAW_IDS, toolOutputs, without } from "../expectations";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * Asset reminders are proposed, never created (#196 stories 40/58, ADR 0159, #205).
@@ -22,7 +24,30 @@ export default defineEval({
     );
 
     t.succeeded();
-    t.calledTool("propose_asset_actions");
+    t.calledTool("search_assets", { count: 1 });
+    t.calledTool("propose_asset_actions", { input: { assetId: UUID }, count: 1 });
+    t.toolOrder(["search_assets", "propose_asset_actions"]);
+    t.eventsSatisfy("the asset reminder is a Suggested Action review artifact", (events) =>
+      toolOutputs(events, "propose_asset_actions").some((output) => {
+        if (typeof output !== "object" || output === null) return false;
+        const proposed = (output as { proposed?: unknown }).proposed;
+        const alreadySpokenFor = (output as { alreadySpokenFor?: unknown }).alreadySpokenFor;
+        if (Array.isArray(proposed) && proposed.length === 0 && alreadySpokenFor === 1) {
+          return true;
+        }
+        return (
+          Array.isArray(proposed) &&
+          proposed.length > 0 &&
+          proposed.every((entry) => {
+            if (typeof entry !== "object" || entry === null) return false;
+            const action = (entry as { action?: unknown }).action;
+            if (typeof action !== "object" || action === null) return false;
+            const actionRecord = action as Record<string, unknown>;
+            return actionRecord.status === "suggested" && !("reminderSchedule" in actionRecord);
+          })
+        );
+      }),
+    );
     // The inference path is the proposal path. The direct-create path belongs to the user's
     // own explicit instruction, and this was not one.
     t.notCalledTool("create_general_action");
