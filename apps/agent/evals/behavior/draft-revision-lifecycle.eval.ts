@@ -43,8 +43,15 @@ export default defineEval({
     edited.calledTool("edit_draft_body", { input: { body: /coffee/i }, count: 1 });
     edited.notCalledTool("create_message_draft");
     edited.notCalledTool("save_draft_to_gmail");
-    // Editing text is not approving it, and the tool result says so.
-    edited.messageIncludes(without("I(’|')?ve approved|approved (it|the draft)|ready to send"));
+    // Editing text is not approving it, and the tool result says so. Require the
+    // reply to name the internal/unapproved state as well as banning the claims that
+    // turned this regression into a non-clean model result.
+    edited.messageIncludes(/internal|unapproved|still a draft/i);
+    edited.messageIncludes(
+      without(
+        "I(’|')?ve approved|approved (it|the draft)|ready to send|external (or Gmail )?draft|sent (it|the message)",
+      ),
+    );
 
     await t.send("Actually, scrap that draft.");
 

@@ -124,7 +124,7 @@ describe("list_general_action_areas", () => {
     const model = toolModelValue(areasTool, output) as { guidance: string };
 
     expect(output.count).toBe(0);
-    expect(model.guidance).toMatch(/omit `areaId`/);
+    expect(model.guidance).toMatch(/(?:omit `areaId`|`areaId` omitted)/);
     expect(model.guidance).toMatch(/cannot create, rename, or archive Areas/i);
   });
 

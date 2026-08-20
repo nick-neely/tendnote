@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { authoredInstructions, baseInstructions } from "./instructions-source";
 
 const toolsDir = join(process.cwd(), "agent/tools");
 
@@ -51,5 +52,18 @@ describe("Self Context Eve tools", () => {
     ]) {
       expect(readTool(tool)).not.toContain("deleteSelfContextFact");
     }
+  });
+
+  it("keeps an explicit equivalent write direct and idempotent", () => {
+    const authored = authoredInstructions();
+    const base = baseInstructions();
+
+    expect(authored).toMatch(/still calls `remember_self_context`.*equivalent active fact/i);
+    expect(authored).toMatch(/direct write is idempotent/i);
+    expect(base).toMatch(/idempotent existing result is authoritative/i);
+    expect(readTool("remember_self_context")).toMatch(
+      /Call it even when an equivalent active fact already exists/i,
+    );
+    expect(readTool("remember_self_context")).toMatch(/reusedExisting/);
   });
 });

@@ -1,6 +1,6 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
-import { without } from "../expectations";
+import { toolOutputs, without } from "../expectations";
 
 /**
  * `areaId` was fillable by four tools and produceable by none, until
@@ -39,6 +39,14 @@ export default defineEval({
       },
     });
     t.toolOrder(["list_general_action_areas", "create_general_action"]);
+    t.eventsSatisfy("the explicit Action was persisted without an Area", (events) =>
+      toolOutputs(events, "create_general_action").some((output) => {
+        if (typeof output !== "object" || output === null) return false;
+        const action = (output as { action?: { area?: unknown; areaId?: unknown } }).action;
+        return action?.area === null || action?.areaId === null;
+      }),
+    );
+    t.check(t.reply, includes(/(created|added|saved|active|unfiled)/i));
     // And it does not report a filing that did not happen, or offer an Area it cannot make.
     t.check(
       t.reply,

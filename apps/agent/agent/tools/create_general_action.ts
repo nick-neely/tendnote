@@ -51,7 +51,7 @@ const inputSchema = z.object({
     .uuid()
     .optional()
     .describe(
-      "Optional Area (a flat life category) to file this under. Take the id from list_general_action_areas — never invent or retype one. Omit to leave it unfiled, which is the norm unless the user named a category.",
+      "Optional Area (a flat life category) to file this under. Take the id from list_general_action_areas — never invent or retype one. Omit to create the explicitly requested Action unfiled when no matching Area exists; do not defer creation while waiting for filing.",
     ),
   personIds: z
     .array(z.uuid())
@@ -83,7 +83,7 @@ const inputSchema = z.object({
  */
 export default defineTool({
   description:
-    "Create an ACTIVE General Action (a durable to-do) directly, or a Routine when a recurring cadence is given. Only call this when the user explicitly asks to add/create/track an action in the current turn (e.g. 'add an action to replace the water filter', 'set up a routine to change the filters every 6 months') - never invent one on their behalf, and never from your own initiative or an inference. If the user is only brainstorming or asking you to plan, propose review-gated suggestions with suggest_general_action / plan_suggested_general_actions instead. A due date is optional (omit for an unscheduled 'someday' action); resolve relative timing to a concrete date, and ask if it is ambiguous. If the user explicitly asks to be reminded or notified, pass reminderSchedule together with the concrete dueAt; the saved result distinguishes the Action from its notification, and a failed notification must be reported as failed. Never attach a reminder to an inferred suggestion. Resolve any people with search_people first - they are context links, not follow-ups. Returns the persisted action reference (id, title, status, timing, cadence); refer to it by its title, never the raw id.",
+    "Create an ACTIVE General Action (a durable to-do) directly, or a Routine when a recurring cadence is given. Only call this when the user explicitly asks to add/create/track an action in the current turn (e.g. 'add an action to replace the water filter', 'set up a routine to change the filters every 6 months') - never invent one on their behalf, and never from your own initiative or an inference. If the user is only brainstorming or asking you to plan, propose review-gated suggestions with suggest_general_action / plan_suggested_general_actions instead. A due date is optional (omit for an unscheduled 'someday' action); resolve relative timing to a concrete date, and ask if it is ambiguous. If an explicit request names an Area that does not exist, create the Action now with `areaId` omitted; an unfiled Action is valid and you must not wait for or invent filing. If the user explicitly asks to be reminded or notified, pass reminderSchedule together with the concrete dueAt; the saved result distinguishes the Action from its notification, and a failed notification must be reported as failed. Never attach a reminder to an inferred suggestion. Resolve any people with search_people first - they are context links, not follow-ups. Returns the persisted action reference (id, title, status, timing, cadence); refer to it by its title, never the raw id.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

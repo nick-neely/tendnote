@@ -30,6 +30,12 @@ describe("General Action instructions — explicit creation", () => {
     expect(authored).toMatch(/Routine/);
     expect(authored).toMatch(/cadence/i);
   });
+
+  it("creates explicitly requested actions even when Area filing is unavailable", () => {
+    expect(authored).toMatch(/immediately call `create_general_action` with `areaId` omitted/i);
+    expect(authored).toMatch(/unfiled.*must never.*refuse|unfiled.*must never.*defer/i);
+    expect(authored).toMatch(/do not pause for a second confirmation/i);
+  });
 });
 
 describe("General Action instructions — suggestion and shallow planning", () => {

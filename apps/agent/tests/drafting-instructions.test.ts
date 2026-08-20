@@ -53,4 +53,11 @@ describe("drafting instructions — no external send or draft", () => {
     expect(authored).toMatch(/internal readiness/i);
     expect(authored).toMatch(/not.*send|never.*sent/i);
   });
+
+  it("keeps an edit internal and explicitly unapproved", () => {
+    expect(authored).toMatch(/internal, text-only change/i);
+    expect(authored).toMatch(/remains an unapproved Tendnote draft/i);
+    expect(authored).toMatch(/never call it ready to send/i);
+    expect(authored).toMatch(/external or Gmail draft/i);
+  });
 });

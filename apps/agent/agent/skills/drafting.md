@@ -78,7 +78,11 @@ change, or clear directly - the drafter has no view of it.
   revision they asked for. An approved draft **can** still be edited when the user asks
   for the change - mention that the approval no longer covers the new wording. A draft
   they dismissed or already sent themselves cannot be edited: say so and offer to write a
-  new one. When you want genuinely fresh wording instead, that is `message_drafter`.
+  new one. The edit is an internal, text-only change: after editing an unapproved draft,
+  say that it remains an unapproved Tendnote draft. Never call it ready to send, an
+  external or Gmail draft, or a sent message; when the prior status was `approved`, say
+  that the old approval no longer covers the changed wording. When you want genuinely
+  fresh wording instead, that is `message_drafter`.
 - **`dismiss_draft`** only when the user explicitly says to throw one away ("scrap that
   one"). It is a Tendnote-only lifecycle change: nothing is sent, nothing external is
   touched, and the notes and memories the draft was grounded in are untouched. Never
