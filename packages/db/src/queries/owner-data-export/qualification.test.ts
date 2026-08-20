@@ -87,6 +87,27 @@ function assertLifecycleCoverage(
   }
 }
 
+function assertArchivePathsAbsent(entries: Map<string, string>, paths: readonly string[]) {
+  for (const path of paths) {
+    expect(entries.has(path), `${path} must remain absent`).toBe(false);
+  }
+}
+
+function assertDeclaredArchiveResourcePaths(
+  entries: Map<string, string>,
+  manifest: { resources: Array<{ path: string }> },
+) {
+  const declaredResourcePaths = new Set(manifest.resources.map((resource) => resource.path));
+  const evidencePaths = (
+    jsonResource(entries, "resources/assets/asset-evidence-v1.json") as ExportRow[]
+  )
+    .map((row) => row.filePath)
+    .filter((path): path is string => typeof path === "string");
+  const allowedResourcePaths = new Set([...declaredResourcePaths, ...evidencePaths]);
+  const actualResourcePaths = [...entries.keys()].filter((path) => path.startsWith("resources/"));
+  expect(new Set(actualResourcePaths), "archive resource paths").toEqual(allowedResourcePaths);
+}
+
 const OPERATIONAL_CANDIDATE_IDS = [
   "neutral-provider-connection",
   "neutral-session-row",
@@ -250,6 +271,18 @@ function relationshipContext(): OwnerDataExportRelationshipContext {
       sensitivity: "normal",
       scope: "shared",
     },
+    {
+      ...memory,
+      id: "memory-owned-foreign-person",
+      personId: "person-other-owner",
+      content: "Owner memory linked to a foreign person must not be exported.",
+    },
+    {
+      ...memory,
+      id: "memory-owned-foreign-source",
+      sourceRecordId: "source-other-owner",
+      content: "Owner memory linked to a foreign source must not be exported.",
+    },
   ].map((value) => asRecord<OwnerDataExportRelationshipContext["memories"][number]>(value));
 
   const followup = {
@@ -283,6 +316,18 @@ function relationshipContext(): OwnerDataExportRelationshipContext {
       householdId: HOUSEHOLD,
       scope: "shared",
       reason: "Other member follow-up",
+    },
+    {
+      ...followup,
+      id: "followup-owned-foreign-person",
+      personId: "person-other-owner",
+      reason: "Owner follow-up linked to a foreign person",
+    },
+    {
+      ...followup,
+      id: "followup-owned-foreign-source",
+      sourceRecordId: "source-other-owner",
+      reason: "Owner follow-up linked to a foreign source",
     },
   ].map((value) => asRecord<OwnerDataExportRelationshipContext["followups"][number]>(value));
 
@@ -409,6 +454,18 @@ function relationshipContext(): OwnerDataExportRelationshipContext {
         interactionType: "call",
         occurredAt: NOW,
         summary: "Other member interaction",
+        source: "manual",
+        confidence: "medium",
+        createdAt: NOW,
+        updatedAt: NOW,
+      }),
+      asRecord<OwnerDataExportRelationshipContext["interactions"][number]>({
+        id: "interaction-owned-foreign-person",
+        personId: "person-other-owner",
+        ownerUserId: OWNER,
+        interactionType: "call",
+        occurredAt: NOW,
+        summary: "Owner interaction linked to a foreign person",
         source: "manual",
         confidence: "medium",
         createdAt: NOW,
@@ -1012,6 +1069,12 @@ function assetsContext(): OwnerDataExportAssetsContext {
         ownerUserId: OTHER_OWNER,
         value: { type: "text", text: "Other member value" },
       }),
+      asRecord<OwnerDataExportAssetsContext["assetMemories"][number]>({
+        ...assetMemory,
+        id: "asset-memory-foreign-parent",
+        assetId: "asset-other-owner",
+        value: { type: "text", text: "Owner memory with a foreign asset parent" },
+      }),
     ],
     assetEvidence: [
       asRecord<OwnerDataExportAssetsContext["assetEvidence"][number]>(evidence),
@@ -1048,6 +1111,16 @@ function assetsContext(): OwnerDataExportAssetsContext {
         sizeBytes: 3,
         sourceRecordId: null,
       }),
+      asRecord<OwnerDataExportAssetsContext["assetEvidence"][number]>({
+        ...evidence,
+        id: "evidence-foreign-parent",
+        assetId: "asset-other-owner",
+        label: "Owner evidence with a foreign asset parent",
+        fileName: "foreign.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 3,
+        sourceRecordId: null,
+      }),
     ],
     assetEvidenceFiles: [
       {
@@ -1064,6 +1137,11 @@ function assetsContext(): OwnerDataExportAssetsContext {
         evidenceId: "evidence-other-owner",
         ownerUserId: OTHER_OWNER,
         bytes: new Uint8Array([7, 7, 7]),
+      },
+      {
+        evidenceId: "evidence-foreign-parent",
+        ownerUserId: OWNER,
+        bytes: new Uint8Array([6, 6, 6]),
       },
     ],
     assetLinks: [
@@ -1227,6 +1305,10 @@ describe("owner data export qualification", () => {
     expect(manifest.exclusions.join(" ")).toEqual(
       expect.stringContaining("credentials, sessions, OAuth tokens, and provider connection state"),
     );
+    expect(manifest.exclusions).toContain(
+      "Household Workspace records, rosters, and records owned by another member",
+    );
+    expect(manifest.exclusions).toContain("records merely shared to the requester");
     expect(manifest.exclusions.join(" ")).toEqual(
       expect.stringContaining("Household-native records and generated Orientation Context"),
     );
@@ -1239,6 +1321,7 @@ describe("owner data export qualification", () => {
         "A future Household Workspace export requires separate authorization.",
       ]),
     );
+    expect(manifest.notes.join(" ")).toContain("Reconnect provider integrations after");
     expect(JSON.parse(entries.get("resources/account/profile-v1.json") ?? "null")).toMatchObject({
       id: OWNER,
       email: ACCOUNT.email,
@@ -1692,7 +1775,7 @@ describe("owner data export qualification", () => {
       {
         path: "resources/relationship/interactions-v1.json",
         includedIds: ["interaction-owned"],
-        excludedIds: ["interaction-other-owner"],
+        excludedIds: ["interaction-other-owner", "interaction-owned-foreign-person"],
         ownerField: "ownerUserId",
       },
       {
@@ -1703,7 +1786,11 @@ describe("owner data export qualification", () => {
           "memory-owned-dismissed",
           "memory-owned-archived",
         ],
-        excludedIds: ["memory-other-owner"],
+        excludedIds: [
+          "memory-other-owner",
+          "memory-owned-foreign-person",
+          "memory-owned-foreign-source",
+        ],
         ownerField: "ownerUserId",
       },
       {
@@ -1715,8 +1802,9 @@ describe("owner data export qualification", () => {
           "followup-owned-completed",
           "followup-owned-dismissed",
           "followup-owned-archived",
+          "followup-owned-foreign-source",
         ],
-        excludedIds: ["followup-other-owner"],
+        excludedIds: ["followup-other-owner", "followup-owned-foreign-person"],
         ownerField: "ownerUserId",
       },
       {
@@ -1878,6 +1966,35 @@ describe("owner data export qualification", () => {
       },
     ]);
 
+    const exportedFollowup = (
+      jsonResource(entries, "resources/relationship/follow-ups-v1.json") as ExportRow[]
+    ).find((row) => row.id === "followup-owned-foreign-source");
+    expect(
+      exportedFollowup,
+      "owner follow-up with foreign source remains representable",
+    ).toBeDefined();
+    expect(exportedFollowup).toMatchObject({
+      id: "followup-owned-foreign-source",
+      personId: "person-owned",
+      sourceRecordId: null,
+    });
+    const exportedAssetIds = new Set(
+      (jsonResource(entries, "resources/assets/assets-v1.json") as ExportRow[]).map(
+        (row) => row.id,
+      ),
+    );
+    for (const path of [
+      "resources/assets/asset-memories-v1.json",
+      "resources/assets/asset-evidence-v1.json",
+    ]) {
+      expect(
+        (jsonResource(entries, path) as ExportRow[]).every((row) =>
+          exportedAssetIds.has(row.assetId),
+        ),
+        `${path} has no dangling foreign asset references`,
+      ).toBe(true);
+    }
+
     const inventory = entries.get("inventory.txt") ?? "";
     expect(inventory).toContain("Reconnect provider integrations after");
     expect(inventory).toContain(
@@ -1895,13 +2012,13 @@ describe("owner data export qualification", () => {
       "resources/notifications-v1.json",
       "resources/external-drafts-v1.json",
     ];
-    expect([...entries.keys()]).not.toEqual(expect.arrayContaining(excludedOperationalPaths));
-    expect([...entries.keys()]).not.toEqual(
-      expect.arrayContaining([
-        "resources/assets/evidence/evidence-household-native/furnace.png",
-        "resources/assets/evidence/evidence-other-owner/manual.pdf",
-      ]),
-    );
+    assertArchivePathsAbsent(entries, excludedOperationalPaths);
+    assertArchivePathsAbsent(entries, [
+      "resources/assets/evidence/evidence-household-native/furnace.png",
+      "resources/assets/evidence/evidence-other-owner/manual.pdf",
+      "resources/assets/evidence/evidence-foreign-parent/foreign.pdf",
+    ]);
+    assertDeclaredArchiveResourcePaths(entries, manifest);
 
     const evidenceResource = manifest.resources.find(
       (resource) => resource.path === "resources/assets/asset-evidence-v1.json",

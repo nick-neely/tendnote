@@ -503,15 +503,12 @@ describe("owner relationship context export", () => {
     ).toEqual(["suggested", "active", "archived"].sort());
   });
 
-  it.each([
-    "source-missing",
-    "source-other-owner",
-  ])("fails closed when an owner memory is grounded to %s", async (sourceRecordId) => {
+  it("fails closed when an owner memory is grounded to a missing source", async () => {
     const context = relationshipContext();
     context.memories.push({
       ...first(context.memories),
-      id: `memory-invalid-${sourceRecordId}`,
-      sourceRecordId,
+      id: "memory-invalid-source-missing",
+      sourceRecordId: "source-missing",
     });
 
     await expect(
@@ -522,6 +519,29 @@ describe("owner relationship context export", () => {
         expiresAt: new Date("2026-08-20T12:00:00.000Z"),
         relationshipContext: context,
       }),
-    ).rejects.toThrow(`memory-invalid-${sourceRecordId}`);
+    ).rejects.toThrow("memory-invalid-source-missing");
+  });
+
+  it("excludes an owner memory grounded to another owner's source", async () => {
+    const context = relationshipContext();
+    context.memories.push({
+      ...first(context.memories),
+      id: "memory-invalid-source-other-owner",
+      sourceRecordId: "source-other-owner",
+    });
+
+    const result = await generateOwnerDataExportArchive({
+      ownerUserId: "owner-1",
+      account: ACCOUNT,
+      now: NOW,
+      expiresAt: new Date("2026-08-20T12:00:00.000Z"),
+      relationshipContext: context,
+    });
+    const entries = readStoredZipEntries(result.bytes);
+    expect(resource(entries, "resources/relationship/memories-v1.json")).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "memory-invalid-source-other-owner" }),
+      ]),
+    );
   });
 });

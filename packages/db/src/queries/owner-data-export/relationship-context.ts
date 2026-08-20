@@ -215,6 +215,7 @@ export function filterOwnerDataExportRelationshipContext(
     input.sourceRecords.filter((record) => record.ownerUserId === ownerUserId),
   );
   const sourceRecordIds = new Set(ownedSourceRecords.map((record) => record.id));
+  const knownSourceRecordIds = new Set(input.sourceRecords.map((record) => record.id));
 
   return {
     people: ownedPeople,
@@ -223,7 +224,11 @@ export function filterOwnerDataExportRelationshipContext(
     ),
     memories: sortById(
       input.memories.filter(
-        (memory) => memory.ownerUserId === ownerUserId && personIds.has(memory.personId),
+        (memory) =>
+          memory.ownerUserId === ownerUserId &&
+          personIds.has(memory.personId) &&
+          (sourceRecordIds.has(memory.sourceRecordId) ||
+            !knownSourceRecordIds.has(memory.sourceRecordId)),
       ),
     ),
     sourceRecords: ownedSourceRecords,
