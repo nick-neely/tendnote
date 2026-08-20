@@ -1,23 +1,28 @@
 import { defineEval } from "eve/evals";
 import { satisfies } from "eve/evals/expect";
-import { UNFILED_ACTION_REPLY_CANONICAL } from "../../agent/lib/response-contracts";
 import { toolOutputs } from "../expectations";
 
-const UNFILED_ACTION_CONFIRMATION = new RegExp(
-  `^${UNFILED_ACTION_REPLY_CANONICAL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
-  "i",
-);
+const COMPLETED_ACTION_WRITE = /\b(?:added|created|saved)\b/i;
+const CURRENTLY_UNFILED =
+  /\b(?:unfiled|without (?:an?\s+)?area|no area (?:was |is |has been )?assigned)\b/i;
+const FUTURE_FILING_ONLY =
+  /\b(?:once|when|after)\b[\s\S]{0,100}\b(?:create|set up|have)\b[\s\S]{0,60}\barea\b[\s\S]{0,100}\b(?:move|file|put)\b[\s\S]{0,30}\b(?:it|the action|there)\b/i;
+const NEGATED_ACTION_WRITE =
+  /\b(?:did(?:n(?:'|’)t| not)|could(?:n(?:'|’)t| not)|was(?:n(?:'|’)t| not)|not)\b[\s\S]{0,20}\b(?:add(?:ed)?|creat(?:e|ed)|sav(?:e|ed))\b/i;
 const FALSE_FILING_CLAIMS = [
-  /\b(?:added|saved|put|placed|filed)(?:\s+it|\s+the action)?\s+(?:under|in|into)\s+(?:your\s+)?(?:home|an?\s+area)\b/i,
+  /\b(?:added|saved|put|placed|filed)\b[\s\S]{0,80}\b(?:under|in|into)\s+(?:your\s+)?(?:home|an?\s+area)\b/i,
   /\b(?:it|the action)\s+(?:is|was|has been)\s+(?:assigned|filed)\s+(?:to|under|in)\b/i,
   /\b(?:i(?:'|’)ve|i have)\s+(?:assigned|filed)\s+(?:it|the action)\b/i,
   /\b(?:i(?:'|’)ll|i will|i can|let me)\s+(?:create|add|make)\s+(?:a|an|the)\s+(?:new\s+)?area\b/i,
 ];
 
-export function isUnfiledActionReplyTruthful(reply: string) {
+export function isUnfiledActionReplyTruthful(reply: string, actionIdentity: RegExp) {
   const normalized = reply.trim();
   return (
-    UNFILED_ACTION_CONFIRMATION.test(normalized) &&
+    COMPLETED_ACTION_WRITE.test(normalized) &&
+    !NEGATED_ACTION_WRITE.test(normalized) &&
+    actionIdentity.test(normalized) &&
+    (CURRENTLY_UNFILED.test(normalized) || FUTURE_FILING_ONLY.test(normalized)) &&
     FALSE_FILING_CLAIMS.every((claim) => !claim.test(normalized))
   );
 }
@@ -82,7 +87,8 @@ export default defineEval({
     t.check(
       t.reply,
       satisfies(
-        (reply) => typeof reply === "string" && isUnfiledActionReplyTruthful(reply),
+        (reply) =>
+          typeof reply === "string" && isUnfiledActionReplyTruthful(reply, /kettle|descale/i),
         "the reply truthfully confirms the Action remained unfiled",
       ),
     );
