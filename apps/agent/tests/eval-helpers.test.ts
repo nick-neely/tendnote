@@ -273,6 +273,12 @@ describe("draft revision reply contract", () => {
         "draft",
       ),
     ).toBe(true);
+    expect(
+      isDraftRevisionReplyCanonical(
+        "Updated the draft to Casey — it now reads: \"Happy birthday, Casey. Hope today is easy and full of good coffee. Let's grab coffee sometime soon if you're up for it — my treat.\"\n\nIt's still just an unapproved Tendnote draft — nothing's been approved, exported, or sent.",
+        "draft",
+      ),
+    ).toBe(true);
   });
 
   it("accepts the canonical prior-approval nuance only for an approved draft", () => {
@@ -295,6 +301,14 @@ describe("draft revision reply contract", () => {
       "Updated the internal Tendnote draft; its prior approval no longer covers this wording, nothing was exported or sent, and it is not an external or Gmail draft, but it is approved.",
       "I didn't send it, but it was sent.",
       "The prior approval no longer covers this wording, and it is approved.",
+      "It's an unapproved Tendnote draft — nothing's been approved, exported, or sent. It is ready to send.",
+      "It's an unapproved Tendnote draft — nothing's been approved, exported, or sent. The revision is approved.",
+      "It's an unapproved Tendnote draft — nothing's been approved, exported, or sent. I created an external draft too.",
+      "It's an unapproved Tendnote draft — nothing's been approved, exported, or sent. A Gmail draft is ready.",
+      "It's an unapproved Tendnote draft — nothing's been approved, exported, or sent. I saved it to Gmail.",
+      "It's an unapproved Tendnote draft — nothing's been approved, exported, or sent. It was sent afterward.",
+      "It's an unapproved draft — nothing's been approved, exported, or sent.",
+      "It's an unapproved Tendnote draft, and it wasn't sent.",
     ]) {
       expect(isDraftRevisionReplyCanonical(adversarialReply, "draft")).toBe(false);
     }
