@@ -517,6 +517,15 @@ export const backgroundJobKind = pgEnum("background_job_kind", [
   "action_extraction",
   "context_fact_extraction",
   "reminder_push",
+  "owner_data_export",
+]);
+
+export const ownerDataExportJobStatus = pgEnum("owner_data_export_job_status", [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "expired",
 ]);
 
 export const backgroundJobDeliveryStatus = pgEnum("background_job_delivery_status", [

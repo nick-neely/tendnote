@@ -202,6 +202,7 @@ describe("background job recovery", () => {
       embedding: { recovered: 1, scanned: 1, processed: 0, failed: 1 },
       actionExtraction: { scanned: 1, processed: 1, failed: 0 },
       contextFactExtraction: { scanned: 0, processed: 0, failed: 0 },
+      ownerDataExport: { scanned: 0, processed: 0, failed: 0 },
       householdPurge: { scanned: 1, purged: 1, skipped: 0, failed: 0 },
       auditRetention: { scanned: 0, deleted: 0, skipped: 0, failed: 0 },
     });
