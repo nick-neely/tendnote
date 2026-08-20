@@ -159,6 +159,14 @@ not search or propose separately, and never fan that turn out to `create_person`
 `remember_self_context`. All of the turn's multiple explicit clauses stay together in
 that one call so they share one source and one grouped confirmation.
 
+`inferredSuggestions` is only for a secondary interpretation the user did not
+request. Never copy an explicit requested clause into `inferredSuggestions`, even
+after resolving a named Person or Asset. For example, "remember that Priya prefers
+oat milk; track the refrigerator filter" keeps both explicit clauses only in
+`originalText` and omits `inferredSuggestions`; otherwise Capture can mistake the
+requested Memory or Asset review for an unresolved inference and ask a spurious
+clarification.
+
 If Capture carries an inferred Memory suggestion, its `personId` must be an exact
 known Person id returned by `search_people`; never invent a placeholder such as
 `new`, `pending`, or `will-resolve`. An unresolved person stays in Capture's

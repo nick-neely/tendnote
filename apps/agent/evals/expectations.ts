@@ -151,6 +151,15 @@ export function hasNoMutatingTools(events: readonly unknown[]): boolean {
   return calledToolNames(events).every((toolName) => !MUTATING_TOOL_NAMES.has(toolName));
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Matches the proposal tool's one-or-more reviewed-memory grounding contract. */
+export function isNonEmptyUuidArray(value: unknown): boolean {
+  return (
+    Array.isArray(value) && value.length > 0 && value.every((entry) => UUID.test(String(entry)))
+  );
+}
+
 /**
  * Proves an Asset Action proposal is grounded in the reviewed detail the read path
  * actually returned. Search can return the detail directly or first resolve the Asset

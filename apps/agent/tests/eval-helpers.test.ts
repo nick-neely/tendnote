@@ -2,7 +2,11 @@ import type { AssertionHandle, EveEvalAssertions } from "eve/evals";
 import { describe, expect, it } from "vitest";
 import { isDraftRevisionReplyCanonical } from "../evals/behavior/draft-revision-assertions";
 import { isUnfiledActionReplyTruthful } from "../evals/behavior/general-action-area-filing.eval";
-import { hasGroundedPendingAssetProposal, toolOutputs } from "../evals/expectations";
+import {
+  hasGroundedPendingAssetProposal,
+  isNonEmptyUuidArray,
+  toolOutputs,
+} from "../evals/expectations";
 import {
   firstSubagentIndex,
   firstToolRequestIndex,
@@ -187,6 +191,22 @@ describe("asset proposal eval grounding", () => {
         detailLabel: /warranty/i,
       }),
     ).toBe(false);
+  });
+});
+
+describe("asset proposal reviewed-memory input", () => {
+  const first = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const second = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  it("accepts singleton and multiple reviewed UUIDs", () => {
+    expect(isNonEmptyUuidArray([first])).toBe(true);
+    expect(isNonEmptyUuidArray([first, second])).toBe(true);
+  });
+
+  it("rejects empty, invalid, and mixed grounding arrays", () => {
+    expect(isNonEmptyUuidArray([])).toBe(false);
+    expect(isNonEmptyUuidArray(["not-a-uuid"])).toBe(false);
+    expect(isNonEmptyUuidArray([first, "not-a-uuid"])).toBe(false);
   });
 });
 
