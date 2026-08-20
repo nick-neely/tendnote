@@ -254,13 +254,8 @@ describe("accepting and declining", () => {
     expect(db.acceptHouseholdInvitation).not.toHaveBeenCalled();
   });
 
-  /**
-   * Private Beta Access is the global denier for *using* Tendnote. Belonging to
-   * a household is a separate thing, and an invitation that ran out while its
-   * recipient waited for admission would be Tendnote's doing, not theirs. So the
-   * membership is created and the site stays shut until access is granted.
-   */
-  it("lets an account still waiting on Private Beta Access take its place", async () => {
+  /** Acceptance grants access in the DB transaction; this action only proves the session identity. */
+  it("lets an account still waiting on Private Beta Access accept the invitation", async () => {
     getCurrentAccessSpy.mockResolvedValue({
       state: "pending",
       user: { id: "sam-1", email: "sam@example.com", name: "Sam" },

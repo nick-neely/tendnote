@@ -1,4 +1,5 @@
 import type { HouseholdInvitationState, HouseholdRole, HouseholdWorkspace } from "@tendnote/domain";
+import type { AccessProfileStore } from "../access-profiles/types";
 import type { HouseholdCalendarStore } from "./calendar-types";
 import type { HouseholdIdentityStore } from "./overview";
 import type { HouseholdScheduledWorkStore } from "./scheduled-work";
@@ -58,6 +59,11 @@ export type HouseholdInvitationDelivery = {
  */
 export type HouseholdInvitationStore = {
   households: HouseholdStore;
+  /**
+   * Access persistence bound to the same connection as memberships and the
+   * invitation. Acceptance must not be able to commit these records separately.
+   */
+  accessProfiles: AccessProfileStore;
   identities: HouseholdIdentityStore;
   /**
    * The scheduled work a departure, removal, or dissolution has to end.
@@ -79,10 +85,17 @@ export type HouseholdInvitationStore = {
   calendars: HouseholdCalendarStore;
   /**
    * Runs `fn` inside one transaction, handing it a store bound to that
-   * transaction. Concurrency is serialized by {@link lockHousehold}, not by this
-   * on its own.
+   * transaction. Acceptance acquires the recipient lock before the household
+   * lock; other seat-moving paths acquire the household lock directly.
    */
   withTransaction: <T>(fn: (store: HouseholdInvitationStore) => Promise<T>) => Promise<T>;
+  /**
+   * Serializes all acceptance attempts for one account, including attempts for
+   * different households. Call this before {@link lockHousehold}; that stable
+   * order prevents one account from acquiring two household locks and joining
+   * both while the requests interleave.
+   */
+  lockUser: (input: { userId: string }) => Promise<boolean>;
   /**
    * Takes the household's row lock and returns it. Every seat-consuming path
    * takes this first, so two concurrent sends or accepts on one household are

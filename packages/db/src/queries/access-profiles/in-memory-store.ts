@@ -1,7 +1,12 @@
 import type { AccessProfile } from "@tendnote/domain";
+import type { InMemoryMutationLog } from "../households/in-memory-transaction";
+import { recordInMemoryMutation } from "../households/in-memory-transaction";
 import type { AccessProfileStore } from "./types";
 
-export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): AccessProfileStore {
+export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): AccessProfileStore & {
+  snapshot: () => AccessProfile[];
+  restore: (snapshot: AccessProfile[], mutations?: InMemoryMutationLog) => void;
+} {
   const profiles = new Map(seed.map((profile) => [profile.userId, profile]));
 
   function insert(input: Parameters<AccessProfileStore["create"]>[0]): AccessProfile {
@@ -18,6 +23,7 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       updatedAt: now,
     };
 
+    recordInMemoryMutation("accessProfiles", profile.userId);
     profiles.set(profile.userId, profile);
 
     return profile;
@@ -80,6 +86,7 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       }
 
       const updated: AccessProfile = { ...existing, ...patch, updatedAt: new Date() };
+      recordInMemoryMutation("accessProfiles", userId);
       profiles.set(userId, updated);
 
       return updated;
@@ -100,9 +107,26 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
         selfContextOnboardingReminderAt: reminderAt,
         updatedAt: new Date(),
       };
+      recordInMemoryMutation("accessProfiles", userId);
       profiles.set(userId, updated);
 
       return updated;
+    },
+    snapshot() {
+      return [...profiles.values()].map((profile) => ({ ...profile }));
+    },
+    restore(snapshot, mutations) {
+      const ids = mutations?.get("accessProfiles");
+      if (!ids) {
+        profiles.clear();
+        for (const profile of snapshot) profiles.set(profile.userId, { ...profile });
+        return;
+      }
+      for (const userId of ids) {
+        const profile = snapshot.find((candidate) => candidate.userId === userId);
+        if (profile) profiles.set(userId, { ...profile });
+        else profiles.delete(userId);
+      }
     },
   };
 }

@@ -116,6 +116,7 @@ replace its synthetic example values for an operator-owned deployment.
 - [`docs/security.md`](docs/security.md) — privacy model and trust boundaries
 - [`docs/email-setup.md`](docs/email-setup.md) — Resend account, sending-domain DNS, and send checklist
 - [`docs/google-setup.md`](docs/google-setup.md) — Google OAuth client setup
+- [`docs/self-hosting/vercel-operator-runbook.md`](docs/self-hosting/vercel-operator-runbook.md) — operator-owned Vercel admission walkthrough
 - [`docs/discord-setup.md`](docs/discord-setup.md) — Discord app, capture, and delivery setup
 - [`docs/background-job-delivery.md`](docs/background-job-delivery.md) — production queue foundation
 - [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) — redistributed third-party provenance and licenses

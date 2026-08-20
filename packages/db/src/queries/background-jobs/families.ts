@@ -39,6 +39,17 @@ import {
   resolveExtractionRuntimeMode,
 } from "../extraction-jobs";
 import {
+  claimNextOwnerDataExportJob,
+  claimOwnerDataExportJob,
+  type EnqueueAndTriggerOwnerDataExportJobResult,
+  enqueueAndTriggerOwnerDataExportJob,
+  getOwnerDataExportJob,
+  type OwnerDataExportJobStatus,
+  type OwnerDataExportProcessOutcome,
+  processOwnerDataExportJob,
+  resolveOwnerDataExportRuntimeMode,
+} from "../owner-data-export";
+import {
   claimNextSemanticEmbeddingJob,
   claimSemanticEmbeddingJob,
   type EnqueueAndTriggerSemanticEmbeddingJobResult,
@@ -65,7 +76,8 @@ export type BackgroundJobRuntimeMode = "enqueue_only" | "inline";
 export type BackgroundJobStatus =
   | ExtractionJobStatus
   | EmbeddingJobStatus
-  | ContextFactExtractionJobStatus;
+  | ContextFactExtractionJobStatus
+  | OwnerDataExportJobStatus;
 
 /**
  * The outcome a processor run reports to the shared runtime — the union of every family's
@@ -76,7 +88,8 @@ export type BackgroundJobProcessOutcome =
   | ProcessExtractionJobOutcome
   | ProcessActionExtractionJobOutcome
   | ProcessEmbeddingJobOutcome
-  | ProcessContextFactExtractionJobOutcome;
+  | ProcessContextFactExtractionJobOutcome
+  | OwnerDataExportProcessOutcome;
 
 /**
  * The consume/recovery mechanics every job family exposes, independent of what the family
@@ -214,6 +227,25 @@ export const contextFactExtractionJobFamily: BackgroundJobFamily<
   claimNextJob: claimNextContextFactExtractionJob,
 };
 
+export const ownerDataExportJobFamily: BackgroundJobFamily<
+  { ownerUserId: string },
+  EnqueueAndTriggerOwnerDataExportJobResult
+> = {
+  jobKind: "owner_data_export",
+  noun: "Owner data export job",
+  resolveRuntimeMode: (mode) =>
+    mode ??
+    resolveOwnerDataExportRuntimeMode({
+      configured: process.env.TENDNOTE_OWNER_EXPORT_RUNTIME,
+      nodeEnv: process.env.NODE_ENV,
+    }),
+  enqueueAndTrigger: enqueueAndTriggerOwnerDataExportJob,
+  claimJob: claimOwnerDataExportJob,
+  getJob: getOwnerDataExportJob,
+  processJob: processOwnerDataExportJob,
+  claimNextJob: claimNextOwnerDataExportJob,
+};
+
 /**
  * The closed registry of Postgres-owned job families, keyed by job kind. Every
  * {@link BackgroundProcessorJobKind} must appear here — the `_exhaustive` guard below fails to
@@ -225,6 +257,7 @@ export const BACKGROUND_JOB_FAMILIES = {
   action_extraction: actionExtractionJobFamily,
   embedding: embeddingJobFamily,
   context_fact_extraction: contextFactExtractionJobFamily,
+  owner_data_export: ownerDataExportJobFamily,
 } as const;
 
 // Compile-time completeness: every job kind is registered. Adding a BackgroundJobKind

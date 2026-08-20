@@ -15,6 +15,10 @@ import {
   type HouseholdPurgeSweepResult,
   runHouseholdPurgeSweep,
 } from "@tendnote/db/queries/households";
+import {
+  expireOwnerDataExportArtifacts,
+  type OwnerDataExportJobStore,
+} from "@tendnote/db/queries/owner-data-export";
 import { recoverStaleSemanticEmbeddingJobs } from "@tendnote/db/queries/semantic-retrieval";
 import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
 import { classifyBackgroundJobFailure } from "./failure-observability";
@@ -64,12 +68,13 @@ export type BackgroundJobRecoveryRunResult = {
   embedding: EmbeddingBackfillResult;
   actionExtraction: ProcessorBackfillResult;
   contextFactExtraction: ProcessorBackfillResult;
+  ownerDataExport: ProcessorBackfillResult;
   householdPurge: HouseholdPurgeSweepResult;
   auditRetention: AuditLogRetentionSweepResult;
 };
 
 /** A backing job is obsolete once it is gone or already terminal. */
-const TERMINAL_JOB_STATUSES = new Set(["completed", "skipped", "dead_lettered"]);
+const TERMINAL_JOB_STATUSES = new Set(["completed", "skipped", "dead_lettered", "expired"]);
 
 function jobValidity(job: { status: string } | null): JobValidity {
   return job && !TERMINAL_JOB_STATUSES.has(job.status) ? "active" : "obsolete";
@@ -240,6 +245,27 @@ function runContextFactExtractionBackfill(
   });
 }
 
+function runOwnerDataExportBackfill(
+  input: ProcessorBackfillInput & {
+    jobs?: OwnerDataExportJobStore;
+  },
+): Promise<ProcessorBackfillResult> {
+  if (input.limit <= 0) {
+    return Promise.resolve({ scanned: 0, processed: 0, failed: 0 });
+  }
+  return runFamilyBackfill("owner_data_export", input).then(async (result) => {
+    // Expiry is bounded by the same pass. Artifact bytes are operational
+    // material, not a durable product record, so cleanup never waits for a
+    // user request to discover an expired archive.
+    await expireOwnerDataExportArtifacts({
+      now: input.now,
+      limit: input.limit,
+      ...(input.jobs ? { jobs: input.jobs } : {}),
+    });
+    return result;
+  });
+}
+
 /**
  * Closes the household recovery window for the households whose thirty days are
  * up, disposing of the workspace's own records and leaving the minimized
@@ -297,6 +323,7 @@ async function runRetryableBackgroundRecovery(input: {
   embeddingBackfillLimit: number;
   actionExtractionBackfillLimit: number;
   contextFactExtractionBackfillLimit: number;
+  ownerDataExportBackfillLimit: number;
   householdPurgeLimit: number;
   now: Date;
   logger?: BackgroundJobQueueLogger;
@@ -305,6 +332,7 @@ async function runRetryableBackgroundRecovery(input: {
   backfillEmbedding: typeof runEmbeddingBackfill;
   backfillActionExtraction: typeof runActionExtractionBackfill;
   backfillContextFactExtraction: typeof runContextFactExtractionBackfill;
+  backfillOwnerDataExport: typeof runOwnerDataExportBackfill;
   purgeDissolvedHouseholds: typeof purgeDueDissolvedHouseholds;
 }): Promise<Omit<BackgroundJobRecoveryRunResult, "auditRetention">> {
   const deliveries = await input.recoverDeliveries({
@@ -332,6 +360,11 @@ async function runRetryableBackgroundRecovery(input: {
     now: input.now,
     logger: input.logger,
   });
+  const ownerDataExport = await input.backfillOwnerDataExport({
+    limit: input.ownerDataExportBackfillLimit,
+    now: input.now,
+    logger: input.logger,
+  });
   const householdPurge = await input.purgeDissolvedHouseholds({
     limit: input.householdPurgeLimit,
     now: input.now,
@@ -344,6 +377,7 @@ async function runRetryableBackgroundRecovery(input: {
     embedding,
     actionExtraction,
     contextFactExtraction,
+    ownerDataExport,
     householdPurge,
   };
 }
@@ -354,6 +388,7 @@ type BackgroundJobRecoveryInput = {
   embeddingBackfillLimit: number;
   actionExtractionBackfillLimit: number;
   contextFactExtractionBackfillLimit?: number;
+  ownerDataExportBackfillLimit?: number;
   householdPurgeLimit?: number;
   auditRetentionLimit?: number;
   now?: Date;
@@ -363,6 +398,7 @@ type BackgroundJobRecoveryInput = {
   backfillEmbedding?: typeof runEmbeddingBackfill;
   backfillActionExtraction?: typeof runActionExtractionBackfill;
   backfillContextFactExtraction?: typeof runContextFactExtractionBackfill;
+  backfillOwnerDataExport?: typeof runOwnerDataExportBackfill;
   purgeDissolvedHouseholds?: typeof purgeDueDissolvedHouseholds;
   retainAuditLog?: typeof retainExpiredAuditLogEntries;
 };
@@ -373,6 +409,7 @@ type BackgroundJobRecoveryDependencies = {
   backfillEmbedding: typeof runEmbeddingBackfill;
   backfillActionExtraction: typeof runActionExtractionBackfill;
   backfillContextFactExtraction: typeof runContextFactExtractionBackfill;
+  backfillOwnerDataExport: typeof runOwnerDataExportBackfill;
   purgeDissolvedHouseholds: typeof purgeDueDissolvedHouseholds;
   retainAuditLog: typeof retainExpiredAuditLogEntries;
 };
@@ -387,6 +424,7 @@ function resolveBackgroundJobRecoveryDependencies(
     backfillActionExtraction: input.backfillActionExtraction ?? runActionExtractionBackfill,
     backfillContextFactExtraction:
       input.backfillContextFactExtraction ?? runContextFactExtractionBackfill,
+    backfillOwnerDataExport: input.backfillOwnerDataExport ?? runOwnerDataExportBackfill,
     purgeDissolvedHouseholds: input.purgeDissolvedHouseholds ?? purgeDueDissolvedHouseholds,
     retainAuditLog: input.retainAuditLog ?? retainExpiredAuditLogEntries,
   };
@@ -444,6 +482,7 @@ async function runBackgroundJobRecoveryPass(
       embeddingBackfillLimit: input.embeddingBackfillLimit,
       actionExtractionBackfillLimit: input.actionExtractionBackfillLimit,
       contextFactExtractionBackfillLimit: input.contextFactExtractionBackfillLimit ?? 0,
+      ownerDataExportBackfillLimit: input.ownerDataExportBackfillLimit ?? 0,
       householdPurgeLimit: input.householdPurgeLimit ?? 0,
       now,
       logger: input.logger,
@@ -452,6 +491,7 @@ async function runBackgroundJobRecoveryPass(
       backfillEmbedding: dependencies.backfillEmbedding,
       backfillActionExtraction: dependencies.backfillActionExtraction,
       backfillContextFactExtraction: dependencies.backfillContextFactExtraction,
+      backfillOwnerDataExport: dependencies.backfillOwnerDataExport,
       purgeDissolvedHouseholds: dependencies.purgeDissolvedHouseholds,
     },
   });
@@ -482,7 +522,7 @@ export async function runBackgroundJobRecovery(
 }
 
 async function runProcessorBackfill(input: {
-  jobKind: "extraction" | "embedding" | "action_extraction" | "context_fact_extraction";
+  jobKind: keyof typeof BACKGROUND_JOB_FAMILIES;
   limit: number;
   now?: Date;
   claimNextJob: BackfillClaimNextJob;

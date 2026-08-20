@@ -68,7 +68,7 @@ export type BackgroundJobProcessorOverrides = {
  * translation is identical across families:
  *
  * - a successful claim is `ready`;
- * - a claim miss reloads the job and reports `not_found`, `terminal` (completed/skipped),
+ * - a claim miss reloads the job and reports `not_found`, `terminal` (completed/skipped/expired),
  *   or `not_claimable` (still running or not yet due) — every branch a safe no-op;
  * - processing rethrows a `failed` outcome so the job's own retry timing (Postgres, not
  *   the queue) governs redelivery.
@@ -106,7 +106,8 @@ export function createBackgroundJobProcessor(
       if (
         job.status === "completed" ||
         job.status === "skipped" ||
-        job.status === "dead_lettered"
+        job.status === "dead_lettered" ||
+        job.status === "expired"
       ) {
         return { status: "terminal" as const, reason: `${family.noun} is ${job.status}.` };
       }

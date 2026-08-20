@@ -31,6 +31,49 @@ async function createBoundary(input: {
 }
 
 describe("shared Web/Eve admission boundary", () => {
+  it("admits an invitation-granted member through the same persisted decision in hosted and self-hosted modes", async () => {
+    const evaluateFlag = vi.fn().mockResolvedValue(false);
+    const user = { id: "member-1", email: "member@example.com" };
+    const hosted = await createBoundary({
+      evaluateFlag,
+      policy: { mode: "hosted", valid: true },
+      user,
+    });
+    await hosted.queries.ensureAccessProfile({ userId: user.id });
+    await hosted.queries.grantAccess({ userId: user.id, source: "household_invitation" });
+
+    await expect(
+      hosted.web.resolveAccess({ userId: user.id, email: user.email }),
+    ).resolves.toMatchObject({
+      admitted: true,
+      profile: { source: "household_invitation" },
+    });
+    await expect(hosted.eve(request)).resolves.toMatchObject({ principalId: user.id });
+
+    const selfHosted = await createBoundary({
+      evaluateFlag: vi.fn().mockResolvedValue(true),
+      policy: {
+        mode: "self-hosted",
+        valid: true,
+        bootstrapOwnerEmail: "owner@example.com",
+      },
+      user,
+    });
+    await selfHosted.queries.grantAccess({
+      userId: user.id,
+      source: "household_invitation",
+    });
+
+    await expect(
+      selfHosted.web.resolveAccess({ userId: user.id, email: user.email }),
+    ).resolves.toMatchObject({
+      admitted: true,
+      profile: { source: "household_invitation" },
+    });
+    await expect(selfHosted.eve(request)).resolves.toMatchObject({ principalId: user.id });
+    expect(evaluateFlag).not.toHaveBeenCalled();
+  });
+
   it("uses one persisted store for the self-hosted owner and unrelated pending user", async () => {
     const evaluateFlag = vi.fn().mockResolvedValue(true);
     const owner = { id: "owner-1", email: "owner@example.com" };
