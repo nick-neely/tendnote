@@ -150,3 +150,88 @@ export function calledToolNames(events: readonly unknown[]): string[] {
 export function hasNoMutatingTools(events: readonly unknown[]): boolean {
   return calledToolNames(events).every((toolName) => !MUTATING_TOOL_NAMES.has(toolName));
 }
+
+/**
+ * Proves an Asset Action proposal is grounded in the reviewed detail the read path
+ * actually returned. Search can return the detail directly or first resolve the Asset
+ * anchor and then load its facts with get_asset_context; both paths must converge on
+ * the same Asset id and exact memory id carried by the pending Suggested Action.
+ */
+export function hasGroundedPendingAssetProposal(
+  events: readonly unknown[],
+  expected: { assetName: string; detailLabel: RegExp },
+): boolean {
+  const search = toolOutputs(events, "search_assets").find(isRecord);
+  const context = toolOutputs(events, "get_asset_context").find(isRecord);
+  const proposal = toolOutputs(events, "propose_asset_actions").find(isRecord);
+  if (!search || !proposal) return false;
+
+  const searchResults = arrayValue(search, "results");
+  const searchDetail = searchResults.find(
+    (entry) =>
+      isRecord(entry) &&
+      entry.recordKind === "asset_memory" &&
+      entry.assetName === expected.assetName &&
+      expected.detailLabel.test(String(entry.label)) &&
+      entry.trustLevel === "asset_fact",
+  );
+  const contextDetail = context
+    ? arrayValue(context, "facts").find(
+        (entry) => isRecord(entry) && expected.detailLabel.test(String(entry.label)),
+      )
+    : null;
+  const detailMemoryId = isRecord(searchDetail)
+    ? nestedString(searchDetail, "recordId")
+    : isRecord(contextDetail)
+      ? nestedString(contextDetail, "memoryId")
+      : null;
+  const groundedAssetId = isRecord(searchDetail)
+    ? nestedString(searchDetail, "assetId")
+    : context
+      ? nestedString(context, "assetId")
+      : null;
+  const proposalAssetId = nestedString(proposal, "asset", "id");
+  const searchResolvedAsset = searchResults.some(
+    (entry) =>
+      isRecord(entry) &&
+      nestedString(entry, "assetId") === groundedAssetId &&
+      (entry.assetName === expected.assetName || entry.asset === expected.assetName),
+  );
+  if (
+    detailMemoryId === null ||
+    proposalAssetId === null ||
+    groundedAssetId !== proposalAssetId ||
+    !searchResolvedAsset
+  ) {
+    return false;
+  }
+
+  return arrayValue(proposal, "pending").some((entry) => {
+    if (!isRecord(entry)) return false;
+    const action = entry.action;
+    return (
+      entry.assetMemoryId === detailMemoryId &&
+      isRecord(action) &&
+      action.status === "suggested" &&
+      !("reminderSchedule" in action) &&
+      !("schedule" in action)
+    );
+  });
+}
+
+function arrayValue(value: Record<string, unknown>, key: string): unknown[] {
+  return Array.isArray(value[key]) ? value[key] : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function nestedString(value: Record<string, unknown>, ...path: string[]): string | null {
+  let current: unknown = value;
+  for (const key of path) {
+    if (!isRecord(current)) return null;
+    current = current[key];
+  }
+  return typeof current === "string" ? current : null;
+}

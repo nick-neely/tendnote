@@ -421,7 +421,12 @@ async function proposeAssetMemoryActions(
   const plans = planAssetMemoryActionProposals({ asset, memories, now });
   const memoriesById = new Map(memories.map((memory) => [memory.id, memory]));
 
-  const result: AssetActionProposalResult = { asset, proposed: [], alreadySpokenFor };
+  const result: AssetActionProposalResult = {
+    asset,
+    proposed: [],
+    pending: [],
+    alreadySpokenFor,
+  };
   for (const plan of plans) {
     const memory = memoriesById.get(plan.assetMemoryId);
     if (!memory) {
@@ -438,6 +443,14 @@ async function proposeAssetMemoryActions(
       }),
     );
   }
+
+  // Return the live pending review set as well as this pass's writes. The count above also
+  // includes accepted and dismissed proposals, so it cannot prove that an empty pass still
+  // has a review artifact for the owner to inspect.
+  result.pending = await listPendingAssetActionProposals(store, {
+    actorUserId: input.actorUserId,
+    assetId: asset.id,
+  });
 
   return result;
 }

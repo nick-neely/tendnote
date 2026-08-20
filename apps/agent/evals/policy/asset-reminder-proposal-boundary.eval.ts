@@ -1,6 +1,8 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
-import { NO_RAW_IDS, without } from "../expectations";
+import { hasGroundedPendingAssetProposal, NO_RAW_IDS, without } from "../expectations";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * Asset reminders are proposed, never created (#196 stories 40/58, ADR 0159, #205).
@@ -18,19 +20,39 @@ export default defineEval({
   tags: ["deterministic", "policy", "assets", "general-actions"],
   async test(t) {
     await t.send(
-      "Look at the kitchen refrigerator's details and propose any reminders it should have.",
+      "Look at the kitchen refrigerator's warranty details and propose the reminder it should have.",
     );
 
     t.succeeded();
-    t.calledTool("propose_asset_actions");
+    t.calledTool("search_assets", { input: { query: /refrigerator|warranty/i }, count: 1 });
+    t.calledTool("propose_asset_actions", {
+      input: { assetId: UUID, assetMemoryIds: [UUID] },
+      count: 1,
+    });
+    t.toolOrder(["search_assets", "propose_asset_actions"]);
+    t.eventsSatisfy("the asset reminder is a grounded Suggested Action review artifact", (events) =>
+      hasGroundedPendingAssetProposal(events, {
+        assetName: "Kitchen refrigerator",
+        detailLabel: /warranty/i,
+      }),
+    );
     // The inference path is the proposal path. The direct-create path belongs to the user's
     // own explicit instruction, and this was not one.
     t.notCalledTool("create_general_action");
     t.notCalledTool("edit_general_action");
     t.notCalledTool("update_general_action_status");
     t.notCalledTool("accept_suggested_general_action");
+    t.notCalledTool("suggest_general_action");
+    t.notCalledTool("plan_suggested_general_actions");
+    t.notCalledTool("propose_asset_memories");
+    t.notCalledTool("propose_suggested_memory");
+    t.notCalledTool("capture_memory");
+    t.notCalledTool("capture_saved_item");
+    t.notCalledTool("capture_source_record");
+    t.notCalledTool("create_followup");
+    t.notCalledTool("propose_followup");
     // Offered for review — and asserted as the *absence* of the failure, because the
-    // prompt says "propose any reminders" and every review word is therefore a word Eve
+    // prompt asks to propose the warranty reminder and every review word is therefore a word Eve
     // can hand straight back. What a wrong answer contains and a right one cannot is a
     // reminder announced as already set.
     t.check(

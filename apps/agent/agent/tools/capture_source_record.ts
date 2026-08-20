@@ -86,7 +86,7 @@ export default defineTool({
         linkedPersonId: output.linkedPersonId,
         rendered: "The logged note is shown to the user in a card.",
         guidance:
-          "Don't reprint the note — it's in the card. Confirm briefly that you logged it (it's logged context, not a confirmed fact) and offer to change it.",
+          "Don't reprint the note — it's in the card. Confirm briefly that you logged it (it's logged context, not a confirmed fact). If the note includes one noticed fact about a person that the user did not ask to save, do not stop here or merely promise a Suggested Memory: resolve the person with search_people when needed, then call propose_suggested_memory with this sourceRecordId before replying so its review card exists. Otherwise offer to change the note.",
       },
     };
   },

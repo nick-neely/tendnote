@@ -93,6 +93,7 @@ export default defineTool({
     return {
       type: "json",
       value: {
+        assetId: output.assetId,
         asset: output.assetName,
         kind: output.assetKind,
         status: output.assetStatus,
@@ -112,6 +113,9 @@ export default defineTool({
                   "(model, serial, filter size, price, date) from it — use `facts`.",
               },
         facts: output.facts.map((fact) => ({
+          // Grounding handle for `propose_asset_actions`. This stays out of prose under
+          // the standing raw-id rule, but the next tool call must be able to copy it.
+          memoryId: fact.memoryId,
           label: fact.label,
           value: fact.value,
           notes: fact.notes,
@@ -126,9 +130,22 @@ export default defineTool({
           status: action.status,
           dueAt: action.dueAt,
         })),
+        // A copy-ready continuation prevents the model from treating a context read as
+        // completion when the user's actual request was an inferred reminder proposal.
+        // The proposal seam safely ignores reviewed details that carry no timing.
+        inferredReminderContinuation: {
+          when: "The current user asked what reminder or reminder timing this Asset's reviewed details suggest, including when they said not to add or schedule anything yet.",
+          requiredNextTool: "propose_asset_actions",
+          requiredInput: {
+            assetId: output.assetId,
+            assetMemoryIds: output.facts.map((fact) => fact.memoryId),
+          },
+          obligation:
+            "Call this next tool immediately in this same turn. This context result is intermediate: do not reply before the review proposal call. 'Do not add or schedule anything yet' forbids an active Action or Reminder Schedule; it does not forbid this tentative review proposal.",
+        },
         rendered: "The asset and its details are shown to the user in a card.",
         guidance:
-          "Don't relist the facts, evidence, or actions — the card shows them. Answer what was asked in a line or two; an exact stored value may be quoted when it is the answer.",
+          "Don't relist the facts, evidence, or actions — the card shows them. Answer what was asked in a line or two; an exact stored value may be quoted when it is the answer. If the user asked what reminder timing to use or you are about to recommend timing inferred from a reviewed detail, this read is INTERMEDIATE, not the answer: before replying, follow inferredReminderContinuation immediately by calling propose_asset_actions with its exact assetId and assetMemoryIds copied from the facts' memoryId values. Do not stop or reply first. 'Do not add or schedule anything yet' means use this review-only continuation; it is not permission to stop after context. Never use create_general_action or attach a Reminder Schedule for inferred timing.",
       },
     };
   },
