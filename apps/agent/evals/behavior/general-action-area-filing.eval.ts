@@ -62,7 +62,7 @@ export default defineEval({
       t.reply,
       includes(
         without(
-          "filed (it )?under (your )?Home|(?:added|saved|put|placed) (?:it|the (?:action|task)|that) (?:under|in) (?:your )?Home|in your Home area|I(’|')?ve created (a|an|the) [a-z ]*area|create (a|an) (new )?area for you|I(’|')?ll (create|add) (a|an) (new )?area",
+          "filed (it )?under (your |my |the )?Home(?: area)?|(?:added|saved|put|placed|left) (?:it|the (?:action|task)|that) (?:under|in|to) (?:your |my |the )?Home(?: area)?|in (?:your |my |the )?Home area|I(’|')?ve created (a|an|the) [a-z ]*area|create (a|an) (new )?area for you|I(’|')?ll (create|add) (a|an) (new )?area",
         ),
       ),
     );

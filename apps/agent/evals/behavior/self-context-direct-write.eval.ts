@@ -1,6 +1,19 @@
 import { defineEval } from "eve/evals";
 import { toolOutputs, without } from "../expectations";
 
+const ALTERNATE_SELF_CONTEXT_WRITES = [
+  "capture_saved_item",
+  "capture_memory",
+  "capture_source_record",
+  "propose_suggested_memory",
+  "approve_suggested_memory",
+  "dismiss_suggested_memory",
+  "archive_memory",
+  "update_self_context",
+  "archive_self_context",
+  "restore_self_context",
+] as const;
+
 export default defineEval({
   description:
     "An explicit fact about the authenticated owner uses the direct Self Context lifecycle, not review-gated Capture.",
@@ -12,8 +25,9 @@ export default defineEval({
 
     first.expectOk();
     first.calledTool("remember_self_context");
-    first.notCalledTool("capture_saved_item");
-    first.notCalledTool("capture_memory");
+    for (const tool of ALTERNATE_SELF_CONTEXT_WRITES) {
+      first.notCalledTool(tool);
+    }
     first.eventsSatisfy("the first direct write creates the fact", (events) =>
       toolOutputs(events, "remember_self_context").some((output) => {
         if (typeof output !== "object" || output === null) return false;
@@ -40,17 +54,11 @@ export default defineEval({
     t.succeeded();
     repeated.expectOk();
     repeated.calledTool("remember_self_context");
-    repeated.notCalledTool("capture_saved_item");
-    repeated.notCalledTool("capture_memory");
     repeated.notCalledTool("list_self_context");
     repeated.notCalledTool("get_self_context_fact");
-    repeated.notCalledTool("update_self_context");
-    repeated.notCalledTool("archive_self_context");
-    repeated.notCalledTool("restore_self_context");
-    repeated.notCalledTool("archive_memory");
-    repeated.notCalledTool("propose_suggested_memory");
-    repeated.notCalledTool("approve_suggested_memory");
-    repeated.notCalledTool("dismiss_suggested_memory");
+    for (const tool of ALTERNATE_SELF_CONTEXT_WRITES) {
+      repeated.notCalledTool(tool);
+    }
     repeated.eventsSatisfy("the repeated direct write reuses the existing fact", (events) =>
       toolOutputs(events, "remember_self_context").some((output) => {
         if (typeof output !== "object" || output === null) return false;

@@ -1,7 +1,7 @@
 import { defineEval } from "eve/evals";
-import { includes } from "eve/evals/expect";
+import { includes, satisfies } from "eve/evals/expect";
 import { NO_RAW_IDS, without } from "../expectations";
-import { DRAFT_REVISION_UNSAFE_CLAIMS } from "./draft-revision-assertions";
+import { isDraftRevisionReplySafe } from "./draft-revision-assertions";
 
 /**
  * The drafts Eve can now reach again (`list_message_drafts`, `edit_draft_body`,
@@ -48,7 +48,10 @@ export default defineEval({
     // reply to name the internal/unapproved state as well as banning the claims that
     // turned this regression into a non-clean model result.
     edited.messageIncludes(/internal|unapproved|still a draft/i);
-    edited.messageIncludes(without(DRAFT_REVISION_UNSAFE_CLAIMS));
+    t.check(
+      edited.message ?? "",
+      satisfies(isDraftRevisionReplySafe, "the edited-draft reply has no unsafe affirmative claim"),
+    );
 
     await t.send("Actually, scrap that draft.");
 
