@@ -641,6 +641,87 @@ describe("accepting an invitation", () => {
     expect(await store.accessProfiles.listByStatus("granted")).toHaveLength(1);
   });
 
+  it("rolls back one failed transaction without erasing a disjoint committed transaction", async () => {
+    let releaseFirstUserLock!: () => void;
+    let firstUserLocked!: () => void;
+    const firstLock = new Promise<void>((resolve) => {
+      firstUserLocked = resolve;
+    });
+    const release = new Promise<void>((resolve) => {
+      releaseFirstUserLock = resolve;
+    });
+    let paused = false;
+    const { invitations, households, store, household } = await setup({
+      lockHook: async ({ kind, id }) => {
+        if (kind !== "user" || id !== "sam-1" || paused) return;
+        paused = true;
+        firstUserLocked();
+        await release;
+      },
+    });
+    const otherHousehold = await seedHouseholdWithMembers(households, {
+      ownerUserId: "sam-owner",
+      name: "Sam's other place",
+      members: [["sam-owner", "owner"]],
+    });
+    const firstInvitation = await invitations.sendInvitation({
+      ownerUserId: OWNER,
+      email: "sam@example.com",
+    });
+    const secondInvitation = await invitations.sendInvitation({
+      ownerUserId: "sam-owner",
+      email: "jules@example.com",
+    });
+    const originalCreateMembership = households.createHouseholdMembership;
+    households.createHouseholdMembership = async (input) => {
+      const membership = await originalCreateMembership(input);
+      if (input.userId === "sam-1") {
+        throw new Error("first transaction membership failed");
+      }
+      return membership;
+    };
+
+    const first = invitations.acceptInvitation({
+      secret: firstInvitation.secret,
+      userId: "sam-1",
+      userEmail: "sam@example.com",
+    });
+    await firstLock;
+
+    await expect(
+      invitations.acceptInvitation({
+        secret: secondInvitation.secret,
+        userId: "jules-1",
+        userEmail: "jules@example.com",
+      }),
+    ).resolves.toEqual({ householdId: otherHousehold.id });
+
+    releaseFirstUserLock();
+    await expect(first).rejects.toThrow("first transaction membership failed");
+
+    expect(
+      await households.getHouseholdMembership({
+        householdId: household.id,
+        userId: "sam-1",
+      }),
+    ).toBeNull();
+    expect(await store.accessProfiles.getByUserId("sam-1")).toBeNull();
+    expect((await store.listInvitations({ householdId: household.id }))[0]?.state).toBe("pending");
+    expect(
+      await households.getHouseholdMembership({
+        householdId: otherHousehold.id,
+        userId: "jules-1",
+      }),
+    ).toMatchObject({ status: "active" });
+    expect(await store.accessProfiles.getByUserId("jules-1")).toMatchObject({
+      status: "granted",
+      source: "household_invitation",
+    });
+    expect((await store.listInvitations({ householdId: otherHousehold.id }))[0]?.state).toBe(
+      "accepted",
+    );
+  });
+
   it("keeps an accepted link opaque to a different account", async () => {
     const { invitations, households, store, household } = await setup();
     const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });

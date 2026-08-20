@@ -1,9 +1,14 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { HouseholdMemberIdentity } from "@tendnote/domain";
 import { createInMemoryAccessProfileStore } from "../access-profiles/in-memory-store";
 import { createInMemoryHouseholdCalendarStore } from "./in-memory-calendar-store";
 import { createInMemoryHouseholdStore } from "./in-memory-store";
+import {
+  type InMemoryMutationLog,
+  type InMemoryTransactionContext,
+  inMemoryTransactionContext,
+  recordInMemoryMutation,
+} from "./in-memory-transaction";
 import type {
   HouseholdInvitation,
   HouseholdInvitationDelivery,
@@ -14,11 +19,6 @@ import {
   createNoopHouseholdScheduledWorkStore,
   type HouseholdScheduledWorkStore,
 } from "./scheduled-work";
-
-type InMemoryTransactionContext = {
-  releases: Array<() => void>;
-  snapshot?: InMemoryStoreSnapshot;
-};
 
 type InMemoryStoreSnapshot = {
   invitations: Array<[string, HouseholdInvitation]>;
@@ -51,7 +51,6 @@ export function createInMemoryHouseholdInvitationStore(options?: {
   const identityRows = options?.identities ?? [];
   const invitations = new Map<string, HouseholdInvitation>();
   const deliveries = new Map<string, HouseholdInvitationDelivery>();
-  const transactionContext = new AsyncLocalStorage<InMemoryTransactionContext>();
   const locks = new Map<string, { held: boolean; waiters: Array<() => void> }>();
 
   function snapshot(): InMemoryStoreSnapshot {
@@ -63,13 +62,25 @@ export function createInMemoryHouseholdInvitationStore(options?: {
     };
   }
 
-  function restore(state: InMemoryStoreSnapshot) {
-    invitations.clear();
-    for (const [id, invitation] of state.invitations) invitations.set(id, { ...invitation });
-    deliveries.clear();
-    for (const [id, delivery] of state.deliveries) deliveries.set(id, { ...delivery });
-    households.restore(state.households);
-    accessProfiles.restore(state.accessProfiles);
+  function restore(state: InMemoryStoreSnapshot, mutations: InMemoryMutationLog) {
+    const invitationIds = mutations.get("invitations");
+    if (invitationIds) {
+      for (const id of invitationIds) {
+        const row = state.invitations.find(([candidate]) => candidate === id)?.[1];
+        if (row) invitations.set(id, { ...row });
+        else invitations.delete(id);
+      }
+    }
+    const deliveryIds = mutations.get("deliveries");
+    if (deliveryIds) {
+      for (const id of deliveryIds) {
+        const row = state.deliveries.find(([candidate]) => candidate === id)?.[1];
+        if (row) deliveries.set(id, { ...row });
+        else deliveries.delete(id);
+      }
+    }
+    households.restore(state.households, mutations);
+    accessProfiles.restore(state.accessProfiles, mutations);
   }
 
   function release(key: string) {
@@ -84,7 +95,7 @@ export function createInMemoryHouseholdInvitationStore(options?: {
   }
 
   async function lock(key: string, input: { kind: "user" | "household"; id: string }) {
-    const context = transactionContext.getStore();
+    const context = inMemoryTransactionContext.getStore();
     if (!context) throw new Error("In-memory row locks require a transaction.");
     const state = locks.get(key) ?? { held: false, waiters: [] };
     locks.set(key, state);
@@ -117,12 +128,13 @@ export function createInMemoryHouseholdInvitationStore(options?: {
     scheduledWork,
     calendars,
     async withTransaction(fn) {
-      const context: InMemoryTransactionContext = { releases: [] };
-      return transactionContext.run(context, async () => {
+      const context: InMemoryTransactionContext = { releases: [], mutations: new Map() };
+      return inMemoryTransactionContext.run(context, async () => {
         try {
           return await fn(store);
         } catch (error) {
-          if (context.snapshot) restore(context.snapshot);
+          if (context.snapshot)
+            restore(context.snapshot as InMemoryStoreSnapshot, context.mutations);
           throw error;
         } finally {
           for (const releaseLock of context.releases.reverse()) releaseLock();
@@ -161,6 +173,7 @@ export function createInMemoryHouseholdInvitationStore(options?: {
         createdAt: now,
         updatedAt: now,
       };
+      recordInMemoryMutation("invitations", invitation.id);
       invitations.set(invitation.id, invitation);
       return invitation;
     },
@@ -187,6 +200,7 @@ export function createInMemoryHouseholdInvitationStore(options?: {
         throw new Error("Household invitation not found.");
       }
       const updated = { ...invitation, ...input.patch, updatedAt: new Date() };
+      recordInMemoryMutation("invitations", updated.id);
       invitations.set(updated.id, updated);
       return updated;
     },
@@ -201,6 +215,7 @@ export function createInMemoryHouseholdInvitationStore(options?: {
         providerMessageId: null,
         failureClass: null,
       };
+      recordInMemoryMutation("deliveries", delivery.id);
       deliveries.set(delivery.id, delivery);
       return delivery;
     },
@@ -208,6 +223,7 @@ export function createInMemoryHouseholdInvitationStore(options?: {
       const delivery = deliveries.get(input.deliveryId);
       if (delivery?.status !== "queued") return null;
       const claimed = { ...delivery, status: "sending" as const, claimedAt: new Date() };
+      recordInMemoryMutation("deliveries", claimed.id);
       deliveries.set(claimed.id, claimed);
       return claimed;
     },
@@ -223,6 +239,7 @@ export function createInMemoryHouseholdInvitationStore(options?: {
         providerMessageId: input.providerMessageId ?? null,
         failureClass: input.failureClass ?? null,
       };
+      recordInMemoryMutation("deliveries", completed.id);
       deliveries.set(completed.id, completed);
       return completed;
     },
