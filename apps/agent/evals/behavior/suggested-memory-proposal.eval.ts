@@ -43,24 +43,34 @@ export default defineEval({
     // suggested memory is grounded in the exact source record and the person that the
     // preceding calls resolved. The persisted status is still tentative.
     t.eventsSatisfy("the Suggested Memory proposal is grounded and reviewable", (events) => {
+      const search = toolOutputs(events, "search_people").find(isRecord);
       const capture = toolOutputs(events, "capture_source_record").find(isRecord);
       const proposal = toolOutputs(events, "propose_suggested_memory").find(isRecord);
-      if (!capture || !proposal) return false;
+      if (!search || !capture || !proposal) return false;
+
+      const people = search.people;
+      const resolvedPersonId =
+        Array.isArray(people) && people.length === 1 && isRecord(people[0])
+          ? nestedString(people[0], "id")
+          : null;
 
       const capturedSourceId = nestedString(capture, "sourceRecord", "id");
       const capturedPersonId = nestedString(capture, "linkedPersonId");
       const proposalSourceId = nestedString(proposal, "sourceRecord", "id");
       const memorySourceId = nestedString(proposal, "memory", "sourceRecordId");
-      const proposedPersonId = nestedString(proposal, "person", "id");
+      const proposedPersonId = nestedString(proposal, "memory", "personId");
       const status = nestedString(proposal, "memory", "status");
       const componentType = nestedString(proposal, "component", "type");
 
       return (
+        search.requiresDisambiguation === false &&
+        resolvedPersonId !== null &&
         capturedSourceId !== null &&
         capturedSourceId === proposalSourceId &&
         proposalSourceId === memorySourceId &&
         capturedPersonId !== null &&
-        capturedPersonId === proposedPersonId &&
+        capturedPersonId === resolvedPersonId &&
+        proposedPersonId === resolvedPersonId &&
         status === "suggested" &&
         componentType === "suggested_memory_review"
       );

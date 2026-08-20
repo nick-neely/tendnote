@@ -1,5 +1,7 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { authoredInstructions, baseInstructions } from "./instructions-source";
+import { effectiveToolSource } from "./tool-source";
 
 /**
  * The review gate on asset-linked reminders (#203, PRD #196 stories 40/57/58). An Asset's
@@ -37,6 +39,13 @@ describe("asset reminder proposals are review-gated (#203)", () => {
     expect(base).toMatch(/create_general_action/);
     expect(authored).toMatch(/an explicit ask is not a proposal/i);
     expect(authored).toMatch(/reserve `?propose_asset_actions`? for reminders \*?you\*? inferred/i);
+  });
+
+  it("does not teach the proposal tool to swallow an explicit reminder instruction", () => {
+    const source = effectiveToolSource(join(process.cwd(), "agent/tools/propose_asset_actions.ts"));
+
+    expect(source).not.toMatch(/remind me about the warranty/i);
+    expect(source).toMatch(/explicitly asks|explicit instruction|create_general_action/i);
   });
 
   it("only reviewed details propose, and only dated or recurring ones", () => {

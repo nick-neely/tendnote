@@ -121,6 +121,9 @@ describe("proposeAssetMemoryActions", () => {
     expect(proposal?.assetMemoryId).toBe(memory.id);
     // A proposal is born SUGGESTED — never an active action on the ledger.
     expect(proposal?.action.status).toBe("suggested");
+    expect(result.pending).toHaveLength(1);
+    expect(result.pending[0]?.assetMemoryId).toBe(memory.id);
+    expect(result.pending[0]?.action.status).toBe("suggested");
     expect(proposal?.action.title).toBe("Replace Refrigerator water filter");
     expect(proposal?.action.recurrence).toEqual({ interval: 6, unit: "month" });
   });

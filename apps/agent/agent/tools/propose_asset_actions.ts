@@ -38,7 +38,7 @@ const inputSchema = z.object({
  * the user resolved it — is never re-proposed, so asking twice cannot nag.
  */
 export default defineTool({
-  description: `Propose SUGGESTED General Actions from an Asset's reviewed details — warranty expiries, renewal dates, maintenance and replacement intervals. ANY question about what an asset should remind the user about is this tool ('should I set a reminder for the fridge filter?', 'what reminders should the fridge have?', 'anything I should be reminded about for the car?', 'remind me about the warranty'), including a question asking what reminder timing you would recommend. After search_assets or get_asset_context resolves the Asset, call propose_asset_actions immediately in the same turn and before replying if you are about to recommend inferred timing; do not merely explain a date or ask whether the user wants a proposal. This call creates the review artifact. Reading the asset's details with get_asset_context does NOT answer that question — this tool is what decides, because it alone knows which details already proposed a reminder. Proposes at most ${MAX_ASSET_ACTION_PROPOSALS} per pass, and NEVER creates an active action or Reminder Schedule: each proposal is a review card the user accepts or dismisses. A detail that already proposed an action is not proposed again, so calling this twice is safe and silent. Do NOT use it to add a reminder the user explicitly asked for — that is create_general_action. Returns the proposed actions; refer to them by title, never raw ids.`,
+  description: `Propose SUGGESTED General Actions from an Asset's reviewed details — warranty expiries, renewal dates, maintenance and replacement intervals. Use this for questions about what reminders an asset's reviewed details suggest ('should I set a reminder for the fridge filter?', 'what reminders should the fridge have?', 'anything I should be reminded about for the car?'), including a question asking what reminder timing you would recommend. An explicit instruction to add or set a reminder belongs to create_general_action, not this proposal tool. After search_assets or get_asset_context resolves the Asset, call propose_asset_actions immediately in the same turn and before replying if you are about to recommend inferred timing; do not merely explain a date or ask whether the user wants a proposal. This call creates the review artifact. Reading the asset's details with get_asset_context does NOT answer that question — this tool is what decides, because it alone knows which details already proposed a reminder. Proposes at most ${MAX_ASSET_ACTION_PROPOSALS} per pass, and NEVER creates an active action or Reminder Schedule: each proposal is a review card the user accepts or dismisses. A detail that already proposed an action is not proposed again, so calling this twice is safe and silent. Do NOT use it to add a reminder the user explicitly asked for — that is create_general_action. Returns the proposed actions; refer to them by title, never raw ids.`,
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
@@ -58,8 +58,14 @@ export default defineTool({
     return {
       found: true as const,
       proposed: result.proposed.map((proposal) => ({
+        assetMemoryId: proposal.assetMemoryId,
         action: toGeneralActionRef(proposal.action),
       })),
+      pending:
+        result.pending?.map((proposal) => ({
+          assetMemoryId: proposal.assetMemoryId,
+          action: toGeneralActionRef(proposal.action),
+        })) ?? [],
       // Why an empty pass was empty. The seam distinguishes the two causes precisely so a
       // surface never has to guess between them (`action-proposal-types.ts`), and the model
       // is the surface that guesses worst: told only "nothing to propose", it invented a

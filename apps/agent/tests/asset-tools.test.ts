@@ -274,11 +274,16 @@ describe("get_asset_context tool", () => {
 
     const output = await getAssetContextTool.execute({ assetId: ASSET_ID }, ctx);
     const modelView = getAssetContextTool.toModelOutput?.(output) as {
-      value: { snapshot: { available: boolean; guidance: string }; guidance: string };
+      value: {
+        assetId: string;
+        snapshot: { available: boolean; guidance: string };
+        guidance: string;
+      };
     };
 
     expect(modelView.value.snapshot.available).toBe(true);
     expect(modelView.value.snapshot.guidance).toMatch(/not source of truth/i);
+    expect(modelView.value.assetId).toBe(ASSET_ID);
     expect(modelView.value.guidance).toMatch(/propose_asset_actions/);
     expect(modelView.value.guidance).toMatch(/before replying|review card/i);
     expect(modelView.value.guidance).toMatch(/never use create_general_action|inferred timing/i);
@@ -394,6 +399,22 @@ describe("propose_asset_actions tool", () => {
             },
           },
         ],
+        pending: [
+          {
+            assetMemoryId: MEMORY_ID,
+            action: {
+              id: ACTION_ID,
+              title: "Review the refrigerator warranty",
+              status: "suggested",
+              dueAt: new Date("2027-03-14T00:00:00.000Z"),
+              deferUntil: null,
+              recurrence: null,
+              areaId: null,
+              linkedPeople: [],
+              scope: "private",
+            },
+          },
+        ],
         alreadySpokenFor: 0,
       },
       affectedScopes: [],
@@ -403,6 +424,9 @@ describe("propose_asset_actions tool", () => {
     const proposal = output.proposed[0]?.action;
 
     expect(proposal?.status).toBe("suggested");
+    expect(output.proposed[0]?.assetMemoryId).toBe(MEMORY_ID);
+    expect(output.pending[0]?.assetMemoryId).toBe(MEMORY_ID);
+    expect(output.pending[0]?.action.status).toBe("suggested");
     expect(output).not.toHaveProperty("reminderSchedule");
     expect(output).not.toHaveProperty("schedule");
     expect(toolModelValue(proposeAssetActionsTool, output).guidance).toMatch(

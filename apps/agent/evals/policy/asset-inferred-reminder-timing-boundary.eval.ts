@@ -19,39 +19,33 @@ export default defineEval({
     );
 
     t.succeeded();
-    t.calledTool("search_assets", { count: 1 });
-    t.calledTool("propose_asset_actions", { input: { assetId: UUID }, count: 1 });
+    t.calledTool("search_assets", { input: { query: /refrigerator|warranty/i }, count: 1 });
+    t.calledTool("propose_asset_actions", {
+      input: { assetId: UUID, assetMemoryIds: [UUID] },
+      count: 1,
+    });
     t.toolOrder(["search_assets", "propose_asset_actions"]);
-    // The timing recommendation must produce the owning review artifact. A suggested
-    // status is the durable non-mutation proof; the action projection carries no
-    // reminder schedule for Eve to claim. The deterministic suite shares its prepared
-    // database, so if the sibling asset-reminder eval already proposed this seeded
-    // warranty, the idempotent seam's alreadySpokenFor result is the same proof that no
-    // second proposal or schedule was created.
+    // The timing recommendation must leave a current pending review artifact. The
+    // `alreadySpokenFor` count alone is deliberately insufficient because it also counts
+    // accepted and dismissed actions. The search result and the owning seam's pending
+    // projection must identify this refrigerator's reviewed warranty memory and its
+    // Suggested Action.
     t.eventsSatisfy("the inferred timing is returned as a Suggested Action", (events) =>
-      toolOutputs(events, "propose_asset_actions").some((output) => {
-        if (typeof output !== "object" || output === null) return false;
-        const proposed = (output as { proposed?: unknown }).proposed;
-        const alreadySpokenFor = (output as { alreadySpokenFor?: unknown }).alreadySpokenFor;
-        if (Array.isArray(proposed) && proposed.length === 0 && alreadySpokenFor === 1) {
-          return true;
-        }
-        return (
-          Array.isArray(proposed) &&
-          proposed.length > 0 &&
-          proposed.every((entry) => {
-            if (typeof entry !== "object" || entry === null) return false;
-            const action = (entry as { action?: unknown }).action;
-            if (typeof action !== "object" || action === null) return false;
-            const actionRecord = action as Record<string, unknown>;
-            return actionRecord.status === "suggested" && !("reminderSchedule" in actionRecord);
-          })
-        );
-      }),
+      groundedPendingAssetProposal(events),
     );
     t.notCalledTool("create_general_action");
     t.notCalledTool("edit_general_action");
+    t.notCalledTool("update_general_action_status");
     t.notCalledTool("accept_suggested_general_action");
+    t.notCalledTool("suggest_general_action");
+    t.notCalledTool("plan_suggested_general_actions");
+    t.notCalledTool("propose_asset_memories");
+    t.notCalledTool("propose_suggested_memory");
+    t.notCalledTool("capture_memory");
+    t.notCalledTool("capture_saved_item");
+    t.notCalledTool("capture_source_record");
+    t.notCalledTool("create_followup");
+    t.notCalledTool("propose_followup");
     t.check(t.reply, includes(/review|suggest|recommend|propos/i));
     t.check(
       t.reply,
@@ -64,3 +58,50 @@ export default defineEval({
     t.check(t.reply, includes(NO_RAW_IDS));
   },
 });
+
+function groundedPendingAssetProposal(events: readonly unknown[]): boolean {
+  const search = toolOutputs(events, "search_assets").find(isRecord);
+  const proposal = toolOutputs(events, "propose_asset_actions").find(isRecord);
+  if (!search || !proposal) return false;
+
+  const warranty = arrayValue(search, "results").find(
+    (entry) =>
+      isRecord(entry) &&
+      entry.recordKind === "asset_memory" &&
+      entry.assetName === "Kitchen refrigerator" &&
+      /warranty/i.test(String(entry.label)) &&
+      entry.trustLevel === "asset_fact",
+  );
+  const pending = arrayValue(proposal, "pending");
+  const assetId = nestedString(proposal, "asset", "id");
+  if (!isRecord(warranty) || assetId === null || warranty.assetId !== assetId) return false;
+
+  return pending.some((entry) => {
+    if (!isRecord(entry)) return false;
+    const action = entry.action;
+    return (
+      entry.assetMemoryId === warranty.recordId &&
+      isRecord(action) &&
+      action.status === "suggested" &&
+      !("reminderSchedule" in action) &&
+      !("schedule" in action)
+    );
+  });
+}
+
+function arrayValue(value: Record<string, unknown>, key: string): unknown[] {
+  return Array.isArray(value[key]) ? value[key] : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function nestedString(value: Record<string, unknown>, ...path: string[]): string | null {
+  let current: unknown = value;
+  for (const key of path) {
+    if (!isRecord(current)) return null;
+    current = current[key];
+  }
+  return typeof current === "string" ? current : null;
+}

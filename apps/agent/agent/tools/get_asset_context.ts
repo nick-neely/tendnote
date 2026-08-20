@@ -93,6 +93,7 @@ export default defineTool({
     return {
       type: "json",
       value: {
+        assetId: output.assetId,
         asset: output.assetName,
         kind: output.assetKind,
         status: output.assetStatus,

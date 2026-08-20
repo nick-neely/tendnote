@@ -20,33 +20,18 @@ export default defineEval({
   tags: ["deterministic", "policy", "assets", "general-actions"],
   async test(t) {
     await t.send(
-      "Look at the kitchen refrigerator's details and propose any reminders it should have.",
+      "Look at the kitchen refrigerator's warranty details and propose the reminder it should have.",
     );
 
     t.succeeded();
-    t.calledTool("search_assets", { count: 1 });
-    t.calledTool("propose_asset_actions", { input: { assetId: UUID }, count: 1 });
+    t.calledTool("search_assets", { input: { query: /refrigerator|warranty/i }, count: 1 });
+    t.calledTool("propose_asset_actions", {
+      input: { assetId: UUID, assetMemoryIds: [UUID] },
+      count: 1,
+    });
     t.toolOrder(["search_assets", "propose_asset_actions"]);
-    t.eventsSatisfy("the asset reminder is a Suggested Action review artifact", (events) =>
-      toolOutputs(events, "propose_asset_actions").some((output) => {
-        if (typeof output !== "object" || output === null) return false;
-        const proposed = (output as { proposed?: unknown }).proposed;
-        const alreadySpokenFor = (output as { alreadySpokenFor?: unknown }).alreadySpokenFor;
-        if (Array.isArray(proposed) && proposed.length === 0 && alreadySpokenFor === 1) {
-          return true;
-        }
-        return (
-          Array.isArray(proposed) &&
-          proposed.length > 0 &&
-          proposed.every((entry) => {
-            if (typeof entry !== "object" || entry === null) return false;
-            const action = (entry as { action?: unknown }).action;
-            if (typeof action !== "object" || action === null) return false;
-            const actionRecord = action as Record<string, unknown>;
-            return actionRecord.status === "suggested" && !("reminderSchedule" in actionRecord);
-          })
-        );
-      }),
+    t.eventsSatisfy("the asset reminder is a grounded Suggested Action review artifact", (events) =>
+      groundedPendingAssetProposal(events),
     );
     // The inference path is the proposal path. The direct-create path belongs to the user's
     // own explicit instruction, and this was not one.
@@ -54,8 +39,17 @@ export default defineEval({
     t.notCalledTool("edit_general_action");
     t.notCalledTool("update_general_action_status");
     t.notCalledTool("accept_suggested_general_action");
+    t.notCalledTool("suggest_general_action");
+    t.notCalledTool("plan_suggested_general_actions");
+    t.notCalledTool("propose_asset_memories");
+    t.notCalledTool("propose_suggested_memory");
+    t.notCalledTool("capture_memory");
+    t.notCalledTool("capture_saved_item");
+    t.notCalledTool("capture_source_record");
+    t.notCalledTool("create_followup");
+    t.notCalledTool("propose_followup");
     // Offered for review — and asserted as the *absence* of the failure, because the
-    // prompt says "propose any reminders" and every review word is therefore a word Eve
+    // prompt asks to propose the warranty reminder and every review word is therefore a word Eve
     // can hand straight back. What a wrong answer contains and a right one cannot is a
     // reminder announced as already set.
     t.check(
@@ -73,3 +67,50 @@ export default defineEval({
     t.check(t.reply, includes(NO_RAW_IDS));
   },
 });
+
+function groundedPendingAssetProposal(events: readonly unknown[]): boolean {
+  const search = toolOutputs(events, "search_assets").find(isRecord);
+  const proposal = toolOutputs(events, "propose_asset_actions").find(isRecord);
+  if (!search || !proposal) return false;
+
+  const warranty = arrayValue(search, "results").find(
+    (entry) =>
+      isRecord(entry) &&
+      entry.recordKind === "asset_memory" &&
+      entry.assetName === "Kitchen refrigerator" &&
+      /warranty/i.test(String(entry.label)) &&
+      entry.trustLevel === "asset_fact",
+  );
+  const pending = arrayValue(proposal, "pending");
+  const assetId = nestedString(proposal, "asset", "id");
+  if (!isRecord(warranty) || assetId === null || warranty.assetId !== assetId) return false;
+
+  return pending.some((entry) => {
+    if (!isRecord(entry)) return false;
+    const action = entry.action;
+    return (
+      entry.assetMemoryId === warranty.recordId &&
+      isRecord(action) &&
+      action.status === "suggested" &&
+      !("reminderSchedule" in action) &&
+      !("schedule" in action)
+    );
+  });
+}
+
+function arrayValue(value: Record<string, unknown>, key: string): unknown[] {
+  return Array.isArray(value[key]) ? value[key] : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function nestedString(value: Record<string, unknown>, ...path: string[]): string | null {
+  let current: unknown = value;
+  for (const key of path) {
+    if (!isRecord(current)) return null;
+    current = current[key];
+  }
+  return typeof current === "string" ? current : null;
+}
