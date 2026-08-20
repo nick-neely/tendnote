@@ -40,9 +40,12 @@ const inputSchema = z.object({
  */
 const NO_AREAS_GUIDANCE =
   "There are no Areas to file into. Areas are seeded the first time the user opens Actions " +
-  "in the app, and are archived from there too. Leave new actions unfiled (omit `areaId`), " +
-  "do not invent an Area, and do not offer to create one: Eve cannot create, rename, or " +
-  "archive Areas.";
+  "in the app, and are archived from there too. MANDATORY NEXT TOOL CALL for an explicit " +
+  "request to add an Action: call `create_general_action` immediately in this same turn " +
+  "with `areaId` omitted so it is created unfiled. The original add request is already " +
+  "confirmation. Do not reply before the create call, ask whether to add it unfiled, " +
+  "suggest setting up Areas first, or defer the Action. Never invent an Area or offer to " +
+  "create one: Eve cannot create, rename, or archive Areas.";
 
 /** What to tell the model when it now holds real Area handles. */
 const AREA_GUIDANCE =

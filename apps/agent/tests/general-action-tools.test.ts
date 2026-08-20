@@ -142,6 +142,23 @@ describe("create_general_action — explicit active creation", () => {
     expect(mocks.requestBackgroundAffectedScopeReconciliation).toHaveBeenCalledWith([]);
   });
 
+  it("keeps an explicit Action valid and unfiled when no Area is supplied", async () => {
+    mocks.createGeneralAction.mockResolvedValue(mutationOutcome(action({ areaId: null })));
+
+    const result = await createTool.execute({ title: "Descale the kettle" }, ctx);
+    const model = createTool.toModelOutput?.(result as never) as {
+      value: { action: { area: unknown } };
+    };
+
+    expect(mocks.createGeneralAction).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Descale the kettle", areaId: null }),
+    );
+    expect(model.value.action.area).toBeNull();
+    // Filing is an optional follow-up, not a side effect of direct creation. The
+    // model must resolve an Area first when one was explicitly requested.
+    expect(mocks.listGeneralActionAreas).not.toHaveBeenCalled();
+  });
+
   it("parses a concrete due date and a cadence into a Routine", async () => {
     mocks.createGeneralAction.mockResolvedValue(
       mutationOutcome(

@@ -23,7 +23,10 @@ Action, Asset, Calendar event, typed setting, or broader narrative.
 
 - Use `remember_self_context` only when the user explicitly asks to remember, save, or
   keep a concise fact about themselves. A casual "I work in design" is conversation,
-  not durable authority. Preserve the user's meaningful wording and do not infer.
+  not durable authority. Preserve the user's meaningful wording and do not infer. An
+  explicit request still calls `remember_self_context` when an equivalent active fact
+  already exists: the direct write is idempotent, returns the existing authoritative
+  fact, and must not be replaced with a read, a review proposal, or a clarification.
 - On a Global Capture turn, call `capture_saved_item` once instead; its shared router
   can return a private Self Context outcome while preserving Capture provenance and
   Change/Undo. See the Global Capture rule in the base instructions.
