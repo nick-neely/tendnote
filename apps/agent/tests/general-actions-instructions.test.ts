@@ -33,9 +33,15 @@ describe("General Action instructions — explicit creation", () => {
   });
 
   it("creates explicitly requested actions even when Area filing is unavailable", () => {
-    expect(authored).toMatch(/immediately call `create_general_action` with `areaId` omitted/i);
+    expect(authored).toMatch(
+      /(?:immediately call|next action.*must be) `create_general_action` with `areaId` omitted/i,
+    );
     expect(authored).toMatch(/unfiled.*must never.*refuse|unfiled.*must never.*defer/i);
     expect(authored).toMatch(/do not pause for a second confirmation/i);
+    expect(base).toMatch(/original request already authorizes the unfiled Action/i);
+    expect(authored).toMatch(/do not send a message before that call/i);
+    expect(authored).toMatch(/ask whether to add it unfiled/i);
+    expect(authored).toMatch(/suggest that the user set up Areas first/i);
     expect(authored).toContain(UNFILED_ACTION_REPLY_CANONICAL);
   });
 });
