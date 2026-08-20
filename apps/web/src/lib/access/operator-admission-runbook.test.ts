@@ -96,14 +96,14 @@ describe("operator-owned self-hosted admission proof", () => {
     const ownerResolver = createPrivateBetaAccessResolver(admission);
     const firstVisits = await Promise.all([
       ...Array.from({ length: 8 }, () =>
-        ownerResolver.resolveAccess({ userId: OWNER.id, email: OWNER.email }),
-      ),
-      ...Array.from({ length: 8 }, () =>
         ownerResolver.resolveAccess({ userId: UNRELATED.id, email: UNRELATED.email }),
       ),
+      ...Array.from({ length: 8 }, () =>
+        ownerResolver.resolveAccess({ userId: OWNER.id, email: OWNER.email }),
+      ),
     ]);
-    const ownerDecisions = firstVisits.slice(0, 8);
-    const unrelatedDecisions = firstVisits.slice(8);
+    const unrelatedDecisions = firstVisits.slice(0, 8);
+    const ownerDecisions = firstVisits.slice(8);
     expect(ownerDecisions.every((decision) => decision.admitted)).toBe(true);
     expect(unrelatedDecisions.every((decision) => !decision.admitted)).toBe(true);
     expect(unrelatedDecisions.every((decision) => decision.status === "pending")).toBe(true);
