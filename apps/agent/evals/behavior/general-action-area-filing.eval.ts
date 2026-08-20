@@ -1,12 +1,16 @@
 import { defineEval } from "eve/evals";
-import { includes } from "eve/evals/expect";
+import { satisfies } from "eve/evals/expect";
 import { UNFILED_ACTION_REPLY_CANONICAL } from "../../agent/lib/response-contracts";
 import { toolOutputs } from "../expectations";
 
 const CANONICAL_UNFILED_ACTION_REPLY = new RegExp(
-  `^${UNFILED_ACTION_REPLY_CANONICAL.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}$`,
+  `^${UNFILED_ACTION_REPLY_CANONICAL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
   "i",
 );
+
+export function isUnfiledActionReplyCanonical(reply: string) {
+  return CANONICAL_UNFILED_ACTION_REPLY.test(reply.trim());
+}
 
 /**
  * `areaId` was fillable by four tools and produceable by none, until
@@ -65,6 +69,12 @@ export default defineEval({
     t.notCalledTool("plan_suggested_general_actions");
     // The structured result proves the state; this anchored confirmation prevents
     // an extra sentence from claiming that the Action was filed after all.
-    t.check(t.reply, includes(CANONICAL_UNFILED_ACTION_REPLY));
+    t.check(
+      t.reply,
+      satisfies(
+        (reply) => typeof reply === "string" && isUnfiledActionReplyCanonical(reply),
+        "the unfiled Action reply matches the canonical no-Area contract",
+      ),
+    );
   },
 });

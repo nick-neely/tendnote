@@ -10,7 +10,7 @@ import { DRAFT_REVISION_REPLY_CANONICAL } from "../../agent/lib/response-contrac
 export type EditableDraftStatus = "draft" | "approved";
 
 function anchoredCaseInsensitive(expected: string) {
-  return new RegExp(`^${expected.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}$`, "i");
+  return new RegExp(`^${expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
 }
 
 const CANONICAL_CONFIRMATIONS: Record<EditableDraftStatus, RegExp> = {

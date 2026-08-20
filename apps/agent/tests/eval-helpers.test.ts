@@ -1,6 +1,7 @@
 import type { AssertionHandle, EveEvalAssertions } from "eve/evals";
 import { describe, expect, it } from "vitest";
 import { isDraftRevisionReplyCanonical } from "../evals/behavior/draft-revision-assertions";
+import { isUnfiledActionReplyCanonical } from "../evals/behavior/general-action-area-filing.eval";
 import { toolOutputs } from "../evals/expectations";
 import {
   firstSubagentIndex,
@@ -158,6 +159,30 @@ describe("draft revision reply contract", () => {
     ]) {
       expect(isDraftRevisionReplyCanonical(adversarialReply, "draft")).toBe(false);
     }
+  });
+
+  it("rejects punctuation substitutions that would match an unescaped terminal period", () => {
+    expect(
+      isDraftRevisionReplyCanonical(
+        "Updated the internal Tendnote draft; it remains an unapproved draft, nothing was approved, exported, or sent, and it is not an external or Gmail draft!",
+        "draft",
+      ),
+    ).toBe(false);
+    expect(
+      isDraftRevisionReplyCanonical(
+        "Updated the internal Tendnote draft; it remains an unapproved draft, nothing was approved, exported, or sent, and it is not an external or Gmail draftX",
+        "draft",
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects punctuation substitutions for the unfiled Action contract", () => {
+    expect(isUnfiledActionReplyCanonical("Added the Action unfiled; no Area was assigned!")).toBe(
+      false,
+    );
+    expect(isUnfiledActionReplyCanonical("Added the Action unfiled; no Area was assignedX")).toBe(
+      false,
+    );
   });
 });
 
