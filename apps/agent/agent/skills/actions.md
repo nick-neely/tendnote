@@ -56,9 +56,10 @@ construct or guess one**.
   The Action is still created and remains unfiled; filing is optional and must never
   become a reason to refuse or defer an otherwise explicit creation request.
 - When an explicit Area request finds no matching Area and `create_general_action`
-  returns an open Action with `areaId: null`, reply with exactly this one line:
-  `Added the Action unfiled; no Area was assigned.` Do not add a filing claim, an
-  Area name, or any other sentence.
+  returns an open Action with `areaId: null`, lead with this confirmation:
+  `Added the Action unfiled; no Area was assigned.` You may add one short, truthful
+  sentence explaining that Areas are set up in the Actions surface. Never claim the
+  Action was filed, assigned to an Area, or that Eve created or can create an Area.
 - Say an Area by its **name**. `list_general_actions` returns each action's Area name
   too; reuse its id only to re-file the action when the user asks.
 

@@ -1,7 +1,7 @@
 import type { AssertionHandle, EveEvalAssertions } from "eve/evals";
 import { describe, expect, it } from "vitest";
 import { isDraftRevisionReplyCanonical } from "../evals/behavior/draft-revision-assertions";
-import { isUnfiledActionReplyCanonical } from "../evals/behavior/general-action-area-filing.eval";
+import { isUnfiledActionReplyTruthful } from "../evals/behavior/general-action-area-filing.eval";
 import { toolOutputs } from "../evals/expectations";
 import {
   firstSubagentIndex,
@@ -176,13 +176,25 @@ describe("draft revision reply contract", () => {
     ).toBe(false);
   });
 
-  it("rejects punctuation substitutions for the unfiled Action contract", () => {
-    expect(isUnfiledActionReplyCanonical("Added the Action unfiled; no Area was assigned!")).toBe(
-      false,
-    );
-    expect(isUnfiledActionReplyCanonical("Added the Action unfiled; no Area was assignedX")).toBe(
-      false,
-    );
+  it("accepts truthful unfiled Action guidance after the required confirmation", () => {
+    expect(
+      isUnfiledActionReplyTruthful(
+        "Added the action unfiled; no Area was assigned. Once you open Actions in the app and set up your Home area, you can file it there.",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects filing claims and offers to create an Area", () => {
+    for (const contradictoryReply of [
+      "Added the Action unfiled; no Area was assigned. I filed it under Home.",
+      "Added the Action unfiled; no Area was assigned. The action was assigned to Home.",
+      "Added the Action unfiled; no Area was assigned. Saved it under Home.",
+      "Added the Action unfiled; no Area was assigned. Put it in your Home area.",
+      "Added the Action unfiled; no Area was assigned. Placed it under Home.",
+      "Added the Action unfiled; no Area was assigned. I can create a new Area.",
+    ]) {
+      expect(isUnfiledActionReplyTruthful(contradictoryReply)).toBe(false);
+    }
   });
 });
 

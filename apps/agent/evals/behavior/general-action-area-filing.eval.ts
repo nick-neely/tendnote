@@ -3,13 +3,23 @@ import { satisfies } from "eve/evals/expect";
 import { UNFILED_ACTION_REPLY_CANONICAL } from "../../agent/lib/response-contracts";
 import { toolOutputs } from "../expectations";
 
-const CANONICAL_UNFILED_ACTION_REPLY = new RegExp(
-  `^${UNFILED_ACTION_REPLY_CANONICAL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+const UNFILED_ACTION_CONFIRMATION = new RegExp(
+  `^${UNFILED_ACTION_REPLY_CANONICAL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
   "i",
 );
+const FALSE_FILING_CLAIMS = [
+  /\b(?:added|saved|put|placed|filed)(?:\s+it|\s+the action)?\s+(?:under|in|into)\s+(?:your\s+)?(?:home|an?\s+area)\b/i,
+  /\b(?:it|the action)\s+(?:is|was|has been)\s+(?:assigned|filed)\s+(?:to|under|in)\b/i,
+  /\b(?:i(?:'|’)ve|i have)\s+(?:assigned|filed)\s+(?:it|the action)\b/i,
+  /\b(?:i(?:'|’)ll|i will|i can|let me)\s+(?:create|add|make)\s+(?:a|an|the)\s+(?:new\s+)?area\b/i,
+];
 
-export function isUnfiledActionReplyCanonical(reply: string) {
-  return CANONICAL_UNFILED_ACTION_REPLY.test(reply.trim());
+export function isUnfiledActionReplyTruthful(reply: string) {
+  const normalized = reply.trim();
+  return (
+    UNFILED_ACTION_CONFIRMATION.test(normalized) &&
+    FALSE_FILING_CLAIMS.every((claim) => !claim.test(normalized))
+  );
 }
 
 /**
@@ -72,8 +82,8 @@ export default defineEval({
     t.check(
       t.reply,
       satisfies(
-        (reply) => typeof reply === "string" && isUnfiledActionReplyCanonical(reply),
-        "the unfiled Action reply matches the canonical no-Area contract",
+        (reply) => typeof reply === "string" && isUnfiledActionReplyTruthful(reply),
+        "the reply truthfully confirms the Action remained unfiled",
       ),
     );
   },
