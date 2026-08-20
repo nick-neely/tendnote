@@ -328,6 +328,7 @@ export function buildOwnerDataExportArchive(input: {
       "Import is not included in this release.",
       "A future Household Workspace export requires separate authorization.",
       "Restricted records are labelled in their own resource metadata.",
+      "Reconnect provider integrations after moving this data to another deployment.",
     ],
   };
   const entries: ArchiveEntry[] = [
