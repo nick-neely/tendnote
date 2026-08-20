@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { generateOwnerDataExportArchive } from "./generator";
 import type { OwnerDataExportRelationshipContext } from "./relationship-context";
+import { readStoredZipEntries } from "./test-utils";
 
 const ACCOUNT = {
   id: "owner-1",
@@ -317,24 +318,6 @@ function relationshipContext(): OwnerDataExportRelationshipContext {
   Object.assign(first(context.people), { searchVector: "PEOPLE_SEARCH_VECTOR_SENTINEL" });
   Object.assign(first(context.memories), { searchVector: "MEMORIES_SEARCH_VECTOR_SENTINEL" });
   return context;
-}
-
-function readStoredZipEntries(bytes: Uint8Array) {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const decoder = new TextDecoder();
-  const entries = new Map<string, string>();
-  let offset = 0;
-  while (offset + 4 <= bytes.byteLength && view.getUint32(offset, true) === 0x04034b50) {
-    const nameLength = view.getUint16(offset + 26, true);
-    const extraLength = view.getUint16(offset + 28, true);
-    const compressedSize = view.getUint32(offset + 18, true);
-    const nameStart = offset + 30;
-    const contentStart = nameStart + nameLength + extraLength;
-    const name = decoder.decode(bytes.slice(nameStart, contentStart - extraLength));
-    entries.set(name, decoder.decode(bytes.slice(contentStart, contentStart + compressedSize)));
-    offset = contentStart + compressedSize;
-  }
-  return entries;
 }
 
 function resource(entries: Map<string, string>, path: string) {
