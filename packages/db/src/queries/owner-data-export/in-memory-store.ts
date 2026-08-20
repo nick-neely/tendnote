@@ -29,6 +29,7 @@ function createJob(input: EnqueueOwnerDataExportJobInput): OwnerDataExportJob {
       input.idempotencyKey ?? `owner-data-export:${input.ownerUserId}:${randomUUID()}`,
     runAfter: now,
     claimedAt: null,
+    claimToken: null,
     completedAt: null,
     artifactExpiresAt: null,
     createdAt: now,
@@ -67,6 +68,7 @@ export function createInMemoryOwnerDataExportJobStore(): OwnerDataExportJobStore
       status: "running",
       attempts: job.attempts + 1,
       claimedAt: now,
+      claimToken: randomUUID(),
       lastError: null,
     });
   }
@@ -118,40 +120,56 @@ export function createInMemoryOwnerDataExportJobStore(): OwnerDataExportJobStore
     },
     async markCompleted(input) {
       const job = jobs.get(input.jobId);
-      if (!job) throw new Error("Owner data export job not found.");
+      if (job?.status !== "running" || job.claimToken !== input.expectedClaimToken) {
+        return null;
+      }
       return update(job, {
         status: "completed",
         completedAt: input.completedAt ?? new Date(),
         artifactExpiresAt: input.artifactExpiresAt,
         claimedAt: null,
+        claimToken: null,
         lastError: null,
       });
     },
     async markFailed(input) {
       const job = jobs.get(input.jobId);
-      if (!job) throw new Error("Owner data export job not found.");
+      if (job?.status !== "running" || job.claimToken !== input.expectedClaimToken) {
+        return null;
+      }
       return update(job, {
         status: "failed",
         lastError: scrubError(input.error),
         runAfter: input.runAfter,
         claimedAt: null,
+        claimToken: null,
       });
     },
     async markExpired(input) {
       const job = jobs.get(input.jobId);
       if (!job) return null;
       const now = input.now ?? new Date();
-      if (job.status !== "completed" || !job.artifactExpiresAt || job.artifactExpiresAt > now) {
-        return cloneJob(job);
+      if (
+        (job.status !== "completed" && job.status !== "expired") ||
+        !job.artifactExpiresAt ||
+        job.artifactExpiresAt > now
+      ) {
+        return null;
       }
-      return update(job, { status: "expired", artifactExpiresAt: null });
+      if (job.status === "expired") return cloneJob(job);
+      return update(job, { status: "expired" });
+    },
+    async markArtifactDeleted(input) {
+      const job = jobs.get(input.jobId);
+      if (job?.status !== "expired") return null;
+      return update(job, { artifactExpiresAt: null });
     },
     async listExpired(input) {
       const now = input.now ?? new Date();
       return [...jobs.values()]
         .filter(
           (job) =>
-            job.status === "completed" &&
+            (job.status === "completed" || job.status === "expired") &&
             job.artifactExpiresAt !== null &&
             job.artifactExpiresAt <= now,
         )

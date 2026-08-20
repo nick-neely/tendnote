@@ -18,6 +18,7 @@ CREATE TABLE "owner_data_export_jobs" (
 	"idempotency_key" text NOT NULL,
 	"run_after" timestamp with time zone DEFAULT now() NOT NULL,
 	"claimed_at" timestamp with time zone,
+	"claim_token" uuid,
 	"completed_at" timestamp with time zone,
 	"artifact_expires_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,

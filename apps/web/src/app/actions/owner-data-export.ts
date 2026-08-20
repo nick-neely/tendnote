@@ -3,6 +3,7 @@
 import {
   getLatestOwnerDataExportJob,
   type OwnerDataExportJob,
+  ownerDataExportRequestIdempotencyKey,
 } from "@tendnote/db/queries/owner-data-export";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -23,7 +24,10 @@ export async function requestOwnerDataExportAction(): Promise<
         return latest;
       }
 
-      const enqueueResult = await enqueueAndPublishOwnerDataExportJob({ ownerUserId });
+      const enqueueResult = await enqueueAndPublishOwnerDataExportJob({
+        ownerUserId,
+        idempotencyKey: ownerDataExportRequestIdempotencyKey(latest),
+      });
       return enqueueResult.job;
     },
     affectedScopes: (_job, ownerUserId) => [

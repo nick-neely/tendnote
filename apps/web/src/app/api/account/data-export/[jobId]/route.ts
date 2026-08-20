@@ -24,14 +24,30 @@ export async function GET(_request: Request, context: { params: Promise<{ jobId:
     return NextResponse.json(OPAQUE_NOT_FOUND, { status: 404 });
   }
 
-  const artifact = await createDrizzleOwnerDataExportArtifactStore().get({
+  const now = new Date();
+  const artifacts = createDrizzleOwnerDataExportArtifactStore();
+  if (job.artifactExpiresAt <= now) {
+    // Keep the response opaque, but durably expose failed deletion to the
+    // recovery sweep: markExpired retains artifactExpiresAt until bytes are
+    // physically gone.
+    await jobs.markExpired({ jobId, now }).catch(() => undefined);
+    try {
+      await artifacts.delete({ jobId });
+      await jobs.markArtifactDeleted({ jobId, now });
+    } catch {
+      // The retained expiry cursor makes this retryable by cron recovery.
+    }
+    return NextResponse.json(OPAQUE_NOT_FOUND, { status: 404 });
+  }
+
+  const artifact = await artifacts.get({
     jobId,
     ownerUserId,
+    now,
   });
   if (!artifact) {
-    // Best effort terminal transition. The response stays opaque if the
-    // artifact disappeared between the job and object-store reads.
-    await jobs.markExpired({ jobId }).catch(() => undefined);
+    // A pre-expiry miss may be a transient completion/object-store race. It
+    // stays opaque without destroying the job's recoverable expiry cursor.
     return NextResponse.json(OPAQUE_NOT_FOUND, { status: 404 });
   }
 

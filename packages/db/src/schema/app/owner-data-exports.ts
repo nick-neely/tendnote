@@ -31,6 +31,7 @@ export const ownerDataExportJobs = pgTable(
     idempotencyKey: text("idempotency_key").notNull(),
     runAfter: timestamp("run_after", { withTimezone: true }).notNull().defaultNow(),
     claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    claimToken: uuid("claim_token"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     artifactExpiresAt: timestamp("artifact_expires_at", { withTimezone: true }),
     ...timestamps,

@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, lte, or, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import { ownerDataExportArtifacts, ownerDataExportJobs } from "../../schema";
 import type {
@@ -19,7 +20,7 @@ export function createDrizzleOwnerDataExportJobStore(): OwnerDataExportJobStore 
     async enqueue(input: EnqueueOwnerDataExportJobInput) {
       const now = input.now ?? new Date();
       const idempotencyKey =
-        input.idempotencyKey ?? `owner-data-export:${input.ownerUserId}:${crypto.randomUUID()}`;
+        input.idempotencyKey ?? `owner-data-export:${input.ownerUserId}:${randomUUID()}`;
       const [created] = await getDb()
         .insert(ownerDataExportJobs)
         .values({ ownerUserId: input.ownerUserId, idempotencyKey, runAfter: now })
@@ -71,6 +72,7 @@ export function createDrizzleOwnerDataExportJobStore(): OwnerDataExportJobStore 
           status: "running",
           attempts: sql`${ownerDataExportJobs.attempts} + 1`,
           claimedAt: now,
+          claimToken: randomUUID(),
           lastError: null,
           updatedAt: now,
         })
@@ -130,13 +132,19 @@ export function createDrizzleOwnerDataExportJobStore(): OwnerDataExportJobStore 
           completedAt,
           artifactExpiresAt: input.artifactExpiresAt,
           claimedAt: null,
+          claimToken: null,
           lastError: null,
           updatedAt: completedAt,
         })
-        .where(eq(ownerDataExportJobs.id, input.jobId))
+        .where(
+          and(
+            eq(ownerDataExportJobs.id, input.jobId),
+            eq(ownerDataExportJobs.status, "running"),
+            eq(ownerDataExportJobs.claimToken, input.expectedClaimToken),
+          ),
+        )
         .returning();
-      if (!job) throw new Error("Owner data export job not found.");
-      return job;
+      return job ?? null;
     },
     async markFailed(input) {
       const [job] = await getDb()
@@ -146,24 +154,42 @@ export function createDrizzleOwnerDataExportJobStore(): OwnerDataExportJobStore 
           lastError: scrubError(input.error),
           runAfter: input.runAfter,
           claimedAt: null,
+          claimToken: null,
           updatedAt: new Date(),
         })
-        .where(eq(ownerDataExportJobs.id, input.jobId))
+        .where(
+          and(
+            eq(ownerDataExportJobs.id, input.jobId),
+            eq(ownerDataExportJobs.status, "running"),
+            eq(ownerDataExportJobs.claimToken, input.expectedClaimToken),
+          ),
+        )
         .returning();
-      if (!job) throw new Error("Owner data export job not found.");
-      return job;
+      return job ?? null;
     },
     async markExpired(input) {
       const now = input.now ?? new Date();
       const [job] = await getDb()
         .update(ownerDataExportJobs)
-        .set({ status: "expired", artifactExpiresAt: null, updatedAt: now })
+        // Retain the expiry cursor so a failed byte deletion stays recoverable.
+        .set({ status: "expired", updatedAt: now })
         .where(
           and(
             eq(ownerDataExportJobs.id, input.jobId),
-            eq(ownerDataExportJobs.status, "completed"),
+            inArray(ownerDataExportJobs.status, ["completed", "expired"]),
             lte(ownerDataExportJobs.artifactExpiresAt, now),
           ),
+        )
+        .returning();
+      return job ?? null;
+    },
+    async markArtifactDeleted(input) {
+      const now = input.now ?? new Date();
+      const [job] = await getDb()
+        .update(ownerDataExportJobs)
+        .set({ artifactExpiresAt: null, updatedAt: now })
+        .where(
+          and(eq(ownerDataExportJobs.id, input.jobId), eq(ownerDataExportJobs.status, "expired")),
         )
         .returning();
       return job ?? null;
@@ -175,7 +201,7 @@ export function createDrizzleOwnerDataExportJobStore(): OwnerDataExportJobStore 
         .from(ownerDataExportJobs)
         .where(
           and(
-            eq(ownerDataExportJobs.status, "completed"),
+            inArray(ownerDataExportJobs.status, ["completed", "expired"]),
             lte(ownerDataExportJobs.artifactExpiresAt, now),
           ),
         )

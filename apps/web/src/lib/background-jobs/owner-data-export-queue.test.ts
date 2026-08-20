@@ -17,6 +17,7 @@ const exportJob = {
   idempotencyKey: "owner-export:1",
   runAfter: new Date("2026-08-19T12:00:00.000Z"),
   claimedAt: null,
+  claimToken: null,
   completedAt: null,
   artifactExpiresAt: null,
   createdAt: new Date("2026-08-19T12:00:00.000Z"),
@@ -72,7 +73,9 @@ describe("owner data export queue delivery", () => {
         processResult: null,
       }),
     });
-    const claimJob = vi.fn().mockResolvedValue({ status: "running" as const });
+    const claimJob = vi
+      .fn()
+      .mockResolvedValue({ status: "running" as const, claimToken: "claim-1" });
     const getJob = vi.fn().mockResolvedValue({ status: "running" as const });
     const processJob = vi.fn().mockResolvedValue({ outcome: "failed", error: "temporary" });
 
@@ -91,7 +94,11 @@ describe("owner data export queue delivery", () => {
     ).rejects.toThrow("temporary");
 
     expect(claimJob).toHaveBeenCalledWith({ jobId: exportJob.id, now: undefined });
-    expect(processJob).toHaveBeenCalledWith({ jobId: exportJob.id, claim: false });
+    expect(processJob).toHaveBeenCalledWith({
+      jobId: exportJob.id,
+      claim: false,
+      claimToken: "claim-1",
+    });
   });
 
   it("keeps the queue trigger and callback bounded", () => {

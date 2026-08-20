@@ -6,6 +6,17 @@ import type {
 
 export const OWNER_DATA_EXPORT_SCHEMA_VERSION = "1.0" as const;
 export const OWNER_DATA_EXPORT_RETENTION_MS = 24 * 60 * 60 * 1000;
+export const OWNER_DATA_EXPORT_MAX_ARCHIVE_ENTRIES = 1024;
+export const OWNER_DATA_EXPORT_MAX_ENTRY_BYTES = 64 * 1024 * 1024;
+export const OWNER_DATA_EXPORT_MAX_TOTAL_ENTRY_BYTES = 256 * 1024 * 1024;
+export const OWNER_DATA_EXPORT_MAX_PATH_BYTES = 1024;
+
+const FOUNDATION_ENTRY_PATHS = [
+  "manifest.json",
+  "resources/account/profile-v1.json",
+  "inventory.txt",
+] as const;
+const FOUNDATION_RESOURCE_PATHS = ["resources/account/profile-v1.json"] as const;
 
 const INCLUDED_FAMILIES = ["account profile"] as const;
 const EXCLUSIONS = [
@@ -25,6 +36,102 @@ type ArchiveEntry = {
   bytes: Uint8Array;
   resource?: OwnerDataExportResource;
 };
+
+function validateArchivePath(path: string, label: string) {
+  const pathBytes = new TextEncoder().encode(path).byteLength;
+  const segments = path.split("/");
+  if (
+    !path ||
+    pathBytes > OWNER_DATA_EXPORT_MAX_PATH_BYTES ||
+    path.startsWith("/") ||
+    /^[a-zA-Z]:/.test(path) ||
+    path.includes("\\") ||
+    path.includes("\0") ||
+    segments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    throw new Error(`${label} must be a canonical relative ZIP path.`);
+  }
+}
+
+function validateUniquePaths(paths: string[], reserved: readonly string[], label: string) {
+  const seen = new Set(reserved);
+  for (const path of paths) {
+    validateArchivePath(path, label);
+    if (seen.has(path)) throw new Error(`${label} duplicates ${path}.`);
+    seen.add(path);
+  }
+}
+
+function validateExtensionInputs(input: {
+  entries: ArchiveEntry[];
+  resources: OwnerDataExportResource[];
+}) {
+  if (
+    FOUNDATION_ENTRY_PATHS.length + input.entries.length >
+    OWNER_DATA_EXPORT_MAX_ARCHIVE_ENTRIES
+  ) {
+    throw new Error("Owner data export archive has too many entries.");
+  }
+  if (
+    FOUNDATION_RESOURCE_PATHS.length + input.resources.length >
+    OWNER_DATA_EXPORT_MAX_ARCHIVE_ENTRIES
+  ) {
+    throw new Error("Owner data export manifest has too many resources.");
+  }
+
+  validateUniquePaths(
+    input.entries.map((entry) => entry.path),
+    FOUNDATION_ENTRY_PATHS,
+    "Owner data export entry path",
+  );
+  validateUniquePaths(
+    input.resources.map((resource) => resource.path),
+    FOUNDATION_RESOURCE_PATHS,
+    "Owner data export resource path",
+  );
+
+  let totalBytes = 0;
+  for (const entry of input.entries) {
+    if (entry.bytes.byteLength > OWNER_DATA_EXPORT_MAX_ENTRY_BYTES) {
+      throw new Error(`Owner data export entry ${entry.path} exceeds the byte limit.`);
+    }
+    totalBytes += entry.bytes.byteLength;
+    if (totalBytes > OWNER_DATA_EXPORT_MAX_TOTAL_ENTRY_BYTES) {
+      throw new Error("Owner data export extension entries exceed the total byte limit.");
+    }
+  }
+}
+
+function validateMaterializedEntries(
+  entries: ArchiveEntry[],
+  resources: OwnerDataExportResource[],
+) {
+  if (entries.length > OWNER_DATA_EXPORT_MAX_ARCHIVE_ENTRIES) {
+    throw new Error("Owner data export archive has too many entries.");
+  }
+
+  const seen = new Set<string>();
+  let totalBytes = 0;
+  for (const entry of entries) {
+    validateArchivePath(entry.path, "Owner data export entry path");
+    if (seen.has(entry.path))
+      throw new Error(`Owner data export entry path duplicates ${entry.path}.`);
+    seen.add(entry.path);
+    if (entry.bytes.byteLength > OWNER_DATA_EXPORT_MAX_ENTRY_BYTES) {
+      throw new Error(`Owner data export entry ${entry.path} exceeds the byte limit.`);
+    }
+    totalBytes += entry.bytes.byteLength;
+    if (totalBytes > OWNER_DATA_EXPORT_MAX_TOTAL_ENTRY_BYTES) {
+      throw new Error("Owner data export archive exceeds the total byte limit.");
+    }
+  }
+
+  for (const resource of resources) {
+    if (!seen.has(resource.path)) {
+      throw new Error(`Owner data export resource ${resource.path} has no archive entry.`);
+    }
+  }
+}
 
 function utf8(value: string) {
   return new TextEncoder().encode(value);
@@ -179,6 +286,10 @@ export function buildOwnerDataExportArchive(input: {
   additionalResources?: OwnerDataExportResource[];
   additionalFamilies?: string[];
 }): OwnerDataExportArchive {
+  const additionalEntries = input.additionalEntries ?? [];
+  const additionalResources = input.additionalResources ?? [];
+  validateExtensionInputs({ entries: additionalEntries, resources: additionalResources });
+
   const resources: OwnerDataExportResource[] = [
     {
       path: "resources/account/profile-v1.json",
@@ -187,7 +298,7 @@ export function buildOwnerDataExportArchive(input: {
       recordCount: 1,
       sensitivity: "normal",
     },
-    ...(input.additionalResources ?? []),
+    ...additionalResources,
   ];
   const manifest: OwnerDataExportManifest = {
     format: "tendnote-owner-data-export",
@@ -221,8 +332,9 @@ export function buildOwnerDataExportArchive(input: {
       }),
     },
     { path: "inventory.txt", bytes: utf8(inventory(input.account, manifest)) },
-    ...(input.additionalEntries ?? []),
+    ...additionalEntries,
   ];
+  validateMaterializedEntries(entries, resources);
   return { bytes: zip(entries, input.now), manifest };
 }
 

@@ -11,7 +11,7 @@ import type {
 } from "./types";
 
 export type OwnerDataExportRuntimeMode = "enqueue_only" | "inline";
-export type OwnerDataExportProcessOutcome = "completed" | "failed";
+export type OwnerDataExportProcessOutcome = "completed" | "failed" | "not_claimable";
 
 export type EnqueueAndTriggerOwnerDataExportJobInput = EnqueueOwnerDataExportJobInput & {
   runtimeMode?: OwnerDataExportRuntimeMode;
@@ -58,6 +58,29 @@ function nowFor(deps: ProcessorDependencies) {
   return deps.now?.() ?? new Date();
 }
 
+async function notClaimableResult(
+  jobs: OwnerDataExportJobStore,
+  jobId: string,
+  fallback: OwnerDataExportProcessResult["job"],
+): Promise<OwnerDataExportProcessResult> {
+  return {
+    outcome: "not_claimable",
+    job: (await jobs.get({ jobId })) ?? fallback,
+    error: "Owner data export claim is no longer active.",
+  };
+}
+
+/**
+ * One explicit request generation is keyed by the latest terminal job it
+ * follows. Concurrent/retried calls observe the same predecessor and collide
+ * on the owner-scoped database unique index instead of creating two jobs.
+ */
+export function ownerDataExportRequestIdempotencyKey(
+  latest: Pick<NonNullable<OwnerDataExportProcessResult["job"]>, "id"> | null,
+) {
+  return `owner-data-export:request-after:${latest?.id ?? "initial"}`;
+}
+
 /**
  * Process one claimed owner export. The archive is written before the job is
  * marked complete; a duplicate/replayed queue message therefore sees a
@@ -91,17 +114,25 @@ export async function processOwnerDataExportJob(input: {
     return { outcome: "failed", job: current, error: "Owner data export artifact expired." };
   }
 
+  let claimed = current;
   if (input.claim !== false) {
-    const claimed = await deps.jobs.claim({ jobId: input.jobId, now });
-    if (!claimed) {
+    const acquired = await deps.jobs.claim({ jobId: input.jobId, now });
+    if (!acquired) {
       const latest = await deps.jobs.get({ jobId: input.jobId });
       if (latest?.status === "completed") return { outcome: "completed", job: latest };
-      return { outcome: "failed", job: latest, error: "Owner data export job is not claimable." };
+      return notClaimableResult(deps.jobs, input.jobId, latest);
     }
+    claimed = acquired;
+  } else if (
+    current.status !== "running" ||
+    !input.claimToken ||
+    current.claimToken !== input.claimToken
+  ) {
+    return notClaimableResult(deps.jobs, input.jobId, current);
   }
 
-  const claimed = await deps.jobs.get({ jobId: input.jobId });
-  if (!claimed) return { outcome: "failed", job: null, error: "Owner data export job not found." };
+  const claimToken = claimed.claimToken;
+  if (!claimToken) return notClaimableResult(deps.jobs, input.jobId, claimed);
 
   const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   try {
@@ -118,17 +149,21 @@ export async function processOwnerDataExportJob(input: {
     });
     const completed = await deps.jobs.markCompleted({
       jobId: claimed.id,
+      expectedClaimToken: claimToken,
       artifactExpiresAt: expiresAt,
       completedAt: now,
     });
+    if (!completed) return notClaimableResult(deps.jobs, claimed.id, claimed);
     return { outcome: "completed", job: completed };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const failed = await deps.jobs.markFailed({
       jobId: claimed.id,
+      expectedClaimToken: claimToken,
       error: message,
       runAfter: new Date(now.getTime() + OWNER_DATA_EXPORT_RETRY_DELAY_MS),
     });
+    if (!failed) return notClaimableResult(deps.jobs, claimed.id, claimed);
     return { outcome: "failed", job: failed, error: message };
   }
 }
@@ -169,16 +204,24 @@ export async function getOwnerDataExportJob(jobId: string) {
 
 export async function getLatestOwnerDataExportJob(ownerUserId: string) {
   const jobs = createDrizzleOwnerDataExportJobStore();
+  const artifacts = createDrizzleOwnerDataExportArtifactStore();
+  const now = new Date();
   const latest = await jobs.getLatestForOwner({ ownerUserId });
   if (
     latest?.status === "completed" &&
     latest.artifactExpiresAt &&
-    latest.artifactExpiresAt <= new Date()
+    latest.artifactExpiresAt <= now
   ) {
-    const expired = await jobs.markExpired({ jobId: latest.id });
+    const expired = await jobs.markExpired({ jobId: latest.id, now });
     if (expired) {
-      await createDrizzleOwnerDataExportArtifactStore().delete({ jobId: latest.id });
-      return expired;
+      // Clear the cleanup cursor only after physical deletion. Any failed
+      // phase is therefore retried by the bounded recovery pass.
+      try {
+        await artifacts.delete({ jobId: latest.id });
+        return (await jobs.markArtifactDeleted({ jobId: latest.id, now })) ?? expired;
+      } catch {
+        return expired;
+      }
     }
   }
   return latest;
@@ -199,8 +242,17 @@ export async function expireOwnerDataExportArtifacts(input: {
   const expired = await jobs.listExpired({ now: input.now, limit: input.limit });
   let marked = 0;
   for (const job of expired) {
+    if (job.status === "completed" && (await jobs.markExpired({ jobId: job.id, now: input.now }))) {
+      marked += 1;
+    }
+    // Delete after the durable terminal transition. Because the transition
+    // retains artifactExpiresAt, a failed delete remains visible next pass.
     await artifacts.delete({ jobId: job.id });
-    if (await jobs.markExpired({ jobId: job.id, now: input.now })) marked += 1;
+    await jobs.markArtifactDeleted({ jobId: job.id, now: input.now });
   }
-  return { scanned: expired.length, expired: marked };
+  const orphanedArtifacts = await artifacts.deleteExpired({
+    now: input.now,
+    limit: input.limit,
+  });
+  return { scanned: expired.length, expired: marked, orphanedArtifacts };
 }

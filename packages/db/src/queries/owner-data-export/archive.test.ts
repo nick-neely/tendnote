@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildOwnerDataExportArchive,
+  OWNER_DATA_EXPORT_MAX_ENTRY_BYTES,
+  OWNER_DATA_EXPORT_MAX_TOTAL_ENTRY_BYTES,
   OWNER_DATA_EXPORT_RETENTION_MS,
   OWNER_DATA_EXPORT_SCHEMA_VERSION,
 } from "./archive";
@@ -74,5 +76,82 @@ describe("owner data export archive foundation", () => {
     expect(result.manifest.resources).toHaveLength(2);
     expect(result.manifest.includedFamilies).toContain("People");
     expect(new TextDecoder().decode(result.bytes)).toContain("people-v1.json");
+  });
+
+  it.each([
+    "/absolute.json",
+    "../escape.json",
+    "resources/people/../../escape.json",
+    "C:/absolute.json",
+    "resources\\people\\people.json",
+  ])("rejects unsafe extension ZIP path %s", (path) => {
+    expect(() =>
+      buildOwnerDataExportArchive({
+        account,
+        now: new Date("2026-08-19T12:00:00.000Z"),
+        expiresAt: new Date("2026-08-20T12:00:00.000Z"),
+        additionalEntries: [{ path, bytes: new Uint8Array() }],
+      }),
+    ).toThrow("canonical relative ZIP path");
+  });
+
+  it("rejects duplicate entry and resource paths", () => {
+    const base = {
+      account,
+      now: new Date("2026-08-19T12:00:00.000Z"),
+      expiresAt: new Date("2026-08-20T12:00:00.000Z"),
+    };
+    expect(() =>
+      buildOwnerDataExportArchive({
+        ...base,
+        additionalEntries: [{ path: "manifest.json", bytes: new Uint8Array() }],
+      }),
+    ).toThrow("duplicates manifest.json");
+    expect(() =>
+      buildOwnerDataExportArchive({
+        ...base,
+        additionalResources: [
+          {
+            path: "resources/account/profile-v1.json",
+            schemaVersion: "1.0",
+            contentType: "application/json",
+          },
+        ],
+      }),
+    ).toThrow("duplicates resources/account/profile-v1.json");
+  });
+
+  it("rejects per-entry and aggregate extension byte excess before ZIP materialization", () => {
+    const base = {
+      account,
+      now: new Date("2026-08-19T12:00:00.000Z"),
+      expiresAt: new Date("2026-08-20T12:00:00.000Z"),
+    };
+    const maxEntry = new Uint8Array(OWNER_DATA_EXPORT_MAX_ENTRY_BYTES);
+    expect(() =>
+      buildOwnerDataExportArchive({
+        ...base,
+        additionalEntries: [
+          {
+            path: "resources/oversized.bin",
+            bytes: new Uint8Array(OWNER_DATA_EXPORT_MAX_ENTRY_BYTES + 1),
+          },
+        ],
+      }),
+    ).toThrow("exceeds the byte limit");
+
+    const aggregateEntries = Array.from(
+      { length: OWNER_DATA_EXPORT_MAX_TOTAL_ENTRY_BYTES / OWNER_DATA_EXPORT_MAX_ENTRY_BYTES },
+      (_, index) => ({ path: `resources/chunk-${index}.bin`, bytes: maxEntry }),
+    );
+    expect(() =>
+      buildOwnerDataExportArchive({
+        ...base,
+        additionalEntries: [
+          ...aggregateEntries,
+          { path: "resources/one-byte-too-many.bin", bytes: new Uint8Array([1]) },
+        ],
+      }),
+    ).toThrow("total byte limit");
   });
 });

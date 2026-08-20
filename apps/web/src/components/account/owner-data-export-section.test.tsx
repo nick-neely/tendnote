@@ -17,6 +17,7 @@ const baseJob = {
   idempotencyKey: "request-1",
   runAfter: new Date("2026-08-19T12:00:00.000Z"),
   claimedAt: null,
+  claimToken: null,
   completedAt: null,
   artifactExpiresAt: null,
   createdAt: new Date("2026-08-19T12:00:00.000Z"),

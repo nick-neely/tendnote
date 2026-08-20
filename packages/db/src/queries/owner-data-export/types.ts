@@ -9,6 +9,7 @@ export type OwnerDataExportJob = {
   idempotencyKey: string;
   runAfter: Date;
   claimedAt: Date | null;
+  claimToken: string | null;
   completedAt: Date | null;
   artifactExpiresAt: Date | null;
   createdAt: Date;
@@ -38,15 +39,18 @@ export type OwnerDataExportJobStore = {
   }) => Promise<OwnerDataExportJob | null>;
   markCompleted: (input: {
     jobId: string;
+    expectedClaimToken: string;
     artifactExpiresAt: Date;
     completedAt?: Date;
-  }) => Promise<OwnerDataExportJob>;
+  }) => Promise<OwnerDataExportJob | null>;
   markFailed: (input: {
     jobId: string;
+    expectedClaimToken: string;
     error: string;
     runAfter: Date;
-  }) => Promise<OwnerDataExportJob>;
+  }) => Promise<OwnerDataExportJob | null>;
   markExpired: (input: { jobId: string; now?: Date }) => Promise<OwnerDataExportJob | null>;
+  markArtifactDeleted: (input: { jobId: string; now?: Date }) => Promise<OwnerDataExportJob | null>;
   listExpired: (input: { now?: Date; limit: number }) => Promise<OwnerDataExportJob[]>;
 };
 
