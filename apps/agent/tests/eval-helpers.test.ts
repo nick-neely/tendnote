@@ -322,6 +322,7 @@ describe("draft revision reply contract", () => {
     "Descale the kettle appears in your action list without an Area.",
     "Done. The action is on your ledger now — you can file it under Home from the Actions surface once you set up your Areas there.",
     "Done! The action is on your list. Once you create a Home area, you can move it there.",
+    "Added the Action unfiled; no Home area exists yet to file into. Areas get set up the first time you open Actions in the app — you can create one there and I can re-file it once it exists.",
   ])("accepts truthful completed unfiled Action guidance: %s", (reply) => {
     expect(isUnfiledActionReplyTruthful(reply)).toBe(true);
   });
@@ -334,6 +335,9 @@ describe("draft revision reply contract", () => {
     "Added the Action unfiled; no Area was assigned. Placed it under Home.",
     "Added the Action unfiled; no Area was assigned. I can create a new Area.",
     "I can add Descale the kettle unfiled once you confirm.",
+    "I can create the Action unfiled once you confirm.",
+    "You can create the Action after you confirm.",
+    "You can save this action once you set up Home.",
     "I didn't add Descale the kettle; no Area was assigned.",
     'Done! I\'ve added "Descale the kettle" to your action list.',
     'Done! I\'ve added "Descale the kettle" under Home. Once you create another area, you can move it there.',

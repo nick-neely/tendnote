@@ -12,7 +12,9 @@ const FUTURE_AREA_CONDITION =
 const FILING_ACTION = /\b(?:move|file|put)\b/i;
 const PENDING_ACTION_WRITE = [
   /\?/,
-  /\b(?:can|could|will|would|ready to)\s+(?:still\s+)?(?:add|create|save)\b/i,
+  /\b(?:i(?:'|’)m\s+ready\s+to|i\s+(?:can|could|will|would))\s+(?:still\s+)?(?:add|create|save)\b/i,
+  /\byou\s+(?:can|could|will|would)\s+(?:still\s+)?(?:add|create|save)\s+(?:the|this|an?)\s+action\b/i,
+  /\bready\s+to\s+(?:add|create|save)\b[\s\S]{0,40}\b(?:action|unfiled)\b/i,
   /\b(?:will|would|can|could)\s+(?:appear|show up|sit)\s+(?:on|in)\b/i,
   /\b(?:once you confirm|if you want|if you(?:'|’)d like|waiting for|pending|not yet)\b/i,
   /\b(?:did(?:n(?:'|’)t| not)|could(?:n(?:'|’)t| not)|was(?:n(?:'|’)t| not)|haven(?:'|’)t|have not)\b[\s\S]{0,24}\b(?:add(?:ed)?|creat(?:e|ed)|sav(?:e|ed)|put)\b/i,
