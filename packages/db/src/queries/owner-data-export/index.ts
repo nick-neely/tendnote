@@ -1,5 +1,6 @@
 export * from "./actions-planning";
 export * from "./archive";
+export * from "./assets";
 export * from "./drizzle-store";
 export * from "./generator";
 export * from "./in-memory-store";
