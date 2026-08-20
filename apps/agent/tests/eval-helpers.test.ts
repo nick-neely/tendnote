@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import { isDraftRevisionReplyCanonical } from "../evals/behavior/draft-revision-assertions";
 import { isUnfiledActionReplyTruthful } from "../evals/behavior/general-action-area-filing.eval";
 import {
+  hasCapturePersonClarification,
   hasGroundedPendingAssetProposal,
   isNonEmptyUuidArray,
+  isPrivateOrOmitted,
   toolOutputs,
 } from "../evals/expectations";
 import {
@@ -207,6 +209,45 @@ describe("asset proposal reviewed-memory input", () => {
     expect(isNonEmptyUuidArray([])).toBe(false);
     expect(isNonEmptyUuidArray(["not-a-uuid"])).toBe(false);
     expect(isNonEmptyUuidArray([first, "not-a-uuid"])).toBe(false);
+  });
+});
+
+describe("Capture private-default evaluation contract", () => {
+  it("accepts an omitted or explicit private scope and rejects every widening", () => {
+    expect(isPrivateOrOmitted(undefined)).toBe(true);
+    expect(isPrivateOrOmitted("private")).toBe(true);
+    expect(isPrivateOrOmitted("household")).toBe(false);
+    expect(isPrivateOrOmitted("shared")).toBe(false);
+    expect(isPrivateOrOmitted("unknown")).toBe(false);
+    expect(isPrivateOrOmitted(null)).toBe(false);
+  });
+
+  it("recognizes only the owning Capture tool's Person clarification", () => {
+    const result = (toolName: string, output: unknown) => ({
+      type: "action.result",
+      data: { result: { toolName, output } },
+    });
+    expect(
+      hasCapturePersonClarification([
+        result("capture_saved_item", {
+          clarification: { field: "person", question: "Who did you mean by Priya?" },
+        }),
+      ]),
+    ).toBe(true);
+    expect(
+      hasCapturePersonClarification([
+        result("capture_saved_item", {
+          clarification: { field: "timing", question: "When?" },
+        }),
+      ]),
+    ).toBe(false);
+    expect(
+      hasCapturePersonClarification([
+        result("capture_memory", {
+          clarification: { field: "person", question: "Who?" },
+        }),
+      ]),
+    ).toBe(false);
   });
 });
 

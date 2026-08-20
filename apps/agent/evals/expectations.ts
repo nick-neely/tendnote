@@ -160,6 +160,23 @@ export function isNonEmptyUuidArray(value: unknown): boolean {
   );
 }
 
+/** Capture's private default may be implicit or explicit, but never widened. */
+export function isPrivateOrOmitted(value: unknown): boolean {
+  return value === undefined || value === "private";
+}
+
+/** Proves Capture kept an unresolved named Person inside its reviewable clarification path. */
+export function hasCapturePersonClarification(events: readonly unknown[]): boolean {
+  return toolOutputs(events, "capture_saved_item").some(
+    (output) =>
+      isRecord(output) &&
+      isRecord(output.clarification) &&
+      output.clarification.field === "person" &&
+      typeof output.clarification.question === "string" &&
+      output.clarification.question.length > 0,
+  );
+}
+
 /**
  * Proves an Asset Action proposal is grounded in the reviewed detail the read path
  * actually returned. Search can return the detail directly or first resolve the Asset
