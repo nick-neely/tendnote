@@ -83,6 +83,16 @@ change, or clear directly - the drafter has no view of it.
   external or Gmail draft, or a sent message; when the prior status was `approved`, say
   that the old approval no longer covers the changed wording. When you want genuinely
   fresh wording instead, that is `message_drafter`.
+
+  After `edit_draft_body`, use exactly the one-line confirmation that matches the
+  returned status, with no added sentence or contradictory clause:
+
+  - `draft`: `Updated the internal Tendnote draft; it remains an unapproved draft, nothing was approved, exported, or sent, and it is not an external or Gmail draft.`
+  - `approved`: `Updated the internal Tendnote draft; its prior approval no longer covers this wording, nothing was exported or sent, and it is not an external or Gmail draft.`
+
+  The `approved` wording is the only allowed prior-approval nuance. Do not combine
+  it with a claim that the changed wording is approved, ready to send, external, or
+  sent.
 - **`dismiss_draft`** only when the user explicitly says to throw one away ("scrap that
   one"). It is a Tendnote-only lifecycle change: nothing is sent, nothing external is
   touched, and the notes and memories the draft was grounded in are untouched. Never

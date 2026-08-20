@@ -1,3 +1,5 @@
+import { DRAFT_REVISION_REPLY_CANONICAL } from "../../agent/lib/response-contracts";
+
 /**
  * Canonical confirmations for the text-only draft edit seam.
  *
@@ -7,11 +9,13 @@
  */
 export type EditableDraftStatus = "draft" | "approved";
 
+function anchoredCaseInsensitive(expected: string) {
+  return new RegExp(`^${expected.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}$`, "i");
+}
+
 const CANONICAL_CONFIRMATIONS: Record<EditableDraftStatus, RegExp> = {
-  draft:
-    /^Updated the internal Tendnote draft; it remains an unapproved draft, nothing was approved, exported, or sent, and it is not an external or Gmail draft\.$/i,
-  approved:
-    /^Updated the internal Tendnote draft; its prior approval no longer covers this wording, nothing was exported or sent, and it is not an external or Gmail draft\.$/i,
+  draft: anchoredCaseInsensitive(DRAFT_REVISION_REPLY_CANONICAL.draft),
+  approved: anchoredCaseInsensitive(DRAFT_REVISION_REPLY_CANONICAL.approved),
 };
 
 /** True only for the canonical confirmation matching the tool's returned status. */

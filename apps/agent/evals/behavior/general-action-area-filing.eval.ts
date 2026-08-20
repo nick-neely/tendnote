@@ -1,8 +1,12 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
+import { UNFILED_ACTION_REPLY_CANONICAL } from "../../agent/lib/response-contracts";
 import { toolOutputs } from "../expectations";
 
-const CANONICAL_UNFILED_ACTION_REPLY = /^Added the Action unfiled; no Area was assigned\.$/i;
+const CANONICAL_UNFILED_ACTION_REPLY = new RegExp(
+  `^${UNFILED_ACTION_REPLY_CANONICAL.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}$`,
+  "i",
+);
 
 /**
  * `areaId` was fillable by four tools and produceable by none, until

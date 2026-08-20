@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { UNFILED_ACTION_REPLY_CANONICAL } from "../agent/lib/response-contracts";
 import { authoredInstructions, baseInstructions } from "./instructions-source";
 
 // The whole authored surface (base.md + every skill), so a rule that lives in the
@@ -35,6 +36,7 @@ describe("General Action instructions — explicit creation", () => {
     expect(authored).toMatch(/immediately call `create_general_action` with `areaId` omitted/i);
     expect(authored).toMatch(/unfiled.*must never.*refuse|unfiled.*must never.*defer/i);
     expect(authored).toMatch(/do not pause for a second confirmation/i);
+    expect(authored).toContain(UNFILED_ACTION_REPLY_CANONICAL);
   });
 });
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DRAFT_REVISION_REPLY_CANONICAL } from "../agent/lib/response-contracts";
 import { authoredInstructions, baseInstructions } from "./instructions-source";
 
 // The whole authored surface (base.md + every skill), so a rule that lives in the
@@ -59,5 +60,10 @@ describe("drafting instructions — no external send or draft", () => {
     expect(authored).toMatch(/remains an unapproved Tendnote draft/i);
     expect(authored).toMatch(/never call it ready to send/i);
     expect(authored).toMatch(/external or Gmail draft/i);
+  });
+
+  it("keeps the status-dependent edit confirmations aligned with the evaluator contract", () => {
+    expect(authored).toContain(DRAFT_REVISION_REPLY_CANONICAL.draft);
+    expect(authored).toContain(DRAFT_REVISION_REPLY_CANONICAL.approved);
   });
 });
