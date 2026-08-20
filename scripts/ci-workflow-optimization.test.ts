@@ -26,7 +26,8 @@ describe("CI workflow optimization contract", () => {
     expect(ruleset.conditions.ref_name.include).toContain("~DEFAULT_BRANCH");
     expect(rules.has("deletion")).toBe(true);
     expect(rules.has("non_fast_forward")).toBe(true);
-    expect(pullRequest.parameters.required_approving_review_count).toBe(0);
+    expect(pullRequest.parameters.required_approving_review_count).toBe(1);
+    expect(pullRequest.parameters.require_code_owner_review).toBe(true);
     expect(pullRequest.parameters.required_review_thread_resolution).toBe(true);
     expect(pullRequest.parameters.allowed_merge_methods).toEqual(["squash", "rebase"]);
     expect(statusChecks.parameters.strict_required_status_checks_policy).toBe(true);

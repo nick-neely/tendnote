@@ -1,0 +1,6 @@
+# Execution and runner configuration can change the trust boundary of CI.
+# Keep these paths behind an explicit maintainer code-owner review.
+/.github/workflows/** @nick-neely
+/.github/runs-on.yml @nick-neely
+/.github/rulesets/** @nick-neely
+/.github/CODEOWNERS @nick-neely

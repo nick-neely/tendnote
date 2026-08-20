@@ -15,7 +15,12 @@ import {
   followupConfirmation,
   savedItemConfirmation,
 } from "./policy";
-import type { CaptureVisibility, ConversationalCaptureDeps, ResolvedCapturePerson } from "./types";
+import type {
+  CaptureOutcomeResult,
+  CaptureVisibility,
+  ConversationalCaptureDeps,
+  ResolvedCapturePerson,
+} from "./types";
 
 export type CaptureDestinationIds = {
   savedItemId: string;
@@ -69,7 +74,7 @@ export async function createInferredCaptureReview(input: {
   ownerUserId: string;
   sourceRecordId: string;
   suggestion: import("@tendnote/domain").ConversationalCaptureInferredSuggestion;
-}) {
+}): Promise<CaptureOutcomeResult | null> {
   if (input.suggestion.kind === "memory") {
     return createSuggestedMemoryReview({
       deps: input.deps,
