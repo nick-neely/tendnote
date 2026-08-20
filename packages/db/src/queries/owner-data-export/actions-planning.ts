@@ -34,6 +34,7 @@ import {
 } from "../../schema";
 import type { HouseholdRecordShare } from "../households/types";
 import { archiveEntry } from "./archive";
+import { envelope, iso, jsonBytes, sensitivityRank, sortByCreatedAt, sortById } from "./shared";
 import type { OwnerDataExportResource } from "./types";
 
 /** The small relationship row between a member-owned Action and a Person. */
@@ -49,6 +50,9 @@ export type OwnerDataExportGrounding = {
   personIds?: readonly string[];
   memoryIds?: readonly string[];
   followupIds?: readonly string[];
+  /** Exact owner-owned Asset graph supplied by the Asset export extension. */
+  assetIds?: readonly string[];
+  assetMemoryIds?: readonly string[];
   sensitivityByRecordId?: Readonly<Record<string, OwnerDataExportSensitivity>>;
 };
 
@@ -84,33 +88,6 @@ export type OwnerDataExportActionsPlanningContext = {
 export type OwnerDataExportActionsPlanningContextLoader = (input: {
   ownerUserId: string;
 }) => Promise<OwnerDataExportActionsPlanningContext>;
-
-function sortById<T extends { id: string }>(records: readonly T[]) {
-  return [...records].sort((left, right) => left.id.localeCompare(right.id));
-}
-
-function sortByCreatedAt<T extends { id: string; createdAt: Date }>(records: readonly T[]) {
-  return [...records].sort(
-    (left, right) =>
-      left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id),
-  );
-}
-
-function iso(value: Date | null | undefined) {
-  return value?.toISOString() ?? null;
-}
-
-function jsonBytes(value: unknown) {
-  return new TextEncoder().encode(`${JSON.stringify(value, null, 2)}\n`);
-}
-
-function envelope<T>(records: readonly T[]) {
-  return { schemaVersion: "1.0", records };
-}
-
-function sensitivityRank(value: OwnerDataExportSensitivity) {
-  return value === "restricted" ? 2 : value === "sensitive" ? 1 : 0;
-}
 
 function maxSensitivity(values: readonly (OwnerDataExportSensitivity | undefined)[]) {
   const value = values.reduce<OwnerDataExportSensitivity>(
@@ -546,6 +523,9 @@ function buildGrounding(
     personIds: setFrom(prefer(grounding?.personIds, context.personIds)),
     memoryIds: setFrom(prefer(grounding?.memoryIds, context.memoryIds)),
     followupIds: setFrom(prefer(grounding?.followupIds, context.followupIds)),
+    assetIds: grounding?.assetIds === undefined ? undefined : new Set(grounding.assetIds),
+    assetMemoryIds:
+      grounding?.assetMemoryIds === undefined ? undefined : new Set(grounding.assetMemoryIds),
     sensitivityByRecordId:
       prefer(grounding?.sensitivityByRecordId, context.sensitivityByRecordId) ?? {},
   };
@@ -602,7 +582,14 @@ export function filterOwnerDataExportActionsPlanningContext(
     ),
   );
   const actionAssets = sortById(
-    input.generalActionAssets.filter((link) => actionIds.has(link.generalActionId)),
+    input.generalActionAssets.filter(
+      (link) =>
+        actionIds.has(link.generalActionId) &&
+        (facts.assetIds === undefined || facts.assetIds.has(link.assetId)) &&
+        (!link.assetMemoryId ||
+          facts.assetMemoryIds === undefined ||
+          facts.assetMemoryIds.has(link.assetMemoryId)),
+    ),
   );
   const actionEvents = sortByCreatedAt(
     input.generalActionEvents.filter(

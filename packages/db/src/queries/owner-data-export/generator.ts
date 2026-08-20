@@ -10,6 +10,8 @@ import {
   ownerDataExportActionsPlanningContextExtension,
 } from "./actions-planning";
 import { buildOwnerDataExportArchive } from "./archive";
+import type { OwnerDataExportAssetsContext, OwnerDataExportAssetsContextLoader } from "./assets";
+import { loadOwnerDataExportAssetsContext, ownerDataExportAssetsContextExtension } from "./assets";
 import type {
   OwnerDataExportRelationshipContext,
   OwnerDataExportRelationshipContextLoader,
@@ -48,6 +50,8 @@ type GenerateOwnerDataExportArchiveInput = {
   loadRelationshipContext?: OwnerDataExportRelationshipContextLoader;
   actionsPlanningContext?: OwnerDataExportActionsPlanningContext;
   loadActionsPlanningContext?: OwnerDataExportActionsPlanningContextLoader;
+  assetsContext?: OwnerDataExportAssetsContext;
+  loadAssetsContext?: OwnerDataExportAssetsContextLoader;
 };
 
 async function resolveRelationshipContext(input: GenerateOwnerDataExportArchiveInput) {
@@ -64,9 +68,23 @@ function includesActionsPlanning(input: GenerateOwnerDataExportArchiveInput) {
   );
 }
 
+function includesAssets(input: GenerateOwnerDataExportArchiveInput) {
+  return Boolean(
+    input.assetsContext ||
+      input.loadAssetsContext ||
+      (!input.relationshipContext && !input.loadRelationshipContext),
+  );
+}
+
 async function resolveActionsPlanningContext(input: GenerateOwnerDataExportArchiveInput) {
   if (input.actionsPlanningContext) return input.actionsPlanningContext;
   const load = input.loadActionsPlanningContext ?? loadOwnerDataExportActionsPlanningContext;
+  return load({ ownerUserId: input.ownerUserId });
+}
+
+async function resolveAssetsContext(input: GenerateOwnerDataExportArchiveInput) {
+  if (input.assetsContext) return input.assetsContext;
+  const load = input.loadAssetsContext ?? loadOwnerDataExportAssetsContext;
   return load({ ownerUserId: input.ownerUserId });
 }
 
@@ -85,6 +103,23 @@ export async function generateOwnerDataExportArchive(input: GenerateOwnerDataExp
     input.ownerUserId,
     relationshipContext,
   );
+  const assetsExtension = includesAssets(input)
+    ? ownerDataExportAssetsContextExtension(
+        input.ownerUserId,
+        await resolveAssetsContext(input),
+        extension.grounding,
+      )
+    : {
+        entries: [],
+        resources: [],
+        families: [],
+        grounding: {
+          assetIds: [],
+          assetMemoryIds: [],
+          assetEvidenceIds: [],
+          sensitivityByRecordId: {},
+        },
+      };
   // Existing relationship-context adapters remain useful in isolation (and in
   // the #478 generated-ZIP tests), so an explicitly supplied relationship graph
   // does not unexpectedly perform a second production database load. Production
@@ -93,15 +128,37 @@ export async function generateOwnerDataExportArchive(input: GenerateOwnerDataExp
     ? ownerDataExportActionsPlanningContextExtension(
         input.ownerUserId,
         await resolveActionsPlanningContext(input),
-        extension.grounding,
+        includesAssets(input)
+          ? {
+              ...extension.grounding,
+              assetIds: assetsExtension.grounding.assetIds,
+              assetMemoryIds: assetsExtension.grounding.assetMemoryIds,
+              sensitivityByRecordId: {
+                ...extension.grounding.sensitivityByRecordId,
+                ...assetsExtension.grounding.sensitivityByRecordId,
+              },
+            }
+          : extension.grounding,
       )
     : EMPTY_EXTENSION;
   return buildOwnerDataExportArchive({
     account,
     now: input.now,
     expiresAt: input.expiresAt,
-    additionalEntries: [...extension.entries, ...actionsPlanningExtension.entries],
-    additionalResources: [...extension.resources, ...actionsPlanningExtension.resources],
-    additionalFamilies: [...extension.families, ...actionsPlanningExtension.families],
+    additionalEntries: [
+      ...extension.entries,
+      ...assetsExtension.entries,
+      ...actionsPlanningExtension.entries,
+    ],
+    additionalResources: [
+      ...extension.resources,
+      ...assetsExtension.resources,
+      ...actionsPlanningExtension.resources,
+    ],
+    additionalFamilies: [
+      ...extension.families,
+      ...assetsExtension.families,
+      ...actionsPlanningExtension.families,
+    ],
   });
 }

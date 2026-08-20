@@ -261,7 +261,11 @@ function inventory(account: OwnerDataExportAccount, manifest: OwnerDataExportMan
         ? ""
         : `, ${resource.recordCount} record${resource.recordCount === 1 ? "" : "s"}`;
     const sensitivity = resource.sensitivity ? `, sensitivity ${resource.sensitivity}` : "";
-    return `- ${resource.path}${count}${sensitivity}`;
+    const files =
+      resource.fileCount === undefined
+        ? ""
+        : `, ${resource.fileCount} file${resource.fileCount === 1 ? "" : "s"}, ${resource.fileByteCount ?? 0} evidence bytes`;
+    return `- ${resource.path}${count}${files}${sensitivity}`;
   });
   return [
     "Tendnote Owner Data Export",

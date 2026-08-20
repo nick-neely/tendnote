@@ -95,6 +95,9 @@ export type OwnerDataExportResource = {
   contentType: "application/json" | "text/plain" | "application/octet-stream";
   recordCount?: number;
   byteCount?: number;
+  /** For metadata resources that point at one or more stored evidence files. */
+  fileCount?: number;
+  fileByteCount?: number;
   sensitivity?: "normal" | "sensitive" | "restricted";
 };
 
