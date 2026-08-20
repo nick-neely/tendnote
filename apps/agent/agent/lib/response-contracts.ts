@@ -13,3 +13,5 @@ export const DRAFT_REVISION_REPLY_CANONICAL = {
 } as const;
 
 export const UNFILED_ACTION_REPLY_CANONICAL = "Added the Action unfiled; no Area was assigned.";
+
+export const GIFT_PLAN_EMPTY_REPLY_CANONICAL = "No matching Gift Plans are showing.";
