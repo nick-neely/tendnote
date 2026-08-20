@@ -1,6 +1,6 @@
 import type { AssertionHandle, EveEvalAssertions } from "eve/evals";
 import { describe, expect, it } from "vitest";
-import { toolOutputs } from "../evals/expectations";
+import { hasGroundedPendingAssetProposal, toolOutputs } from "../evals/expectations";
 import {
   firstSubagentIndex,
   firstToolRequestIndex,
@@ -121,6 +121,70 @@ describe("eval subagent visibility", () => {
     expect(firstSubagentIndex(events, "privacy_guard")).toBe(1);
     expect(firstToolRequestIndex(events, "capture_memory")).toBe(-1);
     expect(firstSubagentIndex(events, "message_drafter")).toBe(-1);
+  });
+});
+
+describe("asset proposal eval grounding", () => {
+  const assetId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const memoryId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const result = (toolName: string, output: unknown) => ({
+    type: "action.result",
+    data: { result: { toolName, output } },
+  });
+  const searchAnchor = result("search_assets", {
+    results: [
+      {
+        recordKind: "asset",
+        assetId,
+        assetName: "Kitchen refrigerator",
+      },
+    ],
+  });
+  const proposal = result("propose_asset_actions", {
+    asset: { id: assetId },
+    pending: [
+      {
+        assetMemoryId: memoryId,
+        action: { status: "suggested" },
+      },
+    ],
+  });
+
+  it("accepts a reviewed detail loaded after search resolves the Asset anchor", () => {
+    const context = result("get_asset_context", {
+      assetId,
+      facts: [{ memoryId, label: "Warranty expires" }],
+    });
+
+    expect(
+      hasGroundedPendingAssetProposal([searchAnchor, context, proposal], {
+        assetName: "Kitchen refrigerator",
+        detailLabel: /warranty/i,
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects a proposal whose pending action is not grounded in that reviewed detail", () => {
+    const context = result("get_asset_context", {
+      assetId,
+      facts: [{ memoryId, label: "Warranty expires" }],
+    });
+    const mismatchedProposal = result("propose_asset_actions", {
+      asset: { id: assetId },
+      pending: [
+        {
+          assetMemoryId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          action: { status: "suggested" },
+        },
+      ],
+    });
+
+    expect(
+      hasGroundedPendingAssetProposal([searchAnchor, context, mismatchedProposal], {
+        assetName: "Kitchen refrigerator",
+        detailLabel: /warranty/i,
+      }),
+    ).toBe(false);
   });
 });
 

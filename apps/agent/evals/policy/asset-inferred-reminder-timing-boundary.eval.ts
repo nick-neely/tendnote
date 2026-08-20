@@ -1,6 +1,6 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
-import { NO_RAW_IDS, toolOutputs, without } from "../expectations";
+import { hasGroundedPendingAssetProposal, NO_RAW_IDS, without } from "../expectations";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -31,7 +31,10 @@ export default defineEval({
     // projection must identify this refrigerator's reviewed warranty memory and its
     // Suggested Action.
     t.eventsSatisfy("the inferred timing is returned as a Suggested Action", (events) =>
-      groundedPendingAssetProposal(events),
+      hasGroundedPendingAssetProposal(events, {
+        assetName: "Kitchen refrigerator",
+        detailLabel: /warranty/i,
+      }),
     );
     t.notCalledTool("create_general_action");
     t.notCalledTool("edit_general_action");
@@ -58,50 +61,3 @@ export default defineEval({
     t.check(t.reply, includes(NO_RAW_IDS));
   },
 });
-
-function groundedPendingAssetProposal(events: readonly unknown[]): boolean {
-  const search = toolOutputs(events, "search_assets").find(isRecord);
-  const proposal = toolOutputs(events, "propose_asset_actions").find(isRecord);
-  if (!search || !proposal) return false;
-
-  const warranty = arrayValue(search, "results").find(
-    (entry) =>
-      isRecord(entry) &&
-      entry.recordKind === "asset_memory" &&
-      entry.assetName === "Kitchen refrigerator" &&
-      /warranty/i.test(String(entry.label)) &&
-      entry.trustLevel === "asset_fact",
-  );
-  const pending = arrayValue(proposal, "pending");
-  const assetId = nestedString(proposal, "asset", "id");
-  if (!isRecord(warranty) || assetId === null || warranty.assetId !== assetId) return false;
-
-  return pending.some((entry) => {
-    if (!isRecord(entry)) return false;
-    const action = entry.action;
-    return (
-      entry.assetMemoryId === warranty.recordId &&
-      isRecord(action) &&
-      action.status === "suggested" &&
-      !("reminderSchedule" in action) &&
-      !("schedule" in action)
-    );
-  });
-}
-
-function arrayValue(value: Record<string, unknown>, key: string): unknown[] {
-  return Array.isArray(value[key]) ? value[key] : [];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function nestedString(value: Record<string, unknown>, ...path: string[]): string | null {
-  let current: unknown = value;
-  for (const key of path) {
-    if (!isRecord(current)) return null;
-    current = current[key];
-  }
-  return typeof current === "string" ? current : null;
-}
