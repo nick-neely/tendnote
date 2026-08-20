@@ -34,4 +34,15 @@ describe("production model defaults", () => {
       expect(source).toContain(SONNET);
     }
   });
+
+  it("wires one resolved workflow model into both evaluation and evidence packaging", () => {
+    const source = readFileSync(join(repoRoot, ".github/workflows/eve-evals.yml"), "utf8");
+    expect(
+      source.match(/AGENT_MODEL: \$\{\{ vars\.TENDNOTE_AGENT_MODEL \|\| '[^']+' \}\}/g),
+    ).toEqual([`AGENT_MODEL: \${{ vars.TENDNOTE_AGENT_MODEL || '${SONNET}' }}`]);
+    expect(source).toContain(
+      'TENDNOTE_AGENT_MODEL="$AGENT_MODEL" pnpm --filter @tendnote/agent eval:deterministic',
+    );
+    expect(source).toContain('--agent-model "$AGENT_MODEL"');
+  });
 });

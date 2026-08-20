@@ -32,6 +32,7 @@ env:
   TURBO_DAEMON: "false"
   TURBO_TELEMETRY_DISABLED: 1
   TMPDIR: /tmp
+  AGENT_MODEL: ${{ vars.TENDNOTE_AGENT_MODEL || 'anthropic/claude-sonnet-5' }}
 
 jobs:
   evaluate:
@@ -109,7 +110,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          pnpm --filter @tendnote/agent eval:deterministic
+          TENDNOTE_AGENT_MODEL="$AGENT_MODEL" pnpm --filter @tendnote/agent eval:deterministic
           status=$?
           mkdir -p apps/agent/.eve/evals
           echo "$status" > apps/agent/.eve/evals/exit-code.txt
@@ -121,7 +122,6 @@ jobs:
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          AGENT_MODEL: ${{ vars.TENDNOTE_AGENT_MODEL || 'anthropic/claude-sonnet-5' }}
         run: >-
           node apps/agent/scripts/package-deterministic-evidence.mjs
           --source-sha "$CANDIDATE_SHA"
@@ -137,7 +137,7 @@ jobs:
           name: eve-model-evaluations-${{ inputs.candidate_sha }}
           path: |
             apps/agent/.eve/evals/
-            .eve/publication-evidence/${{ inputs.candidate_sha }}/
+            evidence/evals/${{ inputs.candidate_sha }}/
 
       - name: Enforce clean evaluation result
         if: always() && steps.evaluate.outcome != 'success'

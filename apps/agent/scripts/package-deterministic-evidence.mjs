@@ -27,6 +27,13 @@ function json(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
+function jsonl(path) {
+  return readFileSync(path, "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
 function sha256(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
@@ -61,6 +68,7 @@ export function buildEvidenceMetadata({
   agentModel,
   exitCode,
   reports,
+  resultRows,
   junit,
   packagedAt,
 }) {
@@ -74,7 +82,9 @@ export function buildEvidenceMetadata({
     errored: Number(initial.errored ?? 0),
     total: Number(initial.totalEvals ?? initial.evals?.length ?? 0),
   };
-  const runtime = initial.evals?.find((entry) => entry?.runtimeIdentity)?.runtimeIdentity;
+  const runtime = observedRuntimeIdentity(reports, agentModel);
+  const machineCounts = jsonlCounts(resultRows[0] ?? []);
+  const summaryStatuses = statusCounts((initial.evals ?? []).map((entry) => entry?.result?.status));
   const retryRounds = Math.max(0, reports.length - 1);
   const clean =
     exitCode === 0 &&
@@ -84,6 +94,12 @@ export function buildEvidenceMetadata({
     counts.skipped === 0 &&
     counts.errored === 0 &&
     retryRounds === 0 &&
+    machineCounts.total === counts.total &&
+    machineCounts.passed === counts.passed &&
+    machineCounts.failed === counts.failed &&
+    machineCounts.skipped === counts.skipped &&
+    machineCounts.errored === counts.errored &&
+    JSON.stringify(machineCounts.statuses) === JSON.stringify(summaryStatuses) &&
     junit.tests === counts.total &&
     junit.failures === 0 &&
     junit.skipped === 0;
@@ -93,8 +109,8 @@ export function buildEvidenceMetadata({
     sourceCommit,
     workflow: { trigger: "workflow_dispatch", url: workflowUrl, command },
     configuration: {
-      agentModel: runtime?.modelId ?? agentModel,
-      eveVersion: runtime?.eveVersion ?? null,
+      agentModel: runtime.modelId,
+      eveVersion: runtime.eveVersion,
       database: "fresh reset, committed migrations, and synthetic seed before every sample",
     },
     timestamps: {
@@ -103,10 +119,65 @@ export function buildEvidenceMetadata({
       packagedAt,
     },
     counts,
+    statuses: machineCounts.statuses,
     retry: { attempted: retryRounds > 0, rounds: retryRounds },
     exitCode,
     clean,
   };
+}
+
+function statusCounts(statuses) {
+  const counts = {};
+  for (const status of statuses) {
+    if (typeof status !== "string" || status.length === 0) {
+      throw new Error("Summary eval has no result status.");
+    }
+    counts[status] = (counts[status] ?? 0) + 1;
+  }
+  return counts;
+}
+
+export function observedRuntimeIdentity(reports, expectedModel) {
+  const identities = reports.flatMap((report) =>
+    (report.evals ?? []).flatMap((entry) =>
+      (entry.result?.events ?? [])
+        .filter((event) => event?.type === "session.started")
+        .map((event) => event?.data?.runtime)
+        .filter(Boolean),
+    ),
+  );
+  if (identities.length === 0) throw new Error("No session.started runtime identity was observed.");
+  const distinct = new Set(
+    identities.map((identity) => `${identity.modelId ?? ""}\0${identity.eveVersion ?? ""}`),
+  );
+  if (distinct.size !== 1) throw new Error("Multiple runtime identities were observed.");
+  const identity = identities[0];
+  if (!identity.modelId || identity.modelId !== expectedModel) {
+    throw new Error(`Observed model ${identity.modelId ?? "missing"}, expected ${expectedModel}.`);
+  }
+  return { modelId: identity.modelId, eveVersion: identity.eveVersion ?? null };
+}
+
+export function jsonlCounts(rows) {
+  const counts = {
+    passed: 0,
+    failed: 0,
+    skipped: 0,
+    errored: 0,
+    total: rows.length,
+    statuses: {},
+  };
+  for (const row of rows) {
+    if (!["passed", "failed", "skipped", "errored"].includes(row?.verdict)) {
+      throw new Error(`Unknown JSONL verdict: ${row?.verdict ?? "missing"}.`);
+    }
+    counts[row.verdict] += 1;
+    if (typeof row.status !== "string" || row.status.length === 0) {
+      throw new Error("JSONL result has no status.");
+    }
+    counts.statuses[row.status] = (counts.statuses[row.status] ?? 0) + 1;
+  }
+  return counts;
 }
 
 function readme(metadata) {
@@ -128,13 +199,12 @@ export function main() {
     throw new Error(`Checked out ${actual}, not requested candidate ${sourceCommit}.`);
 
   const evalRoot = resolve(repoRoot, value("--eval-root") ?? "apps/agent/.eve/evals");
-  const output = resolve(
-    repoRoot,
-    value("--output") ?? `.eve/publication-evidence/${sourceCommit}`,
-  );
+  const output = resolve(repoRoot, value("--output") ?? `evidence/evals/${sourceCommit}`);
   const exitCode = Number(readFileSync(required("--exit-code-file"), "utf8").trim());
-  const dirs = reportDirectories(evalRoot);
+  const explicitReport = value("--report-dir");
+  const dirs = explicitReport ? [resolve(repoRoot, explicitReport)] : reportDirectories(evalRoot);
   const reports = dirs.map((dir) => json(join(dir, "summary.json")));
+  const resultRows = dirs.map((dir) => jsonl(join(dir, "results.jsonl")));
   const junitSource = join(evalRoot, "junit.xml");
   const junit = junitCounts(readFileSync(junitSource, "utf8"));
   const metadata = buildEvidenceMetadata({
@@ -144,6 +214,7 @@ export function main() {
     agentModel: required("--agent-model"),
     exitCode,
     reports,
+    resultRows,
     junit,
     packagedAt: new Date().toISOString(),
   });

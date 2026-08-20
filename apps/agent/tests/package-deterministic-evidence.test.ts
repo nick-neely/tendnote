@@ -17,15 +17,30 @@ const base = {
       skipped: 0,
       errored: 0,
       totalEvals: 62,
-      evals: [
-        {
-          runtimeIdentity: {
-            modelId: "anthropic/claude-sonnet-5",
-            eveVersion: "0.32.0",
-          },
+      evals: Array.from({ length: 62 }, () => ({
+        result: {
+          status: "completed",
+          events: [
+            {
+              type: "session.started",
+              data: {
+                runtime: {
+                  modelId: "anthropic/claude-sonnet-5",
+                  eveVersion: "0.32.0",
+                },
+              },
+            },
+          ],
         },
-      ],
+      })),
     },
+  ],
+  resultRows: [
+    Array.from({ length: 62 }, (_, index) => ({
+      id: `eval-${index}`,
+      verdict: "passed",
+      status: "completed",
+    })),
   ],
   junit: { tests: 62, failures: 0, skipped: 0 },
   packagedAt: "2026-08-20T20:10:01.000Z",
@@ -39,6 +54,7 @@ describe("deterministic publication evidence classification", () => {
       counts: { passed: 62, failed: 0, skipped: 0, errored: 0, total: 62 },
       retry: { attempted: false, rounds: 0 },
       configuration: { agentModel: "anthropic/claude-sonnet-5", eveVersion: "0.32.0" },
+      statuses: { completed: 62 },
     });
   });
 
@@ -53,6 +69,11 @@ describe("deterministic publication evidence classification", () => {
   });
 
   it("blocks skipped, missing, and machine-report disagreement", () => {
+    const firstRow = base.resultRows.at(0)?.at(0) ?? {
+      id: "missing",
+      verdict: "passed",
+      status: "completed",
+    };
     expect(
       buildEvidenceMetadata({
         ...base,
@@ -63,5 +84,55 @@ describe("deterministic publication evidence classification", () => {
       buildEvidenceMetadata({ ...base, junit: { tests: 61, failures: 0, skipped: 0 } }).clean,
     ).toBe(false);
     expect(() => buildEvidenceMetadata({ ...base, reports: [] })).toThrow(/bootstrap failure/i);
+    expect(buildEvidenceMetadata({ ...base, resultRows: [[firstRow]] }).clean).toBe(false);
+    expect(
+      buildEvidenceMetadata({
+        ...base,
+        resultRows: [[{ ...firstRow, verdict: "failed" }]],
+      }).clean,
+    ).toBe(false);
+  });
+
+  it("fails closed when runtime identity is missing, inconsistent, or unexpected", () => {
+    expect(() =>
+      buildEvidenceMetadata({
+        ...base,
+        reports: [{ ...base.reports[0], evals: [{ result: { status: "completed", events: [] } }] }],
+      }),
+    ).toThrow(/no session.started/i);
+    expect(() =>
+      buildEvidenceMetadata({
+        ...base,
+        reports: [
+          {
+            ...base.reports[0],
+            evals: [
+              ...(base.reports.at(0)?.evals ?? []),
+              {
+                result: {
+                  status: "completed",
+                  events: [
+                    {
+                      type: "session.started",
+                      data: { runtime: { modelId: "openai/gpt-5.4", eveVersion: "0.32.0" } },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow(/multiple runtime/i);
+    expect(() => buildEvidenceMetadata({ ...base, agentModel: "openai/gpt-5.4" })).toThrow(
+      /expected openai/i,
+    );
+  });
+
+  it("blocks JSONL status totals that disagree with the summary", () => {
+    const rows = (base.resultRows.at(0) ?? []).map((row, index) =>
+      index === 0 ? { ...row, status: "waiting" } : row,
+    );
+    expect(buildEvidenceMetadata({ ...base, resultRows: [rows] }).clean).toBe(false);
   });
 });
