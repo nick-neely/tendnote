@@ -96,7 +96,7 @@ export function hasDeterministicVisibleScopeProjection(events: readonly unknown[
         isRecord(event.input) &&
         typeof event.input.query === "string" &&
         event.input.personId === PRIVACY_BOUNDARY_FIXTURE.alexPersonId &&
-        /Alex/i.test(event.input.query),
+        /job|search/i.test(event.input.query),
     );
   if (requestedAlexAt === -1) return false;
   const absoluteRequestIndex = resolvedAt + 1 + requestedAlexAt;

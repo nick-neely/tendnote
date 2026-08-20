@@ -307,7 +307,7 @@ describe("household privacy evaluator semantics", () => {
                 kind: "tool-call",
                 toolName: "search_relationship_context",
                 input: {
-                  query: "Alex job search household-visible",
+                  query: "job search",
                   personId: PRIVACY_BOUNDARY_FIXTURE.alexPersonId,
                 },
               },
