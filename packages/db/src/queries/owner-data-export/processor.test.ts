@@ -13,7 +13,7 @@ import {
 describe("owner data export jobs", () => {
   it("keeps enqueue idempotent and processes a durable artifact exactly once", async () => {
     const jobs = createInMemoryOwnerDataExportJobStore();
-    const artifacts = createInMemoryOwnerDataExportArtifactStore();
+    const artifacts = createInMemoryOwnerDataExportArtifactStore(jobs);
     const generate = vi.fn().mockResolvedValue({
       bytes: new Uint8Array([1, 2, 3]),
       manifest: {} as never,
@@ -62,7 +62,11 @@ describe("owner data export jobs", () => {
     const jobs = createInMemoryOwnerDataExportJobStore();
     const request = async () => {
       const latest = await jobs.getLatestForOwner({ ownerUserId: "owner-1" });
-      if (latest?.status === "pending" || latest?.status === "running") {
+      if (
+        latest?.status === "pending" ||
+        latest?.status === "running" ||
+        latest?.status === "failed"
+      ) {
         return { job: latest, created: false };
       }
       return jobs.enqueue({
@@ -80,7 +84,7 @@ describe("owner data export jobs", () => {
 
   it("records a processing failure as retryable state and recovers it after runAfter", async () => {
     const jobs = createInMemoryOwnerDataExportJobStore();
-    const artifacts = createInMemoryOwnerDataExportArtifactStore();
+    const artifacts = createInMemoryOwnerDataExportArtifactStore(jobs);
     const now = new Date("2026-08-19T12:00:00.000Z");
     const { job } = await jobs.enqueue({ ownerUserId: "owner-1", now, idempotencyKey: "retry-1" });
     const failed = await processOwnerDataExportJob({
@@ -110,9 +114,9 @@ describe("owner data export jobs", () => {
     expect(completed.outcome).toBe("completed");
   });
 
-  it("fences stale completion after a newer worker reclaims the lease", async () => {
+  it("preserves newer bytes when a stale worker writes after the new worker completes", async () => {
     const jobs = createInMemoryOwnerDataExportJobStore();
-    const artifacts = createInMemoryOwnerDataExportArtifactStore();
+    const artifacts = createInMemoryOwnerDataExportArtifactStore(jobs);
     const now = new Date("2026-08-19T12:00:00.000Z");
     const { job } = await jobs.enqueue({
       ownerUserId: "owner-1",
@@ -145,13 +149,6 @@ describe("owner data export jobs", () => {
     });
     if (!secondClaim?.claimToken) throw new Error("Expected the reclaimed lease token.");
     expect(secondClaim.claimToken).not.toBe(firstClaim.claimToken);
-    finishGeneration?.({ bytes: new Uint8Array([1]), manifest: {} as never });
-
-    await expect(staleRun).resolves.toMatchObject({ outcome: "not_claimable" });
-    await expect(jobs.get({ jobId: job.id })).resolves.toMatchObject({
-      status: "running",
-      claimToken: secondClaim.claimToken,
-    });
 
     await expect(
       processOwnerDataExportJob({
@@ -164,11 +161,18 @@ describe("owner data export jobs", () => {
         generate: vi.fn().mockResolvedValue({ bytes: new Uint8Array([2]), manifest: {} as never }),
       }),
     ).resolves.toMatchObject({ outcome: "completed", job: { status: "completed" } });
+
+    finishGeneration?.({ bytes: new Uint8Array([1]), manifest: {} as never });
+    await expect(staleRun).resolves.toMatchObject({ outcome: "not_claimable" });
+    await expect(jobs.get({ jobId: job.id })).resolves.toMatchObject({ status: "completed" });
+    await expect(
+      artifacts.get({ jobId: job.id, ownerUserId: "owner-1", now }),
+    ).resolves.toMatchObject({ bytes: new Uint8Array([2]) });
   });
 
   it("fences a stale failure after a newer worker reclaims the lease", async () => {
     const jobs = createInMemoryOwnerDataExportJobStore();
-    const artifacts = createInMemoryOwnerDataExportArtifactStore();
+    const artifacts = createInMemoryOwnerDataExportArtifactStore(jobs);
     const now = new Date("2026-08-19T12:00:00.000Z");
     const { job } = await jobs.enqueue({
       ownerUserId: "owner-1",
@@ -211,26 +215,35 @@ describe("owner data export jobs", () => {
   });
 
   it("refuses cross-owner artifact reads and removes expired bytes", async () => {
-    const artifacts = createInMemoryOwnerDataExportArtifactStore();
+    const jobs = createInMemoryOwnerDataExportJobStore();
+    const artifacts = createInMemoryOwnerDataExportArtifactStore(jobs);
     const expiresAt = new Date("2026-08-20T12:00:00.000Z");
-    await artifacts.put({
-      jobId: "job-1",
+    const { job } = await jobs.enqueue({
       ownerUserId: "owner-1",
+      idempotencyKey: "artifact-auth",
+      now: new Date("2026-08-19T12:00:00.000Z"),
+    });
+    const claim = await jobs.claim({ jobId: job.id, now: new Date("2026-08-19T12:00:00.000Z") });
+    if (!claim?.claimToken) throw new Error("Expected an artifact fixture claim token.");
+    await artifacts.put({
+      jobId: job.id,
+      ownerUserId: "owner-1",
+      expectedClaimToken: claim.claimToken,
       bytes: new Uint8Array([7]),
       expiresAt,
     });
     await expect(
-      artifacts.get({ jobId: "job-1", ownerUserId: "owner-2", now: new Date("2026-08-19") }),
+      artifacts.get({ jobId: job.id, ownerUserId: "owner-2", now: new Date("2026-08-19") }),
     ).resolves.toBeNull();
     await expect(
-      artifacts.get({ jobId: "job-1", ownerUserId: "owner-1", now: expiresAt }),
+      artifacts.get({ jobId: job.id, ownerUserId: "owner-1", now: expiresAt }),
     ).resolves.toBeNull();
     await expect(artifacts.deleteExpired({ now: expiresAt, limit: 10 })).resolves.toBe(1);
   });
 
   it("keeps expiry recoverable until recovery physically removes job and orphan bytes", async () => {
     const jobs = createInMemoryOwnerDataExportJobStore();
-    const artifacts = createInMemoryOwnerDataExportArtifactStore();
+    const artifacts = createInMemoryOwnerDataExportArtifactStore(jobs);
     const now = new Date("2026-08-19T12:00:00.000Z");
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const { job } = await jobs.enqueue({
@@ -243,6 +256,7 @@ describe("owner data export jobs", () => {
     await artifacts.put({
       jobId: job.id,
       ownerUserId: "owner-1",
+      expectedClaimToken: claim.claimToken,
       bytes: new Uint8Array([7]),
       expiresAt,
     });
@@ -252,11 +266,27 @@ describe("owner data export jobs", () => {
       artifactExpiresAt: expiresAt,
       completedAt: now,
     });
-    await artifacts.put({
-      jobId: "orphan-job",
+    const { job: failedArtifactJob } = await jobs.enqueue({
       ownerUserId: "owner-1",
+      now,
+      idempotencyKey: "failed-artifact-cleanup",
+    });
+    const failedArtifactClaim = await jobs.claim({ jobId: failedArtifactJob.id, now });
+    if (!failedArtifactClaim?.claimToken) {
+      throw new Error("Expected a failed artifact fixture claim token.");
+    }
+    await artifacts.put({
+      jobId: failedArtifactJob.id,
+      ownerUserId: "owner-1",
+      expectedClaimToken: failedArtifactClaim.claimToken,
       bytes: new Uint8Array([8]),
       expiresAt,
+    });
+    await jobs.markFailed({
+      jobId: failedArtifactJob.id,
+      expectedClaimToken: failedArtifactClaim.claimToken,
+      error: "completion unavailable",
+      runAfter: new Date(expiresAt.getTime() + 60_000),
     });
 
     const failingArtifacts = {

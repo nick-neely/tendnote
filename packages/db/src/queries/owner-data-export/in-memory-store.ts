@@ -183,10 +183,16 @@ export function createInMemoryOwnerDataExportJobStore(): OwnerDataExportJobStore
   };
 }
 
-export function createInMemoryOwnerDataExportArtifactStore(): OwnerDataExportArtifactStore {
+export function createInMemoryOwnerDataExportArtifactStore(
+  jobs: OwnerDataExportJobStore,
+): OwnerDataExportArtifactStore {
   const artifacts = new Map<string, OwnerDataExportArtifact>();
   return {
     async put(input) {
+      const activeJob = await jobs.get({ jobId: input.jobId, ownerUserId: input.ownerUserId });
+      if (activeJob?.status !== "running" || activeJob.claimToken !== input.expectedClaimToken) {
+        return null;
+      }
       const now = new Date();
       const artifact: OwnerDataExportArtifact = {
         jobId: input.jobId,

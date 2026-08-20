@@ -20,7 +20,11 @@ export async function requestOwnerDataExportAction(): Promise<
     input: undefined,
     body: async ({ ownerUserId }) => {
       const latest = await getLatestOwnerDataExportJob(ownerUserId);
-      if (latest?.status === "pending" || latest?.status === "running") {
+      if (
+        latest?.status === "pending" ||
+        latest?.status === "running" ||
+        latest?.status === "failed"
+      ) {
         return latest;
       }
 

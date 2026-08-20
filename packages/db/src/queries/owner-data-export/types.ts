@@ -67,9 +67,10 @@ export type OwnerDataExportArtifactStore = {
   put: (input: {
     jobId: string;
     ownerUserId: string;
+    expectedClaimToken: string;
     bytes: Uint8Array;
     expiresAt: Date;
-  }) => Promise<OwnerDataExportArtifact>;
+  }) => Promise<OwnerDataExportArtifact | null>;
   get: (input: {
     jobId: string;
     ownerUserId: string;

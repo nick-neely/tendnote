@@ -215,26 +215,47 @@ export function createDrizzleOwnerDataExportArtifactStore(): OwnerDataExportArti
   return {
     async put(input) {
       const now = new Date();
-      const [artifact] = await getDb()
-        .insert(ownerDataExportArtifacts)
-        .values({
-          jobId: input.jobId,
-          ownerUserId: input.ownerUserId,
-          bytes: input.bytes,
-          expiresAt: input.expiresAt,
-        })
-        .onConflictDoUpdate({
-          target: ownerDataExportArtifacts.jobId,
-          set: {
-            ownerUserId: input.ownerUserId,
-            bytes: input.bytes,
-            expiresAt: input.expiresAt,
-            updatedAt: now,
-          },
-        })
-        .returning();
-      if (!artifact) throw new Error("Failed to persist owner data export artifact.");
-      return artifact;
+      // The row lock serializes claim replacement/completion with the upsert.
+      // No bytes are written when this worker's claim is already stale.
+      const written = await getDb().execute(sql<{ job_id: string }>`
+        with active_claim as materialized (
+          select ${ownerDataExportJobs.id}
+          from ${ownerDataExportJobs}
+          where
+            ${ownerDataExportJobs.id} = ${input.jobId}
+            and ${ownerDataExportJobs.ownerUserId} = ${input.ownerUserId}
+            and ${ownerDataExportJobs.status} = 'running'
+            and ${ownerDataExportJobs.claimToken} = ${input.expectedClaimToken}
+          for update
+        )
+        insert into ${ownerDataExportArtifacts} (
+          "job_id",
+          "owner_user_id",
+          "bytes",
+          "expires_at"
+        )
+        select
+          ${input.jobId},
+          ${input.ownerUserId},
+          ${Buffer.from(input.bytes)},
+          ${input.expiresAt}
+        from active_claim
+        on conflict ("job_id") do update set
+          "owner_user_id" = excluded."owner_user_id",
+          "bytes" = excluded."bytes",
+          "expires_at" = excluded."expires_at",
+          "updated_at" = ${now}
+        returning "job_id"
+      `);
+      if (written.length === 0) return null;
+      return {
+        jobId: input.jobId,
+        ownerUserId: input.ownerUserId,
+        bytes: new Uint8Array(input.bytes),
+        expiresAt: input.expiresAt,
+        createdAt: now,
+        updatedAt: now,
+      };
     },
     async get(input) {
       const now = input.now ?? new Date();

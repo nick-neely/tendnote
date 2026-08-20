@@ -69,4 +69,18 @@ describe("requestOwnerDataExportAction", () => {
 
     expect(enqueueAndPublishOwnerDataExportJob).not.toHaveBeenCalled();
   });
+
+  it("keeps a failed scheduled retry on the same durable job", async () => {
+    const failedJob = {
+      ...job,
+      status: "failed" as const,
+      lastError: "archive unavailable",
+      runAfter: new Date("2026-08-19T12:05:00.000Z"),
+    };
+    getLatestOwnerDataExportJob.mockResolvedValue(failedJob);
+
+    await expect(requestOwnerDataExportAction()).resolves.toEqual({ ok: true, view: failedJob });
+
+    expect(enqueueAndPublishOwnerDataExportJob).not.toHaveBeenCalled();
+  });
 });

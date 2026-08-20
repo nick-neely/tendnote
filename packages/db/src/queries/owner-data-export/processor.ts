@@ -83,10 +83,9 @@ export function ownerDataExportRequestIdempotencyKey(
 
 /**
  * Process one claimed owner export. The archive is written before the job is
- * marked complete; a duplicate/replayed queue message therefore sees a
- * terminal job and cannot create a second artifact. Artifact writes are
- * idempotent by job id, which also makes recovery after a completion timeout
- * safe.
+ * marked complete. The artifact store atomically locks and validates this
+ * worker's active claim before writing, so a stale worker cannot replace the
+ * bytes produced by a newer completed worker.
  */
 export async function processOwnerDataExportJob(input: {
   jobId: string;
@@ -141,12 +140,14 @@ export async function processOwnerDataExportJob(input: {
       now,
       expiresAt,
     });
-    await deps.artifacts.put({
+    const artifact = await deps.artifacts.put({
       jobId: claimed.id,
       ownerUserId: claimed.ownerUserId,
+      expectedClaimToken: claimToken,
       bytes: archive.bytes,
       expiresAt,
     });
+    if (!artifact) return notClaimableResult(deps.jobs, claimed.id, claimed);
     const completed = await deps.jobs.markCompleted({
       jobId: claimed.id,
       expectedClaimToken: claimToken,

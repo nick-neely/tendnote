@@ -53,11 +53,22 @@ describe("Account data export interaction", () => {
 
   it.each([
     ["running", "Preparing your export"],
-    ["failed", "Couldn't prepare the export yet"],
     ["expired", "Expired — request a new export"],
   ] as const)("shows the truthful %s state", (status, label) => {
     render(<OwnerDataExportSection initialJob={{ ...baseJob, status }} />);
     expect(screen.getByText(label)).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Download ZIP" })).toBeNull();
+  });
+
+  it("truthfully shows a failed job as automatically scheduled on the same request", () => {
+    render(<OwnerDataExportSection initialJob={{ ...baseJob, status: "failed" }} />);
+
+    expect(screen.getByText("Couldn't prepare the export yet — retry scheduled")).toBeTruthy();
+    expect(screen.getByText(/We'll retry this request automatically/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry scheduled" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(requestOwnerDataExportAction).not.toHaveBeenCalled();
   });
 });

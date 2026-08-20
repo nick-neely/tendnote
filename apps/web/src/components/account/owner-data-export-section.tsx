@@ -17,7 +17,7 @@ function stateLabel(status: OwnerDataExportJob["status"] | "idle") {
     case "completed":
       return "Ready to download";
     case "failed":
-      return "Couldn't prepare the export yet";
+      return "Couldn't prepare the export yet — retry scheduled";
     case "expired":
       return "Expired — request a new export";
     default:
@@ -30,7 +30,11 @@ export function OwnerDataExportSection({ initialJob }: OwnerDataExportSectionPro
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const status = isPending && !job ? "pending" : (job?.status ?? "idle");
-  const canRequest = !isPending && job?.status !== "pending" && job?.status !== "running";
+  const canRequest =
+    !isPending &&
+    job?.status !== "pending" &&
+    job?.status !== "running" &&
+    job?.status !== "failed";
   const downloadHref = job?.status === "completed" ? `/api/account/data-export/${job.id}` : null;
 
   return (
@@ -85,14 +89,14 @@ export function OwnerDataExportSection({ initialJob }: OwnerDataExportSectionPro
               {isPending
                 ? "Requesting…"
                 : job?.status === "failed"
-                  ? "Try again"
+                  ? "Retry scheduled"
                   : "Request export"}
             </button>
           )}
         </div>
         {job?.status === "failed" ? (
           <p className="text-[length:var(--text-small)] text-muted-foreground">
-            The request stays retryable. Nothing was sent outside Tendnote.
+            We'll retry this request automatically. Nothing was sent outside Tendnote.
           </p>
         ) : null}
         {job?.status === "expired" ? (
