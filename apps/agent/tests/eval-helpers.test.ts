@@ -2,6 +2,7 @@ import type { AssertionHandle, EveEvalAssertions } from "eve/evals";
 import { describe, expect, it } from "vitest";
 import { isDraftRevisionReplyCanonical } from "../evals/behavior/draft-revision-assertions";
 import { isUnfiledActionReplyTruthful } from "../evals/behavior/general-action-area-filing.eval";
+import { memoryCleanupReplyMatchesCount } from "../evals/behavior/memory-curator-routing.eval";
 import {
   hasCapturePersonClarification,
   hasGroundedPendingAssetProposal,
@@ -265,6 +266,24 @@ describe("Capture private-default evaluation contract", () => {
   });
 });
 
+describe("memory cleanup reply contract", () => {
+  it("accepts a truthful empty result without requiring review language", () => {
+    expect(
+      memoryCleanupReplyMatchesCount(
+        "I checked for stale, duplicate, or contradictory memories and found none.",
+        0,
+      ),
+    ).toBe(true);
+  });
+
+  it("requires review language when cleanup proposals exist", () => {
+    expect(memoryCleanupReplyMatchesCount("I found two suggestions for your review.", 2)).toBe(
+      true,
+    );
+    expect(memoryCleanupReplyMatchesCount("I found two cleanup candidates.", 2)).toBe(false);
+  });
+});
+
 describe("draft revision reply contract", () => {
   it("accepts only the canonical unapproved confirmation", () => {
     expect(
@@ -337,12 +356,14 @@ describe("draft revision reply contract", () => {
     "Done. The action is on your ledger now — you can file it under Home from the Actions surface once you set up your Areas there.",
     "Done! The action is on your list. Once you create a Home area, you can move it there.",
     "Added the Action unfiled; no Home area exists yet to file into. Areas get set up the first time you open Actions in the app — you can create one there and I can re-file it once it exists.",
+    "I added Descale the kettle to your active Actions. There isn't a Home area in Tendnote yet, so I saved it unfiled. You can file it under Home later from the Actions page once that area exists.",
   ])("accepts truthful completed unfiled Action guidance: %s", (reply) => {
     expect(isUnfiledActionReplyTruthful(reply)).toBe(true);
   });
 
   it.each([
     "Added the Action unfiled; no Area was assigned. I filed it under Home.",
+    "I saved it unfiled. I also filed it under Home.",
     "Added the Action unfiled; no Area was assigned. The action was assigned to Home.",
     "Added the Action unfiled; no Area was assigned. Saved it under Home.",
     "Added the Action unfiled; no Area was assigned. Put it in your Home area.",

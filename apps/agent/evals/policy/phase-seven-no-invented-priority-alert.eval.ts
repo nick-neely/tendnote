@@ -21,7 +21,8 @@ export default defineEval({
       t.reply,
       includes(
         without(
-          "I(’|')?ve (set|created|scheduled)|I (set|created|scheduled) (an|the|your) alert|alert is set|highest priority is",
+          "I(’|')?ve (set|created|scheduled)|I (set|created|scheduled) (an|the|your) alert|alert is set|highest priority is" +
+            "|highest[- ]priority pick|I(’|')?m treating[^.]{0,80}priority|I pinned[^.]{0,80}due time|(?:otherwise|so),? \\d{1,2}(?::\\d{2})? ?(?:AM|PM)[^.]{0,40}it is",
         ),
       ),
     );

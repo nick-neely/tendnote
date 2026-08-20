@@ -20,7 +20,7 @@ const PENDING_ACTION_WRITE = [
   /\b(?:did(?:n(?:'|’)t| not)|could(?:n(?:'|’)t| not)|was(?:n(?:'|’)t| not)|haven(?:'|’)t|have not)\b[\s\S]{0,24}\b(?:add(?:ed)?|creat(?:e|ed)|sav(?:e|ed)|put)\b/i,
 ] as const;
 const FALSE_FILING_CLAIMS = [
-  /\b(?:added|saved|put|placed|filed)\b[\s\S]{0,80}\b(?:under|in|into)\s+(?:your\s+)?(?:home|an?\s+area)\b/i,
+  /\b(?:added|saved|put|placed|filed)\b[^.!?]{0,80}\b(?:under|in|into)\s+(?:your\s+)?(?:home|an?\s+area)\b/i,
   /\b(?:it|the action)\s+(?:is|was|has been)\s+(?:assigned|filed)\s+(?:to|under|in)\b/i,
   /\b(?:i(?:'|’)ve|i have)\s+(?:assigned|filed)\s+(?:it|the action)\b/i,
   /\b(?:i(?:'|’)ll|i will|i can|let me)\s+(?:create|add|make)\s+(?:a|an|the)\s+(?:new\s+)?area\b/i,

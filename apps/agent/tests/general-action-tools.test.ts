@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   requestBackgroundAffectedScopeReconciliation: vi.fn(),
   listGeneralActionAreas: vi.fn(),
   getOwnerTodayContext: vi.fn(),
+  currentAuthenticatedTurnMessage: vi.fn(),
 }));
 
 /**
@@ -55,6 +56,10 @@ vi.mock("@tendnote/db/queries/today", () => ({
 vi.mock("../agent/lib/request-affected-scope-reconciliation", () => ({
   requestBackgroundAffectedScopeReconciliation: mocks.requestBackgroundAffectedScopeReconciliation,
 }));
+vi.mock("../agent/lib/current-turn-message", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../agent/lib/current-turn-message")>()),
+  currentAuthenticatedTurnMessage: mocks.currentAuthenticatedTurnMessage,
+}));
 
 const { default: rawCreateTool } = await import("../agent/tools/create_general_action");
 const { default: rawSuggestTool } = await import("../agent/tools/suggest_general_action");
@@ -71,7 +76,12 @@ const listTool = asTestTool(rawListTool);
 const updateTool = asTestTool(rawUpdateTool);
 const editTool = asTestTool(rawEditTool);
 
-const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
+const ctx = {
+  session: {
+    auth: { current: { principalId: "user-1" } },
+    turn: { id: "turn-1", sequence: 0 },
+  },
+} as never;
 const ACTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 // A valid RFC-variant UUID: the cap test parses this through the tool's z.uuid() schema.
 const SOURCE_ID = "22222222-2222-4222-8222-222222222222";
@@ -114,6 +124,9 @@ function mutationOutcome<TResult>(result: TResult) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.currentAuthenticatedTurnMessage.mockReturnValue(
+    "Move Replace the fridge water filter to October 1, 2026.",
+  );
   mocks.listGeneralActionAreas.mockResolvedValue([]);
   mocks.getOwnerTodayContext.mockResolvedValue({
     localDate: new Intl.DateTimeFormat("en-CA", { timeZone: "UTC" }).format(new Date()),
@@ -634,6 +647,36 @@ describe("update_general_action_status — explicit, single-record mutation", ()
 });
 
 describe("edit_general_action — content edit only on named record", () => {
+  it("rejects delegated target and due-time selection before any database mutation", async () => {
+    mocks.currentAuthenticatedTurnMessage.mockReturnValue(
+      "Pick whichever task you think is my highest priority today and set an alert at whatever time you think is best. Do not ask me; use your judgment.",
+    );
+
+    await expect(
+      editTool.execute({ generalActionId: ACTION_ID, dueAt: "2026-08-20T09:00:00-05:00" }, ctx),
+    ).rejects.toThrow(/delegated.*choice|specific Action and change/i);
+    expect(mocks.editGeneralAction).not.toHaveBeenCalled();
+  });
+
+  it("allows an explicit named target with a user-supplied concrete date", async () => {
+    mocks.currentAuthenticatedTurnMessage.mockReturnValue(
+      "Move Replace the fridge water filter to October 1, 2026.",
+    );
+    mocks.editGeneralAction.mockResolvedValue(
+      mutationOutcome(action({ dueAt: new Date("2026-10-01T00:00:00.000Z") })),
+    );
+
+    await editTool.execute({ generalActionId: ACTION_ID, dueAt: "2026-10-01" }, ctx);
+
+    expect(mocks.editGeneralAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: "user-1",
+        generalActionId: ACTION_ID,
+        edit: expect.objectContaining({ dueAt: new Date("2026-10-01T00:00:00.000Z") }),
+      }),
+    );
+  });
+
   it("builds a sparse edit: converts a due date, clears with null, omits unset keys", async () => {
     mocks.editGeneralAction.mockResolvedValue(
       mutationOutcome(action({ title: "Renew the passport" })),

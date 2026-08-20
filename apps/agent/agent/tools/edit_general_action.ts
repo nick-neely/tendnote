@@ -2,6 +2,10 @@ import { editGeneralAction } from "@tendnote/db/queries/general-actions";
 import { generalActionLinkSchema, generalActionRecurrenceSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import {
+  assertCurrentTurnAuthorizesGeneralActionEdit,
+  currentAuthenticatedTurnMessage,
+} from "../lib/current-turn-message";
 import { buildGeneralActionEdit } from "../lib/general-action-edit";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
@@ -59,6 +63,10 @@ export default defineTool({
     "Edit a single General Action's content — its title, notes, due date, cadence (making it a Routine or one-time), Area, or links. Only call this on the user's explicit, action-specific instruction in the current turn, against an id you resolved deterministically; never re-author an action on your own initiative or from earlier context, and never batch-edit many at once. Pass only the fields to change: omit a field to leave it, or pass null to clear notes/due date/Area or to make a Routine one-time again. Ask which action if the request could match more than one. Returns the updated action reference; name it by its title, never the raw id.",
   inputSchema,
   async execute(input, ctx) {
+    const turnId = ctx.session.turn.id;
+    assertCurrentTurnAuthorizesGeneralActionEdit({
+      message: currentAuthenticatedTurnMessage(turnId),
+    });
     const ownerUserId = resolveOwnerUserId(ctx);
 
     const outcome = await withModelSafeStoreErrors(() =>
