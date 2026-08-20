@@ -16,6 +16,7 @@ import {
   resendCooldownRemainingMs,
   summarizeHouseholdInvitation,
 } from "@tendnote/domain";
+import { createAccessProfileQueries } from "../access-profiles/queries";
 import {
   digestHouseholdInvitationSecret,
   type HouseholdInvitationSecret,
@@ -166,6 +167,39 @@ async function inviterDisplayName(
 ): Promise<string | null> {
   const [identity] = await store.identities.listUserIdentities({ userIds: [userId] });
   return identity?.name?.trim() || null;
+}
+
+/** Granting admission is part of acceptance, never a best-effort side effect. */
+async function grantHouseholdInvitationAccess(
+  store: HouseholdInvitationStore,
+  userId: string,
+): Promise<void> {
+  const accessProfiles = createAccessProfileQueries(store.accessProfiles);
+  const profile = await accessProfiles.grantAccess({
+    userId,
+    source: "household_invitation",
+  });
+  if (profile.status !== "granted") {
+    throw new Error("Household invitation admission could not be persisted.");
+  }
+
+  // A hosted beta/manual grant is not authoritative in self-hosted mode. A
+  // successful invitation is the explicit new admission proof, so retain it as
+  // the profile's source; the configured self-hosted owner remains the one
+  // source that must not be reclassified or its singleton ownership can move.
+  if (profile.source !== "household_invitation" && profile.source !== "self_hosted_bootstrap") {
+    const reclassified = await store.accessProfiles.update({
+      userId,
+      patch: {
+        status: "granted",
+        source: "household_invitation",
+        grantedAt: new Date(),
+      },
+    });
+    if (reclassified?.status !== "granted" || reclassified.source !== "household_invitation") {
+      throw new Error("Household invitation admission could not be persisted.");
+    }
+  }
 }
 
 /**
@@ -487,7 +521,8 @@ export function createHouseholdInvitationLifecycle(
     },
 
     /**
-     * Consumes one invitation and creates the active membership.
+     * Consumes one invitation, creates the active membership, and grants the
+     * account access in the same transaction.
      *
      * The proof this requires — a live secret plus a session already signed in
      * as the invited address — is documented in full at
@@ -499,30 +534,83 @@ export function createHouseholdInvitationLifecycle(
       const secretDigest = digestHouseholdInvitationSecret(proof.secret);
 
       return store.withTransaction(async (tx) => {
-        const found = requireProvenRecipient(await loadBySecret(tx, proof.secret), {
-          proof,
-          activeMemberships: await tx.households.listActiveHouseholdMembershipsForUser({
-            userId: proof.userId,
-          }),
-          at,
+        const loaded = await loadBySecret(tx, proof.secret);
+        const activeMemberships = await tx.households.listActiveHouseholdMembershipsForUser({
+          userId: proof.userId,
         });
+
+        // A committed acceptance is still opaque to a viewer, but the same
+        // proven recipient may safely retry the request after a timeout. Do
+        // not send an already-accepted row through the public join decision:
+        // that decision must keep accepted links indistinguishable from every
+        // other dead link for view/decline and for a different recipient.
+        const found =
+          loaded?.invitation.state === "accepted"
+            ? loaded
+            : requireProvenRecipient(loaded, { proof, activeMemberships, at });
 
         if (!(await tx.lockHousehold({ householdId: found.household.id }))) {
           unusableLink();
         }
 
         // Re-read under the lock. A concurrent accept, cancel, or resend may
-        // have consumed or rotated this capability since the lookup above, and
-        // a single-use link must lose that race rather than tie it.
+        // have consumed or rotated this capability since the lookup above. A
+        // different recipient must lose that race; the same recipient may
+        // replay the already-committed result idempotently.
         const invitation = await tx.getInvitationById({ invitationId: found.invitation.id });
-        if (
-          !invitation ||
-          invitation.secretDigest !== secretDigest ||
-          !isHouseholdInvitationLive(invitation, at)
-        ) {
+        if (!invitation || invitation.secretDigest !== secretDigest) {
           unusableLink();
         }
+
+        if (invitation.state === "accepted") {
+          if (
+            invitation.acceptedByUserId !== proof.userId ||
+            normalizeInvitationEmail(proof.userEmail) !== invitation.normalizedEmail
+          ) {
+            unusableLink();
+          }
+
+          const currentActiveMemberships =
+            await tx.households.listActiveHouseholdMembershipsForUser({ userId: proof.userId });
+          if (
+            currentActiveMemberships.some(
+              (membership) => membership.householdId !== invitation.householdId,
+            )
+          ) {
+            assertHouseholdAdmissionAvailable(currentActiveMemberships);
+          }
+          if (
+            !currentActiveMemberships.some(
+              (membership) => membership.householdId === invitation.householdId,
+            )
+          ) {
+            unusableLink();
+          }
+
+          // A successful first acceptance always leaves this grant in the same
+          // transaction. Repairing a legacy accepted row that lacks it is
+          // idempotent and keeps the persisted admission invariant true.
+          await grantHouseholdInvitationAccess(tx, proof.userId);
+          return { householdId: invitation.householdId };
+        }
+
+        if (!isHouseholdInvitationLive(invitation, at)) {
+          unusableLink();
+        }
+
+        // The proof above was read before the household lock. A membership in
+        // another household may have committed while this request was waiting
+        // for that lock, so re-check the one-household rule at the write point
+        // rather than letting a stale read turn into a cross-household member.
+        assertHouseholdAdmissionAvailable(
+          await tx.households.listActiveHouseholdMembershipsForUser({ userId: proof.userId }),
+        );
         await assertSeatAvailable(tx, { householdId: invitation.householdId, at });
+
+        // Admission is a durable consequence of the same mailbox proof as the
+        // membership. Keep it on the transaction-bound access query seam so a
+        // failure in either write rolls the other back in production.
+        await grantHouseholdInvitationAccess(tx, proof.userId);
 
         const existing = await tx.households.getHouseholdMembership({
           householdId: invitation.householdId,

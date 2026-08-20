@@ -5,6 +5,7 @@ import {
   HouseholdValidationError,
 } from "@tendnote/domain";
 import { beforeEach, describe, expect, it } from "vitest";
+import { createInMemoryAccessProfileStore } from "../access-profiles/in-memory-store";
 import { seedHouseholdWithMembers } from "./household-fixtures";
 import { createInMemoryHouseholdInvitationStore } from "./in-memory-invitation-store";
 import { createInMemoryHouseholdStore } from "./in-memory-store";
@@ -19,12 +20,14 @@ async function setup(
   options: {
     members?: ReadonlyArray<readonly [string, "owner" | "member"]>;
     identities?: { id: string; name: string | null; email: string }[];
+    accessProfiles?: ReturnType<typeof createInMemoryAccessProfileStore>;
   } = {},
 ) {
   clock = SENT_AT;
   const households = createInMemoryHouseholdStore();
   const store = createInMemoryHouseholdInvitationStore({
     households,
+    accessProfiles: options.accessProfiles,
     identities: options.identities ?? [{ id: OWNER, name: "Alex", email: "alex@example.com" }],
   });
   const household = await seedHouseholdWithMembers(households, {
@@ -258,6 +261,118 @@ describe("cancelling an invitation", () => {
 });
 
 describe("accepting an invitation", () => {
+  it("grants Private Beta Access from the accepted invitation and leaves unrelated signups pending", async () => {
+    const { invitations, store } = await setup();
+    const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
+
+    await invitations.acceptInvitation({
+      secret: sent.secret,
+      userId: "sam-1",
+      userEmail: "sam@example.com",
+    });
+    const unrelated = await store.accessProfiles.insertIfAbsent({
+      userId: "later-1",
+      status: "pending",
+      source: null,
+      grantedAt: null,
+    });
+
+    expect(await store.accessProfiles.getByUserId("sam-1")).toMatchObject({
+      status: "granted",
+      source: "household_invitation",
+    });
+    expect(unrelated).toMatchObject({ status: "pending", source: null });
+  });
+
+  it("reclassifies an older hosted grant so the invitation remains authoritative in self-hosted mode", async () => {
+    const accessProfiles = createInMemoryAccessProfileStore();
+    await accessProfiles.insertIfAbsent({
+      userId: "sam-1",
+      status: "granted",
+      source: "beta_flag",
+      grantedAt: SENT_AT,
+    });
+    const { invitations, store } = await setup({ accessProfiles });
+    const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
+
+    await invitations.acceptInvitation({
+      secret: sent.secret,
+      userId: "sam-1",
+      userEmail: "sam@example.com",
+    });
+
+    expect(await store.accessProfiles.getByUserId("sam-1")).toMatchObject({
+      status: "granted",
+      source: "household_invitation",
+    });
+  });
+
+  it("does not create membership when the admission write does not grant access", async () => {
+    const baseAccessProfiles = createInMemoryAccessProfileStore();
+    const pending = await baseAccessProfiles.insertIfAbsent({
+      userId: "sam-1",
+      status: "pending",
+      source: null,
+      grantedAt: null,
+    });
+    if (!pending) throw new Error("Failed to seed pending access profile.");
+    const accessProfiles = {
+      ...baseAccessProfiles,
+      update: async () => pending,
+    };
+    const { invitations, households, household, store } = await setup({ accessProfiles });
+    const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
+
+    await expect(
+      invitations.acceptInvitation({
+        secret: sent.secret,
+        userId: "sam-1",
+        userEmail: "sam@example.com",
+      }),
+    ).rejects.toThrow(/admission could not be persisted/i);
+    expect(
+      await households.getHouseholdMembership({ householdId: household.id, userId: "sam-1" }),
+    ).toBeNull();
+    expect(await store.accessProfiles.getByUserId("sam-1")).toMatchObject({ status: "pending" });
+    expect((await store.listInvitations({ householdId: household.id }))[0]?.state).toBe("pending");
+  });
+
+  it("rechecks a conflicting household before committing a raced acceptance", async () => {
+    const { invitations, households, store, household } = await setup();
+    const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
+    const otherHousehold = await seedHouseholdWithMembers(households, {
+      ownerUserId: "sam-owner",
+      name: "Sam's other place",
+      members: [["sam-1", "member"]],
+    });
+
+    const listActiveMemberships = households.listActiveHouseholdMembershipsForUser;
+    let reads = 0;
+    households.listActiveHouseholdMembershipsForUser = async (input) => {
+      const memberships = await listActiveMemberships(input);
+      if (input.userId === "sam-1" && reads++ === 0) return [];
+      return memberships;
+    };
+
+    await expect(
+      invitations.acceptInvitation({
+        secret: sent.secret,
+        userId: "sam-1",
+        userEmail: "sam@example.com",
+      }),
+    ).rejects.toThrow(HouseholdAdmissionConflictError);
+    expect(
+      await households.getHouseholdMembership({ householdId: household.id, userId: "sam-1" }),
+    ).toBeNull();
+    expect(
+      await households.getHouseholdMembership({
+        householdId: otherHousehold.id,
+        userId: "sam-1",
+      }),
+    ).toMatchObject({ status: "active" });
+    expect(await store.accessProfiles.getByUserId("sam-1")).toBeNull();
+  });
+
   it("creates the active membership only at acceptance, and consumes the link", async () => {
     const { invitations, households, household } = await setup();
     const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "Sam@Example.com" });
@@ -354,11 +469,11 @@ describe("accepting an invitation", () => {
     ).toBeNull();
   });
 
-  /** The link is single-use: a replay must not create a second membership. */
-  it("refuses a second use of the same link", async () => {
-    const { invitations } = await setup();
+  /** A replay reports the committed outcome without duplicating either durable row. */
+  it("is idempotent when the same recipient replays the accepted link", async () => {
+    const { invitations, households, store, household } = await setup();
     const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
-    await invitations.acceptInvitation({
+    const first = await invitations.acceptInvitation({
       secret: sent.secret,
       userId: "sam-1",
       userEmail: "sam@example.com",
@@ -370,7 +485,57 @@ describe("accepting an invitation", () => {
         userId: "sam-1",
         userEmail: "sam@example.com",
       }),
+    ).resolves.toEqual(first);
+    expect(
+      await households.listHouseholdMemberships({ householdId: household.id, status: "active" }),
+    ).toHaveLength(2);
+    expect(await store.accessProfiles.listByStatus("granted")).toHaveLength(1);
+  });
+
+  it("is idempotent when two acceptance requests race for the same recipient", async () => {
+    const { invitations, households, store, household } = await setup();
+    const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
+
+    const outcomes = await Promise.all([
+      invitations.acceptInvitation({
+        secret: sent.secret,
+        userId: "sam-1",
+        userEmail: "sam@example.com",
+      }),
+      invitations.acceptInvitation({
+        secret: sent.secret,
+        userId: "sam-1",
+        userEmail: "sam@example.com",
+      }),
+    ]);
+
+    expect(outcomes).toEqual([{ householdId: household.id }, { householdId: household.id }]);
+    expect(
+      await households.listHouseholdMemberships({ householdId: household.id, status: "active" }),
+    ).toHaveLength(2);
+    expect(await store.accessProfiles.listByStatus("granted")).toHaveLength(1);
+  });
+
+  it("keeps an accepted link opaque to a different account", async () => {
+    const { invitations, households, store, household } = await setup();
+    const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
+    await invitations.acceptInvitation({
+      secret: sent.secret,
+      userId: "sam-1",
+      userEmail: "sam@example.com",
+    });
+
+    await expect(
+      invitations.acceptInvitation({
+        secret: sent.secret,
+        userId: "jules-1",
+        userEmail: "jules@example.com",
+      }),
     ).rejects.toThrow(HouseholdValidationError);
+    expect(
+      await households.getHouseholdMembership({ householdId: household.id, userId: "jules-1" }),
+    ).toBeNull();
+    expect(await store.accessProfiles.getByUserId("jules-1")).toBeNull();
   });
 
   it("refuses an expired link even though nothing rewrote the row", async () => {

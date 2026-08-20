@@ -1,12 +1,14 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
-import { getDb } from "../../client";
+import { type DatabaseExecutor, getDb } from "../../client";
 import { accessProfiles } from "../../schema";
 import type { AccessProfileStore } from "./types";
 
-export function createDrizzleAccessProfileStore(): AccessProfileStore {
+export function createDrizzleAccessProfileStore(
+  resolveDb: () => DatabaseExecutor = getDb,
+): AccessProfileStore {
   return {
     async getByUserId(userId) {
-      const [profile] = await getDb()
+      const [profile] = await resolveDb()
         .select()
         .from(accessProfiles)
         .where(eq(accessProfiles.userId, userId))
@@ -16,7 +18,7 @@ export function createDrizzleAccessProfileStore(): AccessProfileStore {
     },
 
     async listByStatus(status) {
-      return getDb()
+      return resolveDb()
         .select()
         .from(accessProfiles)
         .where(eq(accessProfiles.status, status))
@@ -24,7 +26,7 @@ export function createDrizzleAccessProfileStore(): AccessProfileStore {
     },
 
     async create(input) {
-      const [profile] = await getDb().insert(accessProfiles).values(input).returning();
+      const [profile] = await resolveDb().insert(accessProfiles).values(input).returning();
 
       if (!profile) {
         throw new Error("Failed to create access profile.");
@@ -37,7 +39,7 @@ export function createDrizzleAccessProfileStore(): AccessProfileStore {
       // `onConflictDoNothing` covers every unique constraint: the `userId` primary
       // key and the singleton bootstrap indexes. A conflict yields no row, which
       // we surface as `null` so the query layer can settle on the existing row.
-      const [profile] = await getDb()
+      const [profile] = await resolveDb()
         .insert(accessProfiles)
         .values(input)
         .onConflictDoNothing()
@@ -47,7 +49,7 @@ export function createDrizzleAccessProfileStore(): AccessProfileStore {
     },
 
     async update({ userId, patch }) {
-      const [profile] = await getDb()
+      const [profile] = await resolveDb()
         .update(accessProfiles)
         .set({ ...patch, updatedAt: new Date() })
         .where(eq(accessProfiles.userId, userId))
@@ -57,7 +59,7 @@ export function createDrizzleAccessProfileStore(): AccessProfileStore {
     },
 
     async claimSelfContextOnboardingReminder({ userId, reminderAt }) {
-      const [profile] = await getDb()
+      const [profile] = await resolveDb()
         .update(accessProfiles)
         .set({ selfContextOnboardingReminderAt: reminderAt, updatedAt: new Date() })
         .where(

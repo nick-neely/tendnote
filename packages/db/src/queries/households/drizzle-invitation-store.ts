@@ -5,6 +5,7 @@ import {
   householdInvitations,
   householdWorkspaces,
 } from "../../schema";
+import { createDrizzleAccessProfileStore } from "../access-profiles/drizzle-store";
 import { createDrizzleHouseholdCalendarStore } from "./drizzle-calendar-store";
 import { createDrizzleHouseholdStore } from "./drizzle-store";
 import type { HouseholdInvitationStore } from "./invitation-types";
@@ -16,6 +17,7 @@ export function createDrizzleHouseholdInvitationStore(
 ): HouseholdInvitationStore {
   return {
     households: createDrizzleHouseholdStore(resolveDb),
+    accessProfiles: createDrizzleAccessProfileStore(resolveDb),
     identities: createDrizzleHouseholdIdentityStore(resolveDb),
     // Same `resolveDb`, so `withTransaction` re-binds these with everything else
     // and a departure's scheduled-work and calendar cleanup both land in the

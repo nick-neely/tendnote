@@ -1,4 +1,5 @@
 import type { HouseholdInvitationState, HouseholdRole, HouseholdWorkspace } from "@tendnote/domain";
+import type { AccessProfileStore } from "../access-profiles/types";
 import type { HouseholdCalendarStore } from "./calendar-types";
 import type { HouseholdIdentityStore } from "./overview";
 import type { HouseholdScheduledWorkStore } from "./scheduled-work";
@@ -58,6 +59,11 @@ export type HouseholdInvitationDelivery = {
  */
 export type HouseholdInvitationStore = {
   households: HouseholdStore;
+  /**
+   * Access persistence bound to the same connection as memberships and the
+   * invitation. Acceptance must not be able to commit these records separately.
+   */
+  accessProfiles: AccessProfileStore;
   identities: HouseholdIdentityStore;
   /**
    * The scheduled work a departure, removal, or dissolution has to end.

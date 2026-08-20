@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { HouseholdMemberIdentity } from "@tendnote/domain";
+import { createInMemoryAccessProfileStore } from "../access-profiles/in-memory-store";
 import { createInMemoryHouseholdCalendarStore } from "./in-memory-calendar-store";
 import { createInMemoryHouseholdStore } from "./in-memory-store";
 import type {
@@ -23,6 +24,7 @@ import {
  */
 export function createInMemoryHouseholdInvitationStore(options?: {
   households?: ReturnType<typeof createInMemoryHouseholdStore>;
+  accessProfiles?: ReturnType<typeof createInMemoryAccessProfileStore>;
   calendars?: ReturnType<typeof createInMemoryHouseholdCalendarStore>;
   identities?: HouseholdMemberIdentity[];
   /** Injectable so a test can watch what a departure ends, not only what it moves. */
@@ -33,6 +35,7 @@ export function createInMemoryHouseholdInvitationStore(options?: {
   listDeliveries: () => HouseholdInvitationDelivery[];
 } {
   const households = options?.households ?? createInMemoryHouseholdStore();
+  const accessProfiles = options?.accessProfiles ?? createInMemoryAccessProfileStore();
   // Injectable so a governance test can seed a designated calendar and then
   // assert what a departure did to it, against the very store the lifecycle uses.
   const calendars = options?.calendars ?? createInMemoryHouseholdCalendarStore();
@@ -55,6 +58,7 @@ export function createInMemoryHouseholdInvitationStore(options?: {
     listDeliveries: () => HouseholdInvitationDelivery[];
   } = {
     households,
+    accessProfiles,
     identities,
     scheduledWork,
     calendars,

@@ -59,7 +59,7 @@ function diagnosticGuidance(diagnostic: AdmissionConfigurationDiagnostic): strin
 /**
  * Resolve one request through the explicit policy and the durable profile. A
  * valid hosted policy makes every persisted grant authoritative. Self-hosted
- * policy narrows persisted authority to its own bootstrap and future invitation
+ * policy narrows persisted authority to its own bootstrap and invitation
  * provenance; legacy hosted/local grants remain durable for audit but resolve as
  * pending until the configured owner is upgraded to self-hosted provenance. An
  * invalid policy refuses every request before reading profile data.
@@ -92,8 +92,8 @@ export function createAdmissionResolver(deps: AdmissionResolverDependencies) {
 
       if (policy.mode === "self-hosted") {
         // A self-hosted deployment cannot inherit hosted/local admission. The
-        // invitation source is already durable vocabulary for #475, so it stays
-        // authoritative here without implementing invitation acceptance.
+        // Invitation acceptance persists this source in the same transaction as
+        // the membership, so it remains authoritative here as well.
         if (isSelfHostedGrant(persisted)) {
           return persisted;
         }
