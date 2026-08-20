@@ -172,8 +172,44 @@ function planningContext(): OwnerDataExportActionsPlanningContext {
         ownerUserId: "owner-1",
         kind: "deferred",
         actorUserId: "owner-1",
-        detailJson: { previousStatus: "open", status: "deferred", secretSession: "omit" },
+        detailJson: {
+          previousStatus: "open",
+          status: "deferred",
+          deferUntil: "2026-08-21T12:00:00.000Z",
+          secretSession: "omit",
+        },
         createdAt: updatedAt,
+      },
+      {
+        id: "action-event-routine-completed",
+        generalActionId: "action-owned",
+        ownerUserId: "owner-1",
+        kind: "completed",
+        actorUserId: "owner-1",
+        detailJson: {
+          previousStatus: "open",
+          status: "open",
+          rolledForward: true,
+          previousDueAt: "2026-02-01T12:00:00.000Z",
+          nextDueAt: "2026-08-01T12:00:00.000Z",
+          occurrenceVersion: 2,
+        },
+        createdAt: new Date("2026-08-18T12:01:00.000Z"),
+      },
+      {
+        id: "action-event-routine-resumed",
+        generalActionId: "action-owned",
+        ownerUserId: "owner-1",
+        kind: "resumed",
+        actorUserId: "owner-1",
+        detailJson: {
+          previousStatus: "paused",
+          status: "open",
+          rolledForward: true,
+          previousDueAt: "2026-08-01T12:00:00.000Z",
+          nextDueAt: "2027-02-01T12:00:00.000Z",
+        },
+        createdAt: new Date("2026-08-18T12:02:00.000Z"),
       },
     ],
     savedItems: [],
@@ -245,6 +281,7 @@ describe("owner actions and planning export", () => {
         status: "deferred",
         sourceRecordId: "source-owned",
         areaId: "area-owned",
+        deferUntil: "2026-08-21T12:00:00.000Z",
         recurrence: { interval: 6, unit: "month" },
       }),
     ]);
@@ -258,7 +295,18 @@ describe("owner actions and planning export", () => {
       expect.objectContaining({ assetId: "asset-owned" }),
     ]);
     expect(resource(entries, "resources/actions/general-action-events-v1.json")).toEqual([
-      expect.objectContaining({ kind: "deferred" }),
+      expect.objectContaining({
+        kind: "deferred",
+        detailJson: expect.objectContaining({ deferUntil: "2026-08-21T12:00:00.000Z" }),
+      }),
+      expect.objectContaining({
+        kind: "completed",
+        detailJson: expect.objectContaining({ rolledForward: true }),
+      }),
+      expect.objectContaining({
+        kind: "resumed",
+        detailJson: expect.objectContaining({ rolledForward: true }),
+      }),
     ]);
     expect(new TextDecoder().decode(result.bytes)).not.toContain("secretSession");
   });
@@ -498,6 +546,114 @@ describe("owner actions and planning export", () => {
         actionsPlanningContext: context,
       }),
     ).rejects.toThrow("action-owned");
+  });
+
+  it.each([
+    {
+      name: "a General Action source",
+      mutate(context: OwnerDataExportActionsPlanningContext) {
+        context.generalActions[0] = {
+          ...first(context.generalActions),
+          sourceRecordId: "source-foreign",
+        };
+      },
+      expected: "General Action action-owned references source record source-foreign",
+    },
+    {
+      name: "a draft Person",
+      mutate(context: OwnerDataExportActionsPlanningContext) {
+        context.messageDrafts.push({
+          id: "draft-foreign-person",
+          personId: "person-foreign",
+          ownerUserId: "owner-1",
+          channel: "email",
+          purpose: "check_in",
+          body: "Private draft",
+          status: "draft",
+          sourceRefs: [],
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+      },
+      expected: "message draft draft-foreign-person references Person person-foreign",
+    },
+    {
+      name: "a draft source reference",
+      mutate(context: OwnerDataExportActionsPlanningContext) {
+        context.messageDrafts.push({
+          id: "draft-foreign-source",
+          personId: "person-owned",
+          ownerUserId: "owner-1",
+          channel: "email",
+          purpose: "check_in",
+          body: "Private draft",
+          status: "draft",
+          sourceRefs: [
+            {
+              kind: "source_record",
+              id: "source-foreign",
+              label: "Foreign context",
+              trust: "logged_context",
+            },
+          ],
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+      },
+      expected: "message draft draft-foreign-source references source record source-foreign",
+    },
+    {
+      name: "a Gift Plan subject",
+      mutate(context: OwnerDataExportActionsPlanningContext) {
+        context.giftPlans.push({
+          id: "gift-plan-foreign-subject",
+          ownerUserId: "owner-1",
+          subjectName: "Foreign person",
+          occasion: "Birthday",
+          occasionOn: null,
+          subjectPersonId: "person-foreign",
+          surpriseSubjectUserId: null,
+          status: "active",
+          scope: "private",
+          householdId: null,
+          lastActorUserId: "owner-1",
+          revision: 0,
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+      },
+      expected: "Gift Plan gift-plan-foreign-subject references Person person-foreign",
+    },
+  ])("uses the filtered relationship graph for $name", async ({ mutate, expected }) => {
+    const relationshipContext = emptyRelationshipContext();
+    relationshipContext.people.push({
+      ...first(relationshipContext.people),
+      id: "person-foreign",
+      ownerUserId: "owner-2",
+    });
+    relationshipContext.sourceRecords.push({
+      ...first(relationshipContext.sourceRecords),
+      id: "source-foreign",
+      ownerUserId: "owner-2",
+    });
+
+    const context = planningContext();
+    // Simulate a broad future adapter: these candidate ids must never overrule
+    // the exact graph emitted by the owner-filtered relationship extension.
+    context.sourceRecordIds = ["source-owned", "source-foreign"];
+    context.personIds = ["person-owned", "person-foreign"];
+    mutate(context);
+
+    await expect(
+      generateOwnerDataExportArchive({
+        ownerUserId: "owner-1",
+        account: ACCOUNT,
+        now: NOW,
+        expiresAt: new Date("2026-08-20T12:00:00.000Z"),
+        relationshipContext,
+        actionsPlanningContext: context,
+      }),
+    ).rejects.toThrow(expected);
   });
 
   it("keeps every supported lifecycle state instead of applying proactive-view filters", async () => {

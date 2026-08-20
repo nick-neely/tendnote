@@ -404,6 +404,18 @@ export type OwnerDataExportArchiveExtension = {
   entries: ReturnType<typeof archiveEntry>[];
   resources: OwnerDataExportResource[];
   families: string[];
+  /**
+   * The exact owner-filtered ids represented by this extension. Downstream
+   * export families use this graph as their authoritative grounding boundary
+   * instead of trusting a broader loader/adaptor candidate set.
+   */
+  grounding: {
+    sourceRecordIds: string[];
+    personIds: string[];
+    memoryIds: string[];
+    followupIds: string[];
+    sensitivityByRecordId: Record<string, "normal" | "sensitive" | "restricted">;
+  };
 };
 
 /** Convert the graph into stable, versioned JSON resources for the ZIP builder. */
@@ -478,5 +490,15 @@ export function ownerDataExportRelationshipContextExtension(
       "Follow-Ups",
       "Self Context",
     ],
+    grounding: {
+      sourceRecordIds: context.sourceRecords.map((record) => record.id),
+      personIds: context.people.map((person) => person.id),
+      memoryIds: context.memories.map((memory) => memory.id),
+      followupIds: context.followups.map((followup) => followup.id),
+      sensitivityByRecordId: Object.fromEntries([
+        ...context.sourceRecords.map((record) => [record.id, record.sensitivity] as const),
+        ...context.memories.map((memory) => [memory.id, memory.sensitivity] as const),
+      ]),
+    },
   };
 }

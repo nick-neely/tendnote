@@ -172,6 +172,8 @@ const ACTION_EVENT_DETAIL_KEYS = new Set([
   "occurrenceAdvancedAt",
   "previousDueAt",
   "nextDueAt",
+  "deferUntil",
+  "rolledForward",
   "restoredDueAt",
   "rolledBack",
   "reviewEdit",
@@ -438,7 +440,7 @@ function shareForExport(share: HouseholdRecordShare) {
 }
 
 function setFrom(values: readonly string[] | undefined) {
-  return values ? new Set(values) : undefined;
+  return new Set(values ?? []);
 }
 
 function prefer<T>(value: T | undefined, fallback: T | undefined) {
@@ -449,9 +451,9 @@ function assertGroundedReference(
   family: string,
   recordId: string,
   sourceRecordId: string,
-  sourceRecordIds: Set<string> | undefined,
+  sourceRecordIds: ReadonlySet<string>,
 ) {
-  if (sourceRecordIds && !sourceRecordIds.has(sourceRecordId)) {
+  if (!sourceRecordIds.has(sourceRecordId)) {
     throw new Error(
       `Owner data export ${family} ${recordId} references source record ${sourceRecordId} outside the owner export.`,
     );
@@ -462,9 +464,9 @@ function validateDraftReference(
   draftId: string,
   ref: MessageDraft["sourceRefs"][number],
   grounding: {
-    sourceRecordIds?: Set<string>;
-    memoryIds?: Set<string>;
-    followupIds?: Set<string>;
+    sourceRecordIds: ReadonlySet<string>;
+    memoryIds: ReadonlySet<string>;
+    followupIds: ReadonlySet<string>;
   },
 ) {
   if (ref.kind === "source_record") {
@@ -472,14 +474,14 @@ function validateDraftReference(
     return;
   }
   if (ref.kind === "approved_memory" || ref.kind === "suggested_memory") {
-    if (grounding.memoryIds && !grounding.memoryIds.has(ref.id)) {
+    if (!grounding.memoryIds.has(ref.id)) {
       throw new Error(
         `Owner data export message draft ${draftId} references memory ${ref.id} outside the owner export.`,
       );
     }
     return;
   }
-  if (ref.kind === "followup" && grounding.followupIds && !grounding.followupIds.has(ref.id)) {
+  if (ref.kind === "followup" && !grounding.followupIds.has(ref.id)) {
     throw new Error(
       `Owner data export message draft ${draftId} references follow-up ${ref.id} outside the owner export.`,
     );
@@ -489,9 +491,9 @@ function validateDraftReference(
 function validateDraftReferences(
   draft: MessageDraft,
   grounding: {
-    sourceRecordIds?: Set<string>;
-    memoryIds?: Set<string>;
-    followupIds?: Set<string>;
+    sourceRecordIds: ReadonlySet<string>;
+    memoryIds: ReadonlySet<string>;
+    followupIds: ReadonlySet<string>;
   },
 ) {
   for (const ref of draft.sourceRefs) validateDraftReference(draft.id, ref, grounding);
@@ -500,7 +502,7 @@ function validateDraftReferences(
 function validateActionReferences(
   actions: readonly GeneralAction[],
   areas: ReadonlySet<string>,
-  sourceRecordIds: Set<string> | undefined,
+  sourceRecordIds: ReadonlySet<string>,
 ) {
   for (const action of actions) {
     if (action.sourceRecordId) {
@@ -516,7 +518,7 @@ function validateActionReferences(
 
 function validateSavedItemReferences(
   items: readonly SavedItem[],
-  sourceRecordIds: Set<string> | undefined,
+  sourceRecordIds: ReadonlySet<string>,
 ) {
   for (const item of items) {
     assertGroundedReference("Saved Item", item.id, item.sourceRecordId, sourceRecordIds);
@@ -577,16 +579,19 @@ export function filterOwnerDataExportActionsPlanningContext(
   validateActionReferences(actions, areaIds, facts.sourceRecordIds);
   validateSavedItemReferences(items, facts.sourceRecordIds);
 
-  const drafts = sortById(
-    input.messageDrafts.filter(
-      (draft) => draft.ownerUserId === ownerUserId && (!personIds || personIds.has(draft.personId)),
-    ),
-  );
+  const drafts = sortById(input.messageDrafts.filter((draft) => draft.ownerUserId === ownerUserId));
+  for (const draft of drafts) {
+    if (!personIds.has(draft.personId)) {
+      throw new Error(
+        `Owner data export message draft ${draft.id} references Person ${draft.personId} outside the owner export.`,
+      );
+    }
+  }
   for (const draft of drafts) validateDraftReferences(draft, facts);
 
   const actionPeople = sortById(
     input.generalActionPeople.filter(
-      (link) => actionIds.has(link.generalActionId) && (!personIds || personIds.has(link.personId)),
+      (link) => actionIds.has(link.generalActionId) && personIds.has(link.personId),
     ),
   );
   const actionAssets = sortById(
@@ -617,7 +622,7 @@ export function filterOwnerDataExportActionsPlanningContext(
   }
   const ideas = sortById(input.giftIdeas.filter((idea) => planIds.has(idea.giftPlanId)));
   for (const plan of plans) {
-    if (plan.subjectPersonId && personIds && !personIds.has(plan.subjectPersonId)) {
+    if (plan.subjectPersonId && !personIds.has(plan.subjectPersonId)) {
       throw new Error(
         `Owner data export Gift Plan ${plan.id} references Person ${plan.subjectPersonId} outside the owner export.`,
       );
@@ -651,10 +656,10 @@ export function filterOwnerDataExportActionsPlanningContext(
     giftIdeas: ideas,
     giftPlanEvents: planEvents,
     recordShares: shares,
-    sourceRecordIds: facts.sourceRecordIds ? [...facts.sourceRecordIds].sort() : undefined,
-    personIds: facts.personIds ? [...facts.personIds].sort() : undefined,
-    memoryIds: facts.memoryIds ? [...facts.memoryIds].sort() : undefined,
-    followupIds: facts.followupIds ? [...facts.followupIds].sort() : undefined,
+    sourceRecordIds: [...facts.sourceRecordIds].sort(),
+    personIds: [...facts.personIds].sort(),
+    memoryIds: [...facts.memoryIds].sort(),
+    followupIds: [...facts.followupIds].sort(),
     sensitivityByRecordId: { ...facts.sensitivityByRecordId },
   };
 }
@@ -664,6 +669,10 @@ export type OwnerDataExportActionsPlanningArchiveExtension = {
   resources: OwnerDataExportResource[];
   families: string[];
 };
+
+function loadWhenPresent<T>(ids: readonly string[], load: () => Promise<T[]>): Promise<T[]> {
+  return ids.length > 0 ? load() : Promise.resolve([]);
+}
 
 /** Convert the actions-planning graph into stable, versioned JSON resources. */
 export function ownerDataExportActionsPlanningContextExtension(
@@ -866,117 +875,112 @@ export async function loadOwnerDataExportActionsPlanningContext(input: {
     planEventRows,
     shareRows,
   ] = await Promise.all([
-    actionIds.length
-      ? db
-          .select({ link: generalActionPeople })
-          .from(generalActionPeople)
-          .innerJoin(generalActions, eq(generalActionPeople.generalActionId, generalActions.id))
-          .where(
-            and(
-              eq(generalActions.ownerUserId, ownerUserId),
-              eq(generalActions.ownership, "member_owned"),
-              inArray(generalActionPeople.generalActionId, actionIds),
-            ),
-          )
-          .orderBy(asc(generalActionPeople.id))
-      : [],
-    actionIds.length
-      ? db
-          .select({ link: generalActionAssets })
-          .from(generalActionAssets)
-          .innerJoin(generalActions, eq(generalActionAssets.generalActionId, generalActions.id))
-          .where(
-            and(
-              eq(generalActions.ownerUserId, ownerUserId),
-              eq(generalActions.ownership, "member_owned"),
-              inArray(generalActionAssets.generalActionId, actionIds),
-            ),
-          )
-          .orderBy(asc(generalActionAssets.id))
-      : [],
-    actionIds.length
-      ? db
-          .select({ event: generalActionEvents })
-          .from(generalActionEvents)
-          .innerJoin(generalActions, eq(generalActionEvents.generalActionId, generalActions.id))
-          .where(
-            and(
-              eq(generalActionEvents.ownerUserId, ownerUserId),
-              eq(generalActions.ownerUserId, ownerUserId),
-              eq(generalActions.ownership, "member_owned"),
-              inArray(generalActionEvents.generalActionId, actionIds),
-            ),
-          )
-          .orderBy(asc(generalActionEvents.createdAt), asc(generalActionEvents.id))
-      : [],
-    savedItemIds.length
-      ? db
-          .select({ event: savedItemEvents })
-          .from(savedItemEvents)
-          .innerJoin(savedItems, eq(savedItemEvents.savedItemId, savedItems.id))
-          .where(
-            and(
-              eq(savedItemEvents.ownerUserId, ownerUserId),
-              eq(savedItems.ownerUserId, ownerUserId),
-              eq(savedItems.ownership, "member_owned"),
-              inArray(savedItemEvents.savedItemId, savedItemIds),
-            ),
-          )
-          .orderBy(asc(savedItemEvents.createdAt), asc(savedItemEvents.id))
-      : [],
-    savedItemIds.length
-      ? db
-          .select({ outcome: savedItemOutcomes })
-          .from(savedItemOutcomes)
-          .innerJoin(savedItems, eq(savedItemOutcomes.savedItemId, savedItems.id))
-          .where(
-            and(
-              eq(savedItems.ownerUserId, ownerUserId),
-              eq(savedItems.ownership, "member_owned"),
-              inArray(savedItemOutcomes.savedItemId, savedItemIds),
-            ),
-          )
-          .orderBy(asc(savedItemOutcomes.createdAt), asc(savedItemOutcomes.id))
-      : [],
-    planIds.length
-      ? db
-          .select({ idea: giftIdeas })
-          .from(giftIdeas)
-          .innerJoin(giftPlans, eq(giftIdeas.giftPlanId, giftPlans.id))
-          .where(
-            and(eq(giftPlans.ownerUserId, ownerUserId), inArray(giftIdeas.giftPlanId, planIds)),
-          )
-          .orderBy(asc(giftIdeas.id))
-      : [],
-    planIds.length
-      ? db
-          .select({ event: giftPlanEvents })
-          .from(giftPlanEvents)
-          .innerJoin(giftPlans, eq(giftPlanEvents.giftPlanId, giftPlans.id))
-          .where(
-            and(
-              eq(giftPlans.ownerUserId, ownerUserId),
-              inArray(giftPlanEvents.giftPlanId, planIds),
-            ),
-          )
-          .orderBy(asc(giftPlanEvents.createdAt), asc(giftPlanEvents.id))
-      : [],
-    ids.length
-      ? db
-          .select()
-          .from(householdRecordShares)
-          .where(
-            and(
-              inArray(householdRecordShares.recordKind, [
-                "general_action",
-                "saved_item",
-                "gift_plan",
-              ]),
-              inArray(householdRecordShares.recordId, ids),
-            ),
-          )
-          .orderBy(asc(householdRecordShares.id))
-      : [],
+    loadWhenPresent(actionIds, () =>
+      db
+        .select({ link: generalActionPeople })
+        .from(generalActionPeople)
+        .innerJoin(generalActions, eq(generalActionPeople.generalActionId, generalActions.id))
+        .where(
+          and(
+            eq(generalActions.ownerUserId, ownerUserId),
+            eq(generalActions.ownership, "member_owned"),
+            inArray(generalActionPeople.generalActionId, actionIds),
+          ),
+        )
+        .orderBy(asc(generalActionPeople.id)),
+    ),
+    loadWhenPresent(actionIds, () =>
+      db
+        .select({ link: generalActionAssets })
+        .from(generalActionAssets)
+        .innerJoin(generalActions, eq(generalActionAssets.generalActionId, generalActions.id))
+        .where(
+          and(
+            eq(generalActions.ownerUserId, ownerUserId),
+            eq(generalActions.ownership, "member_owned"),
+            inArray(generalActionAssets.generalActionId, actionIds),
+          ),
+        )
+        .orderBy(asc(generalActionAssets.id)),
+    ),
+    loadWhenPresent(actionIds, () =>
+      db
+        .select({ event: generalActionEvents })
+        .from(generalActionEvents)
+        .innerJoin(generalActions, eq(generalActionEvents.generalActionId, generalActions.id))
+        .where(
+          and(
+            eq(generalActionEvents.ownerUserId, ownerUserId),
+            eq(generalActions.ownerUserId, ownerUserId),
+            eq(generalActions.ownership, "member_owned"),
+            inArray(generalActionEvents.generalActionId, actionIds),
+          ),
+        )
+        .orderBy(asc(generalActionEvents.createdAt), asc(generalActionEvents.id)),
+    ),
+    loadWhenPresent(savedItemIds, () =>
+      db
+        .select({ event: savedItemEvents })
+        .from(savedItemEvents)
+        .innerJoin(savedItems, eq(savedItemEvents.savedItemId, savedItems.id))
+        .where(
+          and(
+            eq(savedItemEvents.ownerUserId, ownerUserId),
+            eq(savedItems.ownerUserId, ownerUserId),
+            eq(savedItems.ownership, "member_owned"),
+            inArray(savedItemEvents.savedItemId, savedItemIds),
+          ),
+        )
+        .orderBy(asc(savedItemEvents.createdAt), asc(savedItemEvents.id)),
+    ),
+    loadWhenPresent(savedItemIds, () =>
+      db
+        .select({ outcome: savedItemOutcomes })
+        .from(savedItemOutcomes)
+        .innerJoin(savedItems, eq(savedItemOutcomes.savedItemId, savedItems.id))
+        .where(
+          and(
+            eq(savedItems.ownerUserId, ownerUserId),
+            eq(savedItems.ownership, "member_owned"),
+            inArray(savedItemOutcomes.savedItemId, savedItemIds),
+          ),
+        )
+        .orderBy(asc(savedItemOutcomes.createdAt), asc(savedItemOutcomes.id)),
+    ),
+    loadWhenPresent(planIds, () =>
+      db
+        .select({ idea: giftIdeas })
+        .from(giftIdeas)
+        .innerJoin(giftPlans, eq(giftIdeas.giftPlanId, giftPlans.id))
+        .where(and(eq(giftPlans.ownerUserId, ownerUserId), inArray(giftIdeas.giftPlanId, planIds)))
+        .orderBy(asc(giftIdeas.id)),
+    ),
+    loadWhenPresent(planIds, () =>
+      db
+        .select({ event: giftPlanEvents })
+        .from(giftPlanEvents)
+        .innerJoin(giftPlans, eq(giftPlanEvents.giftPlanId, giftPlans.id))
+        .where(
+          and(eq(giftPlans.ownerUserId, ownerUserId), inArray(giftPlanEvents.giftPlanId, planIds)),
+        )
+        .orderBy(asc(giftPlanEvents.createdAt), asc(giftPlanEvents.id)),
+    ),
+    loadWhenPresent(ids, () =>
+      db
+        .select()
+        .from(householdRecordShares)
+        .where(
+          and(
+            inArray(householdRecordShares.recordKind, [
+              "general_action",
+              "saved_item",
+              "gift_plan",
+            ]),
+            inArray(householdRecordShares.recordId, ids),
+          ),
+        )
+        .orderBy(asc(householdRecordShares.id)),
+    ),
   ]);
 
   return {

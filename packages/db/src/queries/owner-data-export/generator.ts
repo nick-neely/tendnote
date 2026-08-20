@@ -39,18 +39,40 @@ export async function loadOwnerDataExportAccount(
   return record ?? null;
 }
 
-export async function generateOwnerDataExportArchive(input: {
+type GenerateOwnerDataExportArchiveInput = {
   ownerUserId: string;
   now: Date;
   expiresAt: Date;
   account?: OwnerDataExportAccount;
-  /** Test and future adapter seam; production uses the owner-scoped Drizzle loader. */
   relationshipContext?: OwnerDataExportRelationshipContext;
   loadRelationshipContext?: OwnerDataExportRelationshipContextLoader;
-  /** Test and future adapter seam for the action/planning resource family. */
   actionsPlanningContext?: OwnerDataExportActionsPlanningContext;
   loadActionsPlanningContext?: OwnerDataExportActionsPlanningContextLoader;
-}) {
+};
+
+async function resolveRelationshipContext(input: GenerateOwnerDataExportArchiveInput) {
+  if (input.relationshipContext) return input.relationshipContext;
+  const load = input.loadRelationshipContext ?? loadOwnerDataExportRelationshipContext;
+  return load({ ownerUserId: input.ownerUserId });
+}
+
+function includesActionsPlanning(input: GenerateOwnerDataExportArchiveInput) {
+  return Boolean(
+    input.actionsPlanningContext ||
+      input.loadActionsPlanningContext ||
+      (!input.relationshipContext && !input.loadRelationshipContext),
+  );
+}
+
+async function resolveActionsPlanningContext(input: GenerateOwnerDataExportArchiveInput) {
+  if (input.actionsPlanningContext) return input.actionsPlanningContext;
+  const load = input.loadActionsPlanningContext ?? loadOwnerDataExportActionsPlanningContext;
+  return load({ ownerUserId: input.ownerUserId });
+}
+
+const EMPTY_EXTENSION = { entries: [], resources: [], families: [] };
+
+export async function generateOwnerDataExportArchive(input: GenerateOwnerDataExportArchiveInput) {
   const account = input.account ?? (await loadOwnerDataExportAccount(input.ownerUserId));
   if (!account) {
     throw new Error("Owner account is unavailable for export.");
@@ -58,11 +80,7 @@ export async function generateOwnerDataExportArchive(input: {
   if (account.id !== input.ownerUserId) {
     throw new Error("Owner account does not match the export owner.");
   }
-  const relationshipContext =
-    input.relationshipContext ??
-    (await (input.loadRelationshipContext ?? loadOwnerDataExportRelationshipContext)({
-      ownerUserId: input.ownerUserId,
-    }));
+  const relationshipContext = await resolveRelationshipContext(input);
   const extension = ownerDataExportRelationshipContextExtension(
     input.ownerUserId,
     relationshipContext,
@@ -71,34 +89,13 @@ export async function generateOwnerDataExportArchive(input: {
   // the #478 generated-ZIP tests), so an explicitly supplied relationship graph
   // does not unexpectedly perform a second production database load. Production
   // generation has neither fixture context and therefore gets the full loader.
-  const actionsPlanningExtension =
-    input.actionsPlanningContext ||
-    input.loadActionsPlanningContext ||
-    (!input.relationshipContext && !input.loadRelationshipContext)
-      ? ownerDataExportActionsPlanningContextExtension(
-          input.ownerUserId,
-          input.actionsPlanningContext ??
-            (input.loadActionsPlanningContext
-              ? await input.loadActionsPlanningContext({ ownerUserId: input.ownerUserId })
-              : await loadOwnerDataExportActionsPlanningContext({
-                  ownerUserId: input.ownerUserId,
-                })),
-          {
-            sourceRecordIds: relationshipContext.sourceRecords.map((record) => record.id),
-            personIds: relationshipContext.people.map((person) => person.id),
-            memoryIds: relationshipContext.memories.map((memory) => memory.id),
-            followupIds: relationshipContext.followups.map((followup) => followup.id),
-            sensitivityByRecordId: Object.fromEntries([
-              ...relationshipContext.sourceRecords.map(
-                (record) => [record.id, record.sensitivity] as const,
-              ),
-              ...relationshipContext.memories.map(
-                (memory) => [memory.id, memory.sensitivity] as const,
-              ),
-            ]),
-          },
-        )
-      : { entries: [], resources: [], families: [] };
+  const actionsPlanningExtension = includesActionsPlanning(input)
+    ? ownerDataExportActionsPlanningContextExtension(
+        input.ownerUserId,
+        await resolveActionsPlanningContext(input),
+        extension.grounding,
+      )
+    : EMPTY_EXTENSION;
   return buildOwnerDataExportArchive({
     account,
     now: input.now,
