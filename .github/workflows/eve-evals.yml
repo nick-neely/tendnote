@@ -121,7 +121,7 @@ jobs:
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          AGENT_MODEL: ${{ vars.TENDNOTE_AGENT_MODEL || 'anthropic/claude-haiku-4.5' }}
+          AGENT_MODEL: ${{ vars.TENDNOTE_AGENT_MODEL || 'anthropic/claude-sonnet-5' }}
         run: >-
           node apps/agent/scripts/package-deterministic-evidence.mjs
           --source-sha "$CANDIDATE_SHA"

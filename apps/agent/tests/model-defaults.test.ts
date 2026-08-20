@@ -6,6 +6,7 @@ const repoRoot = join(import.meta.dirname, "../../..");
 const SONNET = "anthropic/claude-sonnet-5";
 
 const authoritativeDefaults = [
+  ".github/workflows/eve-evals.yml",
   "apps/agent/agent/agent.ts",
   "apps/agent/agent/subagents/memory_curator/agent.ts",
   "apps/agent/agent/subagents/message_drafter/agent.ts",
