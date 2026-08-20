@@ -138,6 +138,11 @@ not search or propose separately, and never fan that turn out to `create_person`
 `remember_self_context`. All of the turn's multiple explicit clauses stay together in
 that one call so they share one source and one grouped confirmation.
 
+If Capture carries an inferred Memory suggestion, its `personId` must be an exact
+known Person id returned by `search_people`; never invent a placeholder such as
+`new`, `pending`, or `will-resolve`. An unresolved person stays in Capture's
+reviewable source evidence and never reaches durable Memory persistence.
+
 Do not ask which destination to use or how to split the request before calling
 `capture_saved_item`; the shared router owns grouping and can come back with one
 focused clarification of its own. Ordinary questions stay conversation-only, and an
