@@ -269,15 +269,33 @@ function sourceRecordForExport(record: SourceRecord) {
     sensitivity: record.sensitivity,
     scope: record.scope,
     importance: record.importance,
-    metadataJson: record.metadataJson,
+    // Keep only the durable capture surface. Provider/session hashes, provider
+    // ids, and extraction linkage are operational state rather than portable
+    // source truth and must not cross the export boundary.
+    metadataJson: durableSourceRecordMetadata(record.metadataJson),
     createdAt: iso(record.createdAt),
     updatedAt: iso(record.updatedAt),
   };
 }
 
+function durableSourceRecordMetadata(metadata: Record<string, unknown>) {
+  return typeof metadata.captureSurface === "string"
+    ? { captureSurface: metadata.captureSurface }
+    : {};
+}
+
 function personForExport(person: Person) {
   return {
-    ...person,
+    id: person.id,
+    ownerUserId: person.ownerUserId,
+    displayName: person.displayName,
+    firstName: person.firstName,
+    lastName: person.lastName,
+    birthday: person.birthday,
+    relationshipType: person.relationshipType,
+    closenessLevel: person.closenessLevel,
+    profileBlurb: person.profileBlurb,
+    source: person.source,
     createdAt: iso(person.createdAt),
     updatedAt: iso(person.updatedAt),
   };
@@ -292,11 +310,25 @@ function contactMethodForExport(method: ContactMethod) {
 }
 
 function memoryForExport(memory: Memory, sourceRecordIds: ReadonlySet<string>) {
+  if (!sourceRecordIds.has(memory.sourceRecordId)) {
+    throw new Error(
+      `Owner data export memory ${memory.id} references source record ${memory.sourceRecordId} outside the owner export.`,
+    );
+  }
+
   return {
-    ...memory,
-    // A malformed cross-owner grounding must not become a dangling reference in
-    // a portable archive. The memory itself remains owner-owned and is retained.
-    sourceRecordId: sourceRecordIds.has(memory.sourceRecordId) ? memory.sourceRecordId : null,
+    id: memory.id,
+    personId: memory.personId,
+    ownerUserId: memory.ownerUserId,
+    householdId: memory.householdId ?? null,
+    sourceRecordId: memory.sourceRecordId,
+    memoryType: memory.memoryType,
+    content: memory.content,
+    status: memory.status,
+    importance: memory.importance,
+    sensitivity: memory.sensitivity,
+    confidence: memory.confidence,
+    scope: memory.scope,
     approvedAt: iso(memory.approvedAt),
     dismissedAt: iso(memory.dismissedAt),
     createdAt: iso(memory.createdAt),

@@ -17,8 +17,14 @@ function date(value: string) {
   return new Date(value);
 }
 
+function first<T>(values: readonly T[]): T {
+  const value = values[0];
+  if (!value) throw new Error("Expected fixture record.");
+  return value;
+}
+
 function relationshipContext(): OwnerDataExportRelationshipContext {
-  return {
+  const context: OwnerDataExportRelationshipContext = {
     people: [
       {
         id: "person-owned",
@@ -89,7 +95,12 @@ function relationshipContext(): OwnerDataExportRelationshipContext {
         sensitivity: "restricted",
         scope: "private",
         importance: 4,
-        metadataJson: { captureSurface: "account" },
+        metadataJson: {
+          captureSurface: "account",
+          discordHitlSessionId: "DISCORD_HITL_SESSION_SENTINEL",
+          captureInputHash: "CAPTURE_INPUT_HASH_SENTINEL",
+          interactionId: "INTERACTION_ID_SENTINEL",
+        },
         createdAt: date("2026-08-03T12:00:00.000Z"),
         updatedAt: date("2026-08-04T12:00:00.000Z"),
       },
@@ -127,7 +138,28 @@ function relationshipContext(): OwnerDataExportRelationshipContext {
         createdAt: date("2026-08-03T12:00:00.000Z"),
       },
     ],
-    unresolvedMentions: [],
+    unresolvedMentions: [
+      {
+        id: "mention-owned",
+        sourceRecordId: "source-owned",
+        mentionText: "Ada",
+        candidatePersonIds: ["person-owned", "person-other-owner"],
+        status: "unresolved",
+        resolvedPersonId: "person-owned",
+        createdAt: date("2026-08-03T12:00:00.000Z"),
+        resolvedAt: null,
+      },
+      {
+        id: "mention-other-owner",
+        sourceRecordId: "source-other-owner",
+        mentionText: "Grace",
+        candidatePersonIds: ["person-other-owner"],
+        status: "dismissed",
+        resolvedPersonId: "person-other-owner",
+        createdAt: date("2026-08-03T12:00:00.000Z"),
+        resolvedAt: date("2026-08-04T12:00:00.000Z"),
+      },
+    ],
     memories: [
       {
         id: "memory-owned-restricted",
@@ -279,6 +311,12 @@ function relationshipContext(): OwnerDataExportRelationshipContext {
       },
     ],
   };
+
+  // These are generated database-only vectors. They must never become part of
+  // the portable owner contract even when a row adapter supplies them.
+  Object.assign(first(context.people), { searchVector: "PEOPLE_SEARCH_VECTOR_SENTINEL" });
+  Object.assign(first(context.memories), { searchVector: "MEMORIES_SEARCH_VECTOR_SENTINEL" });
+  return context;
 }
 
 function readStoredZipEntries(bytes: Uint8Array) {
@@ -337,13 +375,16 @@ describe("owner relationship context export", () => {
     expect(entries.get("inventory.txt")).toContain(
       "- resources/relationship/memories-v1.json, 1 record, sensitivity restricted",
     );
-    expect(resource(entries, "resources/people/people-v1.json")).toEqual([
+    const people = resource(entries, "resources/people/people-v1.json");
+    expect(people).toEqual([
       expect.objectContaining({ id: "person-owned", ownerUserId: "owner-1" }),
     ]);
+    expect(people[0]).not.toHaveProperty("searchVector");
     expect(resource(entries, "resources/people/contact-methods-v1.json")).toEqual([
       expect.objectContaining({ id: "contact-owned", personId: "person-owned" }),
     ]);
-    expect(resource(entries, "resources/relationship/memories-v1.json")).toEqual([
+    const memories = resource(entries, "resources/relationship/memories-v1.json");
+    expect(memories).toEqual([
       expect.objectContaining({
         id: "memory-owned-restricted",
         status: "dismissed",
@@ -351,11 +392,36 @@ describe("owner relationship context export", () => {
         sourceRecordId: "source-owned",
       }),
     ]);
-    expect(resource(entries, "resources/relationship/source-records-v1.json")).toEqual([
+    expect(memories[0]).not.toHaveProperty("searchVector");
+    const sourceRecords = resource(entries, "resources/relationship/source-records-v1.json");
+    expect(sourceRecords).toEqual([
       expect.objectContaining({
         id: "source-owned",
         status: "archived",
         sensitivity: "restricted",
+      }),
+    ]);
+    expect(sourceRecords[0]).toMatchObject({ metadataJson: { captureSurface: "account" } });
+    expect(sourceRecords[0]).not.toMatchObject({
+      metadataJson: expect.objectContaining({
+        discordHitlSessionId: expect.anything(),
+        captureInputHash: expect.anything(),
+        interactionId: expect.anything(),
+      }),
+    });
+    expect(resource(entries, "resources/relationship/source-record-people-v1.json")).toEqual([
+      expect.objectContaining({
+        id: "source-person-owned",
+        sourceRecordId: "source-owned",
+        personId: "person-owned",
+      }),
+    ]);
+    expect(resource(entries, "resources/relationship/unresolved-person-mentions-v1.json")).toEqual([
+      expect.objectContaining({
+        id: "mention-owned",
+        sourceRecordId: "source-owned",
+        candidatePersonIds: ["person-owned"],
+        resolvedPersonId: "person-owned",
       }),
     ]);
     expect(resource(entries, "resources/relationship/interactions-v1.json")).toEqual([
@@ -377,5 +443,102 @@ describe("owner relationship context export", () => {
     expect(archiveText).not.toContain("Other owner's");
     expect(archiveText).not.toContain("Household context must not be exported");
     expect(archiveText).not.toContain("provider raw payload must not be exported");
+    expect(archiveText).not.toContain("PEOPLE_SEARCH_VECTOR_SENTINEL");
+    expect(archiveText).not.toContain("MEMORIES_SEARCH_VECTOR_SENTINEL");
+    expect(archiveText).not.toContain("DISCORD_HITL_SESSION_SENTINEL");
+    expect(archiveText).not.toContain("CAPTURE_INPUT_HASH_SENTINEL");
+    expect(archiveText).not.toContain("INTERACTION_ID_SENTINEL");
+  });
+
+  it("retains every supported lifecycle state in the portable resources", async () => {
+    const context = relationshipContext();
+    const sourceStatuses = ["pending_resolution", "active", "dismissed"] as const;
+    context.sourceRecords.push(
+      ...sourceStatuses.map((status) => ({
+        ...first(context.sourceRecords),
+        id: `source-lifecycle-${status}`,
+        content: `Source record ${status}`,
+        status,
+      })),
+    );
+    const memoryStatuses = ["suggested", "approved", "archived"] as const;
+    context.memories.push(
+      ...memoryStatuses.map((status) => ({
+        ...first(context.memories),
+        id: `memory-lifecycle-${status}`,
+        content: `Memory ${status}`,
+        status,
+        approvedAt: status === "approved" ? NOW : null,
+        dismissedAt: null,
+      })),
+    );
+    const followupStatuses = ["open", "snoozed", "completed", "dismissed", "archived"] as const;
+    context.followups.push(
+      ...followupStatuses.map((status) => ({
+        ...first(context.followups),
+        id: `followup-lifecycle-${status}`,
+        reason: `Follow-up ${status}`,
+        status,
+      })),
+    );
+    const contextFactLifecycles = ["active", "archived"] as const;
+    context.contextFacts.push(
+      ...contextFactLifecycles.map((lifecycle) => ({
+        ...first(context.contextFacts),
+        id: `context-lifecycle-${lifecycle}`,
+        content: `Context fact ${lifecycle}`,
+        lifecycle,
+      })),
+    );
+
+    const result = await generateOwnerDataExportArchive({
+      ownerUserId: "owner-1",
+      account: ACCOUNT,
+      now: NOW,
+      expiresAt: new Date("2026-08-20T12:00:00.000Z"),
+      relationshipContext: context,
+    });
+    const entries = readStoredZipEntries(result.bytes);
+    const statuses = <T extends { status: string }>(path: string) =>
+      resource(entries, path)
+        .map((record) => (record as T).status)
+        .sort();
+
+    expect(statuses("resources/relationship/memories-v1.json")).toEqual(
+      ["suggested", "approved", "dismissed", "archived"].sort(),
+    );
+    expect(statuses("resources/relationship/source-records-v1.json")).toEqual(
+      ["pending_resolution", "active", "dismissed", "archived"].sort(),
+    );
+    expect(statuses("resources/relationship/follow-ups-v1.json")).toEqual(
+      ["suggested", "open", "snoozed", "completed", "dismissed", "archived"].sort(),
+    );
+    expect(
+      resource(entries, "resources/context/context-facts-v1.json")
+        .map((record) => (record as { lifecycle: string }).lifecycle)
+        .sort(),
+    ).toEqual(["suggested", "active", "archived"].sort());
+  });
+
+  it.each([
+    "source-missing",
+    "source-other-owner",
+  ])("fails closed when an owner memory is grounded to %s", async (sourceRecordId) => {
+    const context = relationshipContext();
+    context.memories.push({
+      ...first(context.memories),
+      id: `memory-invalid-${sourceRecordId}`,
+      sourceRecordId,
+    });
+
+    await expect(
+      generateOwnerDataExportArchive({
+        ownerUserId: "owner-1",
+        account: ACCOUNT,
+        now: NOW,
+        expiresAt: new Date("2026-08-20T12:00:00.000Z"),
+        relationshipContext: context,
+      }),
+    ).rejects.toThrow(`memory-invalid-${sourceRecordId}`);
   });
 });
