@@ -530,10 +530,16 @@ export function createHouseholdInvitationLifecycle(
      * `emailVerified` is not part of it today and when that must change.
      */
     async acceptInvitation(proof: RecipientProof): Promise<{ householdId: string }> {
-      const at = now();
       const secretDigest = digestHouseholdInvitationSecret(proof.secret);
 
       return store.withTransaction(async (tx) => {
+        // Stable lock order: recipient first, then household. This serializes
+        // one account's competing invitations even when they name different
+        // households, so the one-household rule cannot be bypassed by interleaving.
+        if (!(await tx.lockUser({ userId: proof.userId }))) {
+          unusableLink();
+        }
+        const initialAt = now();
         const loaded = await loadBySecret(tx, proof.secret);
         const activeMemberships = await tx.households.listActiveHouseholdMembershipsForUser({
           userId: proof.userId,
@@ -547,11 +553,14 @@ export function createHouseholdInvitationLifecycle(
         const found =
           loaded?.invitation.state === "accepted"
             ? loaded
-            : requireProvenRecipient(loaded, { proof, activeMemberships, at });
+            : requireProvenRecipient(loaded, { proof, activeMemberships, at: initialAt });
 
         if (!(await tx.lockHousehold({ householdId: found.household.id }))) {
           unusableLink();
         }
+        // The lock may have queued behind a long-running seat operation. Never
+        // let the pre-lock clock turn an expired invitation into an admission.
+        const at = now();
 
         // Re-read under the lock. A concurrent accept, cancel, or resend may
         // have consumed or rotated this capability since the lookup above. A
@@ -595,6 +604,15 @@ export function createHouseholdInvitationLifecycle(
         }
 
         if (!isHouseholdInvitationLive(invitation, at)) {
+          unusableLink();
+        }
+
+        // A self-hosted bootstrap grant is the configured owner's admission
+        // proof, not a household invitation. Refuse this ambiguous edge rather
+        // than reclassifying the singleton bootstrap source.
+        if (
+          (await tx.accessProfiles.getByUserId(proof.userId))?.source === "self_hosted_bootstrap"
+        ) {
           unusableLink();
         }
 

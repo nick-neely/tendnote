@@ -85,10 +85,17 @@ export type HouseholdInvitationStore = {
   calendars: HouseholdCalendarStore;
   /**
    * Runs `fn` inside one transaction, handing it a store bound to that
-   * transaction. Concurrency is serialized by {@link lockHousehold}, not by this
-   * on its own.
+   * transaction. Acceptance acquires the recipient lock before the household
+   * lock; other seat-moving paths acquire the household lock directly.
    */
   withTransaction: <T>(fn: (store: HouseholdInvitationStore) => Promise<T>) => Promise<T>;
+  /**
+   * Serializes all acceptance attempts for one account, including attempts for
+   * different households. Call this before {@link lockHousehold}; that stable
+   * order prevents one account from acquiring two household locks and joining
+   * both while the requests interleave.
+   */
+  lockUser: (input: { userId: string }) => Promise<boolean>;
   /**
    * Takes the household's row lock and returns it. Every seat-consuming path
    * takes this first, so two concurrent sends or accepts on one household are

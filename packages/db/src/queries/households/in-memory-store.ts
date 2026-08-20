@@ -15,6 +15,20 @@ import type {
 
 export function createInMemoryHouseholdStore(): HouseholdStore & {
   listAuditLogEntries: (input: { ownerUserId: string }) => Promise<HouseholdAuditLogEntry[]>;
+  snapshot: () => {
+    households: HouseholdWorkspace[];
+    memberships: HouseholdMembership[];
+    recordShares: HouseholdRecordShare[];
+    dissolutionConfirmations: HouseholdDissolutionConfirmation[];
+    auditLogEntries: HouseholdAuditLogEntry[];
+  };
+  restore: (snapshot: {
+    households: HouseholdWorkspace[];
+    memberships: HouseholdMembership[];
+    recordShares: HouseholdRecordShare[];
+    dissolutionConfirmations: HouseholdDissolutionConfirmation[];
+    auditLogEntries: HouseholdAuditLogEntry[];
+  }) => void;
 } {
   const households = new Map<string, HouseholdWorkspace>();
   const memberships = new Map<string, HouseholdMembership>();
@@ -202,6 +216,37 @@ export function createInMemoryHouseholdStore(): HouseholdStore & {
     },
     async listAuditLogEntries(input) {
       return auditLogEntries.filter((entry) => entry.ownerUserId === input.ownerUserId);
+    },
+    snapshot() {
+      return {
+        households: [...households.values()].map((household) => ({ ...household })),
+        memberships: [...memberships.values()].map((membership) => ({ ...membership })),
+        recordShares: [...recordShares.values()].map((share) => ({ ...share })),
+        dissolutionConfirmations: [...dissolutionConfirmations.values()].map((confirmation) => ({
+          ...confirmation,
+        })),
+        auditLogEntries: auditLogEntries.map((entry) => ({ ...entry })),
+      };
+    },
+    restore(snapshot) {
+      households.clear();
+      for (const household of snapshot.households) households.set(household.id, { ...household });
+      memberships.clear();
+      for (const membership of snapshot.memberships)
+        memberships.set(membership.id, { ...membership });
+      recordShares.clear();
+      for (const share of snapshot.recordShares) recordShares.set(share.id, { ...share });
+      dissolutionConfirmations.clear();
+      for (const confirmation of snapshot.dissolutionConfirmations) {
+        dissolutionConfirmations.set(`${confirmation.householdId}:${confirmation.userId}`, {
+          ...confirmation,
+        });
+      }
+      auditLogEntries.splice(
+        0,
+        auditLogEntries.length,
+        ...snapshot.auditLogEntries.map((entry) => ({ ...entry })),
+      );
     },
   };
 }

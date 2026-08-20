@@ -1,7 +1,10 @@
 import type { AccessProfile } from "@tendnote/domain";
 import type { AccessProfileStore } from "./types";
 
-export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): AccessProfileStore {
+export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): AccessProfileStore & {
+  snapshot: () => AccessProfile[];
+  restore: (snapshot: AccessProfile[]) => void;
+} {
   const profiles = new Map(seed.map((profile) => [profile.userId, profile]));
 
   function insert(input: Parameters<AccessProfileStore["create"]>[0]): AccessProfile {
@@ -103,6 +106,13 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       profiles.set(userId, updated);
 
       return updated;
+    },
+    snapshot() {
+      return [...profiles.values()].map((profile) => ({ ...profile }));
+    },
+    restore(snapshot) {
+      profiles.clear();
+      for (const profile of snapshot) profiles.set(profile.userId, { ...profile });
     },
   };
 }

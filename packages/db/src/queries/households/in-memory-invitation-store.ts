@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { HouseholdMemberIdentity } from "@tendnote/domain";
 import { createInMemoryAccessProfileStore } from "../access-profiles/in-memory-store";
@@ -14,14 +15,20 @@ import {
   type HouseholdScheduledWorkStore,
 } from "./scheduled-work";
 
-/**
- * The invitation store the lifecycle suite runs against.
- *
- * `withTransaction` hands back the same store rather than isolating anything:
- * these tests exercise the lifecycle's decisions, and the atomicity they depend
- * on is a property of the Drizzle implementation's transaction plus row lock,
- * asserted separately against that adapter.
- */
+type InMemoryTransactionContext = {
+  releases: Array<() => void>;
+  snapshot?: InMemoryStoreSnapshot;
+};
+
+type InMemoryStoreSnapshot = {
+  invitations: Array<[string, HouseholdInvitation]>;
+  deliveries: Array<[string, HouseholdInvitationDelivery]>;
+  households: ReturnType<ReturnType<typeof createInMemoryHouseholdStore>["snapshot"]>;
+  accessProfiles: ReturnType<ReturnType<typeof createInMemoryAccessProfileStore>["snapshot"]>;
+};
+
+type LockHook = (input: { kind: "user" | "household"; id: string }) => Promise<void> | void;
+
 export function createInMemoryHouseholdInvitationStore(options?: {
   households?: ReturnType<typeof createInMemoryHouseholdStore>;
   accessProfiles?: ReturnType<typeof createInMemoryAccessProfileStore>;
@@ -29,6 +36,8 @@ export function createInMemoryHouseholdInvitationStore(options?: {
   identities?: HouseholdMemberIdentity[];
   /** Injectable so a test can watch what a departure ends, not only what it moves. */
   scheduledWork?: HouseholdScheduledWorkStore;
+  /** Test-only interleaving hook, called after the named lock is held. */
+  lockHook?: LockHook;
 }): HouseholdInvitationStore & {
   households: ReturnType<typeof createInMemoryHouseholdStore>;
   calendars: ReturnType<typeof createInMemoryHouseholdCalendarStore>;
@@ -42,6 +51,51 @@ export function createInMemoryHouseholdInvitationStore(options?: {
   const identityRows = options?.identities ?? [];
   const invitations = new Map<string, HouseholdInvitation>();
   const deliveries = new Map<string, HouseholdInvitationDelivery>();
+  const transactionContext = new AsyncLocalStorage<InMemoryTransactionContext>();
+  const locks = new Map<string, { held: boolean; waiters: Array<() => void> }>();
+
+  function snapshot(): InMemoryStoreSnapshot {
+    return {
+      invitations: [...invitations.entries()].map(([id, invitation]) => [id, { ...invitation }]),
+      deliveries: [...deliveries.entries()].map(([id, delivery]) => [id, { ...delivery }]),
+      households: households.snapshot(),
+      accessProfiles: accessProfiles.snapshot(),
+    };
+  }
+
+  function restore(state: InMemoryStoreSnapshot) {
+    invitations.clear();
+    for (const [id, invitation] of state.invitations) invitations.set(id, { ...invitation });
+    deliveries.clear();
+    for (const [id, delivery] of state.deliveries) deliveries.set(id, { ...delivery });
+    households.restore(state.households);
+    accessProfiles.restore(state.accessProfiles);
+  }
+
+  function release(key: string) {
+    const lock = locks.get(key);
+    if (!lock) return;
+    const next = lock.waiters.shift();
+    if (next) {
+      next();
+      return;
+    }
+    lock.held = false;
+  }
+
+  async function lock(key: string, input: { kind: "user" | "household"; id: string }) {
+    const context = transactionContext.getStore();
+    if (!context) throw new Error("In-memory row locks require a transaction.");
+    const state = locks.get(key) ?? { held: false, waiters: [] };
+    locks.set(key, state);
+    if (state.held) {
+      await new Promise<void>((resolve) => state.waiters.push(resolve));
+    }
+    state.held = true;
+    context.releases.push(() => release(key));
+    context.snapshot ??= snapshot();
+    await options?.lockHook?.(input);
+  }
 
   const identities: HouseholdIdentityStore = {
     async listUserIdentities(input) {
@@ -63,9 +117,24 @@ export function createInMemoryHouseholdInvitationStore(options?: {
     scheduledWork,
     calendars,
     async withTransaction(fn) {
-      return fn(store);
+      const context: InMemoryTransactionContext = { releases: [] };
+      return transactionContext.run(context, async () => {
+        try {
+          return await fn(store);
+        } catch (error) {
+          if (context.snapshot) restore(context.snapshot);
+          throw error;
+        } finally {
+          for (const releaseLock of context.releases.reverse()) releaseLock();
+        }
+      });
+    },
+    async lockUser(input) {
+      await lock(`user:${input.userId}`, { kind: "user", id: input.userId });
+      return true;
     },
     async lockHousehold(input) {
+      await lock(`household:${input.householdId}`, { kind: "household", id: input.householdId });
       return households.getHouseholdWorkspace(input);
     },
     async createInvitation(input) {

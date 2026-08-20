@@ -26,9 +26,13 @@ explicit invalid-configuration policy: it records an operator-actionable safe
 diagnostic and admits no account. Individual visitors receive the ordinary
 pending treatment, not an explanation that reveals deployment configuration.
 The configured owner receives one durable grant with source
-`self_hosted_bootstrap`; accepting a live, email-matching Household Invitation
-receives a separate durable `household_invitation` source. An ordinary later
-signup remains pending.
+`self_hosted_bootstrap`; that account is not an invitation recipient. A matching
+Household Invitation presented by the bootstrap owner is refused with the same
+opaque recipient failure as any unusable invitation, preserving the singleton
+bootstrap provenance rather than silently reclassifying it. Other authenticated
+recipients accepting a live, email-matching Household Invitation receive a
+separate durable `household_invitation` source. An ordinary later signup remains
+pending.
 
 The implementation is not ready for a worked deployment guide until hermetic
 automated proof covers configuration parsing, the configured bootstrap owner,

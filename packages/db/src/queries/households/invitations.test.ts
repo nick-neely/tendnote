@@ -21,6 +21,7 @@ async function setup(
     members?: ReadonlyArray<readonly [string, "owner" | "member"]>;
     identities?: { id: string; name: string | null; email: string }[];
     accessProfiles?: ReturnType<typeof createInMemoryAccessProfileStore>;
+    lockHook?: (input: { kind: "user" | "household"; id: string }) => Promise<void> | void;
   } = {},
 ) {
   clock = SENT_AT;
@@ -29,6 +30,7 @@ async function setup(
     households,
     accessProfiles: options.accessProfiles,
     identities: options.identities ?? [{ id: OWNER, name: "Alex", email: "alex@example.com" }],
+    lockHook: options.lockHook,
   });
   const household = await seedHouseholdWithMembers(households, {
     ownerUserId: OWNER,
@@ -307,6 +309,35 @@ describe("accepting an invitation", () => {
     });
   });
 
+  it("refuses a self-hosted bootstrap owner without changing the invitation", async () => {
+    const accessProfiles = createInMemoryAccessProfileStore();
+    await accessProfiles.insertIfAbsent({
+      userId: "sam-1",
+      status: "granted",
+      source: "self_hosted_bootstrap",
+      grantedAt: SENT_AT,
+    });
+    const { invitations, households, store, household } = await setup({ accessProfiles });
+    const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
+
+    await expect(
+      invitations.acceptInvitation({
+        secret: sent.secret,
+        userId: "sam-1",
+        userEmail: "sam@example.com",
+      }),
+    ).rejects.toThrow(HouseholdValidationError);
+
+    expect(await store.accessProfiles.getByUserId("sam-1")).toMatchObject({
+      status: "granted",
+      source: "self_hosted_bootstrap",
+    });
+    expect(
+      await households.getHouseholdMembership({ householdId: household.id, userId: "sam-1" }),
+    ).toBeNull();
+    expect((await store.listInvitations({ householdId: household.id }))[0]?.state).toBe("pending");
+  });
+
   it("does not create membership when the admission write does not grant access", async () => {
     const baseAccessProfiles = createInMemoryAccessProfileStore();
     const pending = await baseAccessProfiles.insertIfAbsent({
@@ -334,6 +365,30 @@ describe("accepting an invitation", () => {
       await households.getHouseholdMembership({ householdId: household.id, userId: "sam-1" }),
     ).toBeNull();
     expect(await store.accessProfiles.getByUserId("sam-1")).toMatchObject({ status: "pending" });
+    expect((await store.listInvitations({ householdId: household.id }))[0]?.state).toBe("pending");
+  });
+
+  it("rolls back the access grant and invitation when membership persistence fails", async () => {
+    const { invitations, households, store, household } = await setup();
+    const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
+    const originalCreateMembership = households.createHouseholdMembership;
+    households.createHouseholdMembership = async (...args) => {
+      await originalCreateMembership(...args);
+      throw new Error("membership write failed after insert");
+    };
+
+    await expect(
+      invitations.acceptInvitation({
+        secret: sent.secret,
+        userId: "sam-1",
+        userEmail: "sam@example.com",
+      }),
+    ).rejects.toThrow("membership write failed after insert");
+
+    expect(await store.accessProfiles.getByUserId("sam-1")).toBeNull();
+    expect(
+      await households.getHouseholdMembership({ householdId: household.id, userId: "sam-1" }),
+    ).toBeNull();
     expect((await store.listInvitations({ householdId: household.id }))[0]?.state).toBe("pending");
   });
 
@@ -516,6 +571,76 @@ describe("accepting an invitation", () => {
     expect(await store.accessProfiles.listByStatus("granted")).toHaveLength(1);
   });
 
+  it("serializes one recipient across different households", async () => {
+    let releaseFirstUserLock!: () => void;
+    let firstUserLocked!: () => void;
+    const firstLock = new Promise<void>((resolve) => {
+      firstUserLocked = resolve;
+    });
+    const release = new Promise<void>((resolve) => {
+      releaseFirstUserLock = resolve;
+    });
+    let userLockCount = 0;
+    const { invitations, households, store, household } = await setup({
+      lockHook: async ({ kind, id }) => {
+        if (kind !== "user" || id !== "sam-1" || userLockCount++ !== 0) return;
+        firstUserLocked();
+        await release;
+      },
+    });
+    const otherHousehold = await seedHouseholdWithMembers(households, {
+      ownerUserId: "sam-owner",
+      name: "Sam's other place",
+      members: [["sam-owner", "owner"]],
+    });
+    const firstInvitation = await invitations.sendInvitation({
+      ownerUserId: OWNER,
+      email: "sam@example.com",
+    });
+    const secondInvitation = await invitations.sendInvitation({
+      ownerUserId: "sam-owner",
+      email: "sam@example.com",
+    });
+
+    const first = invitations.acceptInvitation({
+      secret: firstInvitation.secret,
+      userId: "sam-1",
+      userEmail: "sam@example.com",
+    });
+    await firstLock;
+
+    let secondSettled = false;
+    const second = invitations
+      .acceptInvitation({
+        secret: secondInvitation.secret,
+        userId: "sam-1",
+        userEmail: "sam@example.com",
+      })
+      .then(
+        () => {
+          secondSettled = true;
+          throw new Error("cross-household acceptance unexpectedly succeeded");
+        },
+        (error) => {
+          secondSettled = true;
+          expect(error).toBeInstanceOf(HouseholdAdmissionConflictError);
+        },
+      );
+    await Promise.resolve();
+    expect(secondSettled).toBe(false);
+
+    releaseFirstUserLock();
+    await expect(first).resolves.toEqual({ householdId: household.id });
+    await second;
+    expect(
+      await households.listActiveHouseholdMembershipsForUser({ userId: "sam-1" }),
+    ).toHaveLength(1);
+    expect(
+      await households.getHouseholdMembership({ householdId: otherHousehold.id, userId: "sam-1" }),
+    ).toBeNull();
+    expect(await store.accessProfiles.listByStatus("granted")).toHaveLength(1);
+  });
+
   it("keeps an accepted link opaque to a different account", async () => {
     const { invitations, households, store, household } = await setup();
     const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
@@ -550,6 +675,29 @@ describe("accepting an invitation", () => {
         userEmail: "sam@example.com",
       }),
     ).rejects.toThrow(HouseholdValidationError);
+  });
+
+  it("rechecks expiry after waiting for the household lock", async () => {
+    let armed = false;
+    const { invitations, store, household } = await setup({
+      lockHook: ({ kind }) => {
+        if (armed && kind === "household") {
+          clock = new Date("2026-09-01T09:00:00Z");
+        }
+      },
+    });
+    const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
+    armed = true;
+
+    await expect(
+      invitations.acceptInvitation({
+        secret: sent.secret,
+        userId: "sam-1",
+        userEmail: "sam@example.com",
+      }),
+    ).rejects.toThrow(HouseholdValidationError);
+    expect(await store.accessProfiles.getByUserId("sam-1")).toBeNull();
+    expect((await store.listInvitations({ householdId: household.id }))[0]?.state).toBe("pending");
   });
 
   it("explains an existing-workspace conflict without moving anybody", async () => {
