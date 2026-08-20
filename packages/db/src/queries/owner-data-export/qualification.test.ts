@@ -6,7 +6,11 @@ import {
   createInMemoryOwnerDataExportArtifactStore,
   createInMemoryOwnerDataExportJobStore,
 } from "./in-memory-store";
-import { enqueueAndTriggerOwnerDataExportJob, expireOwnerDataExportArtifacts } from "./processor";
+import {
+  enqueueAndTriggerOwnerDataExportJob,
+  expireOwnerDataExportArtifacts,
+  processOwnerDataExportJob,
+} from "./processor";
 import type { OwnerDataExportRelationshipContext } from "./relationship-context";
 import { readStoredZipEntries, readStoredZipEntryBytes } from "./test-utils";
 
@@ -37,6 +41,80 @@ function jsonResource(entries: Map<string, string>, path: string) {
   const parsed = JSON.parse(entries.get(path) ?? "null") as { records: unknown[] } | null;
   if (!parsed) throw new Error(`Missing ${path}`);
   return parsed.records;
+}
+
+const OPERATIONAL_CANDIDATE_IDS = [
+  "neutral-provider-connection",
+  "neutral-session-row",
+  "neutral-cache-row",
+  "neutral-snapshot-row",
+  "neutral-embedding-row",
+  "neutral-queue-row",
+  "neutral-delivery-row",
+  "neutral-audit-row",
+] as const;
+
+/**
+ * Loader-shaped operational candidates make the negative boundary observable. The
+ * export family loaders intentionally return only their typed durable graph, so these
+ * rows can be present at the adapter seam without becoming portable resources.
+ */
+function withOperationalCandidates<T extends object>(
+  context: T,
+  sideEffects?: { externalNotification: () => void; externalDraftCreation: () => void },
+) {
+  return Object.assign(context, {
+    providerConnections: [
+      {
+        id: OPERATIONAL_CANDIDATE_IDS[0],
+        ownerUserId: OWNER,
+        path: "resources/provider-connections-v1.json",
+      },
+    ],
+    sessions: [
+      { id: OPERATIONAL_CANDIDATE_IDS[1], ownerUserId: OWNER, path: "resources/sessions-v1.json" },
+    ],
+    cacheEntries: [
+      {
+        id: OPERATIONAL_CANDIDATE_IDS[2],
+        ownerUserId: OWNER,
+        path: "resources/cache-entries-v1.json",
+      },
+    ],
+    snapshots: [
+      {
+        id: OPERATIONAL_CANDIDATE_IDS[3],
+        ownerUserId: OWNER,
+        path: "resources/snapshots-v1.json",
+      },
+    ],
+    embeddings: [
+      {
+        id: OPERATIONAL_CANDIDATE_IDS[4],
+        ownerUserId: OWNER,
+        path: "resources/embeddings-v1.json",
+      },
+    ],
+    queueRows: [
+      { id: OPERATIONAL_CANDIDATE_IDS[5], ownerUserId: OWNER, path: "resources/queues-v1.json" },
+    ],
+    deliveryRows: [
+      {
+        id: OPERATIONAL_CANDIDATE_IDS[6],
+        ownerUserId: OWNER,
+        path: "resources/deliveries-v1.json",
+      },
+    ],
+    auditRows: [
+      {
+        id: OPERATIONAL_CANDIDATE_IDS[7],
+        ownerUserId: OWNER,
+        path: "resources/audit-rows-v1.json",
+      },
+    ],
+    externalNotification: sideEffects?.externalNotification,
+    externalDraftCreation: sideEffects?.externalDraftCreation,
+  });
 }
 
 // fallow-ignore-next-line complexity
@@ -801,16 +879,30 @@ describe("owner data export qualification", () => {
   it("qualifies the owner graph through processing, ZIP inspection, isolation, and expiry", async () => {
     const jobs = createInMemoryOwnerDataExportJobStore();
     const artifacts = createInMemoryOwnerDataExportArtifactStore(jobs);
-    const relationship = relationshipContext();
-    const actions = actionsPlanningContext();
-    const assets = assetsContext();
+    const externalNotification = vi.fn();
+    const externalDraftCreation = vi.fn();
+    const loadRelationshipContext = vi.fn(async () =>
+      withOperationalCandidates(relationshipContext(), {
+        externalNotification,
+        externalDraftCreation,
+      }),
+    );
+    const loadActionsPlanningContext = vi.fn(async () =>
+      withOperationalCandidates(actionsPlanningContext(), {
+        externalNotification,
+        externalDraftCreation,
+      }),
+    );
+    const loadAssetsContext = vi.fn(async () =>
+      withOperationalCandidates(assetsContext(), { externalNotification, externalDraftCreation }),
+    );
     const generate = async (input: Parameters<typeof generateOwnerDataExportArchive>[0]) =>
       generateOwnerDataExportArchive({
         ...input,
         account: ACCOUNT,
-        relationshipContext: relationship,
-        actionsPlanningContext: actions,
-        assetsContext: assets,
+        loadRelationshipContext,
+        loadActionsPlanningContext,
+        loadAssetsContext,
       });
 
     const requested = await enqueueAndTriggerOwnerDataExportJob(
@@ -825,6 +917,11 @@ describe("owner data export qualification", () => {
 
     expect(requested.created).toBe(true);
     expect(requested.processResult?.outcome).toBe("completed");
+    expect(loadRelationshipContext).toHaveBeenCalledOnce();
+    expect(loadActionsPlanningContext).toHaveBeenCalledOnce();
+    expect(loadAssetsContext).toHaveBeenCalledOnce();
+    expect(externalNotification).not.toHaveBeenCalled();
+    expect(externalDraftCreation).not.toHaveBeenCalled();
     expect(requested.processResult?.job).toMatchObject({
       ownerUserId: OWNER,
       status: "completed",
@@ -875,10 +972,34 @@ describe("owner data export qualification", () => {
     expect(manifest.exclusions.join(" ")).toEqual(
       expect.stringContaining("Household-native records and generated Orientation Context"),
     );
+    expect(manifest.exclusions).toContain(
+      "raw provider payloads, calendar caches, generated snapshots, embeddings, queues, deliveries, and internal audit rows",
+    );
     expect(manifest.notes).toEqual(
       expect.arrayContaining([
         "Import is not included in this release.",
         "A future Household Workspace export requires separate authorization.",
+      ]),
+    );
+    expect(JSON.parse(entries.get("resources/account/profile-v1.json") ?? "null")).toMatchObject({
+      id: OWNER,
+      email: ACCOUNT.email,
+      access: { status: "granted", source: ACCOUNT.accessSource },
+    });
+    expect(manifest.resources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "resources/relationship/source-records-v1.json",
+          recordCount: 4,
+          sensitivity: "restricted",
+        }),
+        expect.objectContaining({
+          path: "resources/assets/asset-evidence-v1.json",
+          recordCount: 2,
+          fileCount: 1,
+          fileByteCount: 8,
+          sensitivity: "restricted",
+        }),
       ]),
     );
 
@@ -887,6 +1008,44 @@ describe("owner data export qualification", () => {
     expect(jsonResource(entries, "resources/people/contact-methods-v1.json")).toEqual([
       expect.objectContaining({ id: "contact-owned", personId: "person-owned" }),
     ]);
+    expect(jsonResource(entries, "resources/relationship/source-record-people-v1.json")).toEqual([
+      expect.objectContaining({
+        id: "source-person-owned",
+        sourceRecordId: "source-owned-active",
+        personId: "person-owned",
+        role: "primary",
+      }),
+    ]);
+    expect(
+      jsonResource(entries, "resources/relationship/unresolved-person-mentions-v1.json"),
+    ).toEqual([
+      expect.objectContaining({
+        id: "mention-owned",
+        sourceRecordId: "source-owned-active",
+        candidatePersonIds: ["person-owned"],
+        resolvedPersonId: "person-owned",
+      }),
+    ]);
+    expect(jsonResource(entries, "resources/relationship/interactions-v1.json")).toEqual([
+      expect.objectContaining({
+        id: "interaction-owned",
+        ownerUserId: OWNER,
+        personId: "person-owned",
+        interactionType: "meeting",
+      }),
+    ]);
+    expect(jsonResource(entries, "resources/relationship/source-records-v1.json")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "source-owned-active",
+          ownerUserId: OWNER,
+          householdId: null,
+          scope: "private",
+          sensitivity: "restricted",
+          metadataJson: { captureSurface: "account" },
+        }),
+      ]),
+    );
     expect(
       new Set(
         jsonResource(entries, "resources/relationship/source-records-v1.json").map(
@@ -901,6 +1060,19 @@ describe("owner data export qualification", () => {
         ),
       ),
     ).toEqual(new Set(["suggested", "approved", "dismissed", "archived"]));
+    expect(jsonResource(entries, "resources/relationship/memories-v1.json")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "memory-owned-approved",
+          ownerUserId: OWNER,
+          personId: "person-owned",
+          sourceRecordId: "source-owned-active",
+          householdId: null,
+          scope: "private",
+          sensitivity: "restricted",
+        }),
+      ]),
+    );
     expect(
       new Set(
         jsonResource(entries, "resources/relationship/follow-ups-v1.json").map(
@@ -908,6 +1080,18 @@ describe("owner data export qualification", () => {
         ),
       ),
     ).toEqual(new Set(["suggested", "open", "snoozed", "completed", "dismissed", "archived"]));
+    expect(jsonResource(entries, "resources/relationship/follow-ups-v1.json")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "followup-owned-open",
+          ownerUserId: OWNER,
+          personId: "person-owned",
+          sourceRecordId: "source-owned-active",
+          householdId: null,
+          scope: "private",
+        }),
+      ]),
+    );
     expect(
       new Set(
         jsonResource(entries, "resources/context/context-facts-v1.json").map(
@@ -918,26 +1102,131 @@ describe("owner data export qualification", () => {
     expect(jsonResource(entries, "resources/context/context-facts-v1.json")).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "context-household-native" })]),
     );
+    expect(jsonResource(entries, "resources/context/context-facts-v1.json")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "context-owned-suggested",
+          subject: { kind: "self", userId: OWNER },
+          sensitivity: "sensitive",
+          provenance: expect.objectContaining({ sourceRecordId: "source-owned-active" }),
+        }),
+      ]),
+    );
 
     expect(jsonResource(entries, "resources/actions/general-actions-v1.json")).toEqual([
-      expect.objectContaining({ id: "action-owned", ownership: "member_owned" }),
+      expect.objectContaining({
+        id: "action-owned",
+        ownerUserId: OWNER,
+        ownership: "member_owned",
+        areaId: "area-owned",
+        sourceRecordId: "source-owned-active",
+        scope: "shared",
+        householdId: HOUSEHOLD,
+        responsibilityHolderUserId: OWNER,
+      }),
+    ]);
+    expect(jsonResource(entries, "resources/actions/general-action-areas-v1.json")).toEqual([
+      expect.objectContaining({ id: "area-owned", ownerUserId: OWNER, name: "Home" }),
+    ]);
+    expect(jsonResource(entries, "resources/actions/general-action-people-v1.json")).toEqual([
+      expect.objectContaining({
+        id: "action-person-owned",
+        generalActionId: "action-owned",
+        personId: "person-owned",
+      }),
     ]);
     expect(jsonResource(entries, "resources/actions/general-action-assets-v1.json")).toEqual([
-      expect.objectContaining({ assetId: "asset-owned", assetMemoryId: "asset-memory-owned" }),
+      expect.objectContaining({
+        id: "action-asset-owned",
+        generalActionId: "action-owned",
+        assetId: "asset-owned",
+        assetMemoryId: "asset-memory-owned",
+        createdByUserId: OWNER,
+      }),
+    ]);
+    expect(jsonResource(entries, "resources/actions/general-action-events-v1.json")).toEqual([
+      expect.objectContaining({
+        id: "action-event",
+        generalActionId: "action-owned",
+        ownerUserId: OWNER,
+        actorUserId: OWNER,
+        detailJson: expect.objectContaining({
+          status: "deferred",
+          deferUntil: "2026-08-21T12:00:00.000Z",
+        }),
+      }),
     ]);
     expect(jsonResource(entries, "resources/saved-items/saved-items-v1.json")).toEqual([
-      expect.objectContaining({ id: "saved-owned", status: "archived" }),
+      expect.objectContaining({
+        id: "saved-owned",
+        ownerUserId: OWNER,
+        status: "archived",
+        sourceRecordId: "source-owned-active",
+        scope: "private",
+        householdId: null,
+      }),
+    ]);
+    expect(jsonResource(entries, "resources/saved-items/saved-item-events-v1.json")).toEqual([
+      expect.objectContaining({
+        id: "saved-event",
+        savedItemId: "saved-owned",
+        ownerUserId: OWNER,
+        actorUserId: OWNER,
+      }),
+    ]);
+    expect(jsonResource(entries, "resources/saved-items/saved-item-outcomes-v1.json")).toEqual([
+      expect.objectContaining({
+        id: "saved-outcome",
+        savedItemId: "saved-owned",
+        destinationKind: "general_action",
+        destinationRecordId: "action-owned",
+      }),
     ]);
     expect(jsonResource(entries, "resources/drafts/message-drafts-v1.json")).toEqual([
       expect.objectContaining({ id: "draft-internal", status: "approved" }),
     ]);
     expect(jsonResource(entries, "resources/gift-plans/gift-plans-v1.json")).toEqual([
-      expect.objectContaining({ id: "gift-plan-owned", status: "celebrated" }),
+      expect.objectContaining({
+        id: "gift-plan-owned",
+        ownerUserId: OWNER,
+        status: "celebrated",
+        subjectPersonId: "person-owned",
+        scope: "shared",
+        householdId: HOUSEHOLD,
+      }),
+    ]);
+    expect(jsonResource(entries, "resources/gift-plans/gift-plan-ideas-v1.json")).toEqual([
+      expect.objectContaining({
+        id: "gift-idea-contribution",
+        giftPlanId: "gift-plan-owned",
+        contributorUserId: OTHER_OWNER,
+      }),
+    ]);
+    expect(jsonResource(entries, "resources/gift-plans/gift-plan-events-v1.json")).toEqual([
+      expect.objectContaining({
+        id: "gift-event",
+        giftPlanId: "gift-plan-owned",
+        actorUserId: OTHER_OWNER,
+      }),
     ]);
     expect(jsonResource(entries, "resources/sharing/record-shares-v1.json")).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "share-from-owner", sharedByUserId: OWNER }),
-        expect.objectContaining({ id: "share-to-owner", sharedWithUserId: OWNER }),
+        expect.objectContaining({
+          id: "share-from-owner",
+          householdId: HOUSEHOLD,
+          recordKind: "general_action",
+          recordId: "action-owned",
+          sharedByUserId: OWNER,
+          sharedWithUserId: OTHER_OWNER,
+        }),
+        expect.objectContaining({
+          id: "share-to-owner",
+          householdId: HOUSEHOLD,
+          recordKind: "general_action",
+          recordId: "action-owned",
+          sharedByUserId: OTHER_OWNER,
+          sharedWithUserId: OWNER,
+        }),
       ]),
     );
     expect(jsonResource(entries, "resources/sharing/record-shares-v1.json")).not.toEqual(
@@ -946,10 +1235,30 @@ describe("owner data export qualification", () => {
 
     expect(jsonResource(entries, "resources/assets/assets-v1.json")).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "asset-owned", status: "archived" }),
+        expect.objectContaining({
+          id: "asset-owned",
+          ownerUserId: OWNER,
+          status: "archived",
+          scope: "shared",
+          ownership: "member_owned",
+          householdId: HOUSEHOLD,
+          sensitivity: "normal",
+        }),
         expect.objectContaining({ id: "asset-owned-suggested", status: "suggested" }),
       ]),
     );
+    expect(jsonResource(entries, "resources/assets/asset-memories-v1.json")).toEqual([
+      expect.objectContaining({
+        id: "asset-memory-owned",
+        assetId: "asset-owned",
+        ownerUserId: OWNER,
+        sourceRecordId: "source-owned-active",
+        scope: "private",
+        ownership: "member_owned",
+        householdId: null,
+        sensitivity: "restricted",
+      }),
+    ]);
     expect(jsonResource(entries, "resources/assets/assets-v1.json")).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "asset-household-native" }),
@@ -960,7 +1269,13 @@ describe("owner data export qualification", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "evidence-owned",
+          assetId: "asset-owned",
+          ownerUserId: OWNER,
           filePath: "resources/assets/evidence/evidence-owned/manual.pdf",
+          sourceRecordId: "source-owned-active",
+          scope: "private",
+          ownership: "member_owned",
+          householdId: null,
           sensitivity: "restricted",
         }),
         expect.objectContaining({ id: "evidence-owned-note", filePath: null }),
@@ -980,12 +1295,22 @@ describe("owner data export qualification", () => {
     expect(jsonResource(entries, "resources/assets/asset-links-v1.json")).toEqual([
       expect.objectContaining({
         id: "asset-link-owned",
+        ownerUserId: OWNER,
         fromAssetId: "asset-owned-suggested",
         toAssetId: "asset-owned",
+        relation: "fits",
+        sourceRecordId: "source-owned-active",
+        status: "active",
       }),
     ]);
     expect(jsonResource(entries, "resources/assets/asset-person-links-v1.json")).toEqual([
-      expect.objectContaining({ id: "asset-person-owned", personId: "person-owned" }),
+      expect.objectContaining({
+        id: "asset-person-owned",
+        ownerUserId: OWNER,
+        assetId: "asset-owned",
+        personId: "person-owned",
+        relation: "services",
+      }),
     ]);
 
     const inventory = entries.get("inventory.txt") ?? "";
@@ -993,26 +1318,23 @@ describe("owner data export qualification", () => {
     expect(inventory).toContain(
       "resources/assets/asset-evidence-v1.json, 2 records, 1 file, 8 evidence bytes",
     );
-    const archiveText = new TextDecoder().decode(artifact.bytes);
-    expect(archiveText).not.toContain("Other member");
-    expect(archiveText).not.toContain("Household chore must not be exported");
-    expect(archiveText).not.toContain("Household Furnace");
-    expect(archiveText).not.toContain("Household saved item must not be exported");
-    expect(archiveText).not.toContain("Household context must not be exported");
-    expect(archiveText).not.toContain("Household-only evidence");
-    expect(archiveText).not.toContain("Household-only value");
-    expect(archiveText).not.toContain("provider payload must not be exported");
-    expect(archiveText).not.toContain("operational-secret");
-    expect(archiveText).not.toContain("operational-id");
-    expect(archiveText).not.toContain("share-only-record");
-    expect(archiveText).not.toContain("Import archive");
-    expect(
-      [...entries.keys()].some((path) =>
-        /(?:notification|delivery|queue|audit|credential|session|oauth|cache|snapshot|embedding)/iu.test(
-          path,
-        ),
-      ),
-    ).toBe(false);
+    const excludedOperationalPaths = [
+      "resources/provider-connections-v1.json",
+      "resources/sessions-v1.json",
+      "resources/cache-entries-v1.json",
+      "resources/snapshots-v1.json",
+      "resources/embeddings-v1.json",
+      "resources/queues-v1.json",
+      "resources/deliveries-v1.json",
+      "resources/audit-rows-v1.json",
+      "resources/notifications-v1.json",
+      "resources/external-drafts-v1.json",
+    ];
+    expect([...entries.keys()]).not.toEqual(expect.arrayContaining(excludedOperationalPaths));
+    const exportedResourceText = [...entries.values()].join("\n");
+    for (const candidateId of OPERATIONAL_CANDIDATE_IDS) {
+      expect(exportedResourceText).not.toContain(candidateId);
+    }
 
     const evidenceResource = manifest.resources.find(
       (resource) => resource.path === "resources/assets/asset-evidence-v1.json",
@@ -1042,5 +1364,77 @@ describe("owner data export qualification", () => {
       status: "expired",
       artifactExpiresAt: null,
     });
+  });
+
+  it("keeps failed processing truthful, schedules recovery, and completes queue-less backfill", async () => {
+    const jobs = createInMemoryOwnerDataExportJobStore();
+    const artifacts = createInMemoryOwnerDataExportArtifactStore(jobs);
+    const retryAt = new Date(NOW.getTime() + 5 * 60 * 1000);
+    const generate = vi.fn(async (input: Parameters<typeof generateOwnerDataExportArchive>[0]) =>
+      generateOwnerDataExportArchive({
+        ...input,
+        account: ACCOUNT,
+        relationshipContext: relationshipContext(),
+      }),
+    );
+    generate.mockRejectedValueOnce(new Error("temporary archive outage"));
+
+    const requested = await enqueueAndTriggerOwnerDataExportJob(
+      {
+        ownerUserId: OWNER,
+        idempotencyKey: "qualification-retry",
+        runtimeMode: "inline",
+        now: NOW,
+      },
+      { jobs, artifacts, generate },
+    );
+
+    expect(requested.processResult).toMatchObject({
+      outcome: "failed",
+      error: "temporary archive outage",
+      job: {
+        ownerUserId: OWNER,
+        status: "failed",
+        lastError: "temporary archive outage",
+        runAfter: retryAt,
+        attempts: 1,
+      },
+    });
+    expect(
+      await artifacts.get({ jobId: requested.job.id, ownerUserId: OWNER, now: NOW }),
+    ).toBeNull();
+    await expect(jobs.claimNext({ now: NOW })).resolves.toBeNull();
+
+    const recoveredClaim = await jobs.claimNext({ now: retryAt });
+    expect(recoveredClaim).toMatchObject({
+      id: requested.job.id,
+      ownerUserId: OWNER,
+      status: "running",
+      attempts: 2,
+    });
+    if (!recoveredClaim?.claimToken) throw new Error("Expected the retry claim token.");
+
+    const recovered = await processOwnerDataExportJob({
+      jobId: recoveredClaim.id,
+      claim: false,
+      claimToken: recoveredClaim.claimToken,
+      jobs,
+      artifacts,
+      generate,
+      now: retryAt,
+    });
+    expect(recovered).toMatchObject({
+      outcome: "completed",
+      job: {
+        ownerUserId: OWNER,
+        status: "completed",
+        attempts: 2,
+        artifactExpiresAt: new Date(retryAt.getTime() + 24 * 60 * 60 * 1000),
+      },
+    });
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(
+      await artifacts.get({ jobId: requested.job.id, ownerUserId: OWNER, now: retryAt }),
+    ).not.toBeNull();
   });
 });
