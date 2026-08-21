@@ -3,9 +3,15 @@
 ## Status
 
 The contribution agreement is a publication dependency and is **pending
-counsel review and owner approval**. This page is an implementation status and
-process note, not a Contributor License Agreement, legal advice, or a document
-that grants any rights. Do not sign or rely on it as an agreement.
+counsel review and owner approval**. The proposed [contribution agreement
+packet](legal/README.md) contains the [individual
+ICLA](legal/individual-contributor-license-agreement.md), [employer
+authorization](legal/employer-contribution-authorization.md), and [corporate
+CLA](legal/corporate-contributor-license-agreement.md) drafts. Every draft is
+marked pending counsel approval and is not effective until the owner updates
+its status. This page is an implementation status and process note, not a
+Contributor License Agreement, legal advice, or a document that grants any
+rights. Do not sign or rely on a draft as an agreement.
 
 ADR 0233 records the intended shape: a counsel-reviewed, Apache ICLA-derived
 individual agreement that grants the project the permissions needed to
@@ -15,10 +21,10 @@ the contributor's employer owns the work. The research note is background
 material, not the final agreement.
 
 The private founder-to-Neely Solutions LLC copyright-rights assignment or
-confirmation required before publication has not been executed or verified in
-this repository. Git authorship is not evidence of that rights chain. The
-owner must obtain the required private counsel and owner approval; an agent
-must not create, execute, or self-certify it.
+confirmation required before publication is **owner-confirmed as executed**.
+This page does not expose or reproduce that private instrument, and it does
+not claim that counsel has verified it. Git authorship is not evidence of that
+rights chain; the private record remains owner-controlled.
 
 ## Intended external-contributor path
 
