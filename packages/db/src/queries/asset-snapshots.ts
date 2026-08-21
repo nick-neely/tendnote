@@ -46,7 +46,7 @@ export function createDefaultAssetSnapshotGenerator(
   env: AssetSnapshotGeneratorEnv = process.env,
 ): AssetSnapshotGenerator {
   const modelId =
-    env.TENDNOTE_SNAPSHOT_MODEL ?? env.TENDNOTE_AGENT_MODEL ?? "anthropic/claude-sonnet-5";
+    env.TENDNOTE_SNAPSHOT_MODEL ?? env.TENDNOTE_AGENT_MODEL ?? "google/gemini-3.7-flash";
   const hasGatewayCredentials = Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
 
   if (!hasGatewayCredentials) {

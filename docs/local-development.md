@@ -62,7 +62,7 @@ Semantic embeddings run through the same job lifecycle in every environment. Loc
 - Set `TENDNOTE_EMBEDDING_RUNTIME=enqueue_only` to leave jobs for a worker instead of processing inline. `TENDNOTE_EXTRACTION_RUNTIME` and `TENDNOTE_CONTEXT_FACT_EXTRACTION_RUNTIME` are the same `inline` / `enqueue_only` toggle for the extraction and context-fact-extraction job families.
 - Optional Today ranking is deterministic in development even when web gateway credentials are present. Set `TENDNOTE_ENABLE_TODAY_RANKING=1` in `apps/web/.env.local` to exercise the bounded live ranking path; a failure keeps the deterministic order and only unexpected errors get a concise server warning.
 
-Several other model overrides follow the same fallback chain — the specific variable, then `TENDNOTE_AGENT_MODEL`, then `anthropic/claude-sonnet-5`. All are optional tuning knobs:
+Several other model overrides follow the same fallback chain — the specific variable, then `TENDNOTE_AGENT_MODEL`, then `google/gemini-3.7-flash`. All are optional tuning knobs:
 
 | Variable | Used by |
 | --- | --- |

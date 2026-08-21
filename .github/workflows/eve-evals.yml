@@ -32,7 +32,7 @@ env:
   TURBO_DAEMON: "false"
   TURBO_TELEMETRY_DISABLED: 1
   TMPDIR: /tmp
-  AGENT_MODEL: ${{ vars.TENDNOTE_AGENT_MODEL || 'anthropic/claude-sonnet-5' }}
+  AGENT_MODEL: ${{ vars.TENDNOTE_AGENT_MODEL || 'google/gemini-3.7-flash' }}
 
 jobs:
   evaluate:

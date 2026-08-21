@@ -6,5 +6,5 @@ export default defineAgent({
   model:
     process.env.TENDNOTE_MESSAGE_DRAFTER_MODEL ??
     process.env.TENDNOTE_AGENT_MODEL ??
-    "anthropic/claude-sonnet-5",
+    "google/gemini-3.7-flash",
 });

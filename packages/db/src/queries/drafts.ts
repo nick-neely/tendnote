@@ -58,8 +58,7 @@ type DraftAdapterEnv = Record<string, string | undefined>;
  * deterministic draft on empty output.
  */
 export function createDefaultDraftAdapter(env: DraftAdapterEnv = process.env): DraftAdapter {
-  const modelId =
-    env.TENDNOTE_DRAFT_MODEL ?? env.TENDNOTE_AGENT_MODEL ?? "anthropic/claude-sonnet-5";
+  const modelId = env.TENDNOTE_DRAFT_MODEL ?? env.TENDNOTE_AGENT_MODEL ?? "google/gemini-3.7-flash";
   const hasGatewayCredentials = Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
 
   if (!hasGatewayCredentials) {

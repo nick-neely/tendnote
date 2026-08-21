@@ -6,7 +6,7 @@ const base = {
   sourceCommit,
   workflowUrl: "https://github.com/nick-neely/tendnote/actions/runs/1",
   command: "pnpm --filter @tendnote/agent eval:deterministic",
-  agentModel: "anthropic/claude-sonnet-5",
+  agentModel: "google/gemini-3.7-flash",
   exitCode: 0,
   reports: [
     {
@@ -25,7 +25,7 @@ const base = {
               type: "session.started",
               data: {
                 runtime: {
-                  modelId: "anthropic/claude-sonnet-5",
+                  modelId: "google/gemini-3.7-flash",
                   eveVersion: "0.32.0",
                 },
               },
@@ -53,7 +53,7 @@ describe("deterministic publication evidence classification", () => {
       clean: true,
       counts: { passed: 62, failed: 0, skipped: 0, errored: 0, total: 62 },
       retry: { attempted: false, rounds: 0 },
-      configuration: { agentModel: "anthropic/claude-sonnet-5", eveVersion: "0.32.0" },
+      configuration: { agentModel: "google/gemini-3.7-flash", eveVersion: "0.32.0" },
       statuses: { completed: 62 },
     });
   });
