@@ -1,5 +1,6 @@
 import { HouseholdRecordUnavailableError } from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { GIFT_PLAN_EMPTY_REPLY_CANONICAL } from "../agent/lib/response-contracts";
 import { asTestTool, toolModelValue } from "./test-tool";
 
 const {
@@ -108,7 +109,7 @@ describe("search_gift_plans", () => {
 
     const output = await searchTool.execute({ query: "Rowan" }, ctx);
     const model = searchTool.toModelOutput?.(output) as {
-      value: { count: number; plans: unknown[] };
+      value: { count: number; plans: unknown[]; requiredResponse: string; guidance: string };
     };
     // The rows only. `guidance` is a standing instruction that names the failure
     // modes on purpose ("do not mention surprises"), and asserting over it would
@@ -136,7 +137,12 @@ describe("search_gift_plans", () => {
 
     const output = await searchTool.execute({ query: "Rowan" }, ctx);
     const model = searchTool.toModelOutput?.(output) as {
-      value: { count: number; plans: unknown[] };
+      value: {
+        count: number;
+        plans: unknown[];
+        requiredResponse: string | null;
+        guidance: string;
+      };
     };
 
     expect(model.value).toMatchObject({ count: 0, plans: [] });
@@ -144,6 +150,9 @@ describe("search_gift_plans", () => {
     // a zero, which is exactly what a user with no plans at all receives.
     expect(JSON.stringify(model.value.plans)).toBe("[]");
     expect(model.value.count).toBe(0);
+    expect(model.value.requiredResponse).toBe(GIFT_PLAN_EMPTY_REPLY_CANONICAL);
+    expect(model.value.guidance).toMatch(/exactly and add nothing else/i);
+    expect(model.value.guidance).toMatch(/do not qualify|speculate/i);
   });
 });
 

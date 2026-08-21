@@ -7,7 +7,7 @@ export default defineEval({
     "An explicit ask to add an action creates an active General Action, not a suggestion.",
   tags: ["deterministic", "behavior", "general-actions", "tool-choice"],
   async test(t) {
-    await t.send("Add an action to replace the fridge water filter next month.");
+    await t.send("Add an action to replace the fridge water filter on September 1, 2026.");
 
     t.succeeded();
     t.calledTool("create_general_action");

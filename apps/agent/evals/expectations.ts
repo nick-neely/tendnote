@@ -151,6 +151,51 @@ export function hasNoMutatingTools(events: readonly unknown[]): boolean {
   return calledToolNames(events).every((toolName) => !MUTATING_TOOL_NAMES.has(toolName));
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Matches the proposal tool's one-or-more reviewed-memory grounding contract. */
+export function isNonEmptyUuidArray(value: unknown): boolean {
+  return (
+    Array.isArray(value) && value.length > 0 && value.every((entry) => UUID.test(String(entry)))
+  );
+}
+
+/** Capture's private default may be implicit or explicit, but never widened. */
+export function isPrivateOrOmitted(value: unknown): boolean {
+  return value === undefined || value === "private";
+}
+
+/** A parked clarification is healthy only when the event stream itself contains no failure. */
+export function hasNoRuntimeFailures(events: readonly unknown[]): boolean {
+  return events.every((event) => {
+    if (typeof event !== "object" || event === null) return true;
+    const candidate = event as { type?: unknown; data?: { event?: unknown } };
+    if (candidate.type === "subagent.event") {
+      return hasNoRuntimeFailures(
+        candidate.data?.event === undefined ? [] : [candidate.data.event],
+      );
+    }
+    return (
+      typeof candidate.type !== "string" ||
+      (!candidate.type.endsWith(".failed") &&
+        !candidate.type.endsWith(".errored") &&
+        candidate.type !== "error")
+    );
+  });
+}
+
+/** Proves Capture kept an unresolved named Person inside its reviewable clarification path. */
+export function hasCapturePersonClarification(events: readonly unknown[]): boolean {
+  return toolOutputs(events, "capture_saved_item").some(
+    (output) =>
+      isRecord(output) &&
+      isRecord(output.clarification) &&
+      output.clarification.field === "person" &&
+      typeof output.clarification.question === "string" &&
+      output.clarification.question.length > 0,
+  );
+}
+
 /**
  * Proves an Asset Action proposal is grounded in the reviewed detail the read path
  * actually returned. Search can return the detail directly or first resolve the Asset

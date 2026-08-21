@@ -282,13 +282,13 @@ describe("get_asset_context tool", () => {
           requiredInput: { assetId: string; assetMemoryIds: string[] };
           obligation: string;
         };
-        snapshot: { available: boolean; guidance: string };
+        snapshot: { availableToModel: boolean; guidance: string };
         guidance: string;
       };
     };
 
-    expect(modelView.value.snapshot.available).toBe(true);
-    expect(modelView.value.snapshot.guidance).toMatch(/not source of truth/i);
+    expect(modelView.value.snapshot.availableToModel).toBe(false);
+    expect(modelView.value.snapshot.guidance).toMatch(/omitted.*facts.*only/i);
     expect(modelView.value.assetId).toBe(ASSET_ID);
     expect(modelView.value.facts[0]?.memoryId).toBe(MEMORY_ID);
     expect(modelView.value.guidance).toMatch(/propose_asset_actions/);
@@ -317,12 +317,29 @@ describe("get_asset_context tool", () => {
 
     const output = await getAssetContextTool.execute({ assetId: ASSET_ID }, ctx);
     const modelView = getAssetContextTool.toModelOutput?.(output) as {
-      value: { snapshot: { available: boolean }; facts: Array<Record<string, unknown>> };
+      value: {
+        snapshot: { availableToModel: boolean };
+        facts: Array<Record<string, unknown>>;
+      };
     };
 
-    expect(modelView.value.snapshot.available).toBe(false);
+    expect(modelView.value.snapshot.availableToModel).toBe(false);
     // The truth is unaffected: the records still carry the answer.
     expect(modelView.value.facts[0]).toMatchObject({ value: "RPWFE" });
+  });
+
+  it("keeps conflicting generated snapshot values out of the model projection", async () => {
+    getAssetSnapshot.mockResolvedValue({
+      status: "fresh",
+      snapshot: { summary: "Confirmed: Filter size: XWFE." },
+      context: snapshotContext,
+    });
+
+    const output = await getAssetContextTool.execute({ assetId: ASSET_ID }, ctx);
+    expect(output.summary).toContain("XWFE");
+    const modelView = getAssetContextTool.toModelOutput?.(output) as { value: unknown };
+    expect(JSON.stringify(modelView.value)).not.toContain("XWFE");
+    expect(JSON.stringify(modelView.value)).toContain("RPWFE");
   });
 
   it("denies an invisible asset the same way it denies a missing one", async () => {

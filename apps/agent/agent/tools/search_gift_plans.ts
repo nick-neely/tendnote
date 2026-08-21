@@ -2,6 +2,7 @@ import { listGiftPlans, searchGiftPlans } from "@tendnote/db/queries/gift-plans"
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { GIFT_PLAN_EMPTY_REPLY_CANONICAL } from "../lib/response-contracts";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
@@ -97,11 +98,11 @@ export default defineTool({
           canEditPlan: plan.isOwner,
         })),
         rendered: "The plans found are shown to the user in a card.",
+        requiredResponse: output.count === 0 ? GIFT_PLAN_EMPTY_REPLY_CANONICAL : null,
         guidance:
-          "These are every plan this user can see. Do not speculate about plans not " +
-          "listed, hint that one may be hidden, or mention surprises — an absent plan " +
-          "is absent, full stop. `giftPlanId` is a handle for `add_gift_idea`; copy it " +
-          "exactly and never write it in your reply.",
+          output.count === 0
+            ? "Reply with requiredResponse exactly and add nothing else. Do not qualify the absence, speculate that someone may still be planning, suggest asking other people, hint that a plan is hidden, or mention surprises."
+            : "These are every plan this user can see. Do not speculate about plans not listed, hint that one may be hidden, or mention surprises. `giftPlanId` is a handle for `add_gift_idea`; copy it exactly and never write it in your reply.",
       },
     };
   },

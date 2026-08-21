@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
+import { DRAFT_REVISION_REPLY_CANONICAL } from "../lib/response-contracts";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
@@ -79,18 +80,14 @@ export default defineTool({
         updated: true,
         draftId: output.draftId,
         status: output.status,
+        requiredResponse:
+          output.status === "approved"
+            ? DRAFT_REVISION_REPLY_CANONICAL.approved
+            : DRAFT_REVISION_REPLY_CANONICAL.draft,
         guidance:
           output.status === "approved"
-            ? "The internal Tendnote draft now has the requested text. Confirm the change " +
-              "in one short line rather than reprinting the message. The prior approval no " +
-              "longer covers this wording; nothing was exported or sent, and this is not an " +
-              "external or Gmail draft. `draftId` stays the handle for later calls; never " +
-              "write it in your reply."
-            : "The internal Tendnote draft now has the requested text. Confirm the change " +
-              "in one short line rather than reprinting the message. It remains an " +
-              "unapproved draft: nothing was approved, exported, or sent, and this is not " +
-              "an external or Gmail draft. `draftId` stays the handle for later calls; " +
-              "never write it in your reply.",
+            ? "Reply with requiredResponse exactly and add nothing else. It states that the prior approval no longer covers this wording and that nothing was exported or sent. `draftId` stays the handle for later calls; never write it in your reply."
+            : "Reply with requiredResponse exactly and add nothing else. It states that the internal Tendnote draft remains an unapproved draft, nothing was approved, exported, or sent, and it is not an external or Gmail draft. `draftId` stays the handle for later calls; never write it in your reply.",
       },
     };
   },

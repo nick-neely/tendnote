@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "suite": "deterministic",
+  "sourceCommit": "0031e09bd92b1ce51d2f5235a0d10172aa1da8c8",
+  "command": "pnpm --filter @tendnote/agent exec eve eval --tag deterministic --strict --skip-report --max-concurrency 1 --json --junit .scratch/486-extra-model-comparison/google__gemini-3.7-flash/junit.xml",
+  "configuration": {
+    "agentModel": "google/gemini-3.7-flash",
+    "judgeModel": null,
+    "eveVersion": "0.32.0",
+    "database": "fresh tendnote_eval reset, migrations, and synthetic seed",
+    "maxConcurrency": 1,
+    "strict": true
+  },
+  "timestamps": {
+    "startedAt": "2026-08-21T04:12:27.135Z",
+    "completedAt": "2026-08-21T04:24:24.334Z",
+    "packagedAt": "2026-08-21T14:01:55Z"
+  },
+  "counts": {
+    "total": 60,
+    "passed": 52,
+    "failed": 8,
+    "scored": 0,
+    "skipped": 0,
+    "errored": 0
+  },
+  "statuses": {
+    "waiting": 60
+  },
+  "retry": {
+    "attempted": false,
+    "rounds": 0
+  },
+  "exitCode": 1,
+  "clean": false,
+  "acceptedByOwnerForModelSelection": true,
+  "qualificationClaim": "accepted exploratory evidence; not a clean 60/60 deterministic qualification"
+}

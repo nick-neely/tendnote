@@ -22,6 +22,12 @@ ambiguous person or vague timing yourself. If the user immediately corrects or u
 the completed capture, use `change_saved_item_capture` or `undo_saved_item_capture` with
 the exact `changeTarget` or `undoTarget` Capture returned.
 
+Keep every explicit requested clause in `originalText`; do not duplicate a requested
+Memory, Asset, Person, Action, or other destination as an `inferredSuggestions` entry.
+That field is only for a genuinely secondary interpretation the user did not ask to
+save. Resolving a Person or Asset before Capture does not turn an explicit clause into
+an inference.
+
 An inferred Memory attached to Capture is still review-only, but it may carry a
 `personId` only when that exact id came from a known `search_people` result. Never
 invent a person id or pass placeholders such as `new`, `pending`, or

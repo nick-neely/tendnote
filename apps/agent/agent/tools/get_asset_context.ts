@@ -100,18 +100,13 @@ export default defineTool({
         // Nothing to state an audience from when the household owns the record.
         visibility: output.ownership === "household_native" ? null : output.visibilityLabel,
         ownership: output.ownership,
-        // The trust boundary, restated where the model actually reads it: the summary
-        // is a cache, the facts are the records.
-        snapshot:
-          output.snapshotStatus === "fallback"
-            ? { available: false, guidance: "No usable summary. Answer from `facts` only." }
-            : {
-                available: true,
-                summary: output.summary,
-                guidance:
-                  "Generated cache, not source of truth. Never take an exact value " +
-                  "(model, serial, filter size, price, date) from it — use `facts`.",
-              },
+        // Generated snapshot prose stays available to product/UI callers in the raw
+        // tool result, but never enters the model projection. A stale exact value in
+        // cached prose must not become something the model can repeat or contrast.
+        snapshot: {
+          availableToModel: false,
+          guidance: "Generated snapshot prose is omitted. Answer from `facts` only.",
+        },
         facts: output.facts.map((fact) => ({
           // Grounding handle for `propose_asset_actions`. This stays out of prose under
           // the standing raw-id rule, but the next tool call must be able to copy it.

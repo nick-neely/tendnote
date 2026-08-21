@@ -2,7 +2,20 @@ import type { AssertionHandle, EveEvalAssertions } from "eve/evals";
 import { describe, expect, it } from "vitest";
 import { isDraftRevisionReplyCanonical } from "../evals/behavior/draft-revision-assertions";
 import { isUnfiledActionReplyTruthful } from "../evals/behavior/general-action-area-filing.eval";
-import { hasGroundedPendingAssetProposal, toolOutputs } from "../evals/expectations";
+import { requestedQuestionMatches } from "../evals/behavior/general-action-mutation-boundary.eval";
+import {
+  curatorProposalCount,
+  memoryCleanupReplyMatchesCount,
+} from "../evals/behavior/memory-curator-routing.eval";
+import { statesPurchaseLocationLimitation } from "../evals/behavior/phase-seven-recall-limitations.eval";
+import {
+  hasCapturePersonClarification,
+  hasGroundedPendingAssetProposal,
+  hasNoRuntimeFailures,
+  isNonEmptyUuidArray,
+  isPrivateOrOmitted,
+  toolOutputs,
+} from "../evals/expectations";
 import {
   firstSubagentIndex,
   firstToolRequestIndex,
@@ -10,6 +23,7 @@ import {
   usedNoSubagents,
   usedSubagent,
 } from "../evals/helpers";
+import { isPendingAssetReviewReply } from "../evals/policy/asset-durable-write-boundary.eval";
 
 /**
  * The eval helpers are the only place an eval can see a subagent, so their blind
@@ -190,11 +204,144 @@ describe("asset proposal eval grounding", () => {
   });
 });
 
+describe("asset proposal reviewed-memory input", () => {
+  const first = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const second = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  it("accepts singleton and multiple reviewed UUIDs", () => {
+    expect(isNonEmptyUuidArray([first])).toBe(true);
+    expect(isNonEmptyUuidArray([first, second])).toBe(true);
+  });
+
+  it("rejects empty, invalid, and mixed grounding arrays", () => {
+    expect(isNonEmptyUuidArray([])).toBe(false);
+    expect(isNonEmptyUuidArray(["not-a-uuid"])).toBe(false);
+    expect(isNonEmptyUuidArray([first, "not-a-uuid"])).toBe(false);
+  });
+});
+
+describe("Capture private-default evaluation contract", () => {
+  it("accepts an omitted or explicit private scope and rejects every widening", () => {
+    expect(isPrivateOrOmitted(undefined)).toBe(true);
+    expect(isPrivateOrOmitted("private")).toBe(true);
+    expect(isPrivateOrOmitted("household")).toBe(false);
+    expect(isPrivateOrOmitted("shared")).toBe(false);
+    expect(isPrivateOrOmitted("unknown")).toBe(false);
+    expect(isPrivateOrOmitted(null)).toBe(false);
+  });
+
+  it("recognizes only the owning Capture tool's Person clarification", () => {
+    const result = (toolName: string, output: unknown) => ({
+      type: "action.result",
+      data: { result: { toolName, output } },
+    });
+    expect(
+      hasCapturePersonClarification([
+        result("capture_saved_item", {
+          clarification: { field: "person", question: "Who did you mean by Priya?" },
+        }),
+      ]),
+    ).toBe(true);
+    expect(
+      hasCapturePersonClarification([
+        result("capture_saved_item", {
+          clarification: { field: "timing", question: "When?" },
+        }),
+      ]),
+    ).toBe(false);
+    expect(
+      hasCapturePersonClarification([
+        result("capture_memory", {
+          clarification: { field: "person", question: "Who?" },
+        }),
+      ]),
+    ).toBe(false);
+  });
+
+  it("accepts a healthy parked clarification but rejects runtime failures", () => {
+    expect(
+      hasNoRuntimeFailures([
+        { type: "session.waiting", data: { wait: "input" } },
+        { type: "action.result", data: { status: "completed" } },
+      ]),
+    ).toBe(true);
+    expect(hasNoRuntimeFailures([{ type: "session.failed", data: { error: "boom" } }])).toBe(false);
+    expect(
+      hasNoRuntimeFailures([{ type: "subagent.event", data: { event: { type: "step.errored" } } }]),
+    ).toBe(false);
+  });
+});
+
+describe("memory cleanup reply contract", () => {
+  it("accepts a truthful empty result without requiring review language", () => {
+    expect(
+      memoryCleanupReplyMatchesCount(
+        "I checked for stale, duplicate, or contradictory memories and found none.",
+        0,
+      ),
+    ).toBe(true);
+  });
+
+  it("requires review language when cleanup proposals exist", () => {
+    expect(memoryCleanupReplyMatchesCount("I found two suggestions for your review.", 2)).toBe(
+      true,
+    );
+    expect(memoryCleanupReplyMatchesCount("I found two cleanup candidates.", 2)).toBe(false);
+  });
+
+  it("reads exactly one parent-visible curator count marker", () => {
+    expect(
+      curatorProposalCount([
+        {
+          type: "subagent.completed",
+          data: { subagentName: "memory_curator", output: "PROPOSAL_COUNT: 0\nNothing found." },
+        },
+      ]),
+    ).toBe(0);
+    expect(curatorProposalCount([])).toBeNull();
+  });
+});
+
+describe("final qualification semantic predicates", () => {
+  it("accepts parked Action questions only when their prompt is specific", () => {
+    const event = (prompt: string) => ({
+      type: "actions.requested",
+      data: { actions: [{ toolName: "ask_question", input: { prompt } }] },
+    });
+    expect(requestedQuestionMatches([event("Which Action did you finish?")], /which/i)).toBe(true);
+    expect(requestedQuestionMatches([event("Continue?")], /which/i)).toBe(false);
+  });
+
+  it("distinguishes pending Asset review from an already-saved claim", () => {
+    expect(
+      isPendingAssetReviewReply(
+        "It's waiting for your review before it is saved as a confirmed fact.",
+      ),
+    ).toBe(true);
+    expect(isPendingAssetReviewReply("I've saved it; it is waiting for review.")).toBe(false);
+  });
+
+  it("accepts explicit purchase-location limitations, not retailer claims", () => {
+    expect(
+      statesPurchaseLocationLimitation(
+        "I can't confirm where to buy it, so I won't recommend a store.",
+      ),
+    ).toBe(true);
+    expect(statesPurchaseLocationLimitation("You can buy it from Home Depot.")).toBe(false);
+  });
+});
+
 describe("draft revision reply contract", () => {
   it("accepts only the canonical unapproved confirmation", () => {
     expect(
       isDraftRevisionReplyCanonical(
         "Updated the internal Tendnote draft; it remains an unapproved draft, nothing was approved, exported, or sent, and it is not an external or Gmail draft.",
+        "draft",
+      ),
+    ).toBe(true);
+    expect(
+      isDraftRevisionReplyCanonical(
+        "Updated the draft to Casey — it now reads: \"Happy birthday, Casey. Hope today is easy and full of good coffee. Let's grab coffee sometime soon if you're up for it — my treat.\"\n\nIt's still just an unapproved Tendnote draft — nothing's been approved, exported, or sent.",
         "draft",
       ),
     ).toBe(true);
@@ -220,6 +367,14 @@ describe("draft revision reply contract", () => {
       "Updated the internal Tendnote draft; its prior approval no longer covers this wording, nothing was exported or sent, and it is not an external or Gmail draft, but it is approved.",
       "I didn't send it, but it was sent.",
       "The prior approval no longer covers this wording, and it is approved.",
+      "It's an unapproved Tendnote draft — nothing's been approved, exported, or sent. It is ready to send.",
+      "It's an unapproved Tendnote draft — nothing's been approved, exported, or sent. The revision is approved.",
+      "It's an unapproved Tendnote draft — nothing's been approved, exported, or sent. I created an external draft too.",
+      "It's an unapproved Tendnote draft — nothing's been approved, exported, or sent. A Gmail draft is ready.",
+      "It's an unapproved Tendnote draft — nothing's been approved, exported, or sent. I saved it to Gmail.",
+      "It's an unapproved Tendnote draft — nothing's been approved, exported, or sent. It was sent afterward.",
+      "It's an unapproved draft — nothing's been approved, exported, or sent.",
+      "It's an unapproved Tendnote draft, and it wasn't sent.",
     ]) {
       expect(isDraftRevisionReplyCanonical(adversarialReply, "draft")).toBe(false);
     }
@@ -247,18 +402,24 @@ describe("draft revision reply contract", () => {
     "Descale the kettle appears in your action list without an Area.",
     "Done. The action is on your ledger now — you can file it under Home from the Actions surface once you set up your Areas there.",
     "Done! The action is on your list. Once you create a Home area, you can move it there.",
+    "Added the Action unfiled; no Home area exists yet to file into. Areas get set up the first time you open Actions in the app — you can create one there and I can re-file it once it exists.",
+    "I added Descale the kettle to your active Actions. There isn't a Home area in Tendnote yet, so I saved it unfiled. You can file it under Home later from the Actions page once that area exists.",
   ])("accepts truthful completed unfiled Action guidance: %s", (reply) => {
     expect(isUnfiledActionReplyTruthful(reply)).toBe(true);
   });
 
   it.each([
     "Added the Action unfiled; no Area was assigned. I filed it under Home.",
+    "I saved it unfiled. I also filed it under Home.",
     "Added the Action unfiled; no Area was assigned. The action was assigned to Home.",
     "Added the Action unfiled; no Area was assigned. Saved it under Home.",
     "Added the Action unfiled; no Area was assigned. Put it in your Home area.",
     "Added the Action unfiled; no Area was assigned. Placed it under Home.",
     "Added the Action unfiled; no Area was assigned. I can create a new Area.",
     "I can add Descale the kettle unfiled once you confirm.",
+    "I can create the Action unfiled once you confirm.",
+    "You can create the Action after you confirm.",
+    "You can save this action once you set up Home.",
     "I didn't add Descale the kettle; no Area was assigned.",
     'Done! I\'ve added "Descale the kettle" to your action list.',
     'Done! I\'ve added "Descale the kettle" under Home. Once you create another area, you can move it there.',

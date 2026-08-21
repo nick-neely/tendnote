@@ -24,6 +24,8 @@ function person(id: string, displayName: string) {
   };
 }
 
+type SearchPersonResult = Awaited<ReturnType<typeof tool.execute>>;
+
 describe("search_people tool (disambiguation signal)", () => {
   it("flags disambiguation when a name matches more than one person", async () => {
     searchPeople.mockResolvedValue([person("p1", "Sam Lee"), person("p2", "Sam Lee")]);
@@ -38,11 +40,22 @@ describe("search_people tool (disambiguation signal)", () => {
   });
 
   it("does not require disambiguation for a single confident match", async () => {
-    searchPeople.mockResolvedValue([person("p1", "Sam Lee")]);
+    searchPeople.mockResolvedValue([
+      {
+        ...person("p1", "Sam Lee"),
+        closenessLevel: 5,
+        profileBlurb: "Private orientation that identity lookup must not expose.",
+      },
+    ]);
 
     const result = await tool.execute({ query: "Sam", limit: 10 }, ctx);
 
     expect(result.requiresDisambiguation).toBe(false);
+    expect(result.people).toEqual([
+      { id: "p1", displayName: "Sam Lee", relationshipType: "friend" },
+    ] satisfies SearchPersonResult["people"]);
+    expect(result.people[0]).not.toHaveProperty("closenessLevel");
+    expect(result.people[0]).not.toHaveProperty("profileBlurb");
   });
 
   it("does not require disambiguation when no one matches", async () => {
