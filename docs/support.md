@@ -13,6 +13,7 @@ maintenance, or a support response commitment for those environments. See the
 responsibilities](security.md#self-host-operator-responsibilities) for the
 boundaries that remain with the operator.
 
-Do not include credentials, private records, or unrelated personal data in an
-Issue. Use the private reporting path in [SECURITY.md](../SECURITY.md) for a
-suspected vulnerability, not a public Issue or pull request.
+For public Issues and pull requests, use synthetic fixtures and minimized
+reproductions. Do not include credentials, private records, personal data, or
+exploit details. Use the private reporting path in [SECURITY.md](../SECURITY.md)
+for a suspected vulnerability, not a public Issue or pull request.

@@ -1,8 +1,8 @@
 # Contributing to CI
 
 This page is the small contributor-facing companion to
-[`docs/local-development.md`](local-development.md). The future contribution
-guide from #472 can link here without copying the workflow details.
+[`docs/local-development.md`](local-development.md). The contribution guide
+links here without copying the workflow details.
 
 ## Verification labels
 

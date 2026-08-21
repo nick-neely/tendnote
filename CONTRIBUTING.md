@@ -14,13 +14,21 @@ Open an Issue before starting material behavior, architecture, or privacy work.
 Small documentation corrections and clearly self-contained test fixes may go
 directly to a pull request.
 
+For any public report or example, use synthetic fixtures and minimized
+reproductions. Never include credentials, private records, personal data, or
+exploit details in a public Issue or pull request.
+
 ## Pull requests
 
 Use the [pull-request template](.github/pull_request_template.md). Keep the
 change focused, link the related Issue when one exists, describe user-visible
-and privacy-boundary impact, and list the checks you personally ran. Pull
-requests target the protected default branch and must satisfy its review and
-verification requirements.
+and privacy-boundary impact, and list the checks you personally ran. See the
+[verification labels](docs/ci-contributing.md#verification-labels), [CI
+workflow requirements](docs/local-development.md#ci-workflows), and tracked
+[default-branch ruleset](.github/rulesets/protect-main.json) for the exact
+review and check expectations. Live default-branch protection and CLA Assistant
+enforcement remain pending #473; this checkout does not claim current
+protection or CLA enforcement.
 
 ## Contribution agreement and AI assistance
 
@@ -44,8 +52,8 @@ instrument and this checkout does not claim live CLA enforcement.
 ## Security and sensitive data
 
 Report suspected vulnerabilities only through [GitHub Private Vulnerability
-Reporting](SECURITY.md). Do not put credentials, private records, unrelated
-personal data, or exploit details in public Issues or pull requests. The
+Reporting](SECURITY.md). Do not put credentials, private records, personal
+data, or exploit details in public Issues or pull requests. The
 [Security and Privacy document](docs/security.md) is the detailed, bounded
 product-security reference.
 

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = resolve(import.meta.dirname, "..");
@@ -21,6 +21,15 @@ const HISTORICAL_EVIDENCE_PATHS = new Set([
 // and licenses are checked above; scanning their source text for old maintainer
 // values would treat third-party history as current Tendnote configuration.
 const THIRD_PARTY_PATH_PREFIXES = [".agents/skills/impeccable/", ".claude/skills/impeccable/"];
+const CONTRIBUTION_MARKDOWN_ENTRY_POINTS = [
+  "README.md",
+  "CONTRIBUTING.md",
+  ".github/pull_request_template.md",
+  "docs/contributing.md",
+  "docs/support.md",
+  "docs/local-development.md",
+  "docs/ci-contributing.md",
+] as const;
 
 const CURRENT_TREE_MAINTAINER_PATTERNS = [
   { label: "former hosted origin", pattern: /\bstacklet\.app\b/i },
@@ -75,20 +84,65 @@ function findMaintainerDeploymentLeaks(repositoryRoot = root): string[] {
   return leaks;
 }
 
-function localMarkdownLinks(relativePath: string): string[] {
+type LocalMarkdownLink = {
+  path: string | null;
+  anchor: string | null;
+};
+
+function localMarkdownLinks(relativePath: string): LocalMarkdownLink[] {
   return [...read(relativePath).matchAll(/\[[^\]]+\]\(([^)]+)\)/g)]
     .map((match) => match[1])
-    .filter((target) => !/^(?:https?:|mailto:|#)/i.test(target))
-    .map((target) => target.split("#", 1)[0])
-    .filter(Boolean);
+    .filter((target) => !/^(?:https?:|mailto:|\/)/i.test(target))
+    .map((target) => {
+      const [path, anchor] = target.split("#", 2);
+      return {
+        path: path || null,
+        anchor: anchor ? anchor.toLowerCase() : null,
+      };
+    });
+}
+
+function markdownAnchorIds(relativePath: string): Set<string> {
+  const counts = new Map<string, number>();
+  const ids = new Set<string>();
+
+  for (const line of read(relativePath).split(/\r?\n/)) {
+    const heading = /^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/.exec(line)?.[1];
+    if (!heading) continue;
+
+    const slug = heading
+      .replace(/<[^>]+>/g, "")
+      .replace(/[\\`*_~]/g, "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^\p{Letter}\p{Number}\s-]/gu, "")
+      .trim()
+      .replace(/\s+/g, "-");
+    if (!slug) continue;
+
+    const occurrence = counts.get(slug) ?? 0;
+    ids.add(occurrence === 0 ? slug : `${slug}-${occurrence}`);
+    counts.set(slug, occurrence + 1);
+  }
+
+  return ids;
 }
 
 function assertLocalMarkdownLinksResolve(relativePath: string): void {
-  for (const target of localMarkdownLinks(relativePath)) {
-    expect(
-      existsSync(resolve(root, dirname(relativePath), target)),
-      `${relativePath} links to missing ${target}`,
-    ).toBe(true);
+  for (const { path, anchor } of localMarkdownLinks(relativePath)) {
+    const targetPath = path
+      ? resolve(root, dirname(relativePath), path)
+      : resolve(root, relativePath);
+    expect(existsSync(targetPath), `${relativePath} links to missing ${path ?? relativePath}`).toBe(
+      true,
+    );
+    if (anchor) {
+      expect(
+        markdownAnchorIds(relative(root, targetPath)),
+        `${relativePath} links to missing #${anchor}`,
+      ).toContain(anchor);
+    }
   }
 }
 
@@ -239,14 +293,18 @@ describe("fresh-clone publication gate", () => {
     const agreement = read("docs/contributing.md");
     const support = read("docs/support.md");
 
-    for (const file of [
-      "CONTRIBUTING.md",
-      ".github/pull_request_template.md",
-      "docs/contributing.md",
-      "docs/support.md",
-    ]) {
+    for (const file of CONTRIBUTION_MARKDOWN_ENTRY_POINTS) {
       assertLocalMarkdownLinksResolve(file);
     }
+
+    expect(localMarkdownLinks("README.md")).toContainEqual({
+      path: "docs/local-development.md",
+      anchor: "quality-gates",
+    });
+    expect(localMarkdownLinks("docs/support.md")).toContainEqual({
+      path: "security.md",
+      anchor: "self-host-operator-responsibilities",
+    });
 
     expect(guide).toContain("README");
     expect(guide).toContain("docs/local-development.md");
@@ -264,7 +322,18 @@ describe("fresh-clone publication gate", () => {
     );
     expect(guide).toMatch(/Issues are open with no\s+service-level\s+agreement/i);
     expect(guide).toMatch(/self-hosting support is community-only/i);
+    expect(guide).toContain("docs/ci-contributing.md#verification-labels");
+    expect(guide).toContain(".github/rulesets/protect-main.json");
+    expect(guide).toMatch(
+      /live default-branch protection and CLA Assistant\s+enforcement remain pending #473/i,
+    );
+    expect(guide).toMatch(/does not claim current\s+protection or CLA enforcement/i);
     expect(guide).toMatch(/pending[\s\S]*counsel[\s\S]*owner approvals/i);
+    for (const document of [guide, support]) {
+      expect(document).toMatch(/synthetic fixtures[\s\S]*minimized\s+reproductions/i);
+      expect(document).toMatch(/personal data[\s\S]*public Issue[\s\S]*pull\s+request/i);
+      expect(document).not.toMatch(/unrelated\s+personal\s+data/i);
+    }
 
     expect(template).toContain("## Related Issues");
     expect(template).toContain("## User-visible impact");
