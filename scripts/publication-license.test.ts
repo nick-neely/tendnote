@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = resolve(import.meta.dirname, "..");
@@ -73,6 +73,23 @@ function findMaintainerDeploymentLeaks(repositoryRoot = root): string[] {
   }
 
   return leaks;
+}
+
+function localMarkdownLinks(relativePath: string): string[] {
+  return [...read(relativePath).matchAll(/\[[^\]]+\]\(([^)]+)\)/g)]
+    .map((match) => match[1])
+    .filter((target) => !/^(?:https?:|mailto:|#)/i.test(target))
+    .map((target) => target.split("#", 1)[0])
+    .filter(Boolean);
+}
+
+function assertLocalMarkdownLinksResolve(relativePath: string): void {
+  for (const target of localMarkdownLinks(relativePath)) {
+    expect(
+      existsSync(resolve(root, dirname(relativePath), target)),
+      `${relativePath} links to missing ${target}`,
+    ).toBe(true);
+  }
 }
 
 describe("fresh-clone publication gate", () => {
@@ -214,6 +231,63 @@ describe("fresh-clone publication gate", () => {
     expect(canonical).toMatch(/backups and recovery/i);
     expect(canonical).toMatch(/security updates/i);
     expect(existsSync(resolve(root, "SECURITY.md"))).toBe(true);
+  });
+
+  it("publishes a fresh-clone contribution doorway with resolvable authority links", () => {
+    const guide = read("CONTRIBUTING.md");
+    const template = read(".github/pull_request_template.md");
+    const agreement = read("docs/contributing.md");
+    const support = read("docs/support.md");
+
+    for (const file of [
+      "CONTRIBUTING.md",
+      ".github/pull_request_template.md",
+      "docs/contributing.md",
+      "docs/support.md",
+    ]) {
+      assertLocalMarkdownLinksResolve(file);
+    }
+
+    expect(guide).toContain("README");
+    expect(guide).toContain("docs/local-development.md");
+    expect(guide).toContain("docs/ci-contributing.md");
+    expect(guide).toContain(".github/pull_request_template.md");
+    expect(guide).toContain("SECURITY.md");
+    expect(guide).toContain("docs/security.md");
+    expect(guide).toContain("docs/support.md");
+    expect(guide).toMatch(
+      /open an Issue before[\s\S]*material behavior[\s\S]*architecture[\s\S]*privacy/i,
+    );
+    expect(guide).toMatch(/documentation corrections[\s\S]*self-contained test fixes/i);
+    expect(guide).toMatch(
+      /unsigned or declined external\s+pull\s+request remains open but cannot merge/i,
+    );
+    expect(guide).toMatch(/Issues are open with no\s+service-level\s+agreement/i);
+    expect(guide).toMatch(/self-hosting support is community-only/i);
+    expect(guide).toMatch(/pending[\s\S]*counsel[\s\S]*owner approvals/i);
+
+    expect(template).toContain("## Related Issues");
+    expect(template).toContain("## User-visible impact");
+    expect(template).toContain("## Privacy-boundary impact");
+    expect(template).toContain("## Checks run");
+    expect(template).toContain("AI assistance (optional)");
+    expect(template).toContain("Generated-by:");
+    expect(template).not.toMatch(
+      /(?:^|\n)##[^\n]*(?:prompt|raw model output|account information|usage data)/i,
+    );
+
+    expect(agreement).toMatch(/pending[\s\S]*counsel review[\s\S]*owner approval/i);
+    expect(agreement).toMatch(/not a Contributor License Agreement/i);
+    expect(agreement).toMatch(/has not been executed or verified/i);
+    expect(agreement).toMatch(/CLA Assistant/i);
+    expect(agreement).toContain("Generated-by:");
+    expect(agreement).not.toMatch(
+      /counsel-reviewed,? Apache ICLA-derived individual agreement is (?:published|effective)/i,
+    );
+
+    expect(support).toMatch(/no\s+service\s+level\s+agreement/i);
+    expect(support).toMatch(/self-host support is community-only/i);
+    expect(support).toMatch(/private reporting path/i);
   });
 
   it("keeps the current tree free of maintainer deployment values", () => {

@@ -85,6 +85,10 @@ A lean Turborepo with pnpm workspaces:
 
 See [`docs/architecture.md`](docs/architecture.md) for how the pieces fit together, [`SECURITY.md`](SECURITY.md) for vulnerability reporting, and [`docs/security.md`](docs/security.md) for the privacy and trust boundaries.
 
+For repository contributions, start with [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Issues are open with no service-level agreement, and self-hosting support is
+community-only; see the [community support policy](docs/support.md).
+
 ## Quality gates
 
 ```bash
@@ -115,6 +119,8 @@ replace its synthetic example values for an operator-owned deployment.
 - [`docs/architecture.md`](docs/architecture.md) — system design and boundaries
 - [`SECURITY.md`](SECURITY.md) — private vulnerability reporting and disclosure limits
 - [`docs/security.md`](docs/security.md) — privacy model and trust boundaries
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — first-pull-request doorway and contribution boundaries
+- [`docs/support.md`](docs/support.md) — no-SLA community support boundary
 - [`docs/email-setup.md`](docs/email-setup.md) — Resend account, sending-domain DNS, and send checklist
 - [`docs/google-setup.md`](docs/google-setup.md) — Google OAuth client setup
 - [`docs/self-hosting/vercel-operator-runbook.md`](docs/self-hosting/vercel-operator-runbook.md) — operator-owned Vercel admission walkthrough
