@@ -1,22 +1,16 @@
 # Tendnote Individual Contributor License Agreement (ICLA)
 
-**Version 1.0 — DRAFT — PENDING COUNSEL APPROVAL**
+**Version 1.0 — EFFECTIVE 2026-08-21**
 
-**Important status notice:** This is a proposed final-form draft for counsel
-review. It is not effective until the owner updates the status after counsel
-approval. Publication of this file does not invite acceptance and does not
-grant Neely Solutions LLC or Tendnote any rights. It is not legal advice.
-
-This proposed agreement is between the person accepting it (the
+This agreement is between the person accepting it (the
 **Contributor**) and **Neely Solutions LLC**, for contributions to the Tendnote
-project (the **Project**). The exact legal names, notices, and any governing-law
-terms must be confirmed before the owner changes this document's status.
+project (the **Project**).
 
 ## 1. Electronic acceptance and records
 
-After this exact version is approved and the owner enables the process, the
-Contributor may accept through the Project's configured CLA Assistant flow. The
-Contributor must review this agreement and affirmatively accept version 1.0;
+The Contributor may accept through the Project's CLA Assistant flow when the
+approved process is enabled. The Contributor must review this agreement and
+affirmatively accept version 1.0;
 opening a pull request, committing code, or typing a name in a pull request is
 not acceptance by itself. The acceptance record may identify the Contributor's
 legal name, GitHub account and account identifier, contact email, accepted
@@ -25,7 +19,7 @@ version, and acceptance timestamp.
 Neely Solutions LLC will keep the signed or click-through record private. A
 pull request or check may expose only whether the required version is on file.
 Electronic records and an electronic acceptance have the same intended effect
-as a signed counterpart once this agreement is approved and made effective.
+as a signed counterpart.
 
 ## 2. Definitions
 
@@ -180,10 +174,9 @@ change cannot be made by an agent or inferred from a merge.
 
 ## 12. Effect and acceptance record
 
-This agreement becomes effective only when the owner has published this exact
-version as effective, the Contributor has affirmatively accepted it through
-the approved process, and the acceptance record is retained. Before that
-sequence, this document is not effective and grants no rights.
+Version 1.0 is effective as of 2026-08-21. For a Contributor, this agreement
+applies when the Contributor has affirmatively accepted it through the approved
+process and the acceptance record is retained.
 
 This agreement and its acceptance record are the entire agreement between the
 Contributor and Neely Solutions LLC concerning Contributions and supersede
@@ -197,20 +190,10 @@ of another or of a later breach. This agreement may be accepted in electronic
 counterparts, each of which is an original, and the retained electronic record
 is evidence of the accepted version.
 
-**Proposed acceptance record**
+**Acceptance record**
 
 - Contributor legal name: ______________________________
 - GitHub account and identifier: ________________________
 - Contact email: _______________________________________
 - Agreement version: __________________________________
 - Accepted through CLA Assistant on: ____________________
-
-## Drafting sources (not operative)
-
-This original draft was informed by the [Apache ICLA v2.2](https://www.apache.org/licenses/icla.pdf),
-the [Apache Corporate Contributor License Agreement](https://www.apache.org/licenses/cla-corporate.pdf),
-the [Linux Foundation generative-AI guidance](https://www.linuxfoundation.org/legal/generative-ai),
-and [Apache generative tooling guidance](https://www.apache.org/legal/generative-tooling.html).
-Those sources are not incorporated by reference. Counsel must review this
-Tendnote text, the entity and notice details, and the final electronic
-acceptance flow before the owner changes its status.

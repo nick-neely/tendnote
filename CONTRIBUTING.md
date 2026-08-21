@@ -37,10 +37,12 @@ Read the [contribution-agreement status and path](docs/contributing.md) and the
 packet links the [individual ICLA](docs/legal/individual-contributor-license-agreement.md),
 [employer authorization](docs/legal/employer-contribution-authorization.md),
 and [corporate CLA](docs/legal/corporate-contributor-license-agreement.md)
-drafts. Once the approved process is configured, the intended publication gate
-requires a recorded CLA Assistant acceptance before merge; an unsigned or
-declined external pull request remains open but cannot merge. Employer-owned
-work uses the documented authorization path rather than bypassing that gate.
+forms. The agreement packet is counsel-reviewed and owner-approved; Version 1.0 is
+effective 2026-08-21. Once the approved process is configured, the intended
+publication gate requires a recorded CLA Assistant acceptance before merge; an
+unsigned or declined external pull request remains open but cannot merge.
+Employer-owned work uses the documented authorization path rather than
+bypassing that gate.
 
 AI-assisted contributions are permitted. You remain responsible for having the
 right to submit the contribution and for disclosing any known pre-existing
@@ -49,11 +51,11 @@ pull-request template has an optional public provider/model-and-role field and
 an optional `Generated-by:` trailer. Do not include prompts, raw model outputs,
 account information, or usage data.
 
-The agreement packet remains pending the required private counsel approval. The
-private founder-to-Neely Solutions LLC rights assignment or confirmation is
-**owner-confirmed as executed**, but this page does not claim that counsel has
-verified that private instrument. The status page is not a legal instrument,
-and this checkout does not claim live CLA enforcement.
+The agreement packet is counsel-reviewed and owner-approved; Version 1.0 is effective
+2026-08-21. The private founder-to-Neely Solutions LLC rights assignment or
+confirmation is **owner-confirmed as executed**, but this page does not claim
+that counsel has verified that private instrument. The status page is not a
+legal instrument, and this checkout does not claim live CLA enforcement.
 
 ## Security and sensitive data
 

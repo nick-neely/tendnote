@@ -337,9 +337,11 @@ describe("fresh-clone publication gate", () => {
       /live default-branch protection and CLA Assistant\s+enforcement remain pending #473/i,
     );
     expect(guide).toMatch(/does not claim current\s+protection or CLA enforcement/i);
-    expect(guide).toMatch(/agreement packet remains pending[\s\S]*counsel approval/i);
+    expect(guide).toMatch(
+      /agreement packet[\s\S]*counsel-reviewed[\s\S]*owner-approved[\s\S]*effective 2026-08-21/i,
+    );
     expect(guide).toMatch(/owner-confirmed as executed/i);
-    expect(guide).toMatch(/does not claim that counsel[\s\S]*verified/i);
+    expect(guide).toMatch(/does\s+not\s+claim\s+that counsel[\s\S]*verified/i);
     for (const document of [guide, support]) {
       expect(document).toMatch(/synthetic fixtures[\s\S]*minimized\s+reproductions/i);
       expect(document).toMatch(/personal data[\s\S]*public Issue[\s\S]*pull\s+request/i);
@@ -356,7 +358,9 @@ describe("fresh-clone publication gate", () => {
       /(?:^|\n)##[^\n]*(?:prompt|raw model output|account information|usage data)/i,
     );
 
-    expect(agreement).toMatch(/pending[\s\S]*counsel review[\s\S]*owner approval/i);
+    expect(agreement).toMatch(
+      /agreement packet[\s\S]*counsel-reviewed[\s\S]*owner-approved[\s\S]*effective 2026-08-21/i,
+    );
     expect(agreement).toMatch(/not a\s+Contributor License Agreement/i);
     expect(agreement).toMatch(/owner-confirmed as executed/i);
     expect(agreement).toMatch(/does\s+not\s+claim\s+that counsel\s+has\s+verified/i);
@@ -364,9 +368,10 @@ describe("fresh-clone publication gate", () => {
     expect(agreement).toMatch(/CLA Assistant/i);
     expect(agreement).toContain("legal/README.md");
     expect(agreement).toContain("Generated-by:");
-    expect(agreement).not.toMatch(
-      /counsel-reviewed,? Apache ICLA-derived individual agreement is (?:published|effective)/i,
+    expect(agreement).toMatch(
+      /counsel-reviewed[\s\S]*Apache ICLA-derived\s+individual\s+agreement/i,
     );
+    expect(agreement).toMatch(/effective 2026-08-21/i);
 
     expect(support).toMatch(/no\s+service\s+level\s+agreement/i);
     expect(support).toMatch(/self-host support is community-only/i);
@@ -375,17 +380,20 @@ describe("fresh-clone publication gate", () => {
     expect(legalReadme).toMatch(/individual\s+contributor\s+license\s+agreement/i);
     expect(legalReadme).toMatch(/employer\s+contribution\s+authorization/i);
     expect(legalReadme).toMatch(/corporate\s+contributor\s+license\s+agreement/i);
-    expect(legalReadme).toMatch(/records are private/i);
+    expect(legalReadme).toMatch(/records\s+are\s+private/i);
     expect(legalReadme).toMatch(/CLA status may be public/i);
-    expect(legalReadme).toMatch(/pending counsel approval/i);
-    expect(legalReadme).toMatch(/owner updates the status/i);
+    expect(legalReadme).toMatch(
+      /Version 1\.0[\s\S]*counsel-reviewed[\s\S]*owner-approved[\s\S]*effective 2026-08-21/i,
+    );
+    expect(legalReadme).toMatch(/CLA Assistant[\s\S]*not live[\s\S]*#473/i);
+    expect(legalReadme).not.toMatch(/DRAFT|PENDING COUNSEL APPROVAL/i);
 
-    for (const draft of [individualCla, employerAuthorization, corporateCla]) {
-      expect(draft).toMatch(/DRAFT[\s\S]*PENDING COUNSEL APPROVAL/i);
-      expect(draft).toMatch(/not effective until the owner\s+updates the status/i);
-      expect(draft).not.toMatch(/counsel-approved|approved by counsel/i);
-      expect(draft.split("## Drafting sources (not operative)")[0]).not.toMatch(
-        /Counsel must|retroactive (?:effect|correction|revocation)|defensive-claim treatment/i,
+    for (const agreementDocument of [individualCla, employerAuthorization, corporateCla]) {
+      expect(agreementDocument).toMatch(/Version 1\.0/i);
+      expect(agreementDocument).toMatch(/effective 2026-08-21/i);
+      expect(agreementDocument).not.toMatch(/DRAFT|PENDING COUNSEL APPROVAL/i);
+      expect(agreementDocument).not.toMatch(
+        /proposed final-form|exact legal names[\s\S]*must be confirmed|Counsel must|counsel must/i,
       );
     }
 
@@ -414,6 +422,8 @@ describe("fresh-clone publication gate", () => {
     expect(individualCla).toMatch(/entire agreement/i);
     expect(individualCla).toMatch(/severed/i);
     expect(individualCla).toMatch(/electronic\s+counterparts/i);
+    expect(individualCla).toMatch(/Acceptance record/i);
+    expect(individualCla).not.toMatch(/Proposed acceptance record/i);
 
     expect(employerAuthorization).toMatch(/authorized employer representative/i);
     expect(employerAuthorization).toMatch(/GitHub account/i);

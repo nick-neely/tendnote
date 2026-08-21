@@ -1,11 +1,6 @@
 # Tendnote Employer Contribution Authorization
 
-**Version 1.0 — DRAFT — PENDING COUNSEL APPROVAL**
-
-**Important status notice:** This is a proposed final-form draft for counsel
-review. It is not effective until the owner updates the status after counsel
-approval. It must not be signed or used as evidence of authority while it is
-marked **DRAFT — PENDING COUNSEL APPROVAL**. It is not legal advice.
+**Version 1.0 — EFFECTIVE 2026-08-21**
 
 This form is the narrow employer route for a one-off contribution or a named
 contributor scope. It is signed by an authorized employer representative and
@@ -131,9 +126,9 @@ currently live.
 
 ## 7. Signature and electronic record
 
-This form is not effective until the owner updates the status to an effective
-version, the authorized employer representative signs it, and the approved
-recording process retains the signed version. A signature may be electronic if
+This authorization is effective as of 2026-08-21 when the authorized employer
+representative signs this version and the approved recording process retains
+the signed version. A signature may be electronic if
 the approved process records the signer, authority, version, scope, date, and
 integrity of the record.
 
@@ -145,13 +140,3 @@ integrity of the record.
 - Signature: ____________________________________________________________
 - Date: _________________________________________________________________
 - Agreement version: ___________________________________________________
-
-## Drafting sources (not operative)
-
-This original route was informed by the [Apache Corporate Contributor License
-Agreement](https://www.apache.org/licenses/cla-corporate.pdf), the [Apache ICLA
-v2.2](https://www.apache.org/licenses/icla.pdf), and the [Linux Foundation
-generative-AI guidance](https://www.linuxfoundation.org/legal/generative-ai).
-Those sources are not incorporated by reference. Counsel must confirm the
-authority, schedule, notice, patent, and electronic-signature mechanics before
-the owner changes this document's status.

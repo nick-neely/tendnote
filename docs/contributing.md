@@ -2,16 +2,15 @@
 
 ## Status
 
-The contribution agreement is a publication dependency and is **pending
-counsel review and owner approval**. The proposed [contribution agreement
+The agreement packet is **counsel-reviewed and owner-approved; Version 1.0 is
+effective 2026-08-21**. The [contribution agreement
 packet](legal/README.md) contains the [individual
 ICLA](legal/individual-contributor-license-agreement.md), [employer
 authorization](legal/employer-contribution-authorization.md), and [corporate
-CLA](legal/corporate-contributor-license-agreement.md) drafts. Every draft is
-marked pending counsel approval and is not effective until the owner updates
-its status. This page is an implementation status and process note, not a
-Contributor License Agreement, legal advice, or a document that grants any
-rights. Do not sign or rely on a draft as an agreement.
+CLA](legal/corporate-contributor-license-agreement.md) forms. This page is an
+implementation status and process note, not a Contributor License Agreement,
+legal advice, or a document that grants any rights. Use the exact forms for
+acceptance or signature.
 
 ADR 0233 records the intended shape: a counsel-reviewed, Apache ICLA-derived
 individual agreement that grants the project the permissions needed to
@@ -28,20 +27,23 @@ rights chain; the private record remains owner-controlled.
 
 ## Intended external-contributor path
 
-After the exact approved agreement is available, the project will:
+For external contributions, use the exact effective Version 1.0 form and the
+route that matches ownership:
 
-1. publish the approved individual agreement and documented employer or
-   corporate authorization path;
-2. configure CLA Assistant to use that exact artifact and retain signature
-   evidence; and
-3. require the resulting CLA status on the default branch.
+1. accept the individual agreement through CLA Assistant when the approved
+   process is enabled;
+2. use the employer authorization or corporate agreement for employer-owned
+   work; and
+3. retain the private acceptance or signature record and expose only the
+   minimum public status needed for the merge check.
 
-An unsigned or declined external pull request remains open but cannot merge.
-Corporate authorization satisfies the same gate; it is not an undocumented
-bypass. The live configuration and disposable external-contributor proof are
-owned by [#473](https://github.com/nick-neely/tendnote/issues/473). This
-checkout intentionally does not claim that the hosted app or default-branch
-ruleset is configured or live.
+An unsigned or declined external pull request remains open but cannot merge
+once the required status is live. Corporate authorization satisfies the same
+gate; it is not an undocumented bypass. The live configuration and disposable
+external-contributor proof are owned by
+[#473](https://github.com/nick-neely/tendnote/issues/473). This checkout
+intentionally does not claim that the hosted app, CLA Assistant, or
+default-branch ruleset is configured or live.
 
 ## AI-assisted contributions
 
@@ -59,5 +61,4 @@ data.
 
 See [ADR 0233](adr/0233-contributions-use-an-individual-cla-and-pr-local-provenance.md)
 and the [governance research](phase-9a/contribution-governance-research.md) for
-the unsettled design inputs. They do not replace the pending approved legal
-artifact.
+the design inputs. They do not replace the effective Version 1.0 legal forms.

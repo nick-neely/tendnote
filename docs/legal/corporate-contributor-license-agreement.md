@@ -1,17 +1,10 @@
 # Tendnote Corporate Contributor License Agreement
 
-**Version 1.0 — DRAFT — PENDING COUNSEL APPROVAL**
+**Version 1.0 — EFFECTIVE 2026-08-21**
 
-**Important status notice:** This reusable entity agreement is a proposed
-final-form draft for counsel review. It is not effective until the owner
-updates the status after counsel approval. It must not be signed, accepted, or
-described as approved while it is marked **DRAFT — PENDING COUNSEL APPROVAL**.
-It is not legal advice.
-
-This agreement is intended for an entity that will make recurring contributions
-to Tendnote through an authorized contributor schedule. The exact legal names,
-addresses, notices, and any governing-law terms must be confirmed before the
-owner changes this document's status.
+This reusable entity agreement is intended for an entity that will make
+recurring contributions to Tendnote through an authorized contributor
+schedule.
 
 ## 1. Parties and definitions
 
@@ -154,12 +147,10 @@ needed for a merge check. The owner may require each authorized contributor to
 complete the approved individual acceptance flow for work outside Entity
 ownership or for any additional project policy.
 
-This agreement becomes effective only when the owner updates the status to an
-effective version, an authorized Entity representative signs this exact
-version, and the approved process retains the record. Before that sequence,
-this document is not effective and grants no rights. A new version requires the
-acceptance or signature specified by that version; it does not silently amend a
-prior accepted version.
+Version 1.0 is effective as of 2026-08-21 when an authorized Entity
+representative signs this exact version and the approved process retains the
+record. A new version requires the acceptance or signature specified by that
+version; it does not silently amend a prior accepted version.
 
 This agreement, its schedule, and its retained updates are the entire agreement
 between the Entity and Neely Solutions LLC concerning Contributions and
@@ -180,14 +171,3 @@ retained electronic record is evidence of the accepted version.
 - Signature: ____________________________________________________________
 - Date: _________________________________________________________________
 - Agreement version: ___________________________________________________
-
-## Drafting sources (not operative)
-
-This original reusable entity draft was informed by the [Apache Corporate
-Contributor License Agreement](https://www.apache.org/licenses/cla-corporate.pdf),
-the [Apache ICLA v2.2](https://www.apache.org/licenses/icla.pdf), the [Linux
-Foundation generative-AI guidance](https://www.linuxfoundation.org/legal/generative-ai),
-and [Apache generative tooling guidance](https://www.apache.org/legal/generative-tooling.html).
-Those sources are not incorporated by reference. Counsel must review the
-Entity's authority, schedule, notice, patent, and electronic-signature
-mechanics before the owner changes this document's status.
