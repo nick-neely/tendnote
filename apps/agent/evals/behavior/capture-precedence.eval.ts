@@ -1,4 +1,9 @@
 import { defineEval } from "eve/evals";
+import {
+  hasCapturePersonClarification,
+  hasNoRuntimeFailures,
+  isPrivateOrOmitted,
+} from "../expectations";
 
 /**
  * Global Capture precedence, as one table.
@@ -24,6 +29,10 @@ type CapturePrecedenceCase = {
   readonly prompt: string;
   /** The wording Capture must retain as source evidence. */
   readonly originalText: RegExp;
+  /** Additional Capture input invariants for this case. */
+  readonly captureInput?: Record<string, unknown>;
+  /** Whether the grouped source must stay reviewable behind Person clarification. */
+  readonly expectsPersonClarification?: boolean;
   /**
    * The destination-specific tools this sentence tempts. Every one is a tool
    * that exists and could serve a clause in the prompt: a ban on an unreachable
@@ -46,6 +55,7 @@ const cases: readonly CapturePrecedenceCase[] = [
     tags: ["deterministic", "behavior", "capture", "people", "clarification", "phase-seven"],
     prompt: "Use Capture: remind me to follow up with Sam tomorrow.",
     originalText: /follow up with Sam/i,
+    expectsPersonClarification: true,
     forbidden: ["create_person"],
   },
   {
@@ -54,6 +64,11 @@ const cases: readonly CapturePrecedenceCase[] = [
     prompt:
       "Use Capture: remember that Priya prefers oat milk; track asset refrigerator filter: model EDR4RXD1.",
     originalText: /remember.*track asset/is,
+    captureInput: {
+      inferredSuggestions: (value: unknown) => value === undefined,
+      requestedScope: isPrivateOrOmitted,
+    },
+    expectsPersonClarification: true,
     forbidden: ["capture_memory", "create_asset"],
   },
   {
@@ -63,6 +78,7 @@ const cases: readonly CapturePrecedenceCase[] = [
     prompt:
       "Add Priya; remember that Priya prefers oat milk; and track asset refrigerator water filter: model EDR4RXD1.",
     originalText: /Add Priya.*remember.*track asset/is,
+    captureInput: { inferredSuggestions: (value: unknown) => value === undefined },
     forbidden: ["create_person", "capture_memory", "create_asset"],
   },
   {
@@ -90,19 +106,33 @@ export default cases.map((testCase) =>
     async test(t) {
       await t.send(testCase.prompt);
 
-      t.succeeded();
+      if (testCase.expectsPersonClarification) {
+        // A focused Person clarification deliberately parks for owner input. Eve's
+        // generic `succeeded` assertion rejects that healthy waiting state, so this
+        // case proves the exact call, clarification result, and failure-free stream
+        // directly instead.
+        t.eventsSatisfy("the clarification parked without a runtime failure", hasNoRuntimeFailures);
+      } else {
+        t.succeeded();
+      }
       t.calledTool("capture_saved_item", {
         input: {
           originalText: testCase.originalText,
           // Capture is private by default. None of these sentences says the capture is
           // for the household, so none of them may carry the audience field - the
           // positive case lives in `policy/capture-shared-audience`.
-          requestedScope: (value: unknown) => value === undefined,
+          requestedScope: isPrivateOrOmitted,
+          ...testCase.captureInput,
         },
         count: 1,
       });
       for (const tool of testCase.forbidden) {
         t.notCalledTool(tool).label(`capture owns the turn, not ${tool}`);
+      }
+      if (testCase.expectsPersonClarification) {
+        t.eventsSatisfy("the unresolved Person stays in Capture clarification", (events) =>
+          hasCapturePersonClarification(events),
+        );
       }
     },
   }),

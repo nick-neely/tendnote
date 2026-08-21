@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { UNFILED_ACTION_REPLY_CANONICAL } from "../agent/lib/response-contracts";
 import { authoredInstructions, baseInstructions } from "./instructions-source";
 
 // The whole authored surface (base.md + every skill), so a rule that lives in the
@@ -29,6 +30,19 @@ describe("General Action instructions — explicit creation", () => {
   it("distinguishes a Routine (cadence) from a one-time action", () => {
     expect(authored).toMatch(/Routine/);
     expect(authored).toMatch(/cadence/i);
+  });
+
+  it("creates explicitly requested actions even when Area filing is unavailable", () => {
+    expect(authored).toMatch(
+      /(?:immediately call|next action.*must be) `create_general_action` with `areaId` omitted/i,
+    );
+    expect(authored).toMatch(/unfiled.*must never.*refuse|unfiled.*must never.*defer/i);
+    expect(authored).toMatch(/do not pause for a second confirmation/i);
+    expect(base).toMatch(/original request already authorizes the unfiled Action/i);
+    expect(authored).toMatch(/do not send a message before that call/i);
+    expect(authored).toMatch(/ask whether to add it unfiled/i);
+    expect(authored).toMatch(/suggest that the user set up Areas first/i);
+    expect(authored).toContain(UNFILED_ACTION_REPLY_CANONICAL);
   });
 });
 

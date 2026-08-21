@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { HouseholdMemberIdentity } from "@tendnote/domain";
+import { createInMemoryAccessProfileStore } from "../access-profiles/in-memory-store";
 import { createInMemoryHouseholdCalendarStore } from "./in-memory-calendar-store";
 import { createInMemoryHouseholdStore } from "./in-memory-store";
+import {
+  type InMemoryMutationLog,
+  type InMemoryTransactionContext,
+  inMemoryTransactionContext,
+  recordInMemoryMutation,
+} from "./in-memory-transaction";
 import type {
   HouseholdInvitation,
   HouseholdInvitationDelivery,
@@ -13,32 +20,93 @@ import {
   type HouseholdScheduledWorkStore,
 } from "./scheduled-work";
 
-/**
- * The invitation store the lifecycle suite runs against.
- *
- * `withTransaction` hands back the same store rather than isolating anything:
- * these tests exercise the lifecycle's decisions, and the atomicity they depend
- * on is a property of the Drizzle implementation's transaction plus row lock,
- * asserted separately against that adapter.
- */
+type InMemoryStoreSnapshot = {
+  invitations: Array<[string, HouseholdInvitation]>;
+  deliveries: Array<[string, HouseholdInvitationDelivery]>;
+  households: ReturnType<ReturnType<typeof createInMemoryHouseholdStore>["snapshot"]>;
+  accessProfiles: ReturnType<ReturnType<typeof createInMemoryAccessProfileStore>["snapshot"]>;
+};
+
+type LockHook = (input: { kind: "user" | "household"; id: string }) => Promise<void> | void;
+
 export function createInMemoryHouseholdInvitationStore(options?: {
   households?: ReturnType<typeof createInMemoryHouseholdStore>;
+  accessProfiles?: ReturnType<typeof createInMemoryAccessProfileStore>;
   calendars?: ReturnType<typeof createInMemoryHouseholdCalendarStore>;
   identities?: HouseholdMemberIdentity[];
   /** Injectable so a test can watch what a departure ends, not only what it moves. */
   scheduledWork?: HouseholdScheduledWorkStore;
+  /** Test-only interleaving hook, called after the named lock is held. */
+  lockHook?: LockHook;
 }): HouseholdInvitationStore & {
   households: ReturnType<typeof createInMemoryHouseholdStore>;
   calendars: ReturnType<typeof createInMemoryHouseholdCalendarStore>;
   listDeliveries: () => HouseholdInvitationDelivery[];
 } {
   const households = options?.households ?? createInMemoryHouseholdStore();
+  const accessProfiles = options?.accessProfiles ?? createInMemoryAccessProfileStore();
   // Injectable so a governance test can seed a designated calendar and then
   // assert what a departure did to it, against the very store the lifecycle uses.
   const calendars = options?.calendars ?? createInMemoryHouseholdCalendarStore();
   const identityRows = options?.identities ?? [];
   const invitations = new Map<string, HouseholdInvitation>();
   const deliveries = new Map<string, HouseholdInvitationDelivery>();
+  const locks = new Map<string, { held: boolean; waiters: Array<() => void> }>();
+
+  function snapshot(): InMemoryStoreSnapshot {
+    return {
+      invitations: [...invitations.entries()].map(([id, invitation]) => [id, { ...invitation }]),
+      deliveries: [...deliveries.entries()].map(([id, delivery]) => [id, { ...delivery }]),
+      households: households.snapshot(),
+      accessProfiles: accessProfiles.snapshot(),
+    };
+  }
+
+  function restore(state: InMemoryStoreSnapshot, mutations: InMemoryMutationLog) {
+    const invitationIds = mutations.get("invitations");
+    if (invitationIds) {
+      for (const id of invitationIds) {
+        const row = state.invitations.find(([candidate]) => candidate === id)?.[1];
+        if (row) invitations.set(id, { ...row });
+        else invitations.delete(id);
+      }
+    }
+    const deliveryIds = mutations.get("deliveries");
+    if (deliveryIds) {
+      for (const id of deliveryIds) {
+        const row = state.deliveries.find(([candidate]) => candidate === id)?.[1];
+        if (row) deliveries.set(id, { ...row });
+        else deliveries.delete(id);
+      }
+    }
+    households.restore(state.households, mutations);
+    accessProfiles.restore(state.accessProfiles, mutations);
+  }
+
+  function release(key: string) {
+    const lock = locks.get(key);
+    if (!lock) return;
+    const next = lock.waiters.shift();
+    if (next) {
+      next();
+      return;
+    }
+    lock.held = false;
+  }
+
+  async function lock(key: string, input: { kind: "user" | "household"; id: string }) {
+    const context = inMemoryTransactionContext.getStore();
+    if (!context) throw new Error("In-memory row locks require a transaction.");
+    const state = locks.get(key) ?? { held: false, waiters: [] };
+    locks.set(key, state);
+    if (state.held) {
+      await new Promise<void>((resolve) => state.waiters.push(resolve));
+    }
+    state.held = true;
+    context.releases.push(() => release(key));
+    context.snapshot ??= snapshot();
+    await options?.lockHook?.(input);
+  }
 
   const identities: HouseholdIdentityStore = {
     async listUserIdentities(input) {
@@ -55,13 +123,30 @@ export function createInMemoryHouseholdInvitationStore(options?: {
     listDeliveries: () => HouseholdInvitationDelivery[];
   } = {
     households,
+    accessProfiles,
     identities,
     scheduledWork,
     calendars,
     async withTransaction(fn) {
-      return fn(store);
+      const context: InMemoryTransactionContext = { releases: [], mutations: new Map() };
+      return inMemoryTransactionContext.run(context, async () => {
+        try {
+          return await fn(store);
+        } catch (error) {
+          if (context.snapshot)
+            restore(context.snapshot as InMemoryStoreSnapshot, context.mutations);
+          throw error;
+        } finally {
+          for (const releaseLock of context.releases.reverse()) releaseLock();
+        }
+      });
+    },
+    async lockUser(input) {
+      await lock(`user:${input.userId}`, { kind: "user", id: input.userId });
+      return true;
     },
     async lockHousehold(input) {
+      await lock(`household:${input.householdId}`, { kind: "household", id: input.householdId });
       return households.getHouseholdWorkspace(input);
     },
     async createInvitation(input) {
@@ -88,6 +173,7 @@ export function createInMemoryHouseholdInvitationStore(options?: {
         createdAt: now,
         updatedAt: now,
       };
+      recordInMemoryMutation("invitations", invitation.id);
       invitations.set(invitation.id, invitation);
       return invitation;
     },
@@ -114,6 +200,7 @@ export function createInMemoryHouseholdInvitationStore(options?: {
         throw new Error("Household invitation not found.");
       }
       const updated = { ...invitation, ...input.patch, updatedAt: new Date() };
+      recordInMemoryMutation("invitations", updated.id);
       invitations.set(updated.id, updated);
       return updated;
     },
@@ -128,6 +215,7 @@ export function createInMemoryHouseholdInvitationStore(options?: {
         providerMessageId: null,
         failureClass: null,
       };
+      recordInMemoryMutation("deliveries", delivery.id);
       deliveries.set(delivery.id, delivery);
       return delivery;
     },
@@ -135,6 +223,7 @@ export function createInMemoryHouseholdInvitationStore(options?: {
       const delivery = deliveries.get(input.deliveryId);
       if (delivery?.status !== "queued") return null;
       const claimed = { ...delivery, status: "sending" as const, claimedAt: new Date() };
+      recordInMemoryMutation("deliveries", claimed.id);
       deliveries.set(claimed.id, claimed);
       return claimed;
     },
@@ -150,6 +239,7 @@ export function createInMemoryHouseholdInvitationStore(options?: {
         providerMessageId: input.providerMessageId ?? null,
         failureClass: input.failureClass ?? null,
       };
+      recordInMemoryMutation("deliveries", completed.id);
       deliveries.set(completed.id, completed);
       return completed;
     },

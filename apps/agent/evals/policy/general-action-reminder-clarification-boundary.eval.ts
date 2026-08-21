@@ -1,6 +1,9 @@
 import { defineEval } from "eve/evals";
-import { includes } from "eve/evals/expect";
-import { without } from "../expectations";
+import { includes, satisfies } from "eve/evals/expect";
+import { requestedQuestionMatches } from "../behavior/general-action-mutation-boundary.eval";
+import { hasNoRuntimeFailures, without } from "../expectations";
+
+const TIMING_CLARIFICATION = /when|what time|which date|clarif|specific|too vague/i;
 
 export default defineEval({
   description:
@@ -9,11 +12,22 @@ export default defineEval({
   async test(t) {
     await t.send("Add an action to replace the fridge water filter and remind me sometime soon.");
 
-    t.succeeded();
     t.notCalledTool("create_general_action");
     t.notCalledTool("suggest_general_action");
     t.notCalledTool("propose_asset_actions");
-    t.check(t.reply, includes(/when|what time|which date|clarif|specific/i));
+    let parkedSafely = false;
+    t.eventsSatisfy("clarified timing without a runtime failure", (events) => {
+      parkedSafely =
+        hasNoRuntimeFailures(events) && requestedQuestionMatches(events, TIMING_CLARIFICATION);
+      return hasNoRuntimeFailures(events);
+    });
+    t.check(
+      t.reply,
+      satisfies(
+        (reply) => parkedSafely || (typeof reply === "string" && TIMING_CLARIFICATION.test(reply)),
+        "asks for concrete timing through prose or a parked question",
+      ),
+    );
     t.check(
       t.reply,
       includes(

@@ -1,6 +1,6 @@
 import { AssetValidationError } from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { asTestTool } from "./test-tool";
+import { asTestTool, toolModelValue } from "./test-tool";
 
 const { searchAssets } = vi.hoisted(() => ({ searchAssets: vi.fn() }));
 const { getAssetSnapshot } = vi.hoisted(() => ({ getAssetSnapshot: vi.fn() }));
@@ -193,6 +193,8 @@ describe("search_assets tool", () => {
     // Reaching a tool is not licence to print an id: the reply-side rule is carried by
     // the guidance here and by `instructions/base.md`, not by hiding the id.
     expect(modelView.value.guidance).toMatch(/never write an id in your reply/i);
+    expect(modelView.value.guidance).toMatch(/propose_asset_actions/);
+    expect(modelView.value.guidance).toMatch(/before replying|date alone/i);
   });
 
   it("offers a memory handle only for records that are Asset Memories", async () => {
@@ -272,11 +274,38 @@ describe("get_asset_context tool", () => {
 
     const output = await getAssetContextTool.execute({ assetId: ASSET_ID }, ctx);
     const modelView = getAssetContextTool.toModelOutput?.(output) as {
-      value: { snapshot: { available: boolean; guidance: string } };
+      value: {
+        assetId: string;
+        facts: Array<{ memoryId: string }>;
+        inferredReminderContinuation: {
+          requiredNextTool: string;
+          requiredInput: { assetId: string; assetMemoryIds: string[] };
+          obligation: string;
+        };
+        snapshot: { availableToModel: boolean; guidance: string };
+        guidance: string;
+      };
     };
 
-    expect(modelView.value.snapshot.available).toBe(true);
-    expect(modelView.value.snapshot.guidance).toMatch(/not source of truth/i);
+    expect(modelView.value.snapshot.availableToModel).toBe(false);
+    expect(modelView.value.snapshot.guidance).toMatch(/omitted.*facts.*only/i);
+    expect(modelView.value.assetId).toBe(ASSET_ID);
+    expect(modelView.value.facts[0]?.memoryId).toBe(MEMORY_ID);
+    expect(modelView.value.guidance).toMatch(/propose_asset_actions/);
+    expect(modelView.value.guidance).toMatch(/assetMemoryIds.*memoryId/i);
+    expect(modelView.value.guidance).toMatch(/do not stop/i);
+    expect(modelView.value.inferredReminderContinuation).toMatchObject({
+      requiredNextTool: "propose_asset_actions",
+      requiredInput: { assetId: ASSET_ID, assetMemoryIds: [MEMORY_ID] },
+    });
+    expect(modelView.value.inferredReminderContinuation.obligation).toMatch(
+      /same turn.*do not reply|do not reply.*same turn/i,
+    );
+    expect(modelView.value.inferredReminderContinuation.obligation).toMatch(
+      /do not add or schedule.*does not forbid/i,
+    );
+    expect(modelView.value.guidance).toMatch(/before replying|review card/i);
+    expect(modelView.value.guidance).toMatch(/never use create_general_action|inferred timing/i);
   });
 
   it("degrades to the facts alone when the snapshot is stale or missing", async () => {
@@ -288,12 +317,29 @@ describe("get_asset_context tool", () => {
 
     const output = await getAssetContextTool.execute({ assetId: ASSET_ID }, ctx);
     const modelView = getAssetContextTool.toModelOutput?.(output) as {
-      value: { snapshot: { available: boolean }; facts: Array<Record<string, unknown>> };
+      value: {
+        snapshot: { availableToModel: boolean };
+        facts: Array<Record<string, unknown>>;
+      };
     };
 
-    expect(modelView.value.snapshot.available).toBe(false);
+    expect(modelView.value.snapshot.availableToModel).toBe(false);
     // The truth is unaffected: the records still carry the answer.
     expect(modelView.value.facts[0]).toMatchObject({ value: "RPWFE" });
+  });
+
+  it("keeps conflicting generated snapshot values out of the model projection", async () => {
+    getAssetSnapshot.mockResolvedValue({
+      status: "fresh",
+      snapshot: { summary: "Confirmed: Filter size: XWFE." },
+      context: snapshotContext,
+    });
+
+    const output = await getAssetContextTool.execute({ assetId: ASSET_ID }, ctx);
+    expect(output.summary).toContain("XWFE");
+    const modelView = getAssetContextTool.toModelOutput?.(output) as { value: unknown };
+    expect(JSON.stringify(modelView.value)).not.toContain("XWFE");
+    expect(JSON.stringify(modelView.value)).toContain("RPWFE");
   });
 
   it("denies an invisible asset the same way it denies a missing one", async () => {
@@ -356,14 +402,75 @@ describe("propose_asset_actions tool", () => {
       affectedScopes: [],
     });
 
-    await proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx);
+    await proposeAssetActionsTool.execute({ assetId: ASSET_ID, assetMemoryIds: [MEMORY_ID] }, ctx);
 
     expect(proposeAssetMemoryActions).toHaveBeenCalledWith(
       expect.objectContaining({
         actorUserId: "user-1",
         assetId: ASSET_ID,
+        assetMemoryIds: [MEMORY_ID],
         source: "assistant",
       }),
+    );
+  });
+
+  it("returns Suggested Actions as review artifacts, never active reminders", async () => {
+    const ACTION_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    proposeAssetMemoryActions.mockResolvedValue({
+      result: {
+        asset: { id: ASSET_ID, name: "Kitchen refrigerator" },
+        proposed: [
+          {
+            reason: "warranty",
+            assetMemoryId: MEMORY_ID,
+            action: {
+              id: ACTION_ID,
+              title: "Review the refrigerator warranty",
+              status: "suggested",
+              dueAt: new Date("2027-03-14T00:00:00.000Z"),
+              deferUntil: null,
+              recurrence: null,
+              areaId: null,
+              linkedPeople: [],
+              scope: "private",
+            },
+          },
+        ],
+        pending: [
+          {
+            assetMemoryId: MEMORY_ID,
+            action: {
+              id: ACTION_ID,
+              title: "Review the refrigerator warranty",
+              status: "suggested",
+              dueAt: new Date("2027-03-14T00:00:00.000Z"),
+              deferUntil: null,
+              recurrence: null,
+              areaId: null,
+              linkedPeople: [],
+              scope: "private",
+            },
+          },
+        ],
+        alreadySpokenFor: 0,
+      },
+      affectedScopes: [],
+    });
+
+    const output = await proposeAssetActionsTool.execute(
+      { assetId: ASSET_ID, assetMemoryIds: [MEMORY_ID] },
+      ctx,
+    );
+    const proposal = output.proposed[0]?.action;
+
+    expect(proposal?.status).toBe("suggested");
+    expect(output.proposed[0]?.assetMemoryId).toBe(MEMORY_ID);
+    expect(output.pending[0]?.assetMemoryId).toBe(MEMORY_ID);
+    expect(output.pending[0]?.action.status).toBe("suggested");
+    expect(output).not.toHaveProperty("reminderSchedule");
+    expect(output).not.toHaveProperty("schedule");
+    expect(toolModelValue(proposeAssetActionsTool, output).guidance).toMatch(
+      /not active actions until the user accepts/i,
     );
   });
 
@@ -374,12 +481,30 @@ describe("propose_asset_actions tool", () => {
     expect(proposeAssetMemoryActions).not.toHaveBeenCalled();
   });
 
+  it("requires reviewed-memory grounding instead of scanning an asset implicitly", () => {
+    expect(inputParser(proposeAssetActionsTool).safeParse({ assetId: ASSET_ID }).success).toBe(
+      false,
+    );
+    expect(
+      inputParser(proposeAssetActionsTool).safeParse({
+        assetId: ASSET_ID,
+        assetMemoryIds: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      inputParser(proposeAssetActionsTool).safeParse({
+        assetId: ASSET_ID,
+        assetMemoryIds: [MEMORY_ID],
+      }).success,
+    ).toBe(true);
+  });
+
   it("never hands the model a raw database error", async () => {
     proposeAssetMemoryActions.mockRejectedValue(LEAKY_STORE_ERROR);
 
-    await expect(proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx)).rejects.toThrow(
-      /could not read the user's records/i,
-    );
+    await expect(
+      proposeAssetActionsTool.execute({ assetId: ASSET_ID, assetMemoryIds: [MEMORY_ID] }, ctx),
+    ).rejects.toThrow(/could not read the user's records/i);
   });
 
   it("still passes a curated domain refusal through to the model", async () => {
@@ -389,9 +514,9 @@ describe("propose_asset_actions tool", () => {
       new AssetValidationError("This asset is archived. Restore it before proposing reminders."),
     );
 
-    await expect(proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx)).rejects.toThrow(
-      /archived/i,
-    );
+    await expect(
+      proposeAssetActionsTool.execute({ assetId: ASSET_ID, assetMemoryIds: [MEMORY_ID] }, ctx),
+    ).rejects.toThrow(/archived/i);
   });
 });
 

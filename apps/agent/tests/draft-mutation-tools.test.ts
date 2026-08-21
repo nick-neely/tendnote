@@ -1,5 +1,6 @@
 import { MessageDraftValidationError } from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DRAFT_REVISION_REPLY_CANONICAL } from "../agent/lib/response-contracts";
 import { asTestTool, toolModelValue } from "./test-tool";
 
 const { editDraftBody, dismissDraft } = vi.hoisted(() => ({
@@ -70,11 +71,29 @@ describe("edit_draft_body", () => {
     const value = toolModelValue(editTool, output);
 
     expect(value.status).toBe("draft");
+    expect(value.requiredResponse).toBe(DRAFT_REVISION_REPLY_CANONICAL.draft);
     // The body does not come back - the model just wrote it, and echoing it invites a
     // reply that reprints the whole message.
     expect(JSON.stringify(value)).not.toContain("SECRET_DRAFT_BODY");
     expect(JSON.stringify(value)).not.toContain(PERSON_ID);
-    expect(value.guidance).toMatch(/nothing was approved, sent, or exported/i);
+    expect(value.guidance).toMatch(/internal Tendnote draft/i);
+    expect(value.guidance).toMatch(/remains an unapproved draft/i);
+    expect(value.guidance).toMatch(/nothing was approved, exported, or sent/i);
+    expect(value.guidance).toMatch(/not an external or Gmail draft/i);
+    expect(value.guidance).not.toMatch(/ready to send/i);
+  });
+
+  it("does not imply a prior approval still covers edited wording", async () => {
+    editDraftBody.mockResolvedValue({ result: draft({ status: "approved" }), affectedScopes: [] });
+
+    const output = await editTool.execute({ draftId: DRAFT_ID, body: "Updated wording" }, ctx);
+    const value = toolModelValue(editTool, output);
+
+    expect(value.status).toBe("approved");
+    expect(value.requiredResponse).toBe(DRAFT_REVISION_REPLY_CANONICAL.approved);
+    expect(value.guidance).toMatch(/prior approval no longer covers/i);
+    expect(value.guidance).toMatch(/nothing was exported or sent/i);
+    expect(value.guidance).not.toMatch(/remains an unapproved draft/i);
   });
 
   it("curates a store failure instead of handing the model raw SQL", async () => {

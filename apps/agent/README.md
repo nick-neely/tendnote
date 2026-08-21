@@ -4,7 +4,7 @@ Eve, the Tendnote assistant — a filesystem agent mounted into the web app same
 
 ## Layout
 
-- `agent/agent.ts` — model and build config. Model defaults to `anthropic/claude-haiku-4.5`; override with `TENDNOTE_AGENT_MODEL`. The AI SDK and ordinary runtime dependencies stay external so Eve emits one chunk per tool without rebundling them during local startup.
+- `agent/agent.ts` — model and build config. Model defaults to `google/gemini-3.7-flash`; override with `TENDNOTE_AGENT_MODEL`. The AI SDK and ordinary runtime dependencies stay external so Eve emits one chunk per tool without rebundling them during local startup.
 - `agent/instructions/` — `base.md` (identity, standing rules, trust tiers) plus `current-date.ts`, a dynamic resolver that anchors each turn on the real date.
 - `agent/tools/` — typed tools over owner-scoped `@tendnote/db` queries (see below).
 - `agent/subagents/` — focused sub-agents with their own instructions and narrow toolsets.

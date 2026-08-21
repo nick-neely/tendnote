@@ -1,5 +1,7 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { authoredInstructions, baseInstructions } from "./instructions-source";
+import { effectiveToolSource } from "./tool-source";
 
 /**
  * The review gate on asset-linked reminders (#203, PRD #196 stories 40/57/58). An Asset's
@@ -39,6 +41,13 @@ describe("asset reminder proposals are review-gated (#203)", () => {
     expect(authored).toMatch(/reserve `?propose_asset_actions`? for reminders \*?you\*? inferred/i);
   });
 
+  it("does not teach the proposal tool to swallow an explicit reminder instruction", () => {
+    const source = effectiveToolSource(join(process.cwd(), "agent/tools/propose_asset_actions.ts"));
+
+    expect(source).not.toMatch(/remind me about the warranty/i);
+    expect(source).toMatch(/explicitly asks|explicit instruction|create_general_action/i);
+  });
+
   it("only reviewed details propose, and only dated or recurring ones", () => {
     // A suggested memory must not cascade past its own review gate, and a filter size is
     // recall, not a reminder — the two refusals the planning rule enforces in code.
@@ -46,6 +55,21 @@ describe("asset reminder proposals are review-gated (#203)", () => {
     expect(authored).toMatch(/only dates and intervals propose/i);
     expect(authored).toMatch(/recall, not a reminder/i);
     expect(authored).toMatch(/already passed proposes nothing/i);
+  });
+
+  it("requires every proposal call to carry reviewed-memory grounding", () => {
+    const source = effectiveToolSource(join(process.cwd(), "agent/tools/propose_asset_actions.ts"));
+
+    expect(authored).toMatch(/assetMemoryIds.*exact `?memoryId/i);
+    expect(source).toMatch(/\.array\(z\.uuid\(\)\)\s*\.min\(1\)/s);
+    expect(source).toMatch(/stop after get_asset_context/i);
+  });
+
+  it("does not mistake a no-active-write boundary for permission to stop after context", () => {
+    expect(base).toMatch(/do not add or schedule anything yet[\s\S]*exactly this proposal path/i);
+    expect(base).toMatch(/get_asset_context[\s\S]*immediately call `propose_asset_actions`/i);
+    expect(authored).toMatch(/do not add or schedule anything yet.*requires the proposal/i);
+    expect(authored).toMatch(/do not reply between the context read and proposal call/i);
   });
 
   it("forbids re-pushing a proposal the user already turned down", () => {

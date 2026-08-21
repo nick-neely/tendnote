@@ -2,6 +2,11 @@ name: Run Eve model evaluations
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Full commit SHA to evaluate and preserve
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -27,6 +32,7 @@ env:
   TURBO_DAEMON: "false"
   TURBO_TELEMETRY_DISABLED: 1
   TMPDIR: /tmp
+  AGENT_MODEL: ${{ vars.TENDNOTE_AGENT_MODEL || 'google/gemini-3.7-flash' }}
 
 jobs:
   evaluate:
@@ -72,6 +78,13 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.candidate_sha }}
+
+      - name: Verify exact candidate
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -93,12 +106,39 @@ jobs:
       # means nothing was graded at all - every eval skipped itself - which is a
       # green lane over an unproven build, so it fails here too.
       - name: Run Eve model evaluations
-        run: pnpm --filter @tendnote/agent eval:deterministic
+        id: evaluate
+        continue-on-error: true
+        run: |
+          set +e
+          TENDNOTE_AGENT_MODEL="$AGENT_MODEL" pnpm --filter @tendnote/agent eval:deterministic
+          status=$?
+          mkdir -p apps/agent/.eve/evals
+          echo "$status" > apps/agent/.eve/evals/exit-code.txt
+          exit "$status"
         timeout-minutes: 75
+
+      - name: Package immutable repository evidence
+        if: always()
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          node apps/agent/scripts/package-deterministic-evidence.mjs
+          --source-sha "$CANDIDATE_SHA"
+          --exit-code-file apps/agent/.eve/evals/exit-code.txt
+          --workflow-url "$WORKFLOW_URL"
+          --command "pnpm --filter @tendnote/agent eval:deterministic"
+          --agent-model "$AGENT_MODEL"
 
       - name: Upload Eve evaluation artifacts
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: eve-model-evaluations
-          path: apps/agent/.eve/evals/
+          name: eve-model-evaluations-${{ inputs.candidate_sha }}
+          path: |
+            apps/agent/.eve/evals/
+            evidence/evals/${{ inputs.candidate_sha }}/
+
+      - name: Enforce clean evaluation result
+        if: always() && steps.evaluate.outcome != 'success'
+        run: exit 1

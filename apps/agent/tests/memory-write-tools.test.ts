@@ -85,6 +85,9 @@ describe("propose_suggested_memory", () => {
       memoryId: MEMORY_ID,
       sourceRecordId: SOURCE_ID,
     });
+    expect(output.memory.status).toBe("suggested");
+    expect(output.memory.sourceRecordId).toBe(SOURCE_ID);
+    expect(output.sourceRecord.id).toBe(SOURCE_ID);
     expect(value.saved).toBe(false);
     expect(value.person).toBe("Priya Shah");
     expect(JSON.stringify(value)).not.toContain("SECRET_SUGGESTION");

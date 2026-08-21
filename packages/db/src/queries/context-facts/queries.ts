@@ -216,7 +216,6 @@ export function createContextFactQueries(
   async function existingCreateMatchOutcome(input: {
     callerUserId: string;
     match: Awaited<ReturnType<typeof findActiveMatch>>;
-    sourceRecordId: string | null;
   }) {
     if (!input.match) return null;
     if (input.match.kind === "conflict") {
@@ -225,12 +224,9 @@ export function createContextFactQueries(
         input.match.fact.id,
       );
     }
-    if (input.match.fact.provenance.sourceRecordId !== input.sourceRecordId) {
-      throw new ContextFactConflictError(
-        "An equivalent active fact already has different source evidence. Edit the existing fact instead.",
-        input.match.fact.id,
-      );
-    }
+    // Exact-equivalent writes are idempotent even when they arrive through a
+    // different authorized entry point. Keep the original fact and its evidence;
+    // a repeated write must never rewrite provenance or create a duplicate.
     return mutationOutcome(input.callerUserId, input.match.fact, "existing", []);
   }
 
@@ -251,7 +247,6 @@ export function createContextFactQueries(
     const existingMatch = await existingCreateMatchOutcome({
       callerUserId,
       match,
-      sourceRecordId: parsed.provenance.sourceRecordId,
     });
     if (existingMatch) return existingMatch;
 
@@ -288,7 +283,6 @@ export function createContextFactQueries(
         const winnerOutcome = await existingCreateMatchOutcome({
           callerUserId,
           match: winner,
-          sourceRecordId: parsed.provenance.sourceRecordId,
         });
         if (winnerOutcome) return winnerOutcome;
       }

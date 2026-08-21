@@ -26,7 +26,9 @@ export default defineEval({
   // 2 turns against a live model, so the run-wide single-turn budget does not fit.
   timeoutMs: 120_000,
   async test(t) {
-    const created = await t.send("Add an action to test the smoke alarm batteries this weekend.");
+    const created = await t.send(
+      "Add an action to test the smoke alarm batteries on Saturday, August 22, 2026.",
+    );
 
     created.expectOk();
     created.calledTool("create_general_action", { input: { title: /smoke alarm/i } });

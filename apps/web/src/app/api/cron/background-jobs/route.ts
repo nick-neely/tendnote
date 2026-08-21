@@ -6,6 +6,7 @@ const EXTRACTION_BACKFILL_LIMIT = 5;
 const EMBEDDING_BACKFILL_LIMIT = 5;
 const ACTION_EXTRACTION_BACKFILL_LIMIT = 5;
 const CONTEXT_FACT_EXTRACTION_BACKFILL_LIMIT = 5;
+const OWNER_DATA_EXPORT_BACKFILL_LIMIT = 5;
 /**
  * Households erased per pass. Small on purpose: each one is an irreversible
  * multi-table transaction, and a thirty-day deadline gives a backlog every ten
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
     embeddingBackfillLimit: EMBEDDING_BACKFILL_LIMIT,
     actionExtractionBackfillLimit: ACTION_EXTRACTION_BACKFILL_LIMIT,
     contextFactExtractionBackfillLimit: CONTEXT_FACT_EXTRACTION_BACKFILL_LIMIT,
+    ownerDataExportBackfillLimit: OWNER_DATA_EXPORT_BACKFILL_LIMIT,
     householdPurgeLimit: HOUSEHOLD_PURGE_LIMIT,
     auditRetentionLimit: AUDIT_RETENTION_LIMIT,
     logger: console,

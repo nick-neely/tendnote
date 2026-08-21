@@ -53,6 +53,8 @@ describe("Memory Curator subagent", () => {
     // It inherits nothing, including the date its own staleness judgements need.
     expect(instructions()).toMatch(/inherit nothing from the parent agent/i);
     expect(instructions()).toMatch(/date anchor/i);
+    expect(instructions()).toMatch(/PROPOSAL_COUNT: N/);
+    expect(instructions()).toMatch(/count[\s\S]*propose_memory_cleanup/i);
   });
 
   it("exposes only a read-only proposal tool with no memory mutation imports", () => {
@@ -113,5 +115,6 @@ describe("Memory Curator subagent", () => {
     expect(serialized).toContain("Priya");
     expect(serialized).not.toContain(MEMORY_ID);
     expect(model.guidance).toMatch(/review-only/i);
+    expect(model.count).toBe(1);
   });
 });

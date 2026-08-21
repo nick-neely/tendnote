@@ -96,6 +96,35 @@ describe("suggested-memory review tools return persisted ids and status", () => 
   });
 });
 
+describe("review-gated proposal producers preserve their required handoff", () => {
+  it("requires a resolved person and a source-first Suggested Memory proposal", () => {
+    const source = readTool("propose_suggested_memory");
+
+    // A promise in prose is not the review artifact. The producer must be reachable
+    // only after identity and grounding have been resolved, and the model must call it
+    // in the same turn before it answers.
+    expect(source).toMatch(/search_people/);
+    expect(source).toMatch(/capture_source_record/);
+    expect(source).toMatch(/same turn|immediately|must call/i);
+    expect(source).toMatch(/review card|reviewable/i);
+    expect(source).toMatch(/never (an )?approved|nothing (is|was) saved/i);
+  });
+
+  it("requires inferred Asset timing to use the review proposal capability", () => {
+    const source = readTool("propose_asset_actions");
+
+    // Reading an Asset explains its details; it does not create the promised review
+    // item. The timing recommendation must cross the owning proposal seam, whose
+    // result remains suggested rather than an active Action or schedule.
+    expect(source).toMatch(/inferred|recommend|suggest/i);
+    expect(source).toMatch(/call .*propose_asset_actions|use .*propose_asset_actions/i);
+    expect(source).toMatch(/same turn|immediately|must call/i);
+    expect(source).toMatch(/review card|reviewable/i);
+    expect(source).toMatch(/never creates an active action|not an active action/i);
+    expect(source).toMatch(/reminder schedule|schedule/i);
+  });
+});
+
 describe("active follow-up tools are thin wrappers returning compact references", () => {
   it("create_followup requires a resolved person, reason, and concrete dueAt", () => {
     const source = readTool("create_followup");
@@ -210,6 +239,7 @@ describe("instructions steer capture vs save vs review", () => {
     expect(instructions).toMatch(/exact stored-context recall/i);
     expect(instructions).toMatch(/fuzzy stored-context recall/i);
     expect(instructions).toMatch(/meaning rather than exact wording/i);
+    expect(instructions).toMatch(/never batch the lookup and its dependent call in parallel/i);
   });
 
   it("keeps semantic recall separate from proactive agenda ranking", () => {
