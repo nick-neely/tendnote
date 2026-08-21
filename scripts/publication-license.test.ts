@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = resolve(import.meta.dirname, "..");
@@ -21,6 +21,19 @@ const HISTORICAL_EVIDENCE_PATHS = new Set([
 // and licenses are checked above; scanning their source text for old maintainer
 // values would treat third-party history as current Tendnote configuration.
 const THIRD_PARTY_PATH_PREFIXES = [".agents/skills/impeccable/", ".claude/skills/impeccable/"];
+const CONTRIBUTION_MARKDOWN_ENTRY_POINTS = [
+  "README.md",
+  "CONTRIBUTING.md",
+  ".github/pull_request_template.md",
+  "docs/contributing.md",
+  "docs/support.md",
+  "docs/local-development.md",
+  "docs/ci-contributing.md",
+  "docs/legal/README.md",
+  "docs/legal/individual-contributor-license-agreement.md",
+  "docs/legal/employer-contribution-authorization.md",
+  "docs/legal/corporate-contributor-license-agreement.md",
+] as const;
 
 const CURRENT_TREE_MAINTAINER_PATTERNS = [
   { label: "former hosted origin", pattern: /\bstacklet\.app\b/i },
@@ -73,6 +86,68 @@ function findMaintainerDeploymentLeaks(repositoryRoot = root): string[] {
   }
 
   return leaks;
+}
+
+type LocalMarkdownLink = {
+  path: string | null;
+  anchor: string | null;
+};
+
+function localMarkdownLinks(relativePath: string): LocalMarkdownLink[] {
+  return [...read(relativePath).matchAll(/\[[^\]]+\]\(([^)]+)\)/g)]
+    .map((match) => match[1])
+    .filter((target) => !/^(?:https?:|mailto:|\/)/i.test(target))
+    .map((target) => {
+      const [path, anchor] = target.split("#", 2);
+      return {
+        path: path || null,
+        anchor: anchor ? anchor.toLowerCase() : null,
+      };
+    });
+}
+
+function markdownAnchorIds(relativePath: string): Set<string> {
+  const counts = new Map<string, number>();
+  const ids = new Set<string>();
+
+  for (const line of read(relativePath).split(/\r?\n/)) {
+    const heading = /^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/.exec(line)?.[1];
+    if (!heading) continue;
+
+    const slug = heading
+      .replace(/<[^>]+>/g, "")
+      .replace(/[\\`*_~]/g, "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^\p{Letter}\p{Number}\s-]/gu, "")
+      .trim()
+      .replace(/\s+/g, "-");
+    if (!slug) continue;
+
+    const occurrence = counts.get(slug) ?? 0;
+    ids.add(occurrence === 0 ? slug : `${slug}-${occurrence}`);
+    counts.set(slug, occurrence + 1);
+  }
+
+  return ids;
+}
+
+function assertLocalMarkdownLinksResolve(relativePath: string): void {
+  for (const { path, anchor } of localMarkdownLinks(relativePath)) {
+    const targetPath = path
+      ? resolve(root, dirname(relativePath), path)
+      : resolve(root, relativePath);
+    expect(existsSync(targetPath), `${relativePath} links to missing ${path ?? relativePath}`).toBe(
+      true,
+    );
+    if (anchor) {
+      expect(
+        markdownAnchorIds(relative(root, targetPath)),
+        `${relativePath} links to missing #${anchor}`,
+      ).toContain(anchor);
+    }
+  }
 }
 
 describe("fresh-clone publication gate", () => {
@@ -214,6 +289,165 @@ describe("fresh-clone publication gate", () => {
     expect(canonical).toMatch(/backups and recovery/i);
     expect(canonical).toMatch(/security updates/i);
     expect(existsSync(resolve(root, "SECURITY.md"))).toBe(true);
+  });
+
+  it("publishes a fresh-clone contribution doorway with resolvable authority links", () => {
+    const guide = read("CONTRIBUTING.md");
+    const template = read(".github/pull_request_template.md");
+    const agreement = read("docs/contributing.md");
+    const support = read("docs/support.md");
+    const legalReadme = read("docs/legal/README.md");
+    const individualCla = read("docs/legal/individual-contributor-license-agreement.md");
+    const employerAuthorization = read("docs/legal/employer-contribution-authorization.md");
+    const corporateCla = read("docs/legal/corporate-contributor-license-agreement.md");
+
+    for (const file of CONTRIBUTION_MARKDOWN_ENTRY_POINTS) {
+      assertLocalMarkdownLinksResolve(file);
+    }
+
+    expect(localMarkdownLinks("README.md")).toContainEqual({
+      path: "docs/local-development.md",
+      anchor: "quality-gates",
+    });
+    expect(localMarkdownLinks("docs/support.md")).toContainEqual({
+      path: "security.md",
+      anchor: "self-host-operator-responsibilities",
+    });
+
+    expect(guide).toContain("README");
+    expect(guide).toContain("docs/local-development.md");
+    expect(guide).toContain("docs/ci-contributing.md");
+    expect(guide).toContain(".github/pull_request_template.md");
+    expect(guide).toContain("SECURITY.md");
+    expect(guide).toContain("docs/security.md");
+    expect(guide).toContain("docs/support.md");
+    expect(guide).toContain("docs/legal/README.md");
+    expect(guide).toMatch(
+      /open an Issue before[\s\S]*material behavior[\s\S]*architecture[\s\S]*privacy/i,
+    );
+    expect(guide).toMatch(/documentation corrections[\s\S]*self-contained test fixes/i);
+    expect(guide).toMatch(
+      /unsigned\s+or\s+declined external\s+pull\s+request remains open but cannot merge/i,
+    );
+    expect(guide).toMatch(/Issues are open with no\s+service-level\s+agreement/i);
+    expect(guide).toMatch(/self-hosting support is community-only/i);
+    expect(guide).toContain("docs/ci-contributing.md#verification-labels");
+    expect(guide).toContain(".github/rulesets/protect-main.json");
+    expect(guide).toMatch(
+      /live default-branch protection and CLA Assistant\s+enforcement remain pending #473/i,
+    );
+    expect(guide).toMatch(/does not claim current\s+protection or CLA enforcement/i);
+    expect(guide).toMatch(
+      /agreement packet[\s\S]*counsel-reviewed[\s\S]*owner-approved[\s\S]*effective 2026-08-21/i,
+    );
+    expect(guide).toMatch(/owner-confirmed as executed/i);
+    expect(guide).toMatch(/does\s+not\s+claim\s+that counsel[\s\S]*verified/i);
+    for (const document of [guide, support]) {
+      expect(document).toMatch(/synthetic fixtures[\s\S]*minimized\s+reproductions/i);
+      expect(document).toMatch(/personal data[\s\S]*public Issue[\s\S]*pull\s+request/i);
+      expect(document).not.toMatch(/unrelated\s+personal\s+data/i);
+    }
+
+    expect(template).toContain("## Related Issues");
+    expect(template).toContain("## User-visible impact");
+    expect(template).toContain("## Privacy-boundary impact");
+    expect(template).toContain("## Checks run");
+    expect(template).toContain("AI assistance (optional)");
+    expect(template).toContain("Generated-by:");
+    expect(template).not.toMatch(
+      /(?:^|\n)##[^\n]*(?:prompt|raw model output|account information|usage data)/i,
+    );
+
+    expect(agreement).toMatch(
+      /agreement packet[\s\S]*counsel-reviewed[\s\S]*owner-approved[\s\S]*effective 2026-08-21/i,
+    );
+    expect(agreement).toMatch(/not a\s+Contributor License Agreement/i);
+    expect(agreement).toMatch(/owner-confirmed as executed/i);
+    expect(agreement).toMatch(/does\s+not\s+claim\s+that counsel\s+has\s+verified/i);
+    expect(agreement).not.toMatch(/has not been executed or verified/i);
+    expect(agreement).toMatch(/CLA Assistant/i);
+    expect(agreement).toContain("legal/README.md");
+    expect(agreement).toContain("Generated-by:");
+    expect(agreement).toMatch(
+      /counsel-reviewed[\s\S]*Apache ICLA-derived\s+individual\s+agreement/i,
+    );
+    expect(agreement).toMatch(/effective 2026-08-21/i);
+
+    expect(support).toMatch(/no\s+service\s+level\s+agreement/i);
+    expect(support).toMatch(/self-host support is community-only/i);
+    expect(support).toMatch(/private reporting path/i);
+
+    expect(legalReadme).toMatch(/individual\s+contributor\s+license\s+agreement/i);
+    expect(legalReadme).toMatch(/employer\s+contribution\s+authorization/i);
+    expect(legalReadme).toMatch(/corporate\s+contributor\s+license\s+agreement/i);
+    expect(legalReadme).toMatch(/records\s+are\s+private/i);
+    expect(legalReadme).toMatch(/CLA status may be public/i);
+    expect(legalReadme).toMatch(
+      /Version 1\.0[\s\S]*counsel-reviewed[\s\S]*owner-approved[\s\S]*effective 2026-08-21/i,
+    );
+    expect(legalReadme).toMatch(/CLA Assistant[\s\S]*not live[\s\S]*#473/i);
+    expect(legalReadme).not.toMatch(/DRAFT|PENDING COUNSEL APPROVAL/i);
+
+    for (const agreementDocument of [individualCla, employerAuthorization, corporateCla]) {
+      expect(agreementDocument).toMatch(/Version 1\.0/i);
+      expect(agreementDocument).toMatch(/effective 2026-08-21/i);
+      expect(agreementDocument).not.toMatch(/DRAFT|PENDING COUNSEL APPROVAL/i);
+      expect(agreementDocument).not.toMatch(
+        /proposed final-form|exact legal names[\s\S]*must be confirmed|Counsel must|counsel must/i,
+      );
+    }
+
+    expect(individualCla).toMatch(/Tendnote Individual Contributor License Agreement/i);
+    expect(individualCla).toMatch(/Version 1\.0/i);
+    expect(individualCla).toMatch(/CLA Assistant/i);
+    expect(individualCla).toMatch(/Contributor retains ownership/i);
+    expect(individualCla).toMatch(
+      /perpetual[\s\S]*worldwide[\s\S]*non-exclusive[\s\S]*royalty-free[\s\S]*irrevocable/i,
+    );
+    expect(individualCla).toMatch(/sublicense\s+and\s+relicense/i);
+    expect(individualCla).toMatch(/open-source\s+and\s+commercial\s+distribution/i);
+    expect(individualCla).toMatch(/necessarily infringed/i);
+    expect(individualCla).toMatch(/patent license[\s\S]*terminate/i);
+    expect(individualCla).toMatch(/legally entitled/i);
+    expect(individualCla).toMatch(/employer/i);
+    expect(individualCla).toMatch(/third-party material/i);
+    expect(individualCla).toMatch(/AI-assisted Contributions are permitted/i);
+    expect(individualCla).toMatch(/tool terms/i);
+    expect(individualCla).toMatch(/knows[\s\S]*third-party/i);
+    expect(individualCla).toMatch(/not request prompts/i);
+    expect(individualCla).toMatch(/no support/i);
+    expect(individualCla).toMatch(/AS IS/i);
+    expect(individualCla).toMatch(/no obligation to accept/i);
+    expect(individualCla).toMatch(/electronic record/i);
+    expect(individualCla).toMatch(/entire agreement/i);
+    expect(individualCla).toMatch(/severed/i);
+    expect(individualCla).toMatch(/electronic\s+counterparts/i);
+    expect(individualCla).toMatch(/Acceptance record/i);
+    expect(individualCla).not.toMatch(/Proposed acceptance record/i);
+
+    expect(employerAuthorization).toMatch(/authorized employer representative/i);
+    expect(employerAuthorization).toMatch(/GitHub account/i);
+    expect(employerAuthorization).toMatch(/scope/i);
+    expect(employerAuthorization).toMatch(/one-off/i);
+    expect(employerAuthorization).toMatch(/named contributor/i);
+    expect(employerAuthorization).toMatch(/copyright license/i);
+    expect(employerAuthorization).toMatch(/patent license/i);
+    expect(employerAuthorization).toMatch(/AI-assisted Contributions are permitted/i);
+    expect(employerAuthorization).toMatch(/third-party material/i);
+    expect(employerAuthorization).toMatch(/signed/i);
+
+    expect(corporateCla).toMatch(/reusable entity agreement/i);
+    expect(corporateCla).toMatch(/authorized contributor schedule/i);
+    expect(corporateCla).toMatch(/GitHub account/i);
+    expect(corporateCla).toMatch(/copyright license/i);
+    expect(corporateCla).toMatch(/patent license/i);
+    expect(corporateCla).toMatch(/third-party material/i);
+    expect(corporateCla).toMatch(/AI-assisted Contributions are permitted/i);
+    expect(corporateCla).toMatch(/update duties/i);
+    expect(corporateCla).toMatch(/no support/i);
+    expect(corporateCla).toMatch(/entire agreement/i);
+    expect(corporateCla).toMatch(/severed/i);
+    expect(corporateCla).toMatch(/electronic\s+counterparts/i);
   });
 
   it("keeps the current tree free of maintainer deployment values", () => {
