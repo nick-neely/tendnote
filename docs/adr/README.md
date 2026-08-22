@@ -57,7 +57,6 @@ the bounded publication evidence path.
 
 - [0224 — Tendnote publishes as AGPL-3.0 open core](0224-tendnote-publishes-as-agpl-open-core.md)
 - [0225 — Self-hosting is scoped to the operator's own Vercel deployment](0225-self-hosting-is-scoped-to-the-operators-own-vercel-deployment.md)
-- [0226 — Hosted Tendnote is US-only and has no free tier](0226-hosted-tendnote-is-us-only-and-has-no-free-tier.md)
 - [0227 — Eve's interactive tool surface uses progressive disclosure](0227-eve-interactive-tool-surface-uses-progressive-disclosure.md)
 - [0228 — Publication precedes commercialization](0228-publication-precedes-commercialization.md)
 - [0229 — Publication preserves the complete git history](0229-publication-preserves-the-complete-git-history.md)
