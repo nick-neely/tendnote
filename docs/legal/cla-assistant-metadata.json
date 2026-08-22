@@ -1,0 +1,14 @@
+{
+  "rightsRoute": {
+    "title": "Contribution rights route",
+    "description": "Choose the route that matches who owns or controls this Contribution. This selection is not acceptance and does not replace a signed employer or corporate authorization.",
+    "type": {
+      "enum": [
+        "I own the Contribution and am accepting the individual CLA.",
+        "My employer authorizes this Contribution or named-contributor scope.",
+        "My entity has a corporate CLA and authorized-contributor schedule."
+      ]
+    },
+    "required": true
+  }
+}

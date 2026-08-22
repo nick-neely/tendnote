@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "service": {
+    "name": "CLA Assistant",
+    "url": "https://cla-assistant.io"
+  },
+  "repository": "nick-neely/tendnote",
+  "defaultBranch": "main",
+  "agreement": {
+    "path": "docs/legal/individual-contributor-license-agreement.md",
+    "gistFilename": "individual-contributor-license-agreement.md",
+    "version": "1.0",
+    "effectiveDate": "2026-08-21",
+    "sha256": "c3a8e1828d9d573dedba7ddb9e38fb043032532777db9e6028c4b99e4a5545ec"
+  },
+  "metadata": {
+    "path": "docs/legal/cla-assistant-metadata.json",
+    "gistFilename": "metadata",
+    "sha256": "2388463bcb86f1cf3a2ec38ab156060c2c553c63678c6e41bf7422d62e4adb3c"
+  },
+  "enforcement": {
+    "required": true,
+    "observeBeforeEnforce": true,
+    "statusContext": {
+      "value": null,
+      "placeholder": "CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE"
+    },
+    "rulesetId": 19995472,
+    "trackedRulesetPath": ".github/rulesets/protect-main.json",
+    "existingRequiredStatusContexts": ["Verify", "Full CI qualification", "Vercel"],
+    "preserveExistingChecks": true,
+    "claAssistantAllowlist": [],
+    "maintainerOverride": false
+  },
+  "routes": {
+    "individual": {
+      "records": ["individual-cla-acceptance"],
+      "statusRequirement": "required",
+      "bypass": false
+    },
+    "employer": {
+      "records": ["individual-cla-acceptance", "employer-contribution-authorization"],
+      "statusRequirement": "required",
+      "bypass": false
+    },
+    "corporate": {
+      "records": ["corporate-contributor-license-agreement", "authorized-contributor-schedule"],
+      "statusRequirement": "required",
+      "bypass": false
+    }
+  },
+  "privacy": {
+    "acceptanceRecords": "private",
+    "publicPullRequestData": "minimum status context only",
+    "proof": "redacted schema only; no signature records"
+  }
+}

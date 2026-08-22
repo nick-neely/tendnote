@@ -26,9 +26,12 @@ and privacy-boundary impact, and list the checks you personally ran. See the
 [verification labels](docs/ci-contributing.md#verification-labels), [CI
 workflow requirements](docs/local-development.md#ci-workflows), and tracked
 [default-branch ruleset](.github/rulesets/protect-main.json) for the exact
-review and check expectations. Live default-branch protection and CLA Assistant
-enforcement remain pending #473; this checkout does not claim current
-protection or CLA enforcement.
+review and check expectations. The repository-owned [CLA Assistant manifest](.github/cla-assistant.json),
+[metadata](docs/legal/cla-assistant-metadata.json), [redacted proof schema](docs/phase-9a/cla-gate-proof.schema.json),
+and [operator runbook](docs/phase-9a/cla-enforcement-runbook.md) are prepared.
+Hosted activation, observation of the actual CLA status context, live ruleset
+update, and disposable proof remain owner-gated work in #473; this checkout
+does not claim current CLA enforcement or live proof.
 
 ## Contribution agreement and AI assistance
 
