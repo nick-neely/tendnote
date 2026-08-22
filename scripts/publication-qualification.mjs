@@ -2,14 +2,22 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import {
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export const QUALIFICATION_SCHEMA_VERSION = 1;
 export const QUALIFICATION_KIND = "tendnote.phase-9a.publication-qualification";
 export const REPOSITORY = "nick-neely/tendnote";
 export const CANONICAL_ORIGIN = "https://tendnote.com";
-export const FORMER_ORIGIN = "https://tendnote.stacklet.app";
+const FORMER_HOST = ["tendnote", "stacklet", "app"].join(".");
+export const FORMER_ORIGIN = `https://${FORMER_HOST}`;
 
 const FULL_SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
@@ -25,6 +33,33 @@ const STATUSES = new Set([
   "not-run",
 ]);
 const PASS = "passed";
+const COMPLETED = "completed";
+const COUNT_FIELDS = Object.freeze(["totalEvals", "passed", "failed", "skipped", "errored"]);
+const METADATA_COUNT_FIELDS = Object.freeze(["total", "passed", "failed", "skipped", "errored"]);
+
+/** Machine identities for owner-controlled qualification seams. */
+export const QUALIFICATION_BINDINGS = Object.freeze({
+  "repository-publication-approval": Object.freeze({
+    source: "github-issue",
+    issue: 489,
+    state: "approved",
+  }),
+  "cla-unsigned-external-pr-refusal": Object.freeze({
+    source: "github-issue",
+    issue: 516,
+    state: "verified",
+  }),
+  "fork-pr-approval-routing": Object.freeze({
+    source: "github-issue",
+    issue: 494,
+    state: "verified",
+  }),
+  "private-vulnerability-reporting": Object.freeze({
+    source: "github-setting",
+    setting: "private-vulnerability-reporting",
+    state: "enabled-and-unauthenticated-verified",
+  }),
+});
 
 /**
  * The public qualification contract is intentionally a closed list. Adding a
@@ -217,14 +252,63 @@ function blocker(gateId, message, criterionId, code = "blocked") {
   };
 }
 
-function criteriaEntries(value) {
+function bindingFor(criterionId) {
+  return QUALIFICATION_BINDINGS[criterionId];
+}
+
+function sameJson(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function criteriaEntries(value, gateId, definitions, blockers) {
+  const entries = new Map();
+  const expected = new Set(definitions.map((definition) => definition.id));
+  if (value === undefined) return entries;
   if (Array.isArray(value)) {
-    return new Map(
-      value.filter((entry) => isRecord(entry) && text(entry.id)).map((entry) => [entry.id, entry]),
-    );
+    for (const [index, entry] of value.entries()) {
+      if (!isRecord(entry) || !text(entry.id)) {
+        blockers.push(
+          blocker(
+            gateId,
+            `Criterion entry ${index + 1} has no id.`,
+            undefined,
+            "invalid-criterion",
+          ),
+        );
+        continue;
+      }
+      if (entries.has(entry.id)) {
+        blockers.push(
+          blocker(gateId, `Duplicate criterion ${entry.id}.`, entry.id, "duplicate-criterion"),
+        );
+        continue;
+      }
+      if (!expected.has(entry.id)) {
+        blockers.push(
+          blocker(gateId, `Unknown criterion ${entry.id}.`, entry.id, "unknown-criterion"),
+        );
+      }
+      entries.set(entry.id, entry);
+    }
+    return entries;
   }
-  if (isRecord(value)) return new Map(Object.entries(value));
-  return new Map();
+  if (!isRecord(value)) {
+    blockers.push(
+      blocker(gateId, "Criteria must be an object or array.", undefined, "invalid-criteria"),
+    );
+    return entries;
+  }
+  for (const [id, entry] of Object.entries(value)) {
+    if (entries.has(id)) {
+      blockers.push(blocker(gateId, `Duplicate criterion ${id}.`, id, "duplicate-criterion"));
+      continue;
+    }
+    if (!expected.has(id)) {
+      blockers.push(blocker(gateId, `Unknown criterion ${id}.`, id, "unknown-criterion"));
+    }
+    entries.set(id, entry);
+  }
+  return entries;
 }
 
 function evidenceEntries(value, candidateSha, gateId, criterionId) {
@@ -256,6 +340,30 @@ function evidenceEntries(value, candidateSha, gateId, criterionId) {
           "invalid-evidence",
         ),
       );
+    }
+    if (path && (isAbsolute(path) || path.split(/[\\/]/).includes(".."))) {
+      blockers.push(
+        blocker(
+          gateId,
+          `Evidence entry ${index + 1} has an absolute or escaping repository path.`,
+          criterionId,
+          "invalid-evidence",
+        ),
+      );
+    }
+    if (uri) {
+      try {
+        new URL(uri);
+      } catch {
+        blockers.push(
+          blocker(
+            gateId,
+            `Evidence entry ${index + 1} does not contain a valid URI.`,
+            criterionId,
+            "invalid-evidence",
+          ),
+        );
+      }
     }
     if (!fullSha(sourceCommit)) {
       blockers.push(
@@ -298,14 +406,47 @@ function evidenceEntries(value, candidateSha, gateId, criterionId) {
   return { entries, blockers };
 }
 
-function rawGateMap(value) {
+function rawGateMap(value, blockers) {
+  const entries = new Map();
+  if (value === undefined) return entries;
   if (Array.isArray(value)) {
-    return new Map(
-      value.filter((entry) => isRecord(entry) && text(entry.id)).map((entry) => [entry.id, entry]),
-    );
+    for (const [index, entry] of value.entries()) {
+      if (!isRecord(entry) || !text(entry.id)) {
+        blockers.push({
+          code: "invalid-gate",
+          message: `Gate entry ${index + 1} has no id.`,
+        });
+        continue;
+      }
+      if (entries.has(entry.id)) {
+        blockers.push({ code: "duplicate-gate", message: `Duplicate gate ${entry.id}.` });
+        continue;
+      }
+      if (!GATE_BY_ID.has(entry.id)) {
+        blockers.push({
+          code: "unknown-gate",
+          message: `Input contains unknown gate ${entry.id}.`,
+        });
+      }
+      entries.set(entry.id, entry);
+    }
+    return entries;
   }
-  if (isRecord(value)) return new Map(Object.entries(value));
-  return new Map();
+  if (!isRecord(value)) {
+    blockers.push({ code: "invalid-gates", message: "Gates must be an object or array." });
+    return entries;
+  }
+  for (const [id, entry] of Object.entries(value)) {
+    if (entries.has(id)) {
+      blockers.push({ code: "duplicate-gate", message: `Duplicate gate ${id}.` });
+      continue;
+    }
+    if (!GATE_BY_ID.has(id)) {
+      blockers.push({ code: "unknown-gate", message: `Input contains unknown gate ${id}.` });
+    }
+    entries.set(id, entry);
+  }
+  return entries;
 }
 
 function normalizeGate(gateDefinition, rawValue, candidateSha) {
@@ -336,7 +477,12 @@ function normalizeGate(gateDefinition, rawValue, candidateSha) {
 
   const gateEvidence = evidenceEntries(raw.evidence, candidateSha, gateDefinition.id);
   gateBlockers.push(...gateEvidence.blockers);
-  const providedCriteria = criteriaEntries(raw.criteria);
+  const providedCriteria = criteriaEntries(
+    raw.criteria,
+    gateDefinition.id,
+    gateDefinition.criteria,
+    gateBlockers,
+  );
   const criteria = [];
 
   for (const definition of gateDefinition.criteria) {
@@ -368,6 +514,28 @@ function normalizeGate(gateDefinition, rawValue, candidateSha) {
         ),
       );
     }
+    const expectedBinding = bindingFor(definition.id);
+    if (expectedBinding) {
+      if (!isRecord(value.binding) || !sameJson(value.binding, expectedBinding)) {
+        criterionBlockers.push(
+          blocker(
+            gateDefinition.id,
+            `Criterion ${definition.id} must include its exact machine binding.`,
+            definition.id,
+            "missing-or-invalid-binding",
+          ),
+        );
+      }
+    } else if (value.binding !== undefined) {
+      criterionBlockers.push(
+        blocker(
+          gateDefinition.id,
+          `Criterion ${definition.id} contains an unexpected machine binding.`,
+          definition.id,
+          "unexpected-binding",
+        ),
+      );
+    }
     if (criterionStatus !== PASS) {
       criterionBlockers.push(
         blocker(
@@ -379,7 +547,7 @@ function normalizeGate(gateDefinition, rawValue, candidateSha) {
       );
     }
     const criterionEvidence = evidenceEntries(
-      value.evidence ?? raw.evidence,
+      value.evidence,
       candidateSha,
       gateDefinition.id,
       definition.id,
@@ -403,6 +571,7 @@ function normalizeGate(gateDefinition, rawValue, candidateSha) {
       // with any defect is downgraded to blocked.
       status:
         criterionStatus === PASS && criterionBlockers.length > 0 ? "blocked" : criterionStatus,
+      ...(expectedBinding ? { binding: expectedBinding } : {}),
       ...(text(value.summary) ? { summary: text(value.summary) } : {}),
       evidence:
         criterionEvidence.entries.length > 0 ? criterionEvidence.entries : gateEvidence.entries,
@@ -438,21 +607,123 @@ function dedupeBlockers(values) {
 
 function boundary(input) {
   const source = isRecord(input) ? input : {};
+  const blockers = [];
+  const hasPublication = Object.hasOwn(source, "repositoryPublication");
+  const hasSends = Object.hasOwn(source, "externalSends");
   const publication = isRecord(source.repositoryPublication) ? source.repositoryPublication : {};
   const sends = isRecord(source.externalSends) ? source.externalSends : {};
+
+  for (const key of Object.keys(source)) {
+    if (!["repositoryPublication", "externalSends"].includes(key))
+      blockers.push({
+        code: "unknown-boundary-property",
+        message: `Unknown boundary property ${key}.`,
+      });
+  }
+  for (const key of Object.keys(publication)) {
+    if (!["status", "visibilityMutationPerformed"].includes(key))
+      blockers.push({
+        code: "unknown-boundary-property",
+        message: `Unknown repositoryPublication property ${key}.`,
+      });
+  }
+  for (const key of Object.keys(sends)) {
+    if (!["status", "performed"].includes(key))
+      blockers.push({
+        code: "unknown-boundary-property",
+        message: `Unknown externalSends property ${key}.`,
+      });
+  }
+
+  if (!hasPublication || !isRecord(source.repositoryPublication)) {
+    blockers.push({
+      code: "boundary-missing",
+      message: "repositoryPublication boundary must be explicitly supplied.",
+    });
+  }
+  if (!hasSends || !isRecord(source.externalSends)) {
+    blockers.push({
+      code: "boundary-missing",
+      message: "externalSends boundary must be explicitly supplied.",
+    });
+  }
+
+  const publicationStatus = text(publication.status);
+  const validPublicationStatus = ["pending-owner-approval", "approved", "not-requested"].includes(
+    publicationStatus,
+  );
+  if (!Object.hasOwn(publication, "status")) {
+    blockers.push({
+      code: "boundary-defaulted",
+      message: "repositoryPublication.status must be explicit.",
+    });
+  } else if (!validPublicationStatus) {
+    blockers.push({
+      code: "boundary-status",
+      message: `Unknown repositoryPublication.status ${publicationStatus || "<empty>"}.`,
+    });
+  } else if (publicationStatus !== "approved") {
+    blockers.push({
+      code: publicationStatus,
+      message: `Repository publication boundary is ${publicationStatus}; owner approval is required.`,
+    });
+  }
+
+  if (!Object.hasOwn(publication, "visibilityMutationPerformed")) {
+    blockers.push({
+      code: "boundary-defaulted",
+      message: "repositoryPublication.visibilityMutationPerformed must be explicit false.",
+    });
+  } else if (typeof publication.visibilityMutationPerformed !== "boolean") {
+    blockers.push({
+      code: "malformed-boundary-boolean",
+      message: "repositoryPublication.visibilityMutationPerformed must be a boolean.",
+    });
+  } else if (publication.visibilityMutationPerformed !== false) {
+    blockers.push({
+      code: "visibility-mutated",
+      message: "Qualification evidence cannot claim a clean run after a visibility mutation.",
+    });
+  }
+
+  const sendsStatus = text(sends.status);
+  if (!Object.hasOwn(sends, "status")) {
+    blockers.push({
+      code: "boundary-defaulted",
+      message: "externalSends.status must be explicit none.",
+    });
+  } else if (sendsStatus !== "none") {
+    blockers.push({
+      code: "external-send-status",
+      message: `externalSends.status must be none, received ${sendsStatus || "<empty>"}.`,
+    });
+  }
+  if (!Object.hasOwn(sends, "performed")) {
+    blockers.push({
+      code: "boundary-defaulted",
+      message: "externalSends.performed must be explicit false.",
+    });
+  } else if (typeof sends.performed !== "boolean") {
+    blockers.push({
+      code: "malformed-boundary-boolean",
+      message: "externalSends.performed must be a boolean.",
+    });
+  } else if (sends.performed !== false) {
+    blockers.push({
+      code: "external-send-performed",
+      message: "Qualification evidence cannot authorize or imply an external send.",
+    });
+  }
+
   return {
-    repositoryPublication: {
-      status: ["pending-owner-approval", "approved", "not-requested"].includes(
-        text(publication.status),
-      )
-        ? text(publication.status)
-        : "pending-owner-approval",
-      visibilityMutationPerformed: publication.visibilityMutationPerformed === true,
+    value: {
+      repositoryPublication: {
+        status: validPublicationStatus ? publicationStatus : "pending-owner-approval",
+        visibilityMutationPerformed: false,
+      },
+      externalSends: { status: "none", performed: false },
     },
-    externalSends: {
-      status: sends.performed === true ? "performed" : "none",
-      performed: sends.performed === true,
-    },
+    blockers,
   };
 }
 
@@ -466,8 +737,16 @@ function boundary(input) {
 export function composeQualificationReport(input = {}) {
   const source = isRecord(input) ? input : {};
   const candidate = isRecord(source.candidate) ? source.candidate : {};
-  const candidateSha = text(source.candidateSha) || text(candidate.commit);
+  const topLevelCandidateSha = text(source.candidateSha);
+  const nestedCandidateSha = text(candidate.commit);
+  const candidateSha = topLevelCandidateSha || nestedCandidateSha;
   const inputBlockers = [];
+  if (topLevelCandidateSha && nestedCandidateSha && topLevelCandidateSha !== nestedCandidateSha) {
+    inputBlockers.push({
+      code: "conflicting-candidate",
+      message: `Top-level candidateSha ${topLevelCandidateSha} disagrees with candidate.commit ${nestedCandidateSha}.`,
+    });
+  }
   if (!fullSha(candidateSha)) {
     inputBlockers.push({
       code: "invalid-candidate",
@@ -488,29 +767,13 @@ export function composeQualificationReport(input = {}) {
       message: "generatedAt must be an ISO UTC timestamp.",
     });
   }
-  const rawGates = rawGateMap(source.gates);
+  const rawGates = rawGateMap(source.gates, inputBlockers);
   const gates = QUALIFICATION_GATES.map((definition) =>
     normalizeGate(definition, rawGates.get(definition.id), candidateSha),
   );
-  const unknownGates = [...rawGates.keys()].filter((id) => !GATE_BY_ID.has(id));
-  for (const id of unknownGates) {
-    inputBlockers.push({ code: "unknown-gate", message: `Input contains unknown gate ${id}.` });
-  }
 
   const reportBoundary = boundary(source.boundary);
-  if (reportBoundary.repositoryPublication.visibilityMutationPerformed) {
-    inputBlockers.push({
-      code: "visibility-mutated",
-      message:
-        "Qualification evidence cannot claim a clean run after an unapproved visibility mutation.",
-    });
-  }
-  if (reportBoundary.externalSends.performed) {
-    inputBlockers.push({
-      code: "external-send-performed",
-      message: "Qualification evidence cannot authorize or imply an external send.",
-    });
-  }
+  inputBlockers.push(...reportBoundary.blockers);
 
   const gateBlockers = gates.flatMap((gate) => gate.blockers);
   const blockers = [
@@ -536,7 +799,7 @@ export function composeQualificationReport(input = {}) {
       blockers: dedupeBlockers(blockers),
     },
     gates,
-    boundary: reportBoundary,
+    boundary: reportBoundary.value,
   };
   const validation = validateQualificationReport(report);
   if (!validation.valid) {
@@ -558,29 +821,154 @@ export function composeQualificationReport(input = {}) {
 export function validateQualificationReport(report) {
   const errors = [];
   if (!isRecord(report)) return { valid: false, errors: ["Report must be an object."] };
+
+  const exactKeys = (value, allowed, label) => {
+    if (!isRecord(value)) {
+      errors.push(`${label} must be an object.`);
+      return;
+    }
+    for (const key of Object.keys(value)) {
+      if (!allowed.includes(key)) errors.push(`${label} contains unknown property ${key}.`);
+    }
+  };
+  exactKeys(
+    report,
+    [
+      "schemaVersion",
+      "kind",
+      "repository",
+      "generatedAt",
+      "candidate",
+      "result",
+      "gates",
+      "boundary",
+    ],
+    "Report",
+  );
   if (report.schemaVersion !== QUALIFICATION_SCHEMA_VERSION)
     errors.push("Unsupported schemaVersion.");
   if (report.kind !== QUALIFICATION_KIND) errors.push("Unexpected report kind.");
   if (report.repository !== REPOSITORY) errors.push(`repository must be ${REPOSITORY}.`);
   if (!timestamp(report.generatedAt)) errors.push("generatedAt must be an ISO UTC timestamp.");
+
+  exactKeys(report.candidate, ["commit", "visibility", "immutable"], "candidate");
   if (!isRecord(report.candidate) || !fullSha(report.candidate?.commit))
     errors.push("candidate.commit must be a full lowercase SHA.");
+  if (
+    !isRecord(report.candidate) ||
+    !["private", "public", "unknown"].includes(report.candidate.visibility)
+  )
+    errors.push("candidate.visibility must be private, public, or unknown.");
+  if (report.candidate?.immutable !== true) errors.push("candidate.immutable must be true.");
+
+  exactKeys(report.result, ["status", "clean", "blockers"], "result");
   if (!isRecord(report.result) || !["blocked", "qualified"].includes(report.result?.status))
     errors.push("result.status must be blocked or qualified.");
+  if (typeof report.result?.clean !== "boolean") errors.push("result.clean must be boolean.");
+  if (
+    typeof report.result?.clean === "boolean" &&
+    report.result.clean !== (report.result.status === "qualified")
+  )
+    errors.push("result.clean must agree with result.status.");
+
+  const validateBlockers = (value, label) => {
+    if (!Array.isArray(value)) {
+      errors.push(`${label} must be an array.`);
+      return;
+    }
+    for (const [index, entry] of value.entries()) {
+      exactKeys(entry, ["gateId", "criterionId", "code", "message"], `${label}[${index}]`);
+      if (!isRecord(entry) || !text(entry.gateId) || !text(entry.code) || !text(entry.message))
+        errors.push(`${label}[${index}] must have gateId, code, and message.`);
+      if (entry?.criterionId !== undefined && !text(entry.criterionId))
+        errors.push(`${label}[${index}].criterionId must be non-empty when present.`);
+    }
+  };
+  validateBlockers(report.result?.blockers, "result.blockers");
+
+  const validateEvidence = (value, label) => {
+    if (!Array.isArray(value)) {
+      errors.push(`${label} must be an array.`);
+      return;
+    }
+    for (const [index, entry] of value.entries()) {
+      const itemLabel = `${label}[${index}]`;
+      exactKeys(
+        entry,
+        ["path", "uri", "sourceCommit", "sha256", "format", "description"],
+        itemLabel,
+      );
+      if (!isRecord(entry) || (!text(entry.path) && !text(entry.uri)))
+        errors.push(`${itemLabel} needs a path or URI.`);
+      if (entry?.path !== undefined && typeof entry.path !== "string")
+        errors.push(`${itemLabel}.path must be a string.`);
+      if (
+        typeof entry?.path === "string" &&
+        entry.path &&
+        (isAbsolute(entry.path) || entry.path.split(/[\\/]/).includes(".."))
+      )
+        errors.push(`${itemLabel}.path must remain within its evidence root.`);
+      if (entry?.uri !== undefined && typeof entry.uri !== "string")
+        errors.push(`${itemLabel}.uri must be a string.`);
+      if (typeof entry?.uri === "string" && entry.uri) {
+        try {
+          new URL(entry.uri);
+        } catch {
+          errors.push(`${itemLabel}.uri must be a valid URI.`);
+        }
+      }
+      if (!fullSha(entry?.sourceCommit) || entry.sourceCommit !== report.candidate?.commit)
+        errors.push(`${itemLabel}.sourceCommit must equal candidate.commit.`);
+      if (!digest(entry?.sha256)) errors.push(`${itemLabel}.sha256 must be a SHA-256 digest.`);
+      if (entry?.format !== undefined && !text(entry.format))
+        errors.push(`${itemLabel}.format must be non-empty.`);
+      if (entry?.description !== undefined && !text(entry.description))
+        errors.push(`${itemLabel}.description must be non-empty.`);
+    }
+  };
+
+  exactKeys(report.boundary, ["repositoryPublication", "externalSends"], "boundary");
+  exactKeys(
+    report.boundary?.repositoryPublication,
+    ["status", "visibilityMutationPerformed"],
+    "boundary.repositoryPublication",
+  );
+  exactKeys(report.boundary?.externalSends, ["status", "performed"], "boundary.externalSends");
   if (!isRecord(report.boundary)) errors.push("boundary is required.");
-  if (report.boundary?.externalSends?.performed !== false)
-    errors.push("external sends must be explicitly absent.");
-  if (report.boundary?.repositoryPublication?.visibilityMutationPerformed !== false)
-    errors.push("visibility mutation must be explicitly absent.");
+  if (!isRecord(report.boundary?.repositoryPublication))
+    errors.push("boundary.repositoryPublication is required.");
+  else {
+    if (
+      !["pending-owner-approval", "approved", "not-requested"].includes(
+        report.boundary.repositoryPublication.status,
+      )
+    )
+      errors.push("boundary.repositoryPublication.status is invalid.");
+    if (report.boundary.repositoryPublication.visibilityMutationPerformed !== false)
+      errors.push("visibility mutation must be explicitly false.");
+  }
+  if (!isRecord(report.boundary?.externalSends)) errors.push("boundary.externalSends is required.");
+  else {
+    if (report.boundary.externalSends.status !== "none")
+      errors.push("external sends status must be none.");
+    if (report.boundary.externalSends.performed !== false)
+      errors.push("external sends must be explicitly absent.");
+  }
 
   const expectedGates = QUALIFICATION_GATES.map((gate) => gate.id);
   const actualGates = Array.isArray(report.gates) ? report.gates : [];
   if (actualGates.length !== expectedGates.length)
     errors.push("Report must contain every qualification gate exactly once.");
   const seenGates = new Set();
-  for (const gate of actualGates) {
+  for (const [gateIndex, gate] of actualGates.entries()) {
+    const gateLabel = `gates[${gateIndex}]`;
+    exactKeys(
+      gate,
+      ["id", "name", "required", "status", "criteria", "evidence", "blockers"],
+      gateLabel,
+    );
     if (!isRecord(gate) || !text(gate.id)) {
-      errors.push("Every gate must have an id.");
+      errors.push(`${gateLabel} must have an id.`);
       continue;
     }
     if (seenGates.has(gate.id)) errors.push(`Duplicate gate ${gate.id}.`);
@@ -590,47 +978,60 @@ export function validateQualificationReport(report) {
       errors.push(`Unknown gate ${gate.id}.`);
       continue;
     }
+    if (gate.name !== definition.name) errors.push(`Gate ${gate.id} has an unexpected name.`);
     if (gate.required !== true) errors.push(`Gate ${gate.id} must be required.`);
     if (!STATUSES.has(gate.status)) errors.push(`Gate ${gate.id} has an invalid status.`);
+    validateEvidence(gate.evidence, `${gateLabel}.evidence`);
+    validateBlockers(gate.blockers, `${gateLabel}.blockers`);
     const expectedCriteria = definition.criteria.map((criterion) => criterion.id);
     const actualCriteria = Array.isArray(gate.criteria) ? gate.criteria : [];
     if (actualCriteria.length !== expectedCriteria.length)
       errors.push(`Gate ${gate.id} must report every criterion.`);
     const seenCriteria = new Set();
-    for (const criterion of actualCriteria) {
+    for (const [criterionIndex, criterion] of actualCriteria.entries()) {
+      const criterionLabel = `${gateLabel}.criteria[${criterionIndex}]`;
+      exactKeys(
+        criterion,
+        ["id", "name", "status", "summary", "binding", "evidence", "blockers"],
+        criterionLabel,
+      );
       if (!isRecord(criterion) || !text(criterion.id)) {
-        errors.push(`Gate ${gate.id} contains a criterion without an id.`);
+        errors.push(`${criterionLabel} must have an id.`);
         continue;
       }
       if (seenCriteria.has(criterion.id))
         errors.push(`Gate ${gate.id} duplicates criterion ${criterion.id}.`);
       seenCriteria.add(criterion.id);
-      if (!expectedCriteria.includes(criterion.id))
+      const criterionDefinition = definition.criteria.find((entry) => entry.id === criterion.id);
+      if (!criterionDefinition) {
         errors.push(`Gate ${gate.id} contains unknown criterion ${criterion.id}.`);
+        continue;
+      }
+      if (criterion.name !== criterionDefinition.name)
+        errors.push(`Criterion ${gate.id}/${criterion.id} has an unexpected name.`);
       if (!STATUSES.has(criterion.status))
         errors.push(`Criterion ${gate.id}/${criterion.id} has an invalid status.`);
+      if (criterion.summary !== undefined && !text(criterion.summary))
+        errors.push(`Criterion ${gate.id}/${criterion.id}.summary must be non-empty.`);
+      const expectedBinding = bindingFor(criterion.id);
+      if (expectedBinding && !sameJson(criterion.binding, expectedBinding))
+        errors.push(`Criterion ${gate.id}/${criterion.id} has an invalid machine binding.`);
+      if (!expectedBinding && criterion.binding !== undefined)
+        errors.push(`Criterion ${gate.id}/${criterion.id} has an unexpected machine binding.`);
+      validateEvidence(criterion.evidence, `${criterionLabel}.evidence`);
+      validateBlockers(criterion.blockers, `${criterionLabel}.blockers`);
       if (
         criterion.status === PASS &&
         (!Array.isArray(criterion.evidence) || criterion.evidence.length === 0)
-      ) {
+      )
         errors.push(`Passing criterion ${gate.id}/${criterion.id} has no evidence.`);
-      }
-      for (const evidence of Array.isArray(criterion.evidence) ? criterion.evidence : []) {
-        if (!fullSha(evidence?.sourceCommit))
-          errors.push(`Evidence for ${gate.id}/${criterion.id} has no full source commit.`);
-        if (
-          fullSha(report.candidate?.commit) &&
-          evidence?.sourceCommit !== report.candidate.commit
-        ) {
-          errors.push(`Evidence for ${gate.id}/${criterion.id} is stale for the candidate.`);
-        }
-        if (!digest(evidence?.sha256))
-          errors.push(`Evidence for ${gate.id}/${criterion.id} has no SHA-256 digest.`);
-        if (!text(evidence?.path) && !text(evidence?.uri))
-          errors.push(`Evidence for ${gate.id}/${criterion.id} has no path or URI.`);
-      }
+      if (
+        criterion.status !== PASS &&
+        (!Array.isArray(criterion.blockers) || criterion.blockers.length === 0)
+      )
+        errors.push(`Blocking criterion ${gate.id}/${criterion.id} has no blocker reason.`);
     }
-    if (gate.status === PASS && gate.blockers?.length)
+    if (gate.status === PASS && Array.isArray(gate.blockers) && gate.blockers.length > 0)
       errors.push(`Passing gate ${gate.id} contains blockers.`);
     if (gate.status !== PASS && (!Array.isArray(gate.blockers) || gate.blockers.length === 0))
       errors.push(`Blocking gate ${gate.id} has no blocker reason.`);
@@ -638,13 +1039,16 @@ export function validateQualificationReport(report) {
   if (seenGates.size !== expectedGates.length || expectedGates.some((id) => !seenGates.has(id)))
     errors.push("Report is missing one or more qualification gates.");
 
+  const blockers = Array.isArray(report.result?.blockers) ? report.result.blockers : [];
   const allPassed =
     actualGates.length === expectedGates.length &&
     actualGates.every(
       (gate) =>
-        gate?.status === PASS && gate.criteria?.every((criterion) => criterion?.status === PASS),
+        gate?.status === PASS &&
+        Array.isArray(gate.criteria) &&
+        gate.criteria.length > 0 &&
+        gate.criteria.every((criterion) => criterion?.status === PASS),
     );
-  const blockers = Array.isArray(report.result?.blockers) ? report.result.blockers : [];
   if (report.result?.status === "qualified" && (!allPassed || blockers.length > 0))
     errors.push("A qualified report must have every criterion passed and no blockers.");
   if (report.result?.status === "blocked" && blockers.length === 0)
@@ -656,9 +1060,74 @@ function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+function secureExistingPath(path) {
+  const absolute = resolve(path);
+  let current = sep;
+  for (const part of absolute.slice(sep.length).split(sep).filter(Boolean)) {
+    current = join(current, part);
+    const stats = lstatSync(current);
+    if (stats.isSymbolicLink()) throw new Error(`Symlink paths are not accepted: ${current}`);
+  }
+  return {
+    absolute,
+    real: realpathSync(absolute),
+    stats: lstatSync(absolute),
+  };
+}
+
+function secureDirectory(path) {
+  const info = secureExistingPath(path);
+  if (!info.stats.isDirectory()) throw new Error(`Expected a directory: ${path}`);
+  return info;
+}
+
+function secureFile(path) {
+  const info = secureExistingPath(path);
+  if (!info.stats.isFile()) throw new Error(`Expected a regular file: ${path}`);
+  return info;
+}
+
+function secureRead(path) {
+  secureFile(path);
+  return readFileSync(path);
+}
+
+function secureChildPath(parent, child, label = "path") {
+  const parentInfo = secureDirectory(parent);
+  const target = resolve(parentInfo.absolute, child);
+  if (target === parentInfo.absolute || !target.startsWith(`${parentInfo.absolute}${sep}`)) {
+    throw new Error(`${label} escapes its containing directory: ${child}`);
+  }
+  const targetInfo = secureExistingPath(target);
+  if (
+    targetInfo.real !== parentInfo.real &&
+    !targetInfo.real.startsWith(`${parentInfo.real}${sep}`)
+  ) {
+    throw new Error(`${label} resolves outside its containing directory: ${child}`);
+  }
+  return targetInfo;
+}
+
+function secureBundleFiles(root) {
+  const files = [];
+  function visit(directory, prefix) {
+    secureDirectory(directory);
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const child = join(directory, entry.name);
+      const childPrefix = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const info = secureExistingPath(child);
+      if (info.stats.isDirectory()) visit(child, childPrefix);
+      else if (info.stats.isFile()) files.push(childPrefix);
+      else throw new Error(`Unsupported filesystem entry in evidence bundle: ${childPrefix}`);
+    }
+  }
+  visit(root, "");
+  return files;
+}
+
 function parseJson(path, blockers) {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    return JSON.parse(secureRead(path).toString("utf8"));
   } catch (error) {
     blockers.push(
       `Unable to parse ${path}: ${error instanceof Error ? error.message : String(error)}`,
@@ -670,13 +1139,22 @@ function parseJson(path, blockers) {
 function junitCounts(xml) {
   const suite = xml.match(/<testsuite\b[^>]*>/)?.[0];
   if (!suite) return null;
-  const number = (name) => Number(suite.match(new RegExp(`${name}="(\\d+)"`))?.[1]);
-  return { tests: number("tests"), failures: number("failures"), skipped: number("skipped") };
+  const number = (name) => {
+    const value = suite.match(new RegExp(`${name}="(\\d+)"`))?.[1];
+    return value === undefined ? null : Number(value);
+  };
+  return {
+    tests: number("tests"),
+    failures: number("failures"),
+    skipped: number("skipped"),
+    errors: number("errors") ?? 0,
+  };
 }
 
 function readJsonl(path, blockers) {
   try {
-    return readFileSync(path, "utf8")
+    return secureRead(path)
+      .toString("utf8")
       .split(/\r?\n/)
       .filter(Boolean)
       .map((line) => JSON.parse(line));
@@ -700,36 +1178,64 @@ export function verifyDeterministicEvidenceBundle({
 }) {
   const blockers = [];
   const resolvedRoot = resolve(root);
-  const bundle = resolve(resolvedRoot, bundlePath ?? "");
   const expectedFiles = [
     "README.md",
     "junit.xml",
     "metadata.json",
-    "raw/results.jsonl",
-    "raw/summary.json",
+    "raw/initial-results.jsonl",
+    "raw/initial-summary.json",
   ];
   if (!fullSha(candidateSha))
     blockers.push("The evidence candidate must be a full lowercase commit SHA.");
-  if (bundle === resolvedRoot || !bundle.startsWith(`${resolvedRoot}${sep}`)) {
+  let bundle;
+  try {
+    const bundleInfo = secureChildPath(resolvedRoot, bundlePath ?? "", "Evidence bundle");
+    if (!bundleInfo.stats.isDirectory()) throw new Error("Evidence bundle is not a directory.");
+    const rootInfo = secureDirectory(resolvedRoot);
+    if (
+      bundleInfo.real !== rootInfo.real &&
+      !bundleInfo.real.startsWith(`${rootInfo.real}${sep}`)
+    ) {
+      throw new Error("Evidence bundle resolves outside the repository root.");
+    }
+    bundle = bundleInfo.absolute;
+  } catch (error) {
     return {
       status: "blocked",
-      blockers: [...blockers, "Evidence bundle must be a child of the repository root."],
+      blockers: [
+        ...blockers,
+        error instanceof Error ? error.message : "Evidence bundle path is invalid.",
+      ],
       evidence: [],
     };
   }
-  if (!existsSync(bundle) || !statSync(bundle).isDirectory()) {
+
+  let actualFiles;
+  try {
+    actualFiles = secureBundleFiles(bundle);
+  } catch (error) {
     return {
       status: "blocked",
-      blockers: [...blockers, `Evidence bundle is missing: ${bundle}.`],
+      blockers: [
+        ...blockers,
+        error instanceof Error ? error.message : "Unable to enumerate evidence bundle.",
+      ],
       evidence: [],
     };
+  }
+  const allowedFiles = new Set([...expectedFiles, "SHA256SUMS"]);
+  for (const path of actualFiles) {
+    if (!allowedFiles.has(path)) {
+      blockers.push(`Evidence bundle contains an unexpected file: ${path}.`);
+      if (/retry/i.test(path)) blockers.push(`Retry artifact is not accepted: ${path}.`);
+    }
   }
   const metadata = parseJson(join(bundle, "metadata.json"), blockers);
-  const rows = readJsonl(join(bundle, "raw/results.jsonl"), blockers);
-  const summary = parseJson(join(bundle, "raw/summary.json"), blockers);
+  const rows = readJsonl(join(bundle, "raw/initial-results.jsonl"), blockers);
+  const summary = parseJson(join(bundle, "raw/initial-summary.json"), blockers);
   let junit = null;
   try {
-    junit = junitCounts(readFileSync(join(bundle, "junit.xml"), "utf8"));
+    junit = junitCounts(secureRead(join(bundle, "junit.xml")).toString("utf8"));
   } catch (error) {
     blockers.push(
       `Unable to read ${join(bundle, "junit.xml")}: ${error instanceof Error ? error.message : String(error)}`,
@@ -741,21 +1247,75 @@ export function verifyDeterministicEvidenceBundle({
   if (metadata?.sourceCommit !== candidateSha)
     blockers.push("Evidence metadata is stale for the candidate commit.");
   const counts = metadata?.counts;
-  if (!isRecord(counts) || Number(counts.total) <= 0)
+  const metadataCounts = {};
+  if (!isRecord(counts)) {
+    blockers.push("Evidence metadata counts must be an object with every count field.");
+  } else {
+    for (const key of METADATA_COUNT_FIELDS) {
+      if (!Number.isInteger(counts[key]) || counts[key] < 0) {
+        blockers.push(`Evidence metadata count ${key} must be a non-negative integer.`);
+      } else metadataCounts[key] = counts[key];
+    }
+  }
+  if (Number(metadataCounts.total) <= 0)
     blockers.push("Evidence metadata has no positive result total.");
   if (metadata?.clean !== true || metadata?.exitCode !== 0)
     blockers.push("The deterministic run was not clean with exit code 0.");
-  if (metadata?.retry?.attempted === true || Number(metadata?.retry?.rounds ?? 0) !== 0)
-    blockers.push("A retry or recovery was recorded; it cannot qualify as clean.");
   if (
-    Number(counts?.failed ?? 0) !== 0 ||
-    Number(counts?.skipped ?? 0) !== 0 ||
-    Number(counts?.errored ?? 0) !== 0 ||
-    Number(counts?.passed ?? 0) !== Number(counts?.total ?? 0)
+    !isRecord(metadata?.retry) ||
+    metadata.retry.attempted !== false ||
+    metadata.retry.rounds !== 0
+  )
+    blockers.push("Retry metadata must explicitly say attempted=false and rounds=0.");
+  if (
+    metadataCounts.failed !== 0 ||
+    metadataCounts.skipped !== 0 ||
+    metadataCounts.errored !== 0 ||
+    metadataCounts.passed !== metadataCounts.total
   )
     blockers.push("Deterministic counts include a failure, skip, error, or incomplete pass total.");
-  if (metadata?.statuses?.waiting)
-    blockers.push("Evidence contains waiting results rather than completed results.");
+  const statuses = metadata?.statuses;
+  if (
+    !isRecord(statuses) ||
+    Object.keys(statuses).length !== 1 ||
+    statuses.completed !== metadataCounts.total
+  ) {
+    blockers.push("Evidence metadata statuses must contain only completed with the exact total.");
+  }
+  for (const status of Object.keys(isRecord(statuses) ? statuses : {})) {
+    if (status !== COMPLETED) blockers.push(`Evidence contains a non-completed status: ${status}.`);
+  }
+  for (const field of ["partial", "recovered", "stale", "waiting"]) {
+    if (metadata?.[field] === true) blockers.push(`Evidence metadata is marked ${field}.`);
+  }
+
+  const summaryCounts = {};
+  if (!isRecord(summary)) {
+    blockers.push("raw/initial-summary.json must be an object with every count field.");
+  } else {
+    for (const key of COUNT_FIELDS) {
+      if (!Number.isInteger(summary[key]) || summary[key] < 0) {
+        blockers.push(`Raw summary count ${key} must be a non-negative integer.`);
+      } else summaryCounts[key] = summary[key];
+    }
+    if (Array.isArray(summary.evals)) {
+      if (summary.evals.length !== summaryCounts.totalEvals)
+        blockers.push("Raw summary eval count disagrees with totalEvals.");
+      for (const entry of summary.evals) {
+        if (entry?.result?.status !== COMPLETED)
+          blockers.push("Raw summary contains a non-completed eval status.");
+      }
+    }
+  }
+  if (
+    summaryCounts.totalEvals !== metadataCounts.total ||
+    summaryCounts.passed !== metadataCounts.passed ||
+    summaryCounts.failed !== metadataCounts.failed ||
+    summaryCounts.skipped !== metadataCounts.skipped ||
+    summaryCounts.errored !== metadataCounts.errored
+  )
+    blockers.push("Raw summary counts disagree with metadata counts.");
+
   const rowCounts = {
     passed: 0,
     failed: 0,
@@ -768,48 +1328,56 @@ export function verifyDeterministicEvidenceBundle({
     if (!["passed", "failed", "skipped", "errored"].includes(row?.verdict))
       blockers.push("Evidence JSONL contains an unknown verdict.");
     else rowCounts[row.verdict] += 1;
-    if (typeof row?.status !== "string" || row.status.length === 0)
-      blockers.push("Evidence JSONL contains a missing status.");
-    else rowCounts.statuses[row.status] = (rowCounts.statuses[row.status] ?? 0) + 1;
+    if (row?.status !== COMPLETED) {
+      blockers.push("Evidence JSONL contains a non-completed status.");
+    } else rowCounts.statuses[COMPLETED] = (rowCounts.statuses[COMPLETED] ?? 0) + 1;
   }
   if (
-    rowCounts.total !== Number(counts?.total ?? -1) ||
-    rowCounts.passed !== Number(counts?.passed ?? -1) ||
-    rowCounts.failed !== Number(counts?.failed ?? -1) ||
-    rowCounts.skipped !== Number(counts?.skipped ?? -1) ||
-    rowCounts.errored !== Number(counts?.errored ?? -1)
+    rowCounts.total !== metadataCounts.total ||
+    rowCounts.passed !== metadataCounts.passed ||
+    rowCounts.failed !== metadataCounts.failed ||
+    rowCounts.skipped !== metadataCounts.skipped ||
+    rowCounts.errored !== metadataCounts.errored
   )
     blockers.push("JSONL counts disagree with metadata counts.");
-  if (JSON.stringify(rowCounts.statuses) !== JSON.stringify(metadata?.statuses ?? null))
+  if (!sameJson(rowCounts.statuses, statuses ?? null))
     blockers.push("JSONL statuses disagree with metadata statuses.");
   if (
     !junit ||
-    junit.tests !== Number(counts?.total ?? -1) ||
-    junit.failures !== 0 ||
-    junit.skipped !== 0
+    !Number.isInteger(junit.tests) ||
+    !Number.isInteger(junit.failures) ||
+    !Number.isInteger(junit.skipped) ||
+    !Number.isInteger(junit.errors) ||
+    junit.tests !== metadataCounts.total ||
+    junit.failures !== metadataCounts.failed ||
+    junit.skipped !== metadataCounts.skipped ||
+    junit.errors !== metadataCounts.errored ||
+    junit.tests - junit.failures - junit.skipped - junit.errors !== metadataCounts.passed
   )
-    blockers.push("JUnit counts disagree with a clean deterministic run.");
-  if (isRecord(summary)) {
-    for (const key of ["totalEvals", "passed", "failed", "skipped", "errored"]) {
-      if (
-        key in summary &&
-        Number(summary[key]) !==
-          (key === "totalEvals" ? Number(counts?.total) : Number(counts?.[key]))
-      )
-        blockers.push(`Raw summary ${key} disagrees with metadata.`);
-    }
+    blockers.push("JUnit counts disagree with metadata, JSONL, and raw summary counts.");
+
+  try {
+    const readme = secureRead(join(bundle, "README.md")).toString("utf8");
+    if (!readme.includes(`Source commit | \`${candidateSha}\``))
+      blockers.push("README does not name the exact candidate source commit.");
+  } catch (error) {
+    blockers.push(
+      `Unable to read README.md: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
   const checksumPath = join(bundle, "SHA256SUMS");
   const checksumEntries = [];
   try {
-    for (const line of readFileSync(checksumPath, "utf8").split(/\r?\n/).filter(Boolean)) {
+    for (const line of secureRead(checksumPath).toString("utf8").split(/\r?\n/).filter(Boolean)) {
       const match = line.match(/^([0-9a-f]{64})\s{2}(.+)$/);
       if (!match) {
         blockers.push(`Invalid checksum line: ${line}`);
         continue;
       }
-      checksumEntries.push({ sha256: match[1], path: match[2] });
+      if (checksumEntries.some((entry) => entry.path === match[2])) {
+        blockers.push(`Duplicate checksum path: ${match[2]}`);
+      } else checksumEntries.push({ sha256: match[1], path: match[2] });
     }
   } catch (error) {
     blockers.push(
@@ -825,31 +1393,41 @@ export function verifyDeterministicEvidenceBundle({
   )
     blockers.push("SHA256SUMS does not enumerate the complete evidence bundle.");
   for (const entry of checksumEntries) {
-    const path = resolve(bundle, entry.path);
-    if (!path.startsWith(`${bundle}${sep}`) || !existsSync(path) || !statSync(path).isFile()) {
-      blockers.push(`Checksum path is missing or escapes the bundle: ${entry.path}`);
-      continue;
+    try {
+      const path = secureChildPath(bundle, entry.path, "Checksum path").absolute;
+      if (sha256(secureRead(path)) !== entry.sha256)
+        blockers.push(`Checksum mismatch for ${entry.path}.`);
+    } catch (error) {
+      blockers.push(
+        `Checksum path is missing, unsafe, or escapes the bundle: ${entry.path} (${error instanceof Error ? error.message : String(error)})`,
+      );
     }
-    if (sha256(readFileSync(path)) !== entry.sha256)
-      blockers.push(`Checksum mismatch for ${entry.path}.`);
   }
 
-  const evidence = expectedFiles
-    .filter((path) => existsSync(join(bundle, path)))
-    .map((path) => ({
-      path: relative(resolvedRoot, join(bundle, path)).split(sep).join("/"),
-      sourceCommit: candidateSha,
-      sha256: sha256(readFileSync(join(bundle, path))),
-      format: path.endsWith(".json")
-        ? "json"
-        : path.endsWith(".jsonl")
-          ? "jsonl"
-          : path.endsWith(".xml")
-            ? "junit"
-            : path.endsWith(".md")
-              ? "markdown"
-              : "sha256sums",
-    }));
+  const evidence = [];
+  for (const path of expectedFiles) {
+    try {
+      const absolute = secureChildPath(bundle, path, "Evidence path").absolute;
+      evidence.push({
+        path: relative(resolvedRoot, absolute).split(sep).join("/"),
+        sourceCommit: candidateSha,
+        sha256: sha256(secureRead(absolute)),
+        format: path.endsWith(".json")
+          ? "json"
+          : path.endsWith(".jsonl")
+            ? "jsonl"
+            : path.endsWith(".xml")
+              ? "junit"
+              : path.endsWith(".md")
+                ? "markdown"
+                : "sha256sums",
+      });
+    } catch (error) {
+      blockers.push(
+        `Evidence file is missing or unsafe: ${path} (${error instanceof Error ? error.message : String(error)})`,
+      );
+    }
+  }
   return { status: blockers.length === 0 ? PASS : "blocked", blockers, evidence };
 }
 
@@ -857,30 +1435,45 @@ export function verifyDeterministicEvidenceBundle({
 export function verifyEvidenceFiles({ root = process.cwd(), candidateSha, evidence }) {
   const blockers = [];
   const resolvedRoot = resolve(root);
-  for (const entry of Array.isArray(evidence) ? evidence : []) {
+  const entries = Array.isArray(evidence) ? evidence : [];
+  if (entries.length === 0) blockers.push("At least one exact evidence record is required.");
+  for (const entry of entries) {
     if (!fullSha(entry?.sourceCommit) || entry.sourceCommit !== candidateSha) {
       blockers.push(
         `Evidence ${entry?.path ?? entry?.uri ?? "unknown"} is not tied to the candidate.`,
       );
       continue;
     }
-    if (!text(entry.path)) continue;
-    const path = resolve(resolvedRoot, entry.path);
-    if (
-      !path.startsWith(`${resolvedRoot}${sep}`) ||
-      !existsSync(path) ||
-      !statSync(path).isFile()
-    ) {
-      blockers.push(`Evidence file is missing or escapes the repository: ${entry.path}`);
+    if (!digest(entry?.sha256)) {
+      blockers.push(`Evidence ${entry?.path ?? entry?.uri ?? "unknown"} has no SHA-256 digest.`);
       continue;
     }
-    if (sha256(readFileSync(path)) !== entry.sha256)
-      blockers.push(`Evidence digest mismatch: ${entry.path}`);
+    if (!text(entry?.path) && !text(entry?.uri)) {
+      blockers.push("Every evidence record needs a repository path or URI.");
+      continue;
+    }
+    if (!text(entry.path)) continue;
+    if (isAbsolute(entry.path) || entry.path.split(/[\\/]/).includes("..")) {
+      blockers.push(`Evidence file path is absolute or escapes the repository: ${entry.path}`);
+      continue;
+    }
     try {
-      execFileSync("git", ["cat-file", "-e", `${candidateSha}:${entry.path}`], {
+      const treeEntry = execFileSync("git", ["ls-tree", candidateSha, "--", entry.path], {
         cwd: resolvedRoot,
-        stdio: "ignore",
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+      if (!/^(100644|100755)\s+blob\s+[0-9a-f]{40}\t/.test(treeEntry)) {
+        blockers.push(`Evidence path is not a regular candidate blob: ${entry.path}`);
+        continue;
+      }
+      const bytes = execFileSync("git", ["show", `${candidateSha}:${entry.path}`], {
+        cwd: resolvedRoot,
+        encoding: null,
+        stdio: ["ignore", "pipe", "ignore"],
       });
+      if (sha256(bytes) !== entry.sha256)
+        blockers.push(`Evidence digest mismatch in candidate blob: ${entry.path}`);
     } catch {
       blockers.push(
         `Evidence file is not present in candidate commit ${candidateSha}: ${entry.path}`,
@@ -983,7 +1576,21 @@ export async function verifyCanonicalOrigin({
 }
 
 function readInput(path) {
-  return JSON.parse(readFileSync(resolve(path), "utf8"));
+  return JSON.parse(secureRead(resolve(path)).toString("utf8"));
+}
+
+function writeOutput(path, contents) {
+  const outputPath = resolve(path);
+  mkdirSync(dirname(outputPath), { recursive: true });
+  secureDirectory(dirname(outputPath));
+  try {
+    const existing = secureExistingPath(outputPath);
+    if (!existing.stats.isFile())
+      throw new Error(`Output path is not a regular file: ${outputPath}`);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  writeFileSync(outputPath, contents);
 }
 
 function argument(name) {
@@ -1005,12 +1612,17 @@ export function main() {
   if (actual !== candidateSha)
     throw new Error(`Checked out ${actual}, not requested candidate ${candidateSha}.`);
   const inputPath = argument("--input");
-  const input = inputPath ? readInput(inputPath) : { candidateSha, gates: {} };
+  const inputValue = inputPath ? readInput(inputPath) : { candidateSha, gates: {} };
+  const input = isRecord(inputValue) ? inputValue : {};
   if (text(input.candidateSha) && input.candidateSha !== candidateSha)
     throw new Error(`Input names ${input.candidateSha}, not candidate ${candidateSha}.`);
+  if (text(input.candidate?.commit) && input.candidate.commit !== candidateSha)
+    throw new Error(
+      `Input candidate.commit names ${input.candidate.commit}, not candidate ${candidateSha}.`,
+    );
   const report = composeQualificationReport({ ...input, candidateSha });
   const outputPath = argument("--output");
-  if (outputPath) writeFileSync(resolve(outputPath), `${JSON.stringify(report, null, 2)}\n`);
+  if (outputPath) writeOutput(outputPath, `${JSON.stringify(report, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   return report.result.status === "qualified" ? 0 : 1;
 }

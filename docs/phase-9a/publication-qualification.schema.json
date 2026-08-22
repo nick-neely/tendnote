@@ -99,6 +99,7 @@
         "name": { "type": "string", "minLength": 1 },
         "status": { "$ref": "#/$defs/status" },
         "summary": { "type": "string", "minLength": 1 },
+        "binding": { "$ref": "#/$defs/binding" },
         "evidence": {
           "type": "array",
           "items": { "$ref": "#/$defs/evidence" }
@@ -108,6 +109,34 @@
           "items": { "$ref": "#/$defs/blocker" }
         }
       }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": { "enum": ["github-issue", "github-setting"] },
+        "issue": { "type": "integer", "minimum": 1 },
+        "setting": { "type": "string", "minLength": 1 },
+        "state": { "type": "string", "minLength": 1 }
+      },
+      "oneOf": [
+        {
+          "required": ["source", "issue", "state"],
+          "properties": {
+            "source": { "const": "github-issue" },
+            "issue": { "type": "integer", "minimum": 1 },
+            "state": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "required": ["source", "setting", "state"],
+          "properties": {
+            "source": { "const": "github-setting" },
+            "setting": { "type": "string", "minLength": 1 },
+            "state": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
     },
     "gate": {
       "type": "object",
