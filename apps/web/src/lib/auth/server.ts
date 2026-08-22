@@ -52,9 +52,9 @@ function createDatabaseHooks() {
     user: {
       create: {
         after: async (user: { id: string }) => {
-          // Every new signup gets a durable access profile: the first user
-          // bootstraps as the initial allowed owner, later users start pending
-          // until Private Beta Access is granted (ADR-0067).
+          // Every new signup gets a durable pending profile. Production admission
+          // is resolved by the explicit hosted/self-hosted policy; local demo
+          // access uses its separate loopback-only owner path.
           await ensureAccessProfile({ userId: user.id });
         },
       },

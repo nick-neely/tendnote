@@ -162,7 +162,7 @@ async function buildRuntimeToolSets(current: Principal | null) {
     ["web_fetch", authoredWebFetch],
   ]);
   const providerTools = await tools.buildToolSetWithProviderTools({
-    modelReference: { id: "anthropic/claude-haiku-4.5" },
+    modelReference: { id: "google/gemini-3.7-flash" },
     tools: staticTools,
     webSearchProvider: "exa",
   });

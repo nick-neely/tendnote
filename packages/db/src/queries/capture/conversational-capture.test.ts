@@ -336,13 +336,13 @@ describe("conversational Capture", () => {
     );
   });
 
-  it("does not claim a pre-existing equivalent fact with different source evidence", async () => {
+  it("reuses a pre-existing equivalent fact without replacing its source evidence", async () => {
     const store = createInMemorySavedItemLifecycleStore();
     const contextStore = createInMemoryContextFactStore();
     const queries = createContextFactQueries(contextStore, {
       resolveVerifiedCaller: async () => "owner-1",
     });
-    await queries.createSelfContextFact({
+    const existing = await queries.createSelfContextFact({
       callerUserId: "owner-1",
       category: "preference",
       content: "I prefer concise answers",
@@ -372,10 +372,20 @@ describe("conversational Capture", () => {
         originalText: "Remember that I prefer concise answers",
         surface: "global_capture",
       }),
-    ).rejects.toThrow("different source evidence");
-    await expect(queries.listSelfContextFacts({ callerUserId: "owner-1" })).resolves.toHaveLength(
-      1,
-    );
+    ).resolves.toMatchObject({
+      kind: "context_fact",
+      contextFact: {
+        id: existing.result.id,
+        provenance: { channel: "onboarding", origin: "direct" },
+      },
+      affectedScopes: [],
+    });
+    await expect(queries.listSelfContextFacts({ callerUserId: "owner-1" })).resolves.toEqual([
+      expect.objectContaining({
+        id: existing.result.id,
+        provenance: { channel: "onboarding", origin: "direct" },
+      }),
+    ]);
   });
 
   it("fences stale Context Fact Change and Undo and rejects onboarding evidence claims", async () => {

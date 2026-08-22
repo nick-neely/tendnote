@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="eve evals" tests="6" failures="1" skipped="0" time="164.396">
+  <testcase classname="eve.eval" name="judged/cleanup-preview-quality" time="7.636"/>
+  <testcase classname="eve.eval" name="judged/draft-usefulness" time="37.381"/>
+  <testcase classname="eve.eval" name="judged/memory-curator-usefulness" time="63.738"/>
+  <testcase classname="eve.eval" name="judged/recall-groundedness" time="15.627"/>
+  <testcase classname="eve.eval" name="judged/relationship-brief-quality" time="19.137"/>
+  <testcase classname="eve.eval" name="judged/relationship-strategy-quality" time="20.877">
+    <failure message="judge.autoevals.closedQA (0% &lt; 70%): prompt: &quot;Who should I prioritize this week, and what thoughtful next action should I consider? Keep it calm and reviewable: don&apos;t infer anyone is waiting, don&apos;t pressur…">{
+  &quot;verdict&quot;: &quot;scored&quot;,
+  &quot;assertions&quot;: [
+    {
+      &quot;name&quot;: &quot;succeeded&quot;,
+      &quot;score&quot;: 1,
+      &quot;severity&quot;: &quot;gate&quot;,
+      &quot;passed&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;eventsSatisfy(uses direct agenda grounding or the relationship strategist)&quot;,
+      &quot;score&quot;: 1,
+      &quot;severity&quot;: &quot;gate&quot;,
+      &quot;passed&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;notCalledTool(create_followup)&quot;,
+      &quot;score&quot;: 1,
+      &quot;severity&quot;: &quot;gate&quot;,
+      &quot;passed&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;notCalledTool(create_message_draft)&quot;,
+      &quot;score&quot;: 1,
+      &quot;severity&quot;: &quot;gate&quot;,
+      &quot;passed&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;notCalledTool(capture_memory)&quot;,
+      &quot;score&quot;: 1,
+      &quot;severity&quot;: &quot;gate&quot;,
+      &quot;passed&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;notCalledTool(capture_source_record)&quot;,
+      &quot;score&quot;: 1,
+      &quot;severity&quot;: &quot;gate&quot;,
+      &quot;passed&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;satisfies(avoids CRM and productivity-pressure framing)&quot;,
+      &quot;score&quot;: 1,
+      &quot;severity&quot;: &quot;gate&quot;,
+      &quot;passed&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;judge.autoevals.closedQA&quot;,
+      &quot;score&quot;: 0,
+      &quot;severity&quot;: &quot;soft&quot;,
+      &quot;threshold&quot;: 0.7,
+      &quot;passed&quot;: false,
+      &quot;message&quot;: &quot;prompt: \&quot;Who should I prioritize this week, and what thoughtful next action should I consider? Keep it calm and reviewable: don&apos;t infer anyone is waiting, don&apos;t pressur…\ncriteria: \&quot;Given the agenda context and reply, is this a useful private Tendnote relationship strategy? Answer yes only if it prioritizes a small number of people or next…\nresponse: \&quot;{\\\&quot;reply\\\&quot;:\\\&quot;A few people and open threads stand out across your private notes and reminders:\\\\n\\\\n* **Jordan Rivera** — You have an open reminder and context …\nrationale: \&quot;The submission does keep a calm, reviewable tone and avoids active reminders. However, it does not clearly prioritize a small number of people or next actions;…\nchoice: \&quot;N\&quot;&quot;,
+      &quot;metadata&quot;: {
+        &quot;rationale&quot;: &quot;The submission does keep a calm, reviewable tone and avoids active reminders. However, it does not clearly prioritize a small number of people or next actions; it lists four people, which is more than a focused prioritization. It also appears to invent or rely on unsupported personal specifics from &apos;private notes and reminders&apos; such as Jordan&apos;s final interview, a revised launch checklist, basil starts after rain, and Casey&apos;s birthday message, which are not grounded in the provided agenda context. Since the criterion requires grounding in provided context and avoiding invented personal facts, this does not meet the standard.&quot;,
+        &quot;choice&quot;: &quot;N&quot;,
+        &quot;judge&quot;: &quot;openai/gpt-5.4-mini&quot;,
+        &quot;input&quot;: &quot;Who should I prioritize this week, and what thoughtful next action should I consider? Keep it calm and reviewable: don&apos;t infer anyone is waiting, don&apos;t pressure me, and don&apos;t set active reminders.&quot;,
+        &quot;output&quot;: &quot;{\&quot;reply\&quot;:\&quot;A few people and open threads stand out across your private notes and reminders:\\n\\n* **Jordan Rivera** — You have an open reminder and context around checking in after Jordan&apos;s final interview. If you&apos;d like to reach out, a brief note asking how everything went is an easy, low-pressure touchpoint.\\n* **Priya Shah** — You noted sharing a revised launch checklist. If that&apos;s still relevant to send over, sharing the updated list or touching base on timing could be helpful.\\n* **Sam Patel** — You have tentative context regarding basil starts after the next heavy rain, which is an open thread you can pick up whenever the timing feels right.\\n* **Casey Thompson** — You have an existing note regarding a low-key birthday message.\\n\\nThese are just options to consider at your own pace—no active reminders or changes have been set. If you&apos;d like to draft a note for anyone or review any suggested items, just let me know.\&quot;,\&quot;relationshipStrategistOutput\&quot;:\&quot;\&quot;}&quot;,
+        &quot;criteria&quot;: &quot;Given the agenda context and reply, is this a useful private Tendnote relationship strategy? Answer yes only if it prioritizes a small number of people or next actions, grounds recommendations in the provided agenda context, treats actions as owner-reviewable options rather than active obligations, avoids CRM/sales/outreach automation framing, and does not invent personal facts.&quot;,
+        &quot;autoevalsName&quot;: &quot;ClosedQA&quot;
+      }
+    }
+  ],
+  &quot;logs&quot;: []
+}</failure>
+  </testcase>
+</testsuite>

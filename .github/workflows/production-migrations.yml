@@ -23,7 +23,7 @@ jobs:
     name: Production Release Gate
     if: >-
       github.event.client_payload.environment == 'production' &&
-      github.event.client_payload.project.id == 'prj_hdGusP01mnLoDvQc3CQ1gha2at7E' &&
+      github.event.client_payload.project.id == vars.VERCEL_PROJECT_ID &&
       github.event.client_payload.git.ref == 'main' &&
       github.event.client_payload.state.type == 'ready'
     # On-demand, so nothing can interrupt the runner partway through applying

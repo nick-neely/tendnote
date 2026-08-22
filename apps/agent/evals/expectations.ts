@@ -21,7 +21,51 @@ export function without(pattern: string): RegExp {
 /** A record id in an answer is always a bug — ids are for tool calls, never for people. */
 export const NO_RAW_IDS = without("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}");
 
-type ToolResult = { toolName?: string; output?: unknown };
+export type ToolResult = { toolName?: string; output?: unknown };
+
+type ToolCall = { toolName: string; input?: unknown };
+
+/** Every authored tool that can persist, propose, review, or externalize data. */
+const MUTATING_TOOL_NAMES = new Set([
+  "accept_suggested_followup",
+  "accept_suggested_general_action",
+  "add_gift_idea",
+  "approve_suggested_memory",
+  "archive_memory",
+  "archive_self_context",
+  "capture_memory",
+  "capture_saved_item",
+  "capture_source_record",
+  "change_saved_item_capture",
+  "create_asset",
+  "create_followup",
+  "create_general_action",
+  "create_message_draft",
+  "create_person",
+  "dismiss_draft",
+  "dismiss_suggested_followup",
+  "dismiss_suggested_general_action",
+  "dismiss_suggested_memory",
+  "edit_asset",
+  "edit_draft_body",
+  "edit_general_action",
+  "edit_gift_idea",
+  "plan_suggested_general_actions",
+  "propose_asset_actions",
+  "propose_asset_memories",
+  "propose_followup",
+  "propose_suggested_memory",
+  "remember_self_context",
+  "remove_gift_idea",
+  "restore_self_context",
+  "save_draft_to_gmail",
+  "suggest_general_action",
+  "undo_saved_item_capture",
+  "update_followup_status",
+  "update_general_action_status",
+  "update_person",
+  "update_self_context",
+]);
 
 /**
  * The tool result carried by an event, or null when the event is not one.
@@ -46,18 +90,271 @@ function toolResultOf(event: unknown): ToolResult | null {
   return candidate.data?.result ?? null;
 }
 
+/** Every tool result in a turn, including results emitted by an inline subagent. */
+export function toolResults(events: readonly unknown[]): ToolResult[] {
+  return events.flatMap((event) => {
+    const result = toolResultOf(event);
+    return result === null ? [] : [result];
+  });
+}
+
 /**
  * What a tool actually returned this turn — so an eval can assert on what Eve was *told*, not
  * only on what she said. An empty proposal pass, for instance, is only meaningful if the seam
  * really did return nothing.
  */
 export function toolOutputs(events: readonly unknown[], toolName: string): unknown[] {
-  const outputs: unknown[] = [];
-  for (const event of events) {
-    const result = toolResultOf(event);
-    if (result !== null && result.toolName === toolName) {
-      outputs.push(result.output);
+  return toolResults(events)
+    .filter((result) => result.toolName === toolName)
+    .map((result) => result.output);
+}
+
+/** Every authored tool call in a turn, including nested subagent events. */
+function toolCalls(events: readonly unknown[]): ToolCall[] {
+  return events.flatMap((event) => {
+    if (typeof event !== "object" || event === null) return [];
+
+    const candidate = event as {
+      type?: string;
+      data?: { actions?: unknown; event?: unknown };
+    };
+    if (candidate.type === "subagent.event") {
+      return toolCalls(candidate.data?.event === undefined ? [] : [candidate.data.event]);
     }
+    if (candidate.type !== "actions.requested" || !Array.isArray(candidate.data?.actions)) {
+      return [];
+    }
+
+    return candidate.data.actions.flatMap((action): ToolCall[] => {
+      if (typeof action !== "object" || action === null) return [];
+      const candidateAction = action as { kind?: unknown; toolName?: unknown; input?: unknown };
+      if (candidateAction.kind !== "tool-call" || typeof candidateAction.toolName !== "string") {
+        return [];
+      }
+      return [{ toolName: candidateAction.toolName, input: candidateAction.input }];
+    });
+  });
+}
+
+/** Tool names are a convenient public seam for recursive no-write assertions. */
+export function calledToolNames(events: readonly unknown[]): string[] {
+  return [
+    ...toolCalls(events).map((call) => call.toolName),
+    ...toolResults(events)
+      .map((result) => result.toolName)
+      .filter((toolName): toolName is string => typeof toolName === "string"),
+  ];
+}
+
+/** A single exhaustive no-write gate shared by all policy evals. */
+export function hasNoMutatingTools(events: readonly unknown[]): boolean {
+  return calledToolNames(events).every((toolName) => !MUTATING_TOOL_NAMES.has(toolName));
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Matches the proposal tool's one-or-more reviewed-memory grounding contract. */
+export function isNonEmptyUuidArray(value: unknown): boolean {
+  return (
+    Array.isArray(value) && value.length > 0 && value.every((entry) => UUID.test(String(entry)))
+  );
+}
+
+/** Capture's private default may be implicit or explicit, but never widened. */
+export function isPrivateOrOmitted(value: unknown): boolean {
+  return value === undefined || value === "private";
+}
+
+/** A parked clarification is healthy only when the event stream itself contains no failure. */
+export function hasNoRuntimeFailures(events: readonly unknown[]): boolean {
+  return events.every((event) => {
+    if (typeof event !== "object" || event === null) return true;
+    const candidate = event as { type?: unknown; data?: { event?: unknown } };
+    if (candidate.type === "subagent.event") {
+      return hasNoRuntimeFailures(
+        candidate.data?.event === undefined ? [] : [candidate.data.event],
+      );
+    }
+    return (
+      typeof candidate.type !== "string" ||
+      (!candidate.type.endsWith(".failed") &&
+        !candidate.type.endsWith(".errored") &&
+        candidate.type !== "error")
+    );
+  });
+}
+
+/** Proves Capture kept an unresolved named Person inside its reviewable clarification path. */
+export function hasCapturePersonClarification(events: readonly unknown[]): boolean {
+  return toolOutputs(events, "capture_saved_item").some(
+    (output) =>
+      isRecord(output) &&
+      isRecord(output.clarification) &&
+      output.clarification.field === "person" &&
+      typeof output.clarification.question === "string" &&
+      output.clarification.question.length > 0,
+  );
+}
+
+/**
+ * Proves an Asset Action proposal is grounded in the reviewed detail the read path
+ * actually returned. Search can return the detail directly or first resolve the Asset
+ * anchor and then load its facts with get_asset_context; both paths must converge on
+ * the same Asset id and exact memory id carried by the pending Suggested Action.
+ */
+export function hasGroundedPendingAssetProposal(
+  events: readonly unknown[],
+  expected: { assetName: string; detailLabel: RegExp },
+): boolean {
+  const search = toolOutputs(events, "search_assets").find(isRecord);
+  const context = toolOutputs(events, "get_asset_context").find(isRecord);
+  const proposal = toolOutputs(events, "propose_asset_actions").find(isRecord);
+  if (!search || !proposal) return false;
+
+  const searchResults = arrayValue(search, "results");
+  const searchDetail = searchResults.find(
+    (entry) =>
+      isRecord(entry) &&
+      entry.recordKind === "asset_memory" &&
+      entry.assetName === expected.assetName &&
+      expected.detailLabel.test(String(entry.label)) &&
+      entry.trustLevel === "asset_fact",
+  );
+  const contextDetail = context
+    ? arrayValue(context, "facts").find(
+        (entry) => isRecord(entry) && expected.detailLabel.test(String(entry.label)),
+      )
+    : null;
+  const detailMemoryId = isRecord(searchDetail)
+    ? nestedString(searchDetail, "recordId")
+    : isRecord(contextDetail)
+      ? nestedString(contextDetail, "memoryId")
+      : null;
+  const groundedAssetId = isRecord(searchDetail)
+    ? nestedString(searchDetail, "assetId")
+    : context
+      ? nestedString(context, "assetId")
+      : null;
+  const proposalAssetId = nestedString(proposal, "asset", "id");
+  const searchResolvedAsset = searchResults.some(
+    (entry) =>
+      isRecord(entry) &&
+      nestedString(entry, "assetId") === groundedAssetId &&
+      (entry.assetName === expected.assetName || entry.asset === expected.assetName),
+  );
+  if (
+    detailMemoryId === null ||
+    proposalAssetId === null ||
+    groundedAssetId !== proposalAssetId ||
+    !searchResolvedAsset
+  ) {
+    return false;
   }
-  return outputs;
+
+  return arrayValue(proposal, "pending").some((entry) => {
+    if (!isRecord(entry)) return false;
+    const action = entry.action;
+    return (
+      entry.assetMemoryId === detailMemoryId &&
+      isRecord(action) &&
+      action.status === "suggested" &&
+      !("reminderSchedule" in action) &&
+      !("schedule" in action)
+    );
+  });
+}
+
+function arrayValue(value: Record<string, unknown>, key: string): unknown[] {
+  return Array.isArray(value[key]) ? value[key] : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function nestedString(value: Record<string, unknown>, ...path: string[]): string | null {
+  let current: unknown = value;
+  for (const key of path) {
+    if (!isRecord(current)) return null;
+    current = current[key];
+  }
+  return typeof current === "string" ? current : null;
+}
+
+/**
+ * True when some output of `toolName` is a record whose fields hold the exact
+ * expected values. An expected value that is a function is called with the
+ * field instead, so a shape check reads the same way as an equality check.
+ *
+ * Every eval that asserts "the tool returned exactly this" carried its own
+ * copy of the record guard plus field comparison. One helper here keeps those
+ * assertions readable and, unlike an eval file, unit-tested.
+ */
+export function someToolOutputHasFields(
+  events: readonly unknown[],
+  toolName: string,
+  expected: Record<string, unknown>,
+  ...path: string[]
+): boolean {
+  return toolOutputs(events, toolName).some((output) =>
+    hasFields(nestedRecord(output, ...path), expected),
+  );
+}
+
+export function hasFields(value: unknown, expected: Record<string, unknown>): boolean {
+  if (!isRecord(value)) return false;
+  return Object.entries(expected).every(([key, want]) =>
+    typeof want === "function" ? Boolean(want(value[key])) : value[key] === want,
+  );
+}
+
+export function isEmptyArray(value: unknown): boolean {
+  return Array.isArray(value) && value.length === 0;
+}
+
+function nestedRecord(value: unknown, ...path: string[]): unknown {
+  let current: unknown = value;
+  for (const key of path) {
+    if (!isRecord(current)) return null;
+    current = current[key];
+  }
+  return current;
+}
+
+/**
+ * The Suggested Memory proposal is grounded and reviewable: the search
+ * resolved exactly one person, the capture wrote a source record for that
+ * person, and the proposal names the same source record and person while the
+ * memory stays tentative behind a review card.
+ *
+ * This is the whole point of `propose_suggested_memory`: a card is not a saved
+ * fact, and a proposal that is not tied to the exact record and person the
+ * preceding calls resolved is not evidence of anything.
+ */
+export function hasGroundedSuggestedMemoryProposal(events: readonly unknown[]): boolean {
+  const search = toolOutputs(events, "search_people").find(isRecord);
+  const capture = toolOutputs(events, "capture_source_record").find(isRecord);
+  const proposal = toolOutputs(events, "propose_suggested_memory").find(isRecord);
+  if (!search || !capture || !proposal) return false;
+  if (search.requiresDisambiguation !== false) return false;
+
+  const personId = soleResolvedPersonId(search);
+  const sourceRecordId = nestedString(capture, "sourceRecord", "id");
+  if (personId === null || sourceRecordId === null) return false;
+
+  return (
+    sourceRecordId === nestedString(proposal, "sourceRecord", "id") &&
+    sourceRecordId === nestedString(proposal, "memory", "sourceRecordId") &&
+    personId === nestedString(capture, "linkedPersonId") &&
+    personId === nestedString(proposal, "memory", "personId") &&
+    nestedString(proposal, "memory", "status") === "suggested" &&
+    nestedString(proposal, "component", "type") === "suggested_memory_review"
+  );
+}
+
+/** The id of the one person a search resolved, or null if it was not exactly one. */
+function soleResolvedPersonId(search: Record<string, unknown>): string | null {
+  const people = search.people;
+  if (!Array.isArray(people) || people.length !== 1 || !isRecord(people[0])) return null;
+  return nestedString(people[0], "id");
 }

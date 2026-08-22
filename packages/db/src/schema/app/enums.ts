@@ -3,7 +3,13 @@ import { pgEnum } from "drizzle-orm/pg-core";
 
 export const accessStatus = pgEnum("access_status", ["pending", "granted", "denied"]);
 
-export const accessSource = pgEnum("access_source", ["bootstrap", "manual_grant", "beta_flag"]);
+export const accessSource = pgEnum("access_source", [
+  "bootstrap",
+  "self_hosted_bootstrap",
+  "household_invitation",
+  "manual_grant",
+  "beta_flag",
+]);
 
 export const selfContextOnboardingStatus = pgEnum("self_context_onboarding_status", [
   "not_started",
@@ -511,6 +517,15 @@ export const backgroundJobKind = pgEnum("background_job_kind", [
   "action_extraction",
   "context_fact_extraction",
   "reminder_push",
+  "owner_data_export",
+]);
+
+export const ownerDataExportJobStatus = pgEnum("owner_data_export_job_status", [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "expired",
 ]);
 
 export const backgroundJobDeliveryStatus = pgEnum("background_job_delivery_status", [

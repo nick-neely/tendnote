@@ -1,6 +1,17 @@
 import { defineEval } from "eve/evals";
-import { includes } from "eve/evals/expect";
+import { includes, satisfies } from "eve/evals/expect";
 import { NO_RAW_IDS, toolOutputs, without } from "../expectations";
+
+export function statesPurchaseLocationLimitation(reply: string) {
+  return (
+    /(?:no|not|don'?t|doesn'?t|isn'?t|nothing|never)[^.!?]{0,180}(?:where to buy|buying|purchase|retailer|seller|store)/i.test(
+      reply,
+    ) ||
+    /(?:can(?:not|'t) confirm)[^.!?]{0,80}(?:where to buy|retailer|seller|store)|(?:won't|will not) recommend[^.!?]{0,40}(?:retailer|seller|store)/i.test(
+      reply,
+    )
+  );
+}
 
 export default defineEval({
   description:
@@ -33,8 +44,9 @@ export default defineEval({
     // which is what saying "the records don't cover that" looks like.
     t.check(
       t.reply,
-      includes(
-        /(no|not|don'?t|doesn'?t|isn'?t|nothing|never)[^.!?]{0,80}(where to buy|buying|purchase|retailer|seller|store)/i,
+      satisfies(
+        (reply) => typeof reply === "string" && statesPurchaseLocationLimitation(reply),
+        "states that the records do not confirm a purchase location",
       ),
     );
     t.check(t.reply, includes(NO_RAW_IDS));

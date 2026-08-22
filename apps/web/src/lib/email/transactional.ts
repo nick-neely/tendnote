@@ -1,5 +1,3 @@
-import { HOUSEHOLD_SUPPORT_EMAIL } from "@tendnote/domain/household-governance";
-
 /** One rendered message, independent of who is going to carry it. */
 export type TransactionalEmailContent = {
   subject: string;
@@ -33,6 +31,13 @@ export class EmailTransportUnavailableError extends Error {
   override name = "EmailTransportUnavailableError";
 }
 
+/** A non-routable address used only by tests and local operator logs. */
+export const SYNTHETIC_SUPPORT_EMAIL = "support@example.test";
+
+class EmailConfigurationError extends Error {
+  override name = "EmailConfigurationError";
+}
+
 /**
  * Who Tendnote's transactional mail is from, and where a reply lands.
  *
@@ -49,7 +54,10 @@ export class EmailTransportUnavailableError extends Error {
  */
 export type TransactionalSenderIdentity = { from: string; replyTo: string };
 
-export const DEFAULT_EMAIL_FROM = "Tendnote <notifications@mail.stacklet.app>";
+// A reserved example domain prevents a fresh clone from sending as a
+// maintainer-owned address. Operators must set this and the reply address for
+// a real deployment (see docs/email-setup.md).
+export const DEFAULT_EMAIL_FROM = "Tendnote <notifications@mail.tendnote.example>";
 
 /**
  * Exactly the variables this module reads, named rather than taking the whole
@@ -63,10 +71,43 @@ export type EmailEnvironment = {
   TENDNOTE_EMAIL_REPLY_TO?: string;
 };
 
+/**
+ * The address shown to a person and used for replies comes from the operator's
+ * explicit configuration. A production deployment without it has no truthful
+ * recovery door, so it returns `null`. A reserved test address is available only
+ * to the test runner and the non-sending operator-log path; it can never satisfy
+ * a real provider send.
+ */
+export function resolveSupportEmail(
+  env: Pick<EmailEnvironment, "NODE_ENV" | "RESEND_API_KEY" | "TENDNOTE_EMAIL_REPLY_TO">,
+): string | null {
+  const configured = env.TENDNOTE_EMAIL_REPLY_TO?.trim();
+  if (configured) return configured;
+  const hasRealProvider = Boolean(env.RESEND_API_KEY?.trim());
+  if (env.NODE_ENV === "test" || (env.NODE_ENV !== "production" && !hasRealProvider)) {
+    return SYNTHETIC_SUPPORT_EMAIL;
+  }
+  return null;
+}
+
 export function resolveSenderIdentity(env: EmailEnvironment): TransactionalSenderIdentity {
+  const replyTo = resolveSupportEmail(env);
+  if (!replyTo) {
+    throw new EmailConfigurationError(
+      "TENDNOTE_EMAIL_REPLY_TO is not set, so Tendnote cannot send or display a recovery contact. Add the operator support mailbox to this deployment's environment (see docs/email-setup.md).",
+    );
+  }
+
+  const from = env.TENDNOTE_EMAIL_FROM?.trim();
+  if (!from && (env.NODE_ENV === "production" || env.RESEND_API_KEY?.trim())) {
+    throw new EmailConfigurationError(
+      "TENDNOTE_EMAIL_FROM is not set, so Tendnote cannot send transactional email. Add the operator sender identity to this deployment's environment (see docs/email-setup.md).",
+    );
+  }
+
   return {
-    from: env.TENDNOTE_EMAIL_FROM?.trim() || DEFAULT_EMAIL_FROM,
-    replyTo: env.TENDNOTE_EMAIL_REPLY_TO?.trim() || HOUSEHOLD_SUPPORT_EMAIL,
+    from: from || DEFAULT_EMAIL_FROM,
+    replyTo,
   };
 }
 
@@ -89,7 +130,23 @@ export function decideTransactionalTransport(env: EmailEnvironment): Transaction
   if (env.NODE_ENV === "test") return { kind: "operator-log" };
 
   const apiKey = env.RESEND_API_KEY?.trim();
-  if (apiKey) return { kind: "resend", apiKey };
+  if (apiKey) {
+    if (!resolveSupportEmail(env)) {
+      return {
+        kind: "unavailable",
+        reason:
+          "TENDNOTE_EMAIL_REPLY_TO is not set, so Tendnote cannot send transactional email. Add the operator support mailbox to this deployment's environment (see docs/email-setup.md).",
+      };
+    }
+    if (!env.TENDNOTE_EMAIL_FROM?.trim()) {
+      return {
+        kind: "unavailable",
+        reason:
+          "TENDNOTE_EMAIL_FROM is not set, so Tendnote cannot send transactional email. Add the operator sender identity to this deployment's environment (see docs/email-setup.md).",
+      };
+    }
+    return { kind: "resend", apiKey };
+  }
 
   // Production with no key is a misconfiguration, not a mode. It fails loudly
   // and by name rather than falling back to a transport that would write a live

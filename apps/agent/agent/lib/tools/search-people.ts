@@ -27,9 +27,10 @@ const peopleSearch = {
     const matches = people.map((person) => ({
       id: person.id,
       displayName: person.displayName,
+      // Relationship type can distinguish otherwise identical names. Profile and
+      // closeness fields are context, not identity, and must stay behind their
+      // visibility-aware read seams instead of entering the model through lookup.
       relationshipType: person.relationshipType,
-      closenessLevel: person.closenessLevel,
-      profileBlurb: person.profileBlurb,
     }));
 
     return {

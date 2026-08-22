@@ -1,9 +1,25 @@
+import {
+  type AdmissionResolverDependencies,
+  createAdmissionResolver,
+} from "@tendnote/db/queries/access-profiles";
 import { type AuthFn, ForbiddenError, localDev, UnauthenticatedError } from "eve/channels/auth";
 
-type SessionAuthDependencies = {
-  getSession: (headers: Headers) => Promise<{ user: { id: string } } | null>;
-  checkAccess: (userId: string) => Promise<{ admitted: boolean }>;
+export type SessionAuthDependencies = {
+  getSession: (headers: Headers) => Promise<{ user: { id: string; email?: string | null } } | null>;
+  /** Shared Web/Eve admission resolver; checkAccess is retained for narrow callers/tests. */
+  resolveAccess?: (entity: {
+    userId: string;
+    email?: string | null;
+  }) => Promise<{ admitted: boolean }>;
+  checkAccess?: (userId: string) => Promise<{ admitted: boolean }>;
   checkIngressBudget: (userId: string) => Promise<{ allowed: boolean }>;
+};
+
+export type TendnoteAdmissionAuthDependencies = Omit<
+  SessionAuthDependencies,
+  "resolveAccess" | "checkAccess"
+> & {
+  admission: AdmissionResolverDependencies;
 };
 
 /**
@@ -26,7 +42,12 @@ export function createTendnoteSessionAuth(deps: SessionAuthDependencies): AuthFn
     if (!session) return null;
 
     const userId = session.user.id;
-    if (!(await deps.checkAccess(userId)).admitted) {
+    const access = deps.resolveAccess
+      ? await deps.resolveAccess({ userId, email: session.user.email })
+      : deps.checkAccess
+        ? await deps.checkAccess(userId)
+        : { admitted: false };
+    if (!access.admitted) {
       throw new ForbiddenError({
         code: "private_beta_access_required",
         message: "Private Beta Access is required to use the assistant.",
@@ -51,7 +72,23 @@ export function createTendnoteSessionAuth(deps: SessionAuthDependencies): AuthFn
   };
 }
 
-type LocalOwnerEnvironment = { TENDNOTE_DEV_OWNER_USER_ID?: string };
+/** Build Eve's session boundary over the same persisted admission resolver as Web. */
+export function createTendnoteAdmissionAuth(
+  deps: TendnoteAdmissionAuthDependencies,
+): AuthFn<Request> {
+  const admission = createAdmissionResolver(deps.admission);
+
+  return createTendnoteSessionAuth({
+    getSession: deps.getSession,
+    resolveAccess: (entity) => admission.resolveAccess(entity),
+    checkIngressBudget: deps.checkIngressBudget,
+  });
+}
+
+type LocalOwnerEnvironment = {
+  TENDNOTE_DEV_OWNER_USER_ID?: string;
+  [key: string]: string | undefined;
+};
 
 /** Preserve the demo owner only behind Eve's loopback-only local authenticator. */
 export function createLocalOwnerAuth(

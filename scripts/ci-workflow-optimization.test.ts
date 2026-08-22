@@ -26,7 +26,8 @@ describe("CI workflow optimization contract", () => {
     expect(ruleset.conditions.ref_name.include).toContain("~DEFAULT_BRANCH");
     expect(rules.has("deletion")).toBe(true);
     expect(rules.has("non_fast_forward")).toBe(true);
-    expect(pullRequest.parameters.required_approving_review_count).toBe(0);
+    expect(pullRequest.parameters.required_approving_review_count).toBe(1);
+    expect(pullRequest.parameters.require_code_owner_review).toBe(true);
     expect(pullRequest.parameters.required_review_thread_resolution).toBe(true);
     expect(pullRequest.parameters.allowed_merge_methods).toEqual(["squash", "rebase"]);
     expect(statusChecks.parameters.strict_required_status_checks_policy).toBe(true);
@@ -35,13 +36,7 @@ describe("CI workflow optimization contract", () => {
       "Full CI qualification",
       "Vercel",
     ]);
-    expect(ruleset.bypass_actors).toEqual([
-      {
-        actor_id: 5,
-        actor_type: "RepositoryRole",
-        bypass_mode: "pull_request",
-      },
-    ]);
+    expect(ruleset.bypass_actors).toEqual([]);
   });
 
   it("keeps one stable PR gate and does not verify documentation-only changes", () => {
@@ -229,9 +224,8 @@ describe("CI workflow optimization contract", () => {
     expect(workflow).toContain("vercel/repository-dispatch/actions/status@v1");
     expect(workflow).toContain("vercel/repository-dispatch/actions/checkout@v1");
     expect(workflow).toContain("github.event.client_payload.environment == 'production'");
-    expect(workflow).toContain(
-      "github.event.client_payload.project.id == 'prj_hdGusP01mnLoDvQc3CQ1gha2at7E'",
-    );
+    expect(workflow).toContain("github.event.client_payload.project.id == vars.VERCEL_PROJECT_ID");
+    expect(workflow).not.toMatch(/github\.event\.client_payload\.project\.id\s*==\s*'prj_/);
     expect(workflow).toContain("github.event.client_payload.git.ref == 'main'");
     expect(workflow).toContain("github.event.client_payload.state.type == 'ready'");
     expect(workflow).toContain("pnpm install --frozen-lockfile --filter @tendnote/db...");

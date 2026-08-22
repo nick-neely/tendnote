@@ -85,9 +85,14 @@ export default defineTool({
         rendered: "The matching assets and details are shown to the user in a results card.",
         guidance:
           "`assetId` and `memoryId` are handles for your follow-up tool calls " +
-          "(`get_asset_context`, `propose_asset_actions`) — copy them exactly. Never " +
-          "write an id in your reply, and never guess one: an asset you did not find " +
-          "here has no id you can use.",
+          "(`get_asset_context`, `propose_asset_actions`) — copy them exactly. If the " +
+          "user asks for reminder timing or you are about to recommend an inferred " +
+          "reminder, call `propose_asset_actions` immediately after one result resolves " +
+          "the Asset, passing `assetMemoryIds: [memoryId]` for the relevant reviewed " +
+          "dated or recurring detail, before replying; do not omit that grounding, stop " +
+          "after `get_asset_context`, or answer with a date alone. Never write an " +
+          "id in your reply, and never guess one: an asset you did not find here has no " +
+          "id you can use.",
       },
     };
   },

@@ -4,6 +4,31 @@ Tendnote stores personal context about real people, the things you own, and your
 
 This document describes the boundaries the code actually enforces. Where a boundary is deterministic — enforced in the query layer rather than by a model or a prompt — that is called out explicitly, because it is the difference between a guarantee and a hope.
 
+For the private vulnerability reporting path, see the root
+[`SECURITY.md`](../SECURITY.md). This document is product and deployment
+guidance, not a substitute for that reporting policy.
+
+## Deterministic controls and their limits
+
+The following controls are implemented in application code and are the
+authoritative boundaries for the corresponding operations:
+
+| Control | Boundary enforced by the application |
+| --- | --- |
+| **Query** | Owner, visibility, lifecycle, sensitivity, and memory-status filters are applied in owner-scoped queries before ranking or rendering. |
+| **Ownership** | Better Auth identifies the authenticated session, and shared mutation/query entry points check the owner or household membership before reading or writing. Web and Eve use the same persisted identity and access decision. |
+| **Review** | Model-originated facts and actions remain review artifacts until a person accepts them; persisted outcomes retain source references rather than relying on model recollection. |
+| **Approval** | External drafts and sends require an explicit approval step. Gmail draft creation is an externalization of an approved Tendnote draft, not a model-directed side effect. |
+| **Fail closed** | Missing or invalid authentication, denied scope, invalid self-hosted admission configuration, unavailable hosted admission flags, and unavailable required rate-limit state do not open access. |
+
+These controls do not make model behavior authoritative. The `privacy_guard`
+subagent can review output but cannot grant access, and the web-research
+egress rule is a model-policy boundary: an eval checks that policy for focused
+cases, while deterministic query filters remain the access boundary. Evaluation
+and test results are evidence about the cases they exercise; they do not prove
+that every prompt, model version, provider, deployment, or integration behaves
+the same way.
+
 ## Core principles
 
 | Principle | What it means in code |
@@ -21,6 +46,36 @@ This document describes the boundaries the code actually enforces. Where a bound
 - Never commit `.env` files or personal seed data. `.env*` is gitignored except the `.env.example` templates.
 - Normal `pnpm verify` never requires live Google, Discord, or model credentials, and never touches a live queue.
 - The dev fallback owner (`demo-user`) exists only behind Eve's **loopback-only** local authenticator (ADR 0194). The `/api/dev/demo-session` bridge is unavailable in production.
+
+## Self-host operator responsibilities
+
+The supported self-host shape is the operator's own Vercel deployment with the
+operator's own Neon database, Redis service, model credentials, and OAuth
+applications (ADR 0225). Tendnote's code does not manage the surrounding
+environment. Each operator is responsible for:
+
+- **Infrastructure accounts and access:** protect Vercel, database, Redis,
+  OAuth, mail, and model-provider accounts with MFA and least-privilege access;
+  review who can deploy, read logs, or change environment variables.
+- **Credentials and rotation:** keep `BETTER_AUTH_SECRET`, `DATABASE_URL`,
+  `REDIS_URL`, OAuth secrets, mail credentials, model-provider keys, and other
+  deployment values in the platform's secret store; never commit them, and
+  rotate or revoke them after an exposure, staff change, or provider event.
+- **Database and Redis access:** restrict network and account access, apply
+  migrations deliberately, protect session/rate-limit state, and never point
+  local development or eval databases at production data.
+- **Model configuration and cost:** choose the model provider and model
+  configuration, scope its credentials, set provider budgets and usage alerts,
+  and decide how model-provider logs and retention are handled.
+- **Backups and recovery:** configure encrypted database backups, retention, and
+  deletion rules; test restoration and account/household recovery before it is
+  needed; protect backup copies as sensitive data.
+- **Admission and access control:** set the explicit hosted or self-hosted
+  admission mode and, for self-hosting, the normalized bootstrap-owner email;
+  review invitations, household membership, owner access, and deployment logs.
+- **Security updates:** monitor GitHub, Vercel, Neon, Redis, OAuth, mail, and
+  model-provider notices; apply application and dependency updates, rotate
+  affected credentials, and verify the deployment after security changes.
 
 ## Identity and access
 

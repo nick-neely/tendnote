@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nick-neely/tendnote/blob/main/docs/phase-9a/cla-gate-proof.schema.json",
+  "title": "Redacted CLA gate qualification evidence",
+  "description": "A public-safe shape for recording an observed CLA status and synthetic disposable cases. It intentionally has no signer, contact, agreement-record, Gist, or account fields. The shared claCheck object pins the observed status context and GitHub integration_id once; placeholders and guessed values are invalid.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "repository",
+    "commit",
+    "agreement",
+    "ruleset",
+    "claCheck",
+    "cases",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "repository": {
+      "const": "nick-neely/tendnote"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "agreement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "sha256"],
+      "properties": {
+        "version": {
+          "const": "1.0"
+        },
+        "sha256": {
+          "const": "c3a8e1828d9d573dedba7ddb9e38fb043032532777db9e6028c4b99e4a5545ec"
+        }
+      }
+    },
+    "ruleset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "observedAt", "requiredStatusContexts"],
+      "properties": {
+        "id": {
+          "const": 19995472
+        },
+        "name": {
+          "const": "Protect main"
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requiredStatusContexts": {
+          "type": "array",
+          "const": ["Verify", "Full CI qualification", "Vercel"]
+        }
+      }
+    },
+    "claCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statusContext", "integrationId"],
+      "properties": {
+        "statusContext": {
+          "type": "string",
+          "pattern": "^(?!CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE$)\\S(?:.*\\S)?$"
+        },
+        "integrationId": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "contains": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": { "kind": { "const": "unsigned" } }
+      },
+      "minContains": 1,
+      "maxContains": 1,
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "const": "accepted" } }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "const": "employer" } }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "const": "corporate" } }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "proofId", "status", "outcome", "observedAt", "identity"],
+        "properties": {
+          "kind": {
+            "enum": ["unsigned", "accepted", "employer", "corporate"]
+          },
+          "proofId": {
+            "type": "string",
+            "pattern": "^redacted-[a-z0-9-]+$"
+          },
+          "status": {
+            "enum": ["failure", "pending", "success"]
+          },
+          "outcome": {
+            "enum": ["open-unmergeable", "eligible"]
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "identity": {
+            "const": "redacted"
+          }
+        },
+        "oneOf": [
+          {
+            "required": ["kind", "status", "outcome"],
+            "properties": {
+              "kind": { "const": "unsigned" },
+              "status": { "enum": ["failure", "pending"] },
+              "outcome": { "const": "open-unmergeable" }
+            }
+          },
+          {
+            "required": ["kind", "status", "outcome"],
+            "properties": {
+              "kind": { "const": "accepted" },
+              "status": { "const": "success" },
+              "outcome": { "const": "eligible" }
+            }
+          },
+          {
+            "required": ["kind", "status", "outcome"],
+            "properties": {
+              "kind": { "const": "employer" },
+              "status": { "const": "success" },
+              "outcome": { "const": "eligible" }
+            }
+          },
+          {
+            "required": ["kind", "status", "outcome"],
+            "properties": {
+              "kind": { "const": "corporate" },
+              "status": { "const": "success" },
+              "outcome": { "const": "eligible" }
+            }
+          }
+        ]
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identities",
+        "contactDetails",
+        "acceptanceRecords",
+        "temporaryPullRequests",
+        "gistReferences"
+      ],
+      "properties": {
+        "identities": {
+          "const": true
+        },
+        "contactDetails": {
+          "const": true
+        },
+        "acceptanceRecords": {
+          "const": true
+        },
+        "temporaryPullRequests": {
+          "const": true
+        },
+        "gistReferences": {
+          "const": true
+        }
+      }
+    }
+  }
+}

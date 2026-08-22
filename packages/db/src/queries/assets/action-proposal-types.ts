@@ -50,6 +50,8 @@ export type AssetActionProposal = {
 export type AssetActionProposalResult = {
   asset: Asset;
   proposed: AssetActionProposal[];
+  /** Current pending review artifacts for this Asset, including proposals from prior passes. */
+  pending: PendingAssetActionProposal[];
   /** Reviewed memories skipped because a prior proposal already settled them. */
   alreadySpokenFor: number;
 };

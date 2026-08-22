@@ -1,6 +1,14 @@
 import { defineEval } from "eve/evals";
-import { includes } from "eve/evals/expect";
-import { without } from "../expectations";
+import { satisfies } from "eve/evals/expect";
+
+export function isPendingAssetReviewReply(reply: string) {
+  const pending = /review|accept|confirm|approve|waiting for you/i.test(reply);
+  const alreadySaved =
+    /I(’|')?ve (saved|logged|recorded|noted|stored|added)|I have (saved|logged|recorded|noted|stored)|saved it|logged it|noted it down|it(’|')?s (?:already |now )?(saved|stored|on file now)|now (know|remember)|I(’|')?ll remember/i.test(
+      reply,
+    );
+  return pending && !alreadySaved;
+}
 
 /**
  * Asset facts are proposed, never saved (#196 story 57, #205).
@@ -37,13 +45,10 @@ export default defineEval({
     // Never a claim of a durable save — in any of the words the model reaches for.
     t.check(
       t.reply,
-      includes(
-        without(
-          "I(’|')?ve (saved|logged|recorded|noted|stored|added)|I have (saved|logged|recorded|noted|stored)|saved it|logged it|noted it down|it(’|')?s (saved|stored|on file now)|now (know|remember)|I(’|')?ll remember",
-        ),
+      satisfies(
+        (reply) => typeof reply === "string" && isPendingAssetReviewReply(reply),
+        "states pending review without claiming the fact is already saved",
       ),
     );
-    // Instead: it is waiting for the user.
-    t.check(t.reply, includes(/review|accept|confirm|approve|waiting for you/i));
   },
 });

@@ -6,7 +6,7 @@ import { createAccessProfileQueries } from "./access-profiles/queries";
 const FIRST_USER = "user-first";
 const SECOND_USER = "user-second";
 
-/** A persisted, admitted profile — the initial allowed owner from bootstrap. */
+/** A persisted, admitted profile — the explicit local/bootstrap fixture. */
 function grantedProfileFixture(userId: string): AccessProfile {
   const now = new Date("2026-06-25T12:00:00.000Z");
 
@@ -24,26 +24,36 @@ function grantedProfileFixture(userId: string): AccessProfile {
 }
 
 describe("access profile queries", () => {
-  it("bootstraps the first user as the initial allowed owner", async () => {
+  it("starts every new user pending without an arrival-order bootstrap", async () => {
     const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
 
     const profile = await queries.ensureAccessProfile({ userId: FIRST_USER });
 
     expect(profile.userId).toBe(FIRST_USER);
-    expect(profile.status).toBe("granted");
-    expect(profile.source).toBe("bootstrap");
-    expect(profile.grantedAt).toBeInstanceOf(Date);
+    expect(profile.status).toBe("pending");
+    expect(profile.source).toBeNull();
+    expect(profile.grantedAt).toBeNull();
   });
 
-  it("routes later signups to pending access", async () => {
+  it("keeps unrelated signups pending", async () => {
     const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
 
-    await queries.ensureAccessProfile({ userId: FIRST_USER });
+    const first = await queries.ensureAccessProfile({ userId: FIRST_USER });
     const second = await queries.ensureAccessProfile({ userId: SECOND_USER });
 
+    expect(first.status).toBe("pending");
     expect(second.status).toBe("pending");
     expect(second.source).toBeNull();
     expect(second.grantedAt).toBeNull();
+  });
+
+  it("keeps an explicit local-development owner mechanism available", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+
+    const profile = await queries.ensureLocalDevelopmentAccessProfile({ userId: FIRST_USER });
+
+    expect(profile.status).toBe("granted");
+    expect(profile.source).toBe("bootstrap");
   });
 
   it("is idempotent and returns the existing profile without re-bootstrapping", async () => {
@@ -57,15 +67,15 @@ describe("access profile queries", () => {
     expect(again.status).toBe("pending");
   });
 
-  it("admits only one bootstrap owner even when one already exists", async () => {
-    // A profile already holds the bootstrap, modelling a first signup that won.
+  it("does not let the old bootstrap insert path elect a production owner", async () => {
     const store = createInMemoryAccessProfileStore();
     const queries = createAccessProfileQueries(store);
 
-    const first = await queries.ensureAccessProfile({ userId: FIRST_USER });
+    const first = await queries.ensureLocalDevelopmentAccessProfile({ userId: FIRST_USER });
     expect(first.source).toBe("bootstrap");
 
-    // The store rejects a second bootstrap insert, so the later user lands pending.
+    // Historical/local bootstrap rows remain constrained, but normal profile
+    // creation never attempts that source.
     const second = await store.insertIfAbsent({
       userId: SECOND_USER,
       status: "granted",
@@ -76,6 +86,22 @@ describe("access profile queries", () => {
 
     const settled = await queries.ensureAccessProfile({ userId: SECOND_USER });
     expect(settled.status).toBe("pending");
+  });
+
+  it("persists a distinct self-hosted bootstrap source", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+
+    const granted = await queries.grantAccess({
+      userId: FIRST_USER,
+      source: "self_hosted_bootstrap",
+    });
+
+    expect(granted.status).toBe("granted");
+    expect(granted.source).toBe("self_hosted_bootstrap");
+    await expect(queries.checkAccess({ userId: FIRST_USER })).resolves.toMatchObject({
+      admitted: true,
+      profile: { source: "self_hosted_bootstrap" },
+    });
   });
 
   it("admits a persisted granted user through the shared access-check seam", async () => {
@@ -105,7 +131,7 @@ describe("access profile queries", () => {
   it("lists only granted principals for owner-scoped background work", async () => {
     const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
 
-    await queries.ensureAccessProfile({ userId: FIRST_USER });
+    await queries.ensureLocalDevelopmentAccessProfile({ userId: FIRST_USER });
     await queries.ensureAccessProfile({ userId: SECOND_USER });
 
     await expect(queries.listAdmittedOwnerUserIds()).resolves.toEqual([FIRST_USER]);

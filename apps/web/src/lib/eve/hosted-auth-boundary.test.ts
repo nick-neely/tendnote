@@ -11,7 +11,7 @@ describe("hosted Eve authentication boundary", () => {
     const channel = readFileSync(join(agentRoot, "agent/channels/eve.ts"), "utf8");
 
     expect(nextConfig).toContain("withEve");
-    expect(channel).toContain("createTendnoteSessionAuth");
+    expect(channel).toContain("createTendnoteAdmissionAuth");
     expect(channel).toContain("createLocalOwnerAuth");
     expect(channel).not.toContain("x-tendnote-owner-id");
   });

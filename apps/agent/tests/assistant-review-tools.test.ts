@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { RENDERED_TOOL_NAMES } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
+import { expectAllMatch } from "./instruction-expectations";
 import { authoredInstructions } from "./instructions-source";
 import { authorsTool, effectiveToolSource } from "./tool-source";
 
@@ -96,13 +97,44 @@ describe("suggested-memory review tools return persisted ids and status", () => 
   });
 });
 
+describe("review-gated proposal producers preserve their required handoff", () => {
+  it("requires a resolved person and a source-first Suggested Memory proposal", () => {
+    const source = readTool("propose_suggested_memory");
+
+    // A promise in prose is not the review artifact. The producer must be reachable
+    // only after identity and grounding have been resolved, and the model must call it
+    // in the same turn before it answers.
+    expectAllMatch(source, [
+      /search_people/,
+      /capture_source_record/,
+      /same turn|immediately|must call/i,
+      /review card|reviewable/i,
+      /never (an )?approved|nothing (is|was) saved/i,
+    ]);
+  });
+
+  it("requires inferred Asset timing to use the review proposal capability", () => {
+    const source = readTool("propose_asset_actions");
+
+    // Reading an Asset explains its details; it does not create the promised review
+    // item. The timing recommendation must cross the owning proposal seam, whose
+    // result remains suggested rather than an active Action or schedule.
+    expectAllMatch(source, [
+      /inferred|recommend|suggest/i,
+      /call .*propose_asset_actions|use .*propose_asset_actions/i,
+      /same turn|immediately|must call/i,
+      /review card|reviewable/i,
+      /never creates an active action|not an active action/i,
+      /reminder schedule|schedule/i,
+    ]);
+  });
+});
+
 describe("active follow-up tools are thin wrappers returning compact references", () => {
   it("create_followup requires a resolved person, reason, and concrete dueAt", () => {
     const source = readTool("create_followup");
     expect(source).toContain("createFollowup");
-    expect(source).toMatch(/personId/);
-    expect(source).toMatch(/reason/);
-    expect(source).toMatch(/dueAt/);
+    expectAllMatch(source, [/personId/, /reason/, /dueAt/]);
     // Returns a compact persisted reference, not a raw model object.
     expect(source).toMatch(/id:\s*followup\.id/);
     expect(source).toMatch(/status:\s*followup\.status/);
@@ -196,33 +228,42 @@ describe("context-aware capture", () => {
 
 describe("instructions steer capture vs save vs review", () => {
   it("distinguishes casual capture from explicit memory and disambiguation", () => {
-    expect(instructions).toMatch(/capture_source_record/);
-    expect(instructions).toMatch(/capture_memory/);
-    expect(instructions).toMatch(/disambiguate/i);
-    expect(instructions).toMatch(/[Nn]ever invent a durable fact/);
+    expectAllMatch(instructions, [
+      /capture_source_record/,
+      /capture_memory/,
+      /disambiguate/i,
+      /[Nn]ever invent a durable fact/,
+    ]);
   });
 
   it("distinguishes exact recall, semantic recall, identity lookup, and person context", () => {
-    expect(instructions).toMatch(/search_relationship_context/);
-    expect(instructions).toMatch(/search_semantic_context/);
-    expect(instructions).toMatch(/search_people/);
-    expect(instructions).toMatch(/get_person_context/);
-    expect(instructions).toMatch(/exact stored-context recall/i);
-    expect(instructions).toMatch(/fuzzy stored-context recall/i);
-    expect(instructions).toMatch(/meaning rather than exact wording/i);
+    expectAllMatch(instructions, [
+      /search_relationship_context/,
+      /search_semantic_context/,
+      /search_people/,
+      /get_person_context/,
+      /exact stored-context recall/i,
+      /fuzzy stored-context recall/i,
+      /meaning rather than exact wording/i,
+      /never batch the lookup and its dependent call in parallel/i,
+    ]);
   });
 
   it("keeps semantic recall separate from proactive agenda ranking", () => {
-    expect(instructions).toMatch(/Do not use semantic retrieval/i);
-    expect(instructions).toMatch(/who should I check in with/i);
-    expect(instructions).toMatch(/get_relationship_agenda/i);
+    expectAllMatch(instructions, [
+      /Do not use semantic retrieval/i,
+      /who should I check in with/i,
+      /get_relationship_agenda/i,
+    ]);
   });
 
   it("names the review tools and frames suggestions as tentative until approved", () => {
-    expect(instructions).toMatch(/get_suggested_memory_review/);
-    expect(instructions).toMatch(/approve_suggested_memory/);
-    expect(instructions).toMatch(/dismiss_suggested_memory/);
-    expect(instructions).toMatch(/tentative until the user approves/i);
+    expectAllMatch(instructions, [
+      /get_suggested_memory_review/,
+      /approve_suggested_memory/,
+      /dismiss_suggested_memory/,
+      /tentative until the user approves/i,
+    ]);
   });
 
   it("steers 'what do I have to review' to the list tool so the cards render", () => {
@@ -232,9 +273,11 @@ describe("instructions steer capture vs save vs review", () => {
   });
 
   it("names the follow-up tools and gates creation on an explicit ask", () => {
-    expect(instructions).toMatch(/create_followup/);
-    expect(instructions).toMatch(/list_due_followups/);
-    expect(instructions).toMatch(/update_followup_status/);
+    expectAllMatch(instructions, [
+      /create_followup/,
+      /list_due_followups/,
+      /update_followup_status/,
+    ]);
     // Eve must not invent active reminders.
     expect(instructions).toMatch(/only when the user explicitly asks/i);
     expect(instructions).toMatch(/[Nn]ever invent an active reminder/);
@@ -250,24 +293,30 @@ describe("instructions steer capture vs save vs review", () => {
   });
 
   it("routes broad relationship horizon asks to the read-only agenda", () => {
-    expect(instructions).toMatch(/get_relationship_agenda/);
-    expect(instructions).toMatch(/broad relationship/i);
-    expect(instructions).toMatch(/read-only agenda/i);
+    expectAllMatch(instructions, [
+      /get_relationship_agenda/,
+      /broad relationship/i,
+      /read-only agenda/i,
+    ]);
   });
 
   it("distinguishes suggested follow-ups from active reminders and gates proposing to explicit flows", () => {
-    expect(instructions).toMatch(/propose_followup/);
-    expect(instructions).toMatch(/list_suggested_followup_reviews/);
-    expect(instructions).toMatch(/accept_suggested_followup/);
-    expect(instructions).toMatch(/dismiss_suggested_followup/);
-    expect(instructions).toMatch(/tentative proposal/i);
-    expect(instructions).toMatch(/only in an explicit flow/i);
+    expectAllMatch(instructions, [
+      /propose_followup/,
+      /list_suggested_followup_reviews/,
+      /accept_suggested_followup/,
+      /dismiss_suggested_followup/,
+      /tentative proposal/i,
+      /only in an explicit flow/i,
+    ]);
   });
 
   it("forbids background generation and cross-person agenda ranking of suggestions", () => {
-    expect(instructions).toMatch(/[Nn]ever scan everyone and invent follow-ups/);
-    expect(instructions).toMatch(/Do not use suggested-follow-up tools to propose reminders/i);
-    expect(instructions).toMatch(/read-only `get_relationship_agenda` tool/i);
+    expectAllMatch(instructions, [
+      /[Nn]ever scan everyone and invent follow-ups/,
+      /Do not use suggested-follow-up tools to propose reminders/i,
+      /read-only `get_relationship_agenda` tool/i,
+    ]);
   });
 
   it("tells the truth about the scheduled workflows that do generate follow-ups", () => {
@@ -279,9 +328,11 @@ describe("instructions steer capture vs save vs review", () => {
     // and the correction it now carries is that those suggestions are a separate family
     // Eve has no tool for.
     expect(instructions).not.toMatch(/no background follow-up generation/i);
-    expect(instructions).toMatch(/post-meeting aftercare/i);
-    expect(instructions).toMatch(/Calendar suggested follow-ups/i);
-    expect(instructions).toMatch(/no tool that lists or accepts them/i);
+    expectAllMatch(instructions, [
+      /post-meeting aftercare/i,
+      /Calendar suggested follow-ups/i,
+      /no tool that lists or accepts them/i,
+    ]);
   });
 
   it("excludes restricted context from proactive suggestion unless directly requested", () => {
@@ -300,9 +351,11 @@ describe("instructions steer capture vs save vs review", () => {
     // next call can name the exact record, and two tools tell the model to copy it.
     // The rule that survives is about the *reply*, so the instructions have to say
     // both halves: use them in calls, never write them to the user.
-    expect(instructions).toMatch(/handles for your next tool call/i);
-    expect(instructions).toMatch(/copy one exactly/i);
-    expect(instructions).toMatch(/never a raw id or a UUID/i);
+    expectAllMatch(instructions, [
+      /handles for your next tool call/i,
+      /copy one exactly/i,
+      /never a raw id or a UUID/i,
+    ]);
   });
 
   it("treats persisted ids, not conversation, as the source of truth", () => {

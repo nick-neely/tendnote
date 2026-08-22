@@ -1,9 +1,11 @@
+import { getLatestOwnerDataExportJob } from "@tendnote/db/queries/owner-data-export";
 import { listReminderInstallations } from "@tendnote/db/queries/reminders";
 import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { CalendarPreviewSection } from "@/components/account/calendar-preview-section";
+import { OwnerDataExportSection } from "@/components/account/owner-data-export-section";
 import { ProviderConnectionsSection } from "@/components/account/provider-connections-section";
 import { ReminderSettings } from "@/components/account/reminder-settings";
 import { AdmittedRoute } from "@/components/admitted-route";
@@ -154,12 +156,25 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
         <ReminderSettingsStream ownerUserId={ownerUserId} />
       </Suspense>
 
+      <Suspense fallback={<AccountRegionReserve label="Data export" />}>
+        <OwnerDataExportStream ownerUserId={ownerUserId} />
+      </Suspense>
+
       {/* Sign out */}
       <section className="flex flex-col gap-3 border-t pt-6">
         <SignOutButton className="w-full sm:w-auto sm:self-start" />
       </section>
     </div>
   );
+}
+
+async function OwnerDataExportStream({ ownerUserId }: { ownerUserId: string }) {
+  try {
+    const job = await getLatestOwnerDataExportJob(ownerUserId);
+    return <OwnerDataExportSection initialJob={job} />;
+  } catch {
+    return <AccountRegionUnavailable label="Data export" />;
+  }
 }
 
 /** One row shape for Account's durable sub-destinations, so they stay identical. */

@@ -14,6 +14,7 @@ import { defineEval } from "eve/evals";
 export default defineEval({
   description: "Broad relationship strategy uses grounded context without durable actions.",
   tags: ["deterministic", "behavior", "relationship-strategy"],
+  timeoutMs: 120_000,
   async test(t) {
     await t.send(
       "Who should I prioritize this week, and what thoughtful next action should I consider?",

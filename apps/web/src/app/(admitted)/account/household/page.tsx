@@ -12,6 +12,7 @@ import { AdmittedRoute } from "@/components/admitted-route";
 import { appDestination } from "@/components/app-destinations";
 import { Button } from "@/components/ui/button";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { resolveSupportEmail } from "@/lib/email/transactional";
 
 export default function HouseholdPage() {
   return (
@@ -51,6 +52,7 @@ export async function HouseholdContent() {
             ) : null
           }
           initialOverview={overview}
+          supportEmail={resolveSupportEmail(process.env)}
         />
       </HouseholdShell>
     );

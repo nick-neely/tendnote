@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "1.0",
+  "repository": "nick-neely/tendnote",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "agreement": {
+    "version": "1.0",
+    "sha256": "c3a8e1828d9d573dedba7ddb9e38fb043032532777db9e6028c4b99e4a5545ec"
+  },
+  "ruleset": {
+    "id": 19995472,
+    "name": "Protect main",
+    "observedAt": "2026-08-22T00:00:00Z",
+    "requiredStatusContexts": ["Verify", "Full CI qualification", "Vercel"]
+  },
+  "claCheck": {
+    "statusContext": "synthetic-cla-status",
+    "integrationId": 424242
+  },
+  "cases": [
+    {
+      "kind": "unsigned",
+      "proofId": "redacted-unsigned",
+      "status": "failure",
+      "outcome": "open-unmergeable",
+      "observedAt": "2026-08-22T00:01:00Z",
+      "identity": "redacted"
+    },
+    {
+      "kind": "accepted",
+      "proofId": "redacted-accepted",
+      "status": "success",
+      "outcome": "eligible",
+      "observedAt": "2026-08-22T00:02:00Z",
+      "identity": "redacted"
+    },
+    {
+      "kind": "employer",
+      "proofId": "redacted-employer",
+      "status": "success",
+      "outcome": "eligible",
+      "observedAt": "2026-08-22T00:03:00Z",
+      "identity": "redacted"
+    },
+    {
+      "kind": "corporate",
+      "proofId": "redacted-corporate",
+      "status": "success",
+      "outcome": "eligible",
+      "observedAt": "2026-08-22T00:04:00Z",
+      "identity": "redacted"
+    }
+  ],
+  "redaction": {
+    "identities": true,
+    "contactDetails": true,
+    "acceptanceRecords": true,
+    "temporaryPullRequests": true,
+    "gistReferences": true
+  }
+}

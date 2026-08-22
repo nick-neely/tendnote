@@ -1,5 +1,10 @@
 # Next.js 16.3 Preview: qualification, promotion, and reversal
 
+> **Historical qualification evidence.** Deployment IDs, aliases, and account
+> scopes below identify the run that produced this record. They are immutable
+> evidence, not current Tendnote configuration or a supported deployment target.
+> Current URLs must come from the configured canonical `BETTER_AUTH_URL`.
+
 This is the operator record for
 [#311](https://github.com/nick-neely/tendnote/issues/311) — qualifying the exact
 Next.js 16.3 Preview candidate, promoting it once through Tendnote's existing

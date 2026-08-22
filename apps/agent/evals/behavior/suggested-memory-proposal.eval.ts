@@ -1,6 +1,8 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
-import { without } from "../expectations";
+import { hasGroundedSuggestedMemoryProposal, without } from "../expectations";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * The in-between `propose_suggested_memory` was built to be.
@@ -26,11 +28,24 @@ export default defineEval({
     );
 
     t.succeeded();
-    t.calledTool("search_people", { input: { query: /Priya/i } });
+    t.calledTool("search_people", { input: { query: /Priya/i }, count: 1 });
     // The note is the grounding, and it has to exist before the proposal can reference it.
-    t.calledTool("capture_source_record");
-    t.calledTool("propose_suggested_memory", { input: { content: /Denver|sister/i } });
-    t.toolOrder(["capture_source_record", "propose_suggested_memory"]);
+    t.calledTool("capture_source_record", {
+      input: { personId: UUID, retainedContent: /launch checklist|Denver|sister/i },
+      count: 1,
+    });
+    t.calledTool("propose_suggested_memory", {
+      input: { personId: UUID, sourceRecordId: UUID, content: /Denver|sister/i },
+      count: 1,
+    });
+    t.toolOrder(["search_people", "capture_source_record", "propose_suggested_memory"]);
+    // The owning tool result is the proof that Eve did not merely promise a card: its
+    // suggested memory is grounded in the exact source record and the person that the
+    // preceding calls resolved. The persisted status is still tentative.
+    t.eventsSatisfy(
+      "the Suggested Memory proposal is grounded and reviewable",
+      hasGroundedSuggestedMemoryProposal,
+    );
     // "Remember" was never said, so nothing durable may be written.
     t.notCalledTool("capture_memory");
     t.notCalledTool("approve_suggested_memory");

@@ -51,6 +51,7 @@ export function HouseholdOverviewPanel({
   onOverviewChange,
   onAnnounce,
   contextSection,
+  supportEmail,
 }: {
   focusOnMount?: boolean;
   overview: HouseholdOverview;
@@ -61,6 +62,8 @@ export function HouseholdOverviewPanel({
   onAnnounce: (message: string) => void;
   /** Household Context, composed on the server. See {@link HouseholdSurface}. */
   contextSection?: React.ReactNode;
+  /** Operator-owned recovery contact, or null when production is misconfigured. */
+  supportEmail?: string | null;
 }) {
   const identityHeadingRef = useRef<HTMLHeadingElement>(null);
 
@@ -181,6 +184,7 @@ export function HouseholdOverviewPanel({
         onAnnounce={onAnnounce}
         onOverviewChange={onOverviewChange}
         overview={overview}
+        supportEmail={supportEmail}
       />
     </div>
   );

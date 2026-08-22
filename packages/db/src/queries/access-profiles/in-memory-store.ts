@@ -1,7 +1,12 @@
 import type { AccessProfile } from "@tendnote/domain";
+import type { InMemoryMutationLog } from "../households/in-memory-transaction";
+import { recordInMemoryMutation } from "../households/in-memory-transaction";
 import type { AccessProfileStore } from "./types";
 
-export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): AccessProfileStore {
+export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): AccessProfileStore & {
+  snapshot: () => AccessProfile[];
+  restore: (snapshot: AccessProfile[], mutations?: InMemoryMutationLog) => void;
+} {
   const profiles = new Map(seed.map((profile) => [profile.userId, profile]));
 
   function insert(input: Parameters<AccessProfileStore["create"]>[0]): AccessProfile {
@@ -18,20 +23,22 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       updatedAt: now,
     };
 
+    recordInMemoryMutation("accessProfiles", profile.userId);
     profiles.set(profile.userId, profile);
 
     return profile;
   }
 
   function hasConflict(input: Parameters<AccessProfileStore["create"]>[0]): boolean {
-    // Mirror the DB constraints: one profile per user, one bootstrap total.
+    // Mirror the DB constraints: one profile per user and one row for each
+    // singleton bootstrap source.
     if (profiles.has(input.userId)) {
       return true;
     }
 
     return (
-      input.source === "bootstrap" &&
-      [...profiles.values()].some((profile) => profile.source === "bootstrap")
+      (input.source === "bootstrap" || input.source === "self_hosted_bootstrap") &&
+      [...profiles.values()].some((profile) => profile.source === input.source)
     );
   }
 
@@ -69,7 +76,17 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
         return null;
       }
 
+      if (
+        (patch.source === "bootstrap" || patch.source === "self_hosted_bootstrap") &&
+        [...profiles.values()].some(
+          (profile) => profile.userId !== userId && profile.source === patch.source,
+        )
+      ) {
+        return null;
+      }
+
       const updated: AccessProfile = { ...existing, ...patch, updatedAt: new Date() };
+      recordInMemoryMutation("accessProfiles", userId);
       profiles.set(userId, updated);
 
       return updated;
@@ -90,9 +107,26 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
         selfContextOnboardingReminderAt: reminderAt,
         updatedAt: new Date(),
       };
+      recordInMemoryMutation("accessProfiles", userId);
       profiles.set(userId, updated);
 
       return updated;
+    },
+    snapshot() {
+      return [...profiles.values()].map((profile) => ({ ...profile }));
+    },
+    restore(snapshot, mutations) {
+      const ids = mutations?.get("accessProfiles");
+      if (!ids) {
+        profiles.clear();
+        for (const profile of snapshot) profiles.set(profile.userId, { ...profile });
+        return;
+      }
+      for (const userId of ids) {
+        const profile = snapshot.find((candidate) => candidate.userId === userId);
+        if (profile) profiles.set(userId, { ...profile });
+        else profiles.delete(userId);
+      }
     },
   };
 }

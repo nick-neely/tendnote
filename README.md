@@ -4,6 +4,16 @@ Tendnote is a private, consent-first memory for your life — the people you car
 
 It is not a sales CRM. There are no pipelines, no lead scores, and no autonomous outreach. Nothing leaves Tendnote without you approving it. Eve can do bounded public web research in chat, but it builds those queries only from what you said in that turn, never from your stored context.
 
+## Read the evidence
+
+If you are here to inspect how those privacy boundaries were designed and
+tested, start with the [Canonical Case Study in the immutable reviewed-content bundle](https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/case-studies/tendnote-agent-built-privacy.md).
+It follows one bounded claim through the governing decision, the exact
+deterministic-evaluation evidence, and the preserved git history. That is the
+technical reader path; it is not a blanket correctness claim or a security
+audit. The exact qualified integration/publication commit is reserved for
+#488 after qualification.
+
 ## What it does
 
 ### Capture, Today, and recall
@@ -83,7 +93,11 @@ A lean Turborepo with pnpm workspaces:
 | `packages/rate-limit` | Cost-category product rate limiting with a pluggable store |
 | `packages/config` | Shared TypeScript configuration |
 
-See [`docs/architecture.md`](docs/architecture.md) for how the pieces fit together and [`docs/security.md`](docs/security.md) for the privacy and trust boundaries.
+See [`docs/architecture.md`](docs/architecture.md) for how the pieces fit together, [`SECURITY.md`](SECURITY.md) for vulnerability reporting, and [`docs/security.md`](docs/security.md) for the privacy and trust boundaries.
+
+For repository contributions, start with [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Issues are open with no service-level agreement, and self-hosting support is
+community-only; see the [community support policy](docs/support.md).
 
 ## Quality gates
 
@@ -95,13 +109,32 @@ CI runs a stricter path than `pnpm verify`: it collects Istanbul coverage (`pnpm
 
 Tendnote uses Biome for linting, formatting, and import organization. See [`docs/local-development.md`](docs/local-development.md#quality-gates) for individual commands, eval commands, and CI setup.
 
+## License and publication
+
+Tendnote is distributed under the [AGPL-3.0-only](LICENSE) license. The two
+Impeccable harness variants are redistributed under Apache-2.0; their upstream
+provenance, release pin, applicable NOTICE result, and exact paths are recorded
+in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The repeatable gate for
+future third-party bundles is [`docs/agents/third-party-bundles.md`](docs/agents/third-party-bundles.md).
+
+The repository keeps its complete git history. Deployment IDs and account
+scopes in older verification records are historical qualification evidence, not
+current configuration. Current URLs come from the configured canonical
+`BETTER_AUTH_URL`; copy [`apps/web/.env.example`](apps/web/.env.example) and
+replace its synthetic example values for an operator-owned deployment.
+
 ## Docs
 
 - [`docs/local-development.md`](docs/local-development.md) — setup, environment variables, evals, CI
 - [`docs/architecture.md`](docs/architecture.md) — system design and boundaries
+- [`SECURITY.md`](SECURITY.md) — private vulnerability reporting and disclosure limits
 - [`docs/security.md`](docs/security.md) — privacy model and trust boundaries
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — first-pull-request doorway and contribution boundaries
+- [`docs/support.md`](docs/support.md) — no-SLA community support boundary
 - [`docs/email-setup.md`](docs/email-setup.md) — Resend account, sending-domain DNS, and send checklist
 - [`docs/google-setup.md`](docs/google-setup.md) — Google OAuth client setup
+- [`docs/self-hosting/vercel-operator-runbook.md`](docs/self-hosting/vercel-operator-runbook.md) — operator-owned Vercel admission walkthrough
 - [`docs/discord-setup.md`](docs/discord-setup.md) — Discord app, capture, and delivery setup
 - [`docs/background-job-delivery.md`](docs/background-job-delivery.md) — production queue foundation
-- [`docs/prd.md`](docs/prd.md) — product roadmap · [`AGENTS.md`](AGENTS.md) — agent-facing guidance
+- [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) — redistributed third-party provenance and licenses
+- [`docs/README.md`](docs/README.md) — focused documentation landing page · [`AGENTS.md`](AGENTS.md) — agent-facing guidance

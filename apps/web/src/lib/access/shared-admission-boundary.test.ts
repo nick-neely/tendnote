@@ -1,0 +1,162 @@
+import { ForbiddenError } from "eve/channels/auth";
+import { describe, expect, it, vi } from "vitest";
+import { createAdmissionHarness, createAdmissionPair } from "./admission-harness";
+import type { createPrivateBetaAccessResolver } from "./resolve-access";
+
+const request = new Request("https://app.tendnote.test/eve/v1/session");
+
+async function createBoundary(input: {
+  policy: Parameters<typeof createPrivateBetaAccessResolver>[0]["policy"];
+  evaluateFlag: Parameters<typeof createPrivateBetaAccessResolver>[0]["evaluateFlag"];
+  user: { id: string; email: string };
+}) {
+  const { eve, queries, web } = createAdmissionHarness(input);
+  return { eve, queries, web };
+}
+
+describe("shared Web/Eve admission boundary", () => {
+  it("admits an invitation-granted member through the same persisted decision in hosted and self-hosted modes", async () => {
+    const evaluateFlag = vi.fn().mockResolvedValue(false);
+    const user = { id: "member-1", email: "member@example.com" };
+    const hosted = await createBoundary({
+      evaluateFlag,
+      policy: { mode: "hosted", valid: true },
+      user,
+    });
+    await hosted.queries.ensureAccessProfile({ userId: user.id });
+    await hosted.queries.grantAccess({ userId: user.id, source: "household_invitation" });
+
+    await expect(
+      hosted.web.resolveAccess({ userId: user.id, email: user.email }),
+    ).resolves.toMatchObject({
+      admitted: true,
+      profile: { source: "household_invitation" },
+    });
+    await expect(hosted.eve(request)).resolves.toMatchObject({ principalId: user.id });
+
+    const selfHosted = await createBoundary({
+      evaluateFlag: vi.fn().mockResolvedValue(true),
+      policy: {
+        mode: "self-hosted",
+        valid: true,
+        bootstrapOwnerEmail: "owner@example.com",
+      },
+      user,
+    });
+    await selfHosted.queries.grantAccess({
+      userId: user.id,
+      source: "household_invitation",
+    });
+
+    await expect(
+      selfHosted.web.resolveAccess({ userId: user.id, email: user.email }),
+    ).resolves.toMatchObject({
+      admitted: true,
+      profile: { source: "household_invitation" },
+    });
+    await expect(selfHosted.eve(request)).resolves.toMatchObject({ principalId: user.id });
+    expect(evaluateFlag).not.toHaveBeenCalled();
+  });
+
+  it("uses one persisted store for the self-hosted owner and unrelated pending user", async () => {
+    const evaluateFlag = vi.fn().mockResolvedValue(true);
+    const owner = { id: "owner-1", email: "owner@example.com" };
+    const { eve, queries, web } = await createBoundary({
+      evaluateFlag,
+      policy: {
+        mode: "self-hosted",
+        valid: true,
+        bootstrapOwnerEmail: owner.email,
+      },
+      user: owner,
+    });
+
+    await queries.ensureAccessProfile({ userId: "other-1" });
+    await expect(
+      web.resolveAccess({ userId: owner.id, email: owner.email }),
+    ).resolves.toMatchObject({
+      admitted: true,
+      profile: { source: "self_hosted_bootstrap" },
+    });
+    await expect(eve(request)).resolves.toMatchObject({ principalId: owner.id });
+    await expect(
+      web.resolveAccess({ userId: "other-1", email: "other@example.com" }),
+    ).resolves.toMatchObject({
+      admitted: false,
+      status: "pending",
+    });
+
+    const { eve: pendingAuth } = createAdmissionPair(
+      {
+        accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
+        evaluateFlag,
+        policy: {
+          mode: "self-hosted",
+          valid: true,
+          bootstrapOwnerEmail: owner.email,
+        },
+      },
+      { id: "other-1", email: "other@example.com" },
+    );
+    await expect(pendingAuth(request)).rejects.toBeInstanceOf(ForbiddenError);
+    expect(evaluateFlag).not.toHaveBeenCalled();
+  });
+
+  it("keeps invalid self-hosted configuration pending at both boundaries", async () => {
+    const evaluateFlag = vi.fn().mockResolvedValue(true);
+    const { eve, web } = await createBoundary({
+      evaluateFlag,
+      policy: {
+        mode: "invalid",
+        valid: false,
+        diagnostic: { code: "missing_bootstrap_owner_email" },
+      },
+      user: { id: "owner-1", email: "owner@example.com" },
+    });
+
+    await expect(
+      web.resolveAccess({ userId: "owner-1", email: "owner@example.com" }),
+    ).resolves.toMatchObject({
+      admitted: false,
+      status: "pending",
+    });
+    await expect(eve(request)).rejects.toBeInstanceOf(ForbiddenError);
+    expect(evaluateFlag).not.toHaveBeenCalled();
+  });
+
+  it("keeps hosted Flags unavailable fail-closed without a durable grant", async () => {
+    const evaluateFlag = vi.fn().mockRejectedValue(new Error("Flags unavailable"));
+    const { eve, web } = await createBoundary({
+      evaluateFlag,
+      policy: { mode: "hosted", valid: true },
+      user: { id: "pending-1", email: "pending@example.com" },
+    });
+
+    await expect(
+      web.resolveAccess({ userId: "pending-1", email: "pending@example.com" }),
+    ).resolves.toMatchObject({
+      admitted: false,
+      status: "pending",
+    });
+    await expect(eve(request)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("keeps hosted durable grants authoritative when Flags is unavailable", async () => {
+    const evaluateFlag = vi.fn().mockRejectedValue(new Error("Flags unavailable"));
+    const { eve, queries, web } = await createBoundary({
+      evaluateFlag,
+      policy: { mode: "hosted", valid: true },
+      user: { id: "granted-1", email: "granted@example.com" },
+    });
+    await queries.grantAccess({ userId: "granted-1", source: "manual_grant" });
+
+    await expect(
+      web.resolveAccess({ userId: "granted-1", email: "granted@example.com" }),
+    ).resolves.toMatchObject({
+      admitted: true,
+      profile: { source: "manual_grant" },
+    });
+    await expect(eve(request)).resolves.toMatchObject({ principalId: "granted-1" });
+    expect(evaluateFlag).not.toHaveBeenCalled();
+  });
+});

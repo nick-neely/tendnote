@@ -49,6 +49,8 @@
     "./queries/memory-curator": "./src/queries/memory-curator.ts",
     "./queries/memories": "./src/queries/memories.ts",
     "./queries/morning-agenda": "./src/queries/morning-agenda.ts",
+    "./queries/owner-data-export": "./src/queries/owner-data-export.ts",
+    "./queries/owner-data-export/archive-reader": "./src/queries/owner-data-export/archive-reader.ts",
     "./queries/people": "./src/queries/people.ts",
     "./queries/person-references": "./src/queries/person-references.ts",
     "./queries/post-meeting-aftercare": "./src/queries/post-meeting-aftercare.ts",

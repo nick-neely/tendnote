@@ -22,7 +22,7 @@ type Variant = {
 const placeholders = [
   "[EXACT CASE STUDY PERMALINK AT PUBLISHED COMMIT]",
   "[EXACT PUBLISHED COMMIT PERMALINK]",
-  "[IMMUTABLE CLEAN EVALUATION SUMMARY + RAW EVIDENCE]",
+  "[IMMUTABLE DETERMINISTIC EVALUATION SUMMARY + RAW EVIDENCE]",
   "[ADR 0230 PERMALINK AT PUBLISHED COMMIT]",
 ];
 
@@ -42,12 +42,12 @@ const variants = [
       ],
       evidence: [
         "Canonical Case Study at the exact published commit",
-        "Clean first-sample deterministic run and preserved raw evidence",
+        "Exact deterministic result and preserved raw evidence",
         "ADR 0230, which bounds the claim",
         "All repository history, published unchanged",
       ],
       limits:
-        "Limits: I have personally read roughly 15% of the code; this is the suite’s first Phase 9a execution, not a continuous track record; Household collaboration has not been exercised with a second person; and the clean run supports only the behavior it evaluates.",
+        "Limits: I have personally read roughly 15% of the code; this is the suite’s first Phase 9a execution, not a continuous track record; Household collaboration has not been exercised with a second person; and a clean run would support only the behavior it evaluates.",
     },
     thread: [
       "I built a privacy-sensitive personal system largely with coding agents. Now I’m publishing the code and the trail behind its privacy rules so other people can check the work. 1/5",
@@ -72,17 +72,17 @@ const variants = [
       ],
       evidence: [
         "Read the Case Study at the published commit",
-        "Inspect the clean first-sample run and raw output",
+        "Inspect the exact deterministic result and raw output",
         "See ADR 0230 for the limits of the claim",
         "Trace the work through the complete git history",
       ],
       limits:
-        "Limits: I have personally read roughly 15% of the code; this is the suite’s first Phase 9a execution, not a continuous track record; Household collaboration has not been exercised with a second person; and the clean run supports only the behavior it evaluates.",
+        "Limits: I have personally read roughly 15% of the code; this is the suite’s first Phase 9a execution, not a continuous track record; Household collaboration has not been exercised with a second person; and a clean run would support only the behavior it evaluates.",
     },
     thread: [
       "I’m open-sourcing a privacy-sensitive relationship assistant after personally reading about 15% of its code. I’m uneasy about that too. 1/5",
       "Most of Tendnote was built through coding agents. Publishing it responsibly means its privacy rules have to stand without relying on my familiarity with the code. 2/5",
-      "The case study traces ownership, access, evidence, approval, and failure rules from design decisions into code and tests. A clean deterministic run checks the behavior covered by the suite. 3/5",
+      "The case study traces ownership, access, evidence, approval, and failure rules from design decisions into code and tests. The deterministic gate checks the behavior covered by the suite. 3/5",
       "This is the first Phase 9a run, and Household use has yet to involve a second person. The gate covers only the behavior it evaluates. 4/5",
       "Read the case study and follow the source trail at the exact published commit: [CANONICAL BUNDLE LINK] 5/5",
     ],
@@ -96,12 +96,12 @@ const variants = [
       title: "Tendnote’s publication packet: claim, proof, and known limits",
       paragraphs: [
         "Tendnote is an agent-built, consent-first relationship memory system. Before making the repository public, I assembled a single audit path for its privacy-sensitive design invariants.",
-        "The publication record brings the case study, exact repository commit, clean deterministic result, raw output, governing decision, and complete history into one source trail.",
+        "The publication record brings the case study, exact repository commit, deterministic result and status, raw output, governing decision, and complete history into one source trail.",
       ],
       evidence: [
         "CLAIM — agent-built software can carry inspectable privacy invariants",
         "DESIGN — ownership, audience, evidence, approval, fail-closed behavior",
-        "PROOF — clean deterministic result for the evaluated cases",
+        "EVIDENCE — exact deterministic result and status for the evaluated cases",
         "SOURCE — case study, ADR, repository commit, and raw evidence",
       ],
       limits:
@@ -110,7 +110,7 @@ const variants = [
     thread: [
       "Publication packet for an agent-built, privacy-sensitive system: one claim, one exact commit, and an evidence trail you can inspect. 1/5",
       "CLAIM: agentic development can preserve explicit privacy rules when the decisions, code, tests, and failures remain open to inspection. 2/5",
-      "PACKET: canonical case study → ADR 0230 → clean deterministic result + raw artifacts → preserved git history. 3/5",
+      "PACKET: canonical case study → ADR 0230 → deterministic result + raw artifacts → preserved git history. 3/5",
       "BOUNDARY: ~15% personally read; first Phase 9a run; no second-person Household exercise; no blanket correctness claim. 4/5",
       "Inspect the immutable source bundle: [CANONICAL BUNDLE LINK] 5/5",
     ],

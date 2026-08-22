@@ -87,6 +87,13 @@ describe("explicit person creation (issue #22)", () => {
       /If the user's message contains two or more supported explicit clauses/i,
       /call capture_saved_item exactly once before any destination-specific tool/i,
       /Do not ask which destination.*before calling capture_saved_item/i,
+      /Keep every explicit requested clause only in originalText/i,
+      /never copy it into inferredSuggestions/i,
+    ]);
+    expectMatches(instructions, [
+      /inferredSuggestions.*only for a secondary interpretation/is,
+      /remember that Priya prefers oat milk; track the refrigerator filter[\s\S]*omits `inferredSuggestions`/i,
+      /Resolving a Person or Asset before Capture does not turn an explicit clause into an inference/i,
     ]);
   });
 });

@@ -13,8 +13,9 @@ import type {
   BackgroundJobQueueConsumerMetadata,
   BackgroundJobQueueProcessor,
 } from "@tendnote/db/queries/background-jobs";
-import { send as sendVercelQueueMessage } from "@vercel/queue";
+import { handleCallback, send as sendVercelQueueMessage } from "@vercel/queue";
 import type { CostCategory, ProductRateLimiter } from "@/lib/rate-limit";
+import { getProductRateLimiter } from "@/lib/rate-limit";
 import { classifyBackgroundJobFailure } from "./failure-observability";
 
 // The outbox-publish orchestration and its transport seam live in @tendnote/db (shared by
@@ -33,6 +34,47 @@ export type {
   BackgroundJobQueueConsumerMetadata,
   BackgroundJobQueueProcessor,
 } from "@tendnote/db/queries/background-jobs";
+
+/**
+ * Every background-job queue route is the same callback with a different
+ * consumer: hand the Vercel Queue message to that family's consumer with the
+ * shared logger and product rate limiter, and turn a deferred result into a
+ * throw so the platform redelivers it. One copy means a change to that
+ * contract cannot land in one route and be silently forgotten in another.
+ */
+export function createBackgroundJobQueueCallback(input: {
+  config: { visibilityTimeoutSeconds: number; retryAfterSeconds: number };
+  consume: (consumeInput: {
+    payload: unknown;
+    metadata: BackgroundJobQueueConsumerMetadata;
+    logger: BackgroundJobQueueLogger;
+    rateLimiter: ProductRateLimiter;
+  }) => Promise<{ status: string; reason?: string }>;
+  deferredMessage: (reason: string | undefined) => string;
+}) {
+  return handleCallback(
+    async (message, metadata) => {
+      const result = await input.consume({
+        payload: message,
+        metadata: {
+          topicName: metadata.topicName,
+          messageId: metadata.messageId,
+          deliveryCount: metadata.deliveryCount,
+          consumerGroup: metadata.consumerGroup,
+        },
+        logger: console,
+        rateLimiter: getProductRateLimiter(),
+      });
+      if (result.status === "deferred") throw new Error(input.deferredMessage(result.reason));
+    },
+    {
+      visibilityTimeoutSeconds: input.config.visibilityTimeoutSeconds,
+      retry() {
+        return { afterSeconds: input.config.retryAfterSeconds };
+      },
+    },
+  );
+}
 
 export const BACKGROUND_JOB_QUEUE_CONFIG = {
   extraction: {
@@ -87,6 +129,16 @@ export const BACKGROUND_JOB_QUEUE_CONFIG = {
     retryAfterSeconds: 60,
     rateLimitKey: "background-job:reminder-push",
     costCategory: "push-delivery",
+  },
+  owner_data_export: {
+    topic: BACKGROUND_JOB_TOPICS.owner_data_export,
+    consumerGroup: "tendnote-owner-data-export-processor",
+    maxConcurrency: 1,
+    maxMessagesPerSecond: 1,
+    visibilityTimeoutSeconds: 600,
+    retryAfterSeconds: 60,
+    rateLimitKey: "background-job:owner-data-export",
+    costCategory: "server-action",
   },
 } satisfies Record<
   BackgroundJobKind,
@@ -368,7 +420,8 @@ function parseBackgroundJobQueuePayload(payload: unknown): BackgroundJobQueuePay
       candidate.jobKind !== "embedding" &&
       candidate.jobKind !== "action_extraction" &&
       candidate.jobKind !== "context_fact_extraction" &&
-      candidate.jobKind !== "reminder_push")
+      candidate.jobKind !== "reminder_push" &&
+      candidate.jobKind !== "owner_data_export")
   ) {
     return null;
   }
