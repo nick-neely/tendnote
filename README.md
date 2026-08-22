@@ -4,6 +4,8 @@ Tendnote is a private, consent-first memory for your life — the people you car
 
 test-claa
 
+test again
+
 It is not a sales CRM. There are no pipelines, no lead scores, and no autonomous outreach. Nothing leaves Tendnote without you approving it. Eve can do bounded public web research in chat, but it builds those queries only from what you said in that turn, never from your stored context.
 
 ## Read the evidence
