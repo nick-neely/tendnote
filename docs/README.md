@@ -1,10 +1,11 @@
 # Tendnote documentation
 
 This landing page is the short map of the repository's durable documentation.
-For the technical build story, use the [Canonical Case
-Study](case-studies/tendnote-agent-built-privacy.md) first. It is the citable
-source for the bounded claim, decision record, exact evaluation evidence, and
-preserved history.
+For the technical build story, use the [Canonical Case Study in the immutable
+reviewed-content bundle](https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/case-studies/tendnote-agent-built-privacy.md)
+first. It is the citable source for the bounded claim, decision record, exact
+evaluation evidence, and preserved history. The exact qualified
+integration/publication commit is reserved for #488 after qualification.
 
 ## Build and operate
 

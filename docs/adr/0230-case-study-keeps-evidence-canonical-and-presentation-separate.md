@@ -33,10 +33,11 @@ work are outside this slice.
 
 The repository remains the durable and citable source of truth. The exact
 evaluation summary, raw output, checksums, and decision records are reviewed
-as one immutable content bundle. The exact qualified integration/publication
-commit is deliberately not claimed by this decision: #488 owns the
-qualification report and must pin that SHA only after every publication gate
-passes. A pre-qualification SHA or moving branch URL is not evidence of
+as one immutable content bundle. The [reviewed-content bundle commit](https://github.com/nick-neely/tendnote/commit/00b2edcb11be862f747a96851eb66b71dcaefd7f)
+is an inspection anchor, not the exact qualified integration/publication
+commit. That final SHA is deliberately not claimed by this decision: #488
+owns the qualification report and must pin it only after every publication
+gate passes. A pre-qualification SHA or moving branch URL is not evidence of
 publication.
 
 Publication cannot treat attractive presentation as a substitute for proof:

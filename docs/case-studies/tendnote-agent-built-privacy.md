@@ -19,17 +19,17 @@ The path is intentionally short and reproducible:
    visibility are checked at the query seam, model-originated writes stay
    review-gated, external actions require approval, and ambiguous authority
    fails closed.
-2. **Decision.** [ADR 0230](../adr/0230-case-study-keeps-evidence-canonical-and-presentation-separate.md)
+2. **Decision.** [ADR 0230 in the reviewed content bundle](https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/adr/0230-case-study-keeps-evidence-canonical-and-presentation-separate.md)
    governs what this Case Study claims and how evidence is presented. The
-   publication ordering is recorded in [ADR 0228](../adr/0228-publication-precedes-commercialization.md).
+   publication ordering is recorded in [ADR 0228 in the reviewed content bundle](https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/adr/0228-publication-precedes-commercialization.md).
 3. **Exact gate evidence.** The deterministic suite's clean first-sample
    result is the publication qualification bar. The preserved [Gemini
-   deterministic evidence bundle](../../evidence/evals/0031e09bd92b1ce51d2f5235a0d10172aa1da8c8/)
+   deterministic evidence bundle in the reviewed content bundle](https://github.com/nick-neely/tendnote/tree/00b2edcb11be862f747a96851eb66b71dcaefd7f/evidence/evals/0031e09bd92b1ce51d2f5235a0d10172aa1da8c8)
    is the exact recorded run for this source line.
 4. **History.** The complete git history remains available for inspecting how
    the decisions, implementation, tests, and failures accumulated.
 
-The [Reader Evidence Path decision](../adr/0234-reader-evidence-path-starts-at-the-readme.md)
+The [Reader Evidence Path decision in the reviewed content bundle](https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/adr/0234-reader-evidence-path-starts-at-the-readme.md)
 explains why the root README is only the doorway and why this planning
 workspace is not a newcomer route.
 
@@ -55,9 +55,9 @@ the repository:
 
 The required gate is a manually dispatched, strict deterministic run: every
 selected case must pass on its first sample, with no failures, retry recovery,
-or skipped cases. That is what “clean” means here. The [publication
-decision](../adr/0228-publication-precedes-commercialization.md) keeps that
-bar intact.
+or skipped cases. That is what “clean” means here. The [publication decision
+in the reviewed content bundle](https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/adr/0228-publication-precedes-commercialization.md)
+keeps that bar intact.
 
 The exact preserved bundle for the current source line used
 `google/gemini-3.7-flash` and recorded **52 passed, 8 failed, 0 skipped, and 0
@@ -67,8 +67,7 @@ qualification. It is linked here so a reader can inspect the result rather
 than being asked to accept a clean-sounding summary. The later judged bundle
 is also preserved, but judged quality is outside this deterministic gate.
 
-The raw reports and checksums are in the [immutable evaluation
-bundle](../../evidence/evals/0031e09bd92b1ce51d2f5235a0d10172aa1da8c8/README.md).
+The raw reports and checksums are in the [immutable evaluation bundle](https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/evidence/evals/0031e09bd92b1ce51d2f5235a0d10172aa1da8c8/README.md).
 The clean-gate requirement therefore remains visible and the non-clean result
 remains classified; neither is converted into a publication pass by wording.
 
@@ -86,12 +85,14 @@ The latest approved disclosure belongs beside the result above:
 These are scope limits on the case study, not rhetorical footnotes. They are
 why the decision record and exact raw output remain part of the path.
 
-## Reviewed content bundle
+## Immutable reviewed-content bundle
 
 This Case Study, ADR 0230, ADR 0228, ADR 0234, the documentation indexes,
 and the preserved deterministic evidence are reviewed as one content bundle.
-The bundle is not an exact qualified integration or publication commit. A
-pre-qualification SHA must not be presented as that final pin.
+The [reviewed-content bundle commit](https://github.com/nick-neely/tendnote/commit/00b2edcb11be862f747a96851eb66b71dcaefd7f)
+is an immutable inspection anchor, not an exact qualified integration or
+publication commit. A pre-qualification SHA must not be presented as that
+final pin.
 
 The exact integration commit and release verdict are reserved for [#488](https://github.com/nick-neely/tendnote/issues/488),
 which owns the Phase 9a qualification report. It must identify the commit only
@@ -102,7 +103,12 @@ contains; it does not imply repository publication.
 The evaluated source is identified by the evidence metadata as
 [`0031e09bd92b1ce51d2f5235a0d10172aa1da8c8`](https://github.com/nick-neely/tendnote/commit/0031e09bd92b1ce51d2f5235a0d10172aa1da8c8).
 The checked-in evidence directory contains the exact reports and checksums for
-that source. No branch, moving preview, or latest-history URL is evidence.
+that source. For direct inspection, use the [ADR 0230 file](https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/adr/0230-case-study-keeps-evidence-canonical-and-presentation-separate.md),
+[ADR 0228 file](https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/adr/0228-publication-precedes-commercialization.md),
+[ADR 0234 file](https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/adr/0234-reader-evidence-path-starts-at-the-readme.md),
+the [evidence tree](https://github.com/nick-neely/tendnote/tree/00b2edcb11be862f747a96851eb66b71dcaefd7f/evidence/evals/0031e09bd92b1ce51d2f5235a0d10172aa1da8c8),
+and the [preserved bundle history](https://github.com/nick-neely/tendnote/commit/00b2edcb11be862f747a96851eb66b71dcaefd7f).
+No branch, moving preview, or latest-history URL is evidence.
 
 This document is the repository source of truth for the case-study claim. No
 parallel launch document or commercial material belongs in this path.

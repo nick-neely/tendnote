@@ -7,11 +7,12 @@ It is not a sales CRM. There are no pipelines, no lead scores, and no autonomous
 ## Read the evidence
 
 If you are here to inspect how those privacy boundaries were designed and
-tested, start with the [Canonical Case Study](docs/case-studies/tendnote-agent-built-privacy.md).
+tested, start with the [Canonical Case Study in the immutable reviewed-content bundle](https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/case-studies/tendnote-agent-built-privacy.md).
 It follows one bounded claim through the governing decision, the exact
 deterministic-evaluation evidence, and the preserved git history. That is the
 technical reader path; it is not a blanket correctness claim or a security
-audit.
+audit. The exact qualified integration/publication commit is reserved for
+#488 after qualification.
 
 ## What it does
 
