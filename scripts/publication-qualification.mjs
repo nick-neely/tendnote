@@ -3,14 +3,20 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants,
+  fsyncSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   realpathSync,
-  writeFileSync,
+  renameSync,
+  unlinkSync,
+  writeSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export const QUALIFICATION_SCHEMA_VERSION = 1;
 export const QUALIFICATION_KIND = "tendnote.phase-9a.publication-qualification";
@@ -34,6 +40,7 @@ const STATUSES = new Set([
 ]);
 const PASS = "passed";
 const COMPLETED = "completed";
+const QUALIFICATION_OUTPUT_ROOT = "evidence/qualification";
 const COUNT_FIELDS = Object.freeze(["totalEvals", "passed", "failed", "skipped", "errored"]);
 const METADATA_COUNT_FIELDS = Object.freeze(["total", "passed", "failed", "skipped", "errored"]);
 
@@ -258,6 +265,24 @@ function bindingFor(criterionId) {
 
 function sameJson(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function uniqueStringIds(value) {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((id) => typeof id === "string" && id.length > 0) &&
+    new Set(value).size === value.length
+  );
+}
+
+function sameIdSet(left, right) {
+  return (
+    uniqueStringIds(left) &&
+    uniqueStringIds(right) &&
+    left.length === right.length &&
+    left.every((id) => right.includes(id))
+  );
 }
 
 function criteriaEntries(value, gateId, definitions, blockers) {
@@ -1026,13 +1051,29 @@ export function validateQualificationReport(report) {
       )
         errors.push(`Passing criterion ${gate.id}/${criterion.id} has no evidence.`);
       if (
+        criterion.status === PASS &&
+        Array.isArray(criterion.blockers) &&
+        criterion.blockers.length > 0
+      )
+        errors.push(`Passing criterion ${gate.id}/${criterion.id} contains blockers.`);
+      if (
         criterion.status !== PASS &&
         (!Array.isArray(criterion.blockers) || criterion.blockers.length === 0)
       )
         errors.push(`Blocking criterion ${gate.id}/${criterion.id} has no blocker reason.`);
     }
-    if (gate.status === PASS && Array.isArray(gate.blockers) && gate.blockers.length > 0)
-      errors.push(`Passing gate ${gate.id} contains blockers.`);
+    const criteriaComplete =
+      actualCriteria.length === expectedCriteria.length &&
+      expectedCriteria.every((criterionId) =>
+        actualCriteria.some((criterion) => criterion?.id === criterionId),
+      );
+    const criteriaPassed =
+      criteriaComplete && actualCriteria.every((criterion) => criterion?.status === PASS);
+    if (
+      gate.status === PASS &&
+      (!criteriaPassed || !Array.isArray(gate.blockers) || gate.blockers.length > 0)
+    )
+      errors.push(`Passing gate ${gate.id} must have every criterion passed and zero blockers.`);
     if (gate.status !== PASS && (!Array.isArray(gate.blockers) || gate.blockers.length === 0))
       errors.push(`Blocking gate ${gate.id} has no blocker reason.`);
   }
@@ -1136,19 +1177,114 @@ function parseJson(path, blockers) {
   }
 }
 
+function xmlAttributes(tag, errors, label) {
+  const match = tag.match(/^<[^\s>]+\b([^>]*)>$/);
+  if (!match) {
+    errors.push(`${label} has an invalid opening tag.`);
+    return {};
+  }
+  const attributes = {};
+  const source = match[1].replace(/\/\s*$/, "");
+  const attributePattern = /([A-Za-z_:][A-Za-z0-9_.:-]*)="([^"]*)"/g;
+  let cursor = 0;
+  for (const attribute of source.matchAll(attributePattern)) {
+    if (source.slice(cursor, attribute.index).trim())
+      errors.push(`${label} contains malformed attributes.`);
+    const [, name, value] = attribute;
+    if (Object.hasOwn(attributes, name)) errors.push(`${label} duplicates attribute ${name}.`);
+    attributes[name] = value;
+    cursor = attribute.index + attribute[0].length;
+  }
+  if (source.slice(cursor).trim()) errors.push(`${label} contains malformed attributes.`);
+  return attributes;
+}
+
 function junitCounts(xml) {
-  const suite = xml.match(/<testsuite\b[^>]*>/)?.[0];
-  if (!suite) return null;
-  const number = (name) => {
-    const value = suite.match(new RegExp(`${name}="(\\d+)"`))?.[1];
-    return value === undefined ? null : Number(value);
+  const structuralErrors = [];
+  if (typeof xml !== "string") return null;
+  const openings = [...xml.matchAll(/<testsuite\b[^>]*>/g)];
+  const closings = [...xml.matchAll(/<\/testsuite\s*>/g)];
+  if (openings.length !== 1 || closings.length !== 1) {
+    structuralErrors.push("JUnit must contain exactly one testsuite element.");
+    return { tests: null, failures: null, skipped: null, errors: null, ids: [], structuralErrors };
+  }
+  const opening = openings[0][0];
+  const openingEnd = openings[0].index + opening.length;
+  const closingIndex = closings[0].index;
+  const prefix = xml.slice(0, openings[0].index).replace(/^\s*<\?xml[^?]*\?>\s*$/s, "");
+  const suffix = xml.slice(closingIndex + closings[0][0].length).trim();
+  if (prefix.trim() || suffix)
+    structuralErrors.push("JUnit has content outside its testsuite root.");
+  const suiteAttributes = xmlAttributes(opening, structuralErrors, "JUnit testsuite");
+  const number = (name, required = true) => {
+    if (!Object.hasOwn(suiteAttributes, name)) {
+      if (required) structuralErrors.push(`JUnit testsuite is missing ${name}.`);
+      return required ? null : 0;
+    }
+    if (!/^\d+$/.test(suiteAttributes[name])) {
+      structuralErrors.push(`JUnit ${name} must be a non-negative integer.`);
+      return null;
+    }
+    return Number(suiteAttributes[name]);
   };
-  return {
-    tests: number("tests"),
-    failures: number("failures"),
-    skipped: number("skipped"),
-    errors: number("errors") ?? 0,
-  };
+  const tests = number("tests");
+  const failures = number("failures");
+  const skipped = number("skipped");
+  const errors = number("errors", false);
+  const body = xml.slice(openingEnd, closingIndex);
+  const testcasePattern = /<testcase\b[^>]*(?:\/>|>[\s\S]*?<\/testcase\s*>)/g;
+  const outcomePattern =
+    /<(failure|flakyFailure|error|skipped)\b[^>]*(?:\/>|>[\s\S]*?<\/(?:failure|flakyFailure|error|skipped)\s*>)/g;
+  const ids = [];
+  const outcomes = { failure: 0, flakyFailure: 0, error: 0, skipped: 0 };
+  let cursor = 0;
+  for (const match of body.matchAll(testcasePattern)) {
+    if (body.slice(cursor, match.index).trim())
+      structuralErrors.push("JUnit has non-testcase content.");
+    const testcase = match[0];
+    const openEnd = testcase.indexOf(">");
+    const openTag = testcase.slice(0, openEnd + 1);
+    const attributes = xmlAttributes(openTag, structuralErrors, "JUnit testcase");
+    const id = attributes.name;
+    if (typeof id !== "string" || id.length === 0)
+      structuralErrors.push("JUnit testcase is missing name.");
+    else if (ids.includes(id)) structuralErrors.push(`JUnit duplicates testcase ${id}.`);
+    else ids.push(id);
+    const selfClosing = /\/\s*>$/.test(openTag);
+    const inner = selfClosing
+      ? ""
+      : testcase.slice(openEnd + 1, testcase.lastIndexOf("</testcase"));
+    const testcaseOutcomes = [...inner.matchAll(outcomePattern)];
+    const remainder = inner.replace(outcomePattern, "").trim();
+    if (remainder)
+      structuralErrors.push(`JUnit testcase ${id || "<unnamed>"} has unexpected content.`);
+    if (testcaseOutcomes.length > 1)
+      structuralErrors.push(`JUnit testcase ${id || "<unnamed>"} has multiple outcomes.`);
+    if (testcaseOutcomes.length === 1) outcomes[testcaseOutcomes[0][1]] += 1;
+    cursor = match.index + testcase.length;
+  }
+  if (body.slice(cursor).trim())
+    structuralErrors.push("JUnit has content outside testcase elements.");
+  const structuralFailures = outcomes.failure;
+  const structuralErrorsCount = outcomes.error;
+  const structuralSkipped = outcomes.skipped;
+  if (outcomes.flakyFailure > 0)
+    structuralErrors.push("JUnit contains flakyFailure recovery evidence.");
+  if (
+    tests === null ||
+    failures === null ||
+    skipped === null ||
+    errors === null ||
+    tests !== ids.length ||
+    failures !== structuralFailures ||
+    skipped !== structuralSkipped ||
+    errors !== structuralErrorsCount ||
+    tests - failures - skipped - errors !==
+      ids.length - structuralFailures - structuralSkipped - structuralErrorsCount
+  ) {
+    structuralErrors.push("JUnit aggregate counts disagree with testcase elements.");
+  }
+  return { tests, failures, skipped, errors, ids, structuralErrors };
 }
 
 function readJsonl(path, blockers) {
@@ -1241,7 +1377,9 @@ export function verifyDeterministicEvidenceBundle({
       `Unable to read ${join(bundle, "junit.xml")}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+  if (junit?.structuralErrors?.length) blockers.push(...junit.structuralErrors);
   if (!metadata || !isRecord(metadata)) blockers.push("metadata.json is not an object.");
+  if (metadata?.schemaVersion !== 1) blockers.push("Evidence metadata schemaVersion must be 1.");
   if (metadata?.suite !== "deterministic")
     blockers.push("Evidence metadata is not a deterministic suite.");
   if (metadata?.sourceCommit !== candidateSha)
@@ -1259,6 +1397,37 @@ export function verifyDeterministicEvidenceBundle({
   }
   if (Number(metadataCounts.total) <= 0)
     blockers.push("Evidence metadata has no positive result total.");
+  if (
+    !isRecord(metadata?.workflow) ||
+    metadata.workflow.trigger !== "workflow_dispatch" ||
+    typeof metadata.workflow.url !== "string" ||
+    metadata.workflow.url.length === 0 ||
+    typeof metadata.workflow.command !== "string" ||
+    metadata.workflow.command.length === 0
+  )
+    blockers.push("Evidence metadata workflow is incomplete.");
+  if (
+    !isRecord(metadata?.configuration) ||
+    typeof metadata.configuration.agentModel !== "string" ||
+    metadata.configuration.agentModel.length === 0 ||
+    !(
+      typeof metadata.configuration.eveVersion === "string" ||
+      metadata.configuration.eveVersion === null
+    ) ||
+    typeof metadata.configuration.database !== "string" ||
+    metadata.configuration.database.length === 0
+  )
+    blockers.push("Evidence metadata configuration is incomplete.");
+  if (
+    !isRecord(metadata?.timestamps) ||
+    !timestamp(metadata.timestamps.startedAt) ||
+    !timestamp(metadata.timestamps.completedAt) ||
+    !timestamp(metadata.timestamps.packagedAt)
+  )
+    blockers.push("Evidence metadata timestamps are incomplete.");
+  const metadataEvalIds = metadata?.evalIds;
+  if (!uniqueStringIds(metadataEvalIds) || metadataEvalIds.length !== metadataCounts.total)
+    blockers.push("Evidence metadata evalIds must be a unique complete eval set.");
   if (metadata?.clean !== true || metadata?.exitCode !== 0)
     blockers.push("The deterministic run was not clean with exit code 0.");
   if (
@@ -1290,6 +1459,7 @@ export function verifyDeterministicEvidenceBundle({
   }
 
   const summaryCounts = {};
+  let summaryEvalIds = [];
   if (!isRecord(summary)) {
     blockers.push("raw/initial-summary.json must be an object with every count field.");
   } else {
@@ -1298,9 +1468,16 @@ export function verifyDeterministicEvidenceBundle({
         blockers.push(`Raw summary count ${key} must be a non-negative integer.`);
       } else summaryCounts[key] = summary[key];
     }
-    if (Array.isArray(summary.evals)) {
+    if (!Array.isArray(summary.evals)) {
+      blockers.push("Raw summary must contain a complete evals array.");
+    } else {
+      if (!timestamp(summary.startedAt) || !timestamp(summary.completedAt))
+        blockers.push("Raw summary timestamps must include valid startedAt and completedAt.");
+      summaryEvalIds = summary.evals.map((entry) => entry?.id);
       if (summary.evals.length !== summaryCounts.totalEvals)
         blockers.push("Raw summary eval count disagrees with totalEvals.");
+      if (!uniqueStringIds(summaryEvalIds))
+        blockers.push("Raw summary eval IDs must be unique non-empty strings.");
       for (const entry of summary.evals) {
         if (entry?.result?.status !== COMPLETED)
           blockers.push("Raw summary contains a non-completed eval status.");
@@ -1315,6 +1492,8 @@ export function verifyDeterministicEvidenceBundle({
     summaryCounts.errored !== metadataCounts.errored
   )
     blockers.push("Raw summary counts disagree with metadata counts.");
+  if (!sameIdSet(metadataEvalIds, summaryEvalIds))
+    blockers.push("Metadata and raw summary eval ID sets disagree.");
 
   const rowCounts = {
     passed: 0,
@@ -1324,7 +1503,13 @@ export function verifyDeterministicEvidenceBundle({
     total: rows.length,
     statuses: {},
   };
+  const rowIds = [];
   for (const row of rows) {
+    if (typeof row?.id !== "string" || row.id.length === 0) {
+      blockers.push("Evidence JSONL contains a missing eval id.");
+    } else if (rowIds.includes(row.id)) {
+      blockers.push(`Evidence JSONL duplicates eval id ${row.id}.`);
+    } else rowIds.push(row.id);
     if (!["passed", "failed", "skipped", "errored"].includes(row?.verdict))
       blockers.push("Evidence JSONL contains an unknown verdict.");
     else rowCounts[row.verdict] += 1;
@@ -1342,6 +1527,8 @@ export function verifyDeterministicEvidenceBundle({
     blockers.push("JSONL counts disagree with metadata counts.");
   if (!sameJson(rowCounts.statuses, statuses ?? null))
     blockers.push("JSONL statuses disagree with metadata statuses.");
+  if (!sameIdSet(metadataEvalIds, rowIds) || !sameIdSet(summaryEvalIds, rowIds))
+    blockers.push("Metadata, raw summary, and JSONL eval ID sets disagree.");
   if (
     !junit ||
     !Number.isInteger(junit.tests) ||
@@ -1355,6 +1542,8 @@ export function verifyDeterministicEvidenceBundle({
     junit.tests - junit.failures - junit.skipped - junit.errors !== metadataCounts.passed
   )
     blockers.push("JUnit counts disagree with metadata, JSONL, and raw summary counts.");
+  if (!sameIdSet(metadataEvalIds, junit?.ids ?? []) || !sameIdSet(rowIds, junit?.ids ?? []))
+    blockers.push("JUnit testcase IDs disagree with metadata, raw summary, and JSONL IDs.");
 
   try {
     const readme = secureRead(join(bundle, "README.md")).toString("utf8");
@@ -1579,18 +1768,99 @@ function readInput(path) {
   return JSON.parse(secureRead(resolve(path)).toString("utf8"));
 }
 
-function writeOutput(path, contents) {
-  const outputPath = resolve(path);
-  mkdirSync(dirname(outputPath), { recursive: true });
-  secureDirectory(dirname(outputPath));
+function outputLocation(repoRoot, requestedPath) {
+  if (typeof requestedPath !== "string" || requestedPath.length === 0)
+    throw new Error("Output path is required when --output is supplied.");
+  if (isAbsolute(requestedPath) || requestedPath.split(/[\\/]/).includes(".."))
+    throw new Error("Output path must be relative and cannot escape the repository.");
+  const repository = secureDirectory(repoRoot);
+  const outputRoot = resolve(repository.absolute, QUALIFICATION_OUTPUT_ROOT);
+  const outputPath = resolve(repository.absolute, requestedPath);
+  if (outputPath === outputRoot || !outputPath.startsWith(`${outputRoot}${sep}`))
+    throw new Error(`Output path must remain under ${QUALIFICATION_OUTPUT_ROOT}.`);
+  if (basename(outputPath) === "." || basename(outputPath) === "..")
+    throw new Error("Output path must name a report file.");
+
+  const parent = dirname(outputPath);
+  const missing = [];
+  let current = repository.absolute;
+  const components = relative(repository.absolute, parent).split(sep).filter(Boolean);
+  for (const component of components) {
+    current = join(current, component);
+    if (missing.length > 0) {
+      missing.push(current);
+      continue;
+    }
+    try {
+      const info = secureExistingPath(current);
+      if (!info.stats.isDirectory())
+        throw new Error(`Output component is not a directory: ${current}`);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      missing.push(current);
+    }
+  }
+  return { outputPath, parent, missing };
+}
+
+function writeOutput(repoRoot, requestedPath, contents) {
+  const location = outputLocation(repoRoot, requestedPath);
+  for (const directory of location.missing) {
+    mkdirSync(directory);
+    secureDirectory(directory);
+  }
+  const parent = secureDirectory(location.parent);
   try {
-    const existing = secureExistingPath(outputPath);
+    const existing = secureExistingPath(location.outputPath);
     if (!existing.stats.isFile())
-      throw new Error(`Output path is not a regular file: ${outputPath}`);
+      throw new Error(`Output path is not a regular file: ${location.outputPath}`);
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
   }
-  writeFileSync(outputPath, contents);
+
+  const temporaryPath = join(
+    parent.absolute,
+    `.${basename(location.outputPath)}.${process.pid}.${Date.now()}.tmp`,
+  );
+  let descriptor;
+  let operationError;
+  try {
+    descriptor = openSync(
+      temporaryPath,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      0o600,
+    );
+    const bytes = Buffer.from(contents, "utf8");
+    let offset = 0;
+    while (offset < bytes.length) offset += writeSync(descriptor, bytes, offset);
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    secureDirectory(parent.absolute);
+    try {
+      const existing = secureExistingPath(location.outputPath);
+      if (!existing.stats.isFile())
+        throw new Error(`Output path is not a regular file: ${location.outputPath}`);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    renameSync(temporaryPath, location.outputPath);
+  } catch (error) {
+    operationError = error;
+  }
+  if (descriptor !== undefined) {
+    try {
+      closeSync(descriptor);
+    } catch (error) {
+      if (operationError === undefined) operationError = error;
+    }
+  }
+  try {
+    unlinkSync(temporaryPath);
+  } catch (error) {
+    if (error?.code !== "ENOENT" && operationError === undefined) operationError = error;
+  }
+  if (operationError !== undefined) throw operationError;
 }
 
 function argument(name) {
@@ -1609,6 +1879,9 @@ export function main() {
   if (!fullSha(candidateSha))
     throw new Error(`${usage()}\nCandidate must be a full lowercase commit SHA.`);
   const actual = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+  }).trim();
   if (actual !== candidateSha)
     throw new Error(`Checked out ${actual}, not requested candidate ${candidateSha}.`);
   const inputPath = argument("--input");
@@ -1622,7 +1895,7 @@ export function main() {
     );
   const report = composeQualificationReport({ ...input, candidateSha });
   const outputPath = argument("--output");
-  if (outputPath) writeOutput(outputPath, `${JSON.stringify(report, null, 2)}\n`);
+  if (outputPath) writeOutput(repoRoot, outputPath, `${JSON.stringify(report, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   return report.result.status === "qualified" ? 0 : 1;
 }

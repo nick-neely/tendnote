@@ -25,13 +25,14 @@ export type QualificationGate = {
 };
 
 export type QualificationEvidence = {
-  readonly path?: string;
-  readonly uri?: string;
   readonly sourceCommit: string;
   readonly sha256: string;
   readonly format?: string;
   readonly description?: string;
-};
+} & (
+  | { readonly path: string; readonly uri?: string }
+  | { readonly path?: string; readonly uri: string }
+);
 
 export type QualificationBlocker = {
   readonly gateId: string;

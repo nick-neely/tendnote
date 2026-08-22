@@ -55,10 +55,12 @@ function countJsonl(path) {
 }
 
 function junitCounts(xml) {
-  const suite = xml.match(/<testsuite\b[^>]*>/)?.[0];
-  if (!suite) throw new Error("JUnit report has no testsuite.");
+  const suites = [...xml.matchAll(/<testsuite\b[^>]*>/g)];
+  if (suites.length !== 1) throw new Error("JUnit report must contain exactly one testsuite.");
+  const suite = suites[0][0];
   const number = (name) => Number(suite.match(new RegExp(`${name}="(\\d+)"`))?.[1]);
-  return { tests: number("tests"), failures: number("failures"), skipped: number("skipped") };
+  const ids = [...xml.matchAll(/<testcase\b[^>]*\bname="([^"]+)"/g)].map((match) => match[1]);
+  return { tests: number("tests"), failures: number("failures"), skipped: number("skipped"), ids };
 }
 
 export function buildEvidenceMetadata({
@@ -84,6 +86,16 @@ export function buildEvidenceMetadata({
   };
   const runtime = observedRuntimeIdentity(reports, agentModel);
   const machineCounts = jsonlCounts(resultRows[0] ?? []);
+  const evalIds = idsOf(initial.evals);
+  const rowIds = idsOf(resultRows[0] ?? []);
+  const junitIds = Array.isArray(junit.ids) ? junit.ids : [];
+  const idSetsAgree =
+    uniqueIds(evalIds) &&
+    uniqueIds(rowIds) &&
+    uniqueIds(junitIds) &&
+    sameIdSet(evalIds, rowIds) &&
+    sameIdSet(evalIds, junitIds) &&
+    evalIds.length === counts.total;
   const summaryStatuses = statusCounts((initial.evals ?? []).map((entry) => entry?.result?.status));
   const retryRounds = Math.max(0, reports.length - 1);
   const clean =
@@ -100,12 +112,14 @@ export function buildEvidenceMetadata({
     machineCounts.skipped === counts.skipped &&
     machineCounts.errored === counts.errored &&
     JSON.stringify(machineCounts.statuses) === JSON.stringify(summaryStatuses) &&
+    idSetsAgree &&
     junit.tests === counts.total &&
     junit.failures === 0 &&
     junit.skipped === 0;
 
   return {
     schemaVersion: 1,
+    suite: "deterministic",
     sourceCommit,
     workflow: { trigger: "workflow_dispatch", url: workflowUrl, command },
     configuration: {
@@ -119,6 +133,7 @@ export function buildEvidenceMetadata({
       packagedAt,
     },
     counts,
+    evalIds,
     statuses: machineCounts.statuses,
     retry: { attempted: retryRounds > 0, rounds: retryRounds },
     exitCode,
@@ -135,6 +150,27 @@ function statusCounts(statuses) {
     counts[status] = (counts[status] ?? 0) + 1;
   }
   return counts;
+}
+
+function idsOf(entries) {
+  return (Array.isArray(entries) ? entries : []).map((entry) => entry?.id);
+}
+
+function uniqueIds(ids) {
+  return (
+    ids.length > 0 &&
+    ids.every((id) => typeof id === "string" && id.length > 0) &&
+    new Set(ids).size === ids.length
+  );
+}
+
+function sameIdSet(left, right) {
+  return (
+    uniqueIds(left) &&
+    uniqueIds(right) &&
+    left.length === right.length &&
+    left.every((id) => right.includes(id))
+  );
 }
 
 export function observedRuntimeIdentity(reports, expectedModel) {

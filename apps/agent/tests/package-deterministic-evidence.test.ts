@@ -17,7 +17,8 @@ const base = {
       skipped: 0,
       errored: 0,
       totalEvals: 62,
-      evals: Array.from({ length: 62 }, () => ({
+      evals: Array.from({ length: 62 }, (_, index) => ({
+        id: `eval-${index}`,
         result: {
           status: "completed",
           events: [
@@ -42,7 +43,12 @@ const base = {
       status: "completed",
     })),
   ],
-  junit: { tests: 62, failures: 0, skipped: 0 },
+  junit: {
+    tests: 62,
+    failures: 0,
+    skipped: 0,
+    ids: Array.from({ length: 62 }, (_, index) => `eval-${index}`),
+  },
   packagedAt: "2026-08-20T20:10:01.000Z",
 };
 
@@ -55,6 +61,7 @@ describe("deterministic publication evidence classification", () => {
       retry: { attempted: false, rounds: 0 },
       configuration: { agentModel: "google/gemini-3.7-flash", eveVersion: "0.32.0" },
       statuses: { completed: 62 },
+      evalIds: expect.arrayContaining(["eval-0", "eval-61"]),
     });
   });
 
@@ -81,7 +88,10 @@ describe("deterministic publication evidence classification", () => {
       }).clean,
     ).toBe(false);
     expect(
-      buildEvidenceMetadata({ ...base, junit: { tests: 61, failures: 0, skipped: 0 } }).clean,
+      buildEvidenceMetadata({
+        ...base,
+        junit: { tests: 61, failures: 0, skipped: 0, ids: base.junit.ids },
+      }).clean,
     ).toBe(false);
     expect(() => buildEvidenceMetadata({ ...base, reports: [] })).toThrow(/bootstrap failure/i);
     expect(buildEvidenceMetadata({ ...base, resultRows: [[firstRow]] }).clean).toBe(false);
@@ -134,5 +144,23 @@ describe("deterministic publication evidence classification", () => {
       index === 0 ? { ...row, status: "waiting" } : row,
     );
     expect(buildEvidenceMetadata({ ...base, resultRows: [rows] }).clean).toBe(false);
+  });
+
+  it("blocks duplicate or missing eval IDs across the three machine records", () => {
+    const firstReport = base.reports[0];
+    if (!firstReport) throw new Error("Expected a base report.");
+    const duplicateSummary = structuredClone(firstReport);
+    const duplicateEval = duplicateSummary.evals[1];
+    if (!duplicateEval) throw new Error("Expected a second eval.");
+    duplicateEval.id = "eval-0";
+    expect(buildEvidenceMetadata({ ...base, reports: [duplicateSummary] }).clean).toBe(false);
+
+    const missingRow = (base.resultRows[0] ?? []).slice(0, -1);
+    expect(buildEvidenceMetadata({ ...base, resultRows: [missingRow] }).clean).toBe(false);
+
+    const missingJUnit = base.junit.ids.slice(0, -1);
+    expect(
+      buildEvidenceMetadata({ ...base, junit: { ...base.junit, ids: missingJUnit } }).clean,
+    ).toBe(false);
   });
 });

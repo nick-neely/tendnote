@@ -70,6 +70,12 @@ status cannot qualify it:
 The evidence packager's clean bundle is closed to the canonical initial files
 `raw/initial-summary.json` and `raw/initial-results.jsonl`; any retry, waiting,
 partial, recovered, stale, or otherwise non-completed artifact blocks.
+The metadata must identify the deterministic suite and exact candidate, and the
+summary must contain its complete `evals` array with unique IDs. Those IDs must
+agree exactly with the metadata, initial JSONL rows, and JUnit testcase names;
+JUnit aggregate counts and every failure, error, or skipped testcase are checked
+structurally. Qualification output may only be written beneath the repository's
+`evidence/qualification/` root, through validated non-symlink directories.
 
 No report input authorizes changing repository visibility, rulesets, hosted
 settings, CLA records, or external sends. The candidate commit and report may

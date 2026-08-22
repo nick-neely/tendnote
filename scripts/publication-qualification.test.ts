@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CANONICAL_ORIGIN,
@@ -273,16 +273,45 @@ function writeBundle(root: string, sourceCommit = CANDIDATE) {
     schemaVersion: 1,
     suite: "deterministic",
     sourceCommit,
+    workflow: {
+      trigger: "workflow_dispatch",
+      url: "https://github.com/nick-neely/tendnote/actions/runs/1",
+      command: "pnpm --filter @tendnote/agent eval:deterministic",
+    },
+    configuration: {
+      agentModel: "google/gemini-3.7-flash",
+      eveVersion: "0.32.0",
+      database: "fresh synthetic database",
+    },
+    timestamps: {
+      startedAt: "2026-08-22T17:00:00.000Z",
+      completedAt: "2026-08-22T17:05:00.000Z",
+      packagedAt: "2026-08-22T17:06:00.000Z",
+    },
+    evalIds: ["one", "two"],
     clean: true,
     exitCode: 0,
     counts: { total: 2, passed: 2, failed: 0, skipped: 0, errored: 0 },
     statuses: { completed: 2 },
     retry: { attempted: false, rounds: 0 },
   };
-  const summary = { totalEvals: 2, passed: 2, failed: 0, skipped: 0, errored: 0 };
+  const summary = {
+    startedAt: "2026-08-22T17:00:00.000Z",
+    completedAt: "2026-08-22T17:05:00.000Z",
+    totalEvals: 2,
+    passed: 2,
+    failed: 0,
+    skipped: 0,
+    errored: 0,
+    evals: [
+      { id: "one", result: { status: "completed" } },
+      { id: "two", result: { status: "completed" } },
+    ],
+  };
   const files: Record<string, string> = {
     "README.md": `CLEAN\n| Source commit | \`${sourceCommit}\` |\n`,
-    "junit.xml": '<testsuite tests="2" failures="0" skipped="0"></testsuite>\n',
+    "junit.xml":
+      '<testsuite tests="2" failures="0" skipped="0"><testcase name="one"/><testcase name="two"/></testsuite>\n',
     "metadata.json": `${JSON.stringify(metadata)}\n`,
     "raw/initial-results.jsonl":
       '{"id":"one","verdict":"passed","status":"completed"}\n{"id":"two","verdict":"passed","status":"completed"}\n',
@@ -356,6 +385,88 @@ describe("publication evidence adapters", () => {
         candidateSha: CANDIDATE,
       }).status,
     ).toBe("blocked");
+  });
+
+  it("rejects duplicate or missing eval IDs across metadata, summary, and JSONL", () => {
+    const root = mkdtempSync(join("/tmp", "tendnote-qualification-"));
+    const bundle = writeBundle(root);
+    const metadataPath = join(bundle, "metadata.json");
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
+    metadata.evalIds = ["one", "one"];
+    writeFileSync(metadataPath, `${JSON.stringify(metadata)}\n`);
+    expect(
+      verifyDeterministicEvidenceBundle({
+        root,
+        bundlePath: "bundle",
+        candidateSha: CANDIDATE,
+      }).blockers.join(" "),
+    ).toMatch(/evalIds|ID sets/i);
+
+    const summaryPath = join(bundle, "raw", "initial-summary.json");
+    const summary = JSON.parse(readFileSync(summaryPath, "utf8"));
+    summary.evals[1].id = "one";
+    writeFileSync(summaryPath, `${JSON.stringify(summary)}\n`);
+    expect(
+      verifyDeterministicEvidenceBundle({
+        root,
+        bundlePath: "bundle",
+        candidateSha: CANDIDATE,
+      }).blockers.join(" "),
+    ).toMatch(/raw summary eval IDs|ID sets/i);
+
+    const rowsPath = join(bundle, "raw", "initial-results.jsonl");
+    writeFileSync(
+      rowsPath,
+      '{"id":"one","verdict":"passed","status":"completed"}\n{"id":"one","verdict":"passed","status":"completed"}\n',
+    );
+    expect(
+      verifyDeterministicEvidenceBundle({
+        root,
+        bundlePath: "bundle",
+        candidateSha: CANDIDATE,
+      }).blockers.join(" "),
+    ).toMatch(/JSONL duplicates|ID sets/i);
+  });
+
+  it("structurally rejects multiple suites and inconsistent outcome elements", () => {
+    const root = mkdtempSync(join("/tmp", "tendnote-qualification-"));
+    const bundle = writeBundle(root);
+    const junitPath = join(bundle, "junit.xml");
+    writeFileSync(
+      junitPath,
+      '<testsuite tests="1" failures="0" skipped="0"><testcase name="one"><failure/></testcase></testsuite><testsuite tests="0" failures="0" skipped="0"></testsuite>\n',
+    );
+    let result = verifyDeterministicEvidenceBundle({
+      root,
+      bundlePath: "bundle",
+      candidateSha: CANDIDATE,
+    });
+    expect(result.status).toBe("blocked");
+    expect(result.blockers.join(" ")).toMatch(/exactly one testsuite/i);
+
+    writeFileSync(
+      junitPath,
+      '<testsuite tests="2" failures="0" skipped="0"><testcase name="one"><failure/></testcase><testcase name="two"/></testsuite>\n',
+    );
+    result = verifyDeterministicEvidenceBundle({
+      root,
+      bundlePath: "bundle",
+      candidateSha: CANDIDATE,
+    });
+    expect(result.status).toBe("blocked");
+    expect(result.blockers.join(" ")).toMatch(/aggregate counts|counts disagree/i);
+
+    writeFileSync(
+      junitPath,
+      '<testsuite tests="2" failures="0" skipped="0"><testcase name="one"><error/></testcase><testcase name="two"><skipped/></testcase></testsuite>\n',
+    );
+    result = verifyDeterministicEvidenceBundle({
+      root,
+      bundlePath: "bundle",
+      candidateSha: CANDIDATE,
+    });
+    expect(result.status).toBe("blocked");
+    expect(result.blockers.join(" ")).toMatch(/aggregate counts|counts disagree/i);
   });
 
   it("blocks waiting evidence even when the counts look complete", () => {
@@ -452,28 +563,74 @@ describe("publication evidence adapters", () => {
       cwd: root,
       encoding: "utf8",
     }).trim();
-    const output = join(
-      mkdtempSync(join("/tmp", "tendnote-qualification-")),
-      "nested",
-      "report.json",
-    );
-    const result = spawnSync(
-      process.execPath,
-      [
-        resolve(root, "scripts/publication-qualification.mjs"),
-        "--candidate-sha",
-        candidateSha,
-        "--output",
-        output,
-      ],
-      { cwd: root, encoding: "utf8" },
-    );
-    expect(result.status).toBe(1);
-    const report = JSON.parse(readFileSync(output, "utf8"));
-    expect(report.result.status).toBe("blocked");
-    expect(report.result.blockers).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "boundary-missing" })]),
-    );
+    const outputRoot = join(root, "evidence", "qualification", `focused-${process.pid}`);
+    const output = join(outputRoot, "nested", "report.json");
+    const outputArgument = relative(root, output);
+    try {
+      const result = spawnSync(
+        process.execPath,
+        [
+          resolve(root, "scripts/publication-qualification.mjs"),
+          "--candidate-sha",
+          candidateSha,
+          "--output",
+          outputArgument,
+        ],
+        { cwd: root, encoding: "utf8" },
+      );
+      expect(result.status).toBe(1);
+      const report = JSON.parse(readFileSync(output, "utf8"));
+      expect(report.result.status).toBe("blocked");
+      expect(report.result.blockers).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: "boundary-missing" })]),
+      );
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects outside and symlinked output locations before writing", () => {
+    const root = process.cwd();
+    const candidateSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim();
+    const outside = join("/tmp", `tendnote-qualification-outside-${process.pid}`, "report.json");
+    const outputRoot = join(root, "evidence", "qualification", `symlink-${process.pid}`);
+    const link = join(outputRoot, "link");
+    mkdirSync(outputRoot, { recursive: true });
+    symlinkSync("/tmp", link);
+    try {
+      const outsideResult = spawnSync(
+        process.execPath,
+        [
+          resolve(root, "scripts/publication-qualification.mjs"),
+          "--candidate-sha",
+          candidateSha,
+          "--output",
+          outside,
+        ],
+        { cwd: root, encoding: "utf8" },
+      );
+      expect(outsideResult.status).toBe(1);
+      expect(outsideResult.stderr).toMatch(/under evidence\/qualification|relative/i);
+
+      const symlinkResult = spawnSync(
+        process.execPath,
+        [
+          resolve(root, "scripts/publication-qualification.mjs"),
+          "--candidate-sha",
+          candidateSha,
+          "--output",
+          `evidence/qualification/symlink-${process.pid}/link/report.json`,
+        ],
+        { cwd: root, encoding: "utf8" },
+      );
+      expect(symlinkResult.status).toBe(1);
+      expect(symlinkResult.stderr).toMatch(/symlink/i);
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true });
+    }
   });
 
   it("keeps schema-parity failures visible instead of trusting shape claims", () => {
@@ -487,5 +644,26 @@ describe("publication evidence adapters", () => {
     invalid.result = { ...(invalid.result as object), clean: false };
     (invalid as Record<string, unknown>).unexpected = true;
     expect(validateQualificationReport(invalid).valid).toBe(false);
+  });
+
+  it("requires passed criteria and gates to carry consistent zero-blocker state", () => {
+    const report = composeQualificationReport(passingInput());
+    const invalidCriterion = structuredClone(report);
+    invalidCriterion.gates[0].criteria[0].blockers = [
+      {
+        gateId: invalidCriterion.gates[0].id,
+        criterionId: "license",
+        code: "unexpected",
+        message: "no",
+      },
+    ];
+    expect(validateQualificationReport(invalidCriterion).valid).toBe(false);
+
+    const invalidGate = structuredClone(report);
+    invalidGate.gates[0].status = "blocked";
+    invalidGate.gates[0].blockers = [
+      { gateId: invalidGate.gates[0].id, code: "blocked", message: "blocked" },
+    ];
+    expect(validateQualificationReport(invalidGate).valid).toBe(false);
   });
 });
