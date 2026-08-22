@@ -4,8 +4,8 @@
 
 Counsel reviewed the exact Version 1.0 contribution agreements, and the owner
 approved them effective 2026-08-21. The forms may be accepted or signed through
-the approved process. The repository-owned [CLA Assistant
-manifest](../../.github/cla-assistant.json), [metadata](cla-assistant-metadata.json),
+the approved process. The repository-owned [CLA Assistant desired-state
+manifest](../../.github/cla-assistant-desired-state.json), [metadata](cla-assistant-metadata.json),
 [redacted proof schema](../phase-9a/cla-gate-proof.schema.json), and [operator
 runbook](../phase-9a/cla-enforcement-runbook.md) are prepared. Hosted activation,
 default-branch enforcement, and disposable proof remain owner-gated work in

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/nick-neely/tendnote/blob/main/docs/phase-9a/cla-gate-proof.schema.json",
   "title": "Redacted CLA gate qualification evidence",
-  "description": "A public-safe shape for recording the observed CLA status and disposable cases. It intentionally has no signer, contact, agreement-record, Gist, or account fields.",
+  "description": "A public-safe shape for recording an observed CLA status and synthetic disposable cases. It intentionally has no signer, contact, agreement-record, Gist, or account fields. The status context and GitHub integration_id must be observed together; placeholders and guessed values are invalid.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -34,15 +34,21 @@
           "const": "1.0"
         },
         "sha256": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+          "const": "c3a8e1828d9d573dedba7ddb9e38fb043032532777db9e6028c4b99e4a5545ec"
         }
       }
     },
     "ruleset": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "observedAt", "requiredStatusContexts", "claStatusContext"],
+      "required": [
+        "id",
+        "name",
+        "observedAt",
+        "requiredStatusContexts",
+        "claStatusContext",
+        "claIntegrationId"
+      ],
       "properties": {
         "id": {
           "const": 19995472
@@ -61,12 +67,53 @@
         "claStatusContext": {
           "type": "string",
           "pattern": "^(?!CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE$)\\S(?:.*\\S)?$"
+        },
+        "claIntegrationId": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     },
     "cases": {
       "type": "array",
       "minItems": 4,
+      "maxItems": 4,
+      "contains": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": { "kind": { "const": "unsigned" } }
+      },
+      "minContains": 1,
+      "maxContains": 1,
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "const": "accepted" } }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "const": "employer" } }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "const": "corporate" } }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ],
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -77,6 +124,7 @@
           "outcome",
           "observedAt",
           "claStatusContext",
+          "claIntegrationId",
           "identity"
         ],
         "properties": {
@@ -101,10 +149,48 @@
             "type": "string",
             "pattern": "^(?!CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE$)\\S(?:.*\\S)?$"
           },
+          "claIntegrationId": {
+            "type": "integer",
+            "minimum": 1
+          },
           "identity": {
             "const": "redacted"
           }
-        }
+        },
+        "oneOf": [
+          {
+            "required": ["kind", "status", "outcome"],
+            "properties": {
+              "kind": { "const": "unsigned" },
+              "status": { "const": "failure" },
+              "outcome": { "const": "open-unmergeable" }
+            }
+          },
+          {
+            "required": ["kind", "status", "outcome"],
+            "properties": {
+              "kind": { "const": "accepted" },
+              "status": { "const": "success" },
+              "outcome": { "const": "eligible" }
+            }
+          },
+          {
+            "required": ["kind", "status", "outcome"],
+            "properties": {
+              "kind": { "const": "employer" },
+              "status": { "const": "success" },
+              "outcome": { "const": "eligible" }
+            }
+          },
+          {
+            "required": ["kind", "status", "outcome"],
+            "properties": {
+              "kind": { "const": "corporate" },
+              "status": { "const": "success" },
+              "outcome": { "const": "eligible" }
+            }
+          }
+        ]
       }
     },
     "redaction": {

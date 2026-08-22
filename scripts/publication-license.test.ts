@@ -66,6 +66,9 @@ function currentTextFiles(repositoryRoot = root): string[] {
   const files: string[] = [];
   for (const relativePath of publishablePaths) {
     if (HISTORICAL_EVIDENCE_PATHS.has(relativePath)) continue;
+    // A renamed/deleted tracked path may still appear in an intentionally
+    // dirty worktree before the replacement has been staged.
+    if (!existsSync(resolve(repositoryRoot, relativePath))) continue;
     // The fixture necessarily contains the forbidden patterns as regexes.
     if (relativePath.endsWith("scripts/publication-license.test.ts")) continue;
     if (THIRD_PARTY_PATH_PREFIXES.some((path) => relativePath.startsWith(path))) continue;
@@ -335,7 +338,7 @@ describe("fresh-clone publication gate", () => {
     expect(guide).toContain("docs/ci-contributing.md#verification-labels");
     expect(guide).toContain(".github/rulesets/protect-main.json");
     expect(guide).toMatch(
-      /CLA Assistant manifest[\s\S]*redacted proof schema[\s\S]*operator runbook/i,
+      /CLA Assistant (?:desired-state )?manifest[\s\S]*redacted proof schema[\s\S]*operator runbook/i,
     );
     expect(guide).toMatch(
       /hosted activation[\s\S]*actual CLA status context[\s\S]*owner-gated work in #473/i,

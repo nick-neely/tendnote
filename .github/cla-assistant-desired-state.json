@@ -1,8 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "kind": "cla-assistant-desired-state",
+  "runtimeConfig": false,
   "service": {
     "name": "CLA Assistant",
-    "url": "https://cla-assistant.io"
+    "url": "https://cla-assistant.io",
+    "configuration": "owner dashboard and linked Gist; this file is not read by the hosted service"
   },
   "repository": "nick-neely/tendnote",
   "defaultBranch": "main",
@@ -23,12 +26,17 @@
     "observeBeforeEnforce": true,
     "statusContext": {
       "value": null,
-      "placeholder": "CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE"
+      "placeholder": "CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE",
+      "integrationId": null,
+      "integrationIdPlaceholder": "CLA_INTEGRATION_ID_TO_OBSERVE_LIVE"
     },
     "rulesetId": 19995472,
     "trackedRulesetPath": ".github/rulesets/protect-main.json",
     "existingRequiredStatusContexts": ["Verify", "Full CI qualification", "Vercel"],
     "preserveExistingChecks": true,
+    "removeExistingBypassActors": true,
+    "desiredBypassActors": [],
+    "requiresPostUpdateVerification": true,
     "claAssistantAllowlist": [],
     "maintainerOverride": false
   },

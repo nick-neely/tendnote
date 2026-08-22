@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "1.0",
+  "repository": "nick-neely/tendnote",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "agreement": {
+    "version": "1.0",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "ruleset": {
+    "id": 19995472,
+    "name": "Protect main",
+    "observedAt": "2026-08-22T00:00:00Z",
+    "requiredStatusContexts": ["Verify", "Full CI qualification", "Vercel"],
+    "claStatusContext": "synthetic-cla-status",
+    "claIntegrationId": 424242
+  },
+  "cases": [
+    {
+      "kind": "unsigned",
+      "proofId": "redacted-unsigned-one",
+      "status": "success",
+      "outcome": "eligible",
+      "observedAt": "2026-08-22T00:01:00Z",
+      "claStatusContext": "synthetic-cla-status",
+      "claIntegrationId": 424242,
+      "identity": "redacted"
+    },
+    {
+      "kind": "unsigned",
+      "proofId": "redacted-unsigned-two",
+      "status": "failure",
+      "outcome": "open-unmergeable",
+      "observedAt": "2026-08-22T00:02:00Z",
+      "claStatusContext": "synthetic-cla-status",
+      "claIntegrationId": 424242,
+      "identity": "redacted"
+    },
+    {
+      "kind": "accepted",
+      "proofId": "redacted-accepted",
+      "status": "success",
+      "outcome": "eligible",
+      "observedAt": "2026-08-22T00:03:00Z",
+      "claStatusContext": "synthetic-cla-status",
+      "claIntegrationId": 999999,
+      "identity": "redacted"
+    },
+    {
+      "kind": "employer",
+      "proofId": "redacted-employer",
+      "status": "success",
+      "outcome": "eligible",
+      "observedAt": "2026-08-22T00:04:00Z",
+      "claStatusContext": "synthetic-cla-status",
+      "claIntegrationId": 424242,
+      "identity": "redacted"
+    }
+  ],
+  "redaction": {
+    "identities": true,
+    "contactDetails": true,
+    "acceptanceRecords": true,
+    "temporaryPullRequests": true,
+    "gistReferences": true
+  }
+}

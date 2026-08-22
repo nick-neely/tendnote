@@ -40,7 +40,7 @@ route that matches ownership:
 An unsigned or declined external pull request remains open but cannot merge
 once the required status is live. Corporate authorization satisfies the same
 gate; it is not an undocumented bypass. The repository-owned [CLA Assistant
-manifest](../.github/cla-assistant.json), [metadata](legal/cla-assistant-metadata.json),
+desired-state manifest](../.github/cla-assistant-desired-state.json), [metadata](legal/cla-assistant-metadata.json),
 [redacted proof schema](phase-9a/cla-gate-proof.schema.json), and [operator
 runbook](phase-9a/cla-enforcement-runbook.md) are prepared. Hosted activation,
 observation of the actual status context, live ruleset update, and disposable
