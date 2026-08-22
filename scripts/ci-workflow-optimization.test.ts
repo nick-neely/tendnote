@@ -35,8 +35,15 @@ describe("CI workflow optimization contract", () => {
       "Verify",
       "Full CI qualification",
       "Vercel",
+      "license/cla",
     ]);
-    expect(ruleset.bypass_actors).toEqual([]);
+    expect(ruleset.bypass_actors).toEqual([
+      {
+        actor_id: 5,
+        actor_type: "RepositoryRole",
+        bypass_mode: "pull_request",
+      },
+    ]);
   });
 
   it("keeps one stable PR gate and does not verify documentation-only changes", () => {

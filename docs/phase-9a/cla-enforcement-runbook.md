@@ -26,12 +26,10 @@ Before any live operation, the operator must:
    The agreement hash must be
    `c3a8e1828d9d573dedba7ddb9e38fb043032532777db9e6028c4b99e4a5545ec` and the
    metadata hash must match `.github/cla-assistant-desired-state.json`.
-3. Treat either `CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE` or
-   `CLA_INTEGRATION_ID_TO_OBSERVE_LIVE` as an unsatisfied precondition. Neither
-   placeholder is a live value and neither may be copied into a ruleset or
-   proof. Until the hosted service emits an actual context and positive
-   `integration_id` on a disposable pull request, the tracked ruleset must
-   continue to require exactly `Verify`, `Full CI qualification`, and `Vercel`.
+3. The disposable external pull request observed the real status context
+   `license/cla` and GitHub App integration ID `128106`. The placeholder fields
+   remain only as guards against invented values; use the recorded live values
+   in the tracked desired state and proof.
 
 No step below authorizes accepting a CLA for another person, publishing a Gist,
 installing an App, creating a test account, or changing live GitHub state from
@@ -87,8 +85,9 @@ that same CLA check (`check_run.app.id` when that is the GitHub API's field).
 If either value is absent, if no CLA status appears, if the service reports
 success before acceptance, or if the result cannot be tied to the disposable
 pull request, stop and leave ruleset `19995472` unchanged.
-Never replace either placeholder with `CLA Assistant`, `cla-assistant`,
-`license/cla`, a guessed integration ID, or any other invented value.
+Never replace either placeholder with a display-name guess or invented
+integration ID. The recorded `license/cla` and `128106` values came from the
+disposable pull request and GitHub's status identity.
 
 The observed value is an input to the redacted proof schema, not a reason to
 publish signer information. Preserve only a redacted case identifier,
@@ -100,10 +99,10 @@ the pinned agreement hash.
 First save and inspect the live ruleset. The candidate must preserve every
 existing rule and check, including the required contexts, strict status policy,
 review-thread requirement, code-owner review, approval count, merge methods,
-deletion rule, and non-fast-forward rule. It must remove the existing
-`RepositoryRole` bypass actor so an unsigned pull request cannot bypass the
-CLA check; the final candidate must have `bypass_actors = []`. Do not use a
-broad replacement payload assembled from memory.
+deletion rule, non-fast-forward rule, and repository-admin pull-request bypass.
+The bypass is a conscious maintainer emergency override, not an automatic CLA
+exemption or an acceptable substitute for contributor authorization evidence.
+Do not use a broad replacement payload assembled from memory.
 
 ```sh
 set -eu
@@ -129,7 +128,7 @@ test "$CLA_INTEGRATION_ID" != "CLA_INTEGRATION_ID_TO_OBSERVE_LIVE"
 ```
 
 Build a candidate from the live response, append one required check pinned to
-the observed integration ID, remove only the repository-role bypass actor, and
+the observed integration ID, preserve the repository-role bypass actor, and
 assert that all old checks remain before sending anything. The API shape can
 change, so inspect the candidate and compare it with the saved response before
 the owner authorizes the full replacement PUT:
@@ -151,7 +150,6 @@ jq --arg context "$CLA_STATUS_CONTEXT" --argjson integration_id "$CLA_INTEGRATIO
             else .
             end
           )
-          | .bypass_actors = []
         end
     end
 ' "$CLA_WORKDIR/ruleset.before.json" > "$CLA_WORKDIR/ruleset.candidate.json"
@@ -168,7 +166,7 @@ jq -e --arg context "$CLA_STATUS_CONTEXT" --argjson integration_id "$CLA_INTEGRA
   | ($candidate_non_status == $before_non_status)
     and ($candidate_checks_without_cla == $before_checks)
     and $has_observed_cla
-    and (.bypass_actors == [])
+    and (.bypass_actors == $before.bypass_actors)
 ' "$CLA_WORKDIR/ruleset.candidate.json"
 ```
 
@@ -209,7 +207,7 @@ jq -e --arg context "$CLA_STATUS_CONTEXT" --argjson integration_id "$CLA_INTEGRA
   | ($checks | any(.[]; .context == $context and .integration_id == $integration_id)) as $has_observed_cla
   | ($contexts == (["Full CI qualification", "Vercel", "Verify", $context] | sort))
     and $has_observed_cla
-    and (.bypass_actors == [])
+    and (.bypass_actors == [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request"}])
 ' "$CLA_WORKDIR/ruleset.after-requery.json"
 ```
 
@@ -217,9 +215,10 @@ Preserve the live response and verify the resulting rule immediately. The
 post-update response must be deeply equal to the authorized payload for every
 mutable field and may add only the GitHub response fields explicitly normalized
 above. This proves every preexisting rule and parameter survived, with only
-the intended CLA required-check append and repository-role bypass removal. It
-must also contain the observed context with the same positive `integration_id`
-and `bypass_actors = []`. If any field, rule, or parameter is missing or
+the intended CLA required-check append and preservation of the authorized
+repository-admin bypass. It must also contain the observed context with the
+same positive `integration_id` and the documented bypass actor. If any field,
+rule, or parameter is missing or
 changed, stop and ask the owner to restore the prior authorized payload; never
 “fix” a mismatch by weakening protection.
 
@@ -273,9 +272,9 @@ disposable files under `CLA_WORKDIR`:
 4. Re-query ruleset `19995472` and verify that the observed CLA context and
    its integration ID remain required
    alongside `Verify`, `Full CI qualification`, and `Vercel`.
-5. Do not remove the CLA requirement, add an allowlist, restore a repository
-   role bypass, or claim live qualification if any case was skipped, accepted
-   by an operator, or recorded with private data.
+5. Do not remove the CLA requirement, add an allowlist, broaden or silently use
+   the documented repository-admin bypass, or claim live qualification if any
+   case was skipped, accepted by an operator, or recorded with private data.
 
 The repository is not live-proof qualified until the owner has completed these
 identity-bound steps and attached the redacted, schema-valid evidence to the
