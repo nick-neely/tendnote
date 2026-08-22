@@ -10,9 +10,11 @@
     "id": 19995472,
     "name": "Protect main",
     "observedAt": "2026-08-22T00:00:00Z",
-    "requiredStatusContexts": ["Verify", "Full CI qualification", "Vercel"],
-    "claStatusContext": "synthetic-cla-status",
-    "claIntegrationId": 424242
+    "requiredStatusContexts": ["Verify", "Full CI qualification", "Vercel"]
+  },
+  "claCheck": {
+    "statusContext": "synthetic-cla-status",
+    "integrationId": 424242
   },
   "cases": [
     {
@@ -21,8 +23,6 @@
       "status": "failure",
       "outcome": "open-unmergeable",
       "observedAt": "2026-08-22T00:01:00Z",
-      "claStatusContext": "synthetic-cla-status",
-      "claIntegrationId": 424242,
       "identity": "redacted"
     },
     {
@@ -31,8 +31,6 @@
       "status": "success",
       "outcome": "eligible",
       "observedAt": "2026-08-22T00:02:00Z",
-      "claStatusContext": "synthetic-cla-status",
-      "claIntegrationId": 424242,
       "identity": "redacted"
     },
     {
@@ -41,8 +39,6 @@
       "status": "success",
       "outcome": "eligible",
       "observedAt": "2026-08-22T00:03:00Z",
-      "claStatusContext": "synthetic-cla-status",
-      "claIntegrationId": 424242,
       "identity": "redacted"
     },
     {
@@ -51,8 +47,6 @@
       "status": "success",
       "outcome": "eligible",
       "observedAt": "2026-08-22T00:04:00Z",
-      "claStatusContext": "synthetic-cla-status",
-      "claIntegrationId": 424242,
       "identity": "redacted"
     }
   ],

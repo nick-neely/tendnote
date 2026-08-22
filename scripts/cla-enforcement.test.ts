@@ -11,6 +11,7 @@ const rulesetPath = ".github/rulesets/protect-main.json";
 const proofSchemaPath = "docs/phase-9a/cla-gate-proof.schema.json";
 const runbookPath = "docs/phase-9a/cla-enforcement-runbook.md";
 const validProofPath = "docs/phase-9a/fixtures/cla-gate-proof.valid.json";
+const pendingProofPath = "docs/phase-9a/fixtures/cla-gate-proof.pending.json";
 const invalidProofPath = "docs/phase-9a/fixtures/cla-gate-proof.invalid.json";
 
 const APPROVED_AGREEMENT_SHA256 =
@@ -32,11 +33,9 @@ function readJson<T>(relativePath: string): T {
 type ProofCase = {
   kind: "unsigned" | "accepted" | "employer" | "corporate";
   proofId: string;
-  status: "failure" | "success";
+  status: "failure" | "pending" | "success";
   outcome: "open-unmergeable" | "eligible";
   observedAt: string;
-  claStatusContext: string;
-  claIntegrationId: number;
   identity: "redacted";
 };
 
@@ -50,9 +49,8 @@ type ProofFixture = {
     name: "Protect main";
     observedAt: string;
     requiredStatusContexts: ["Verify", "Full CI qualification", "Vercel"];
-    claStatusContext: string;
-    claIntegrationId: number;
   };
+  claCheck: { statusContext: string; integrationId: number };
   cases: ProofCase[];
   redaction: {
     identities: true;
@@ -78,6 +76,7 @@ function validateRedactedProof(value: unknown): string[] {
     "commit",
     "agreement",
     "ruleset",
+    "claCheck",
     "cases",
     "redaction",
   ];
@@ -116,19 +115,30 @@ function validateRedactedProof(value: unknown): string[] {
     ) {
       errors.push("ruleset requiredStatusContexts changed");
     }
-    if (
-      typeof ruleset.claStatusContext !== "string" ||
-      !/^\S(?:.*\S)?$/.test(ruleset.claStatusContext) ||
-      ruleset.claStatusContext === "CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE"
-    ) {
-      errors.push("ruleset CLA status context must be observed");
+  }
+
+  const claCheck = proof.claCheck;
+  if (!isRecord(claCheck)) {
+    errors.push("claCheck must be an object");
+  } else {
+    for (const key of Object.keys(claCheck)) {
+      if (!["statusContext", "integrationId"].includes(key)) {
+        errors.push(`claCheck has unexpected field: ${key}`);
+      }
     }
     if (
-      typeof ruleset.claIntegrationId !== "number" ||
-      !Number.isInteger(ruleset.claIntegrationId) ||
-      ruleset.claIntegrationId < 1
+      typeof claCheck.statusContext !== "string" ||
+      !/^\S(?:.*\S)?$/.test(claCheck.statusContext) ||
+      claCheck.statusContext === "CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE"
     ) {
-      errors.push("ruleset CLA integration_id must be a positive integer");
+      errors.push("claCheck status context must be observed");
+    }
+    if (
+      typeof claCheck.integrationId !== "number" ||
+      !Number.isInteger(claCheck.integrationId) ||
+      claCheck.integrationId < 1
+    ) {
+      errors.push("claCheck integration_id must be a positive integer");
     }
   }
 
@@ -145,17 +155,22 @@ function validateRedactedProof(value: unknown): string[] {
 
     const expected: Record<
       ProofCase["kind"],
-      { status: ProofCase["status"]; outcome: ProofCase["outcome"] }
+      { statuses: readonly ProofCase["status"][]; outcome: ProofCase["outcome"] }
     > = {
-      unsigned: { status: "failure", outcome: "open-unmergeable" },
-      accepted: { status: "success", outcome: "eligible" },
-      employer: { status: "success", outcome: "eligible" },
-      corporate: { status: "success", outcome: "eligible" },
+      unsigned: { statuses: ["failure", "pending"], outcome: "open-unmergeable" },
+      accepted: { statuses: ["success"], outcome: "eligible" },
+      employer: { statuses: ["success"], outcome: "eligible" },
+      corporate: { statuses: ["success"], outcome: "eligible" },
     };
     for (const [index, proofCase] of cases.entries()) {
       if (!isRecord(proofCase)) {
         errors.push(`case ${index} must be an object`);
         continue;
+      }
+      for (const key of Object.keys(proofCase)) {
+        if (!["kind", "proofId", "status", "outcome", "observedAt", "identity"].includes(key)) {
+          errors.push(`case ${index} has unexpected field: ${key}`);
+        }
       }
       const kind = proofCase.kind as ProofCase["kind"];
       const expectedCase = expected[kind];
@@ -163,7 +178,8 @@ function validateRedactedProof(value: unknown): string[] {
         errors.push(`case ${index} has an unknown kind`);
         continue;
       }
-      if (proofCase.status !== expectedCase.status || proofCase.outcome !== expectedCase.outcome) {
+      const status = proofCase.status as ProofCase["status"];
+      if (!expectedCase.statuses.includes(status) || proofCase.outcome !== expectedCase.outcome) {
         errors.push(`${kind} case has an unexpected status/outcome`);
       }
       if (
@@ -173,12 +189,6 @@ function validateRedactedProof(value: unknown): string[] {
         errors.push(`${kind} case proofId must be redacted`);
       }
       if (proofCase.identity !== "redacted") errors.push(`${kind} case identity must be redacted`);
-      if (proofCase.claStatusContext !== ruleset?.claStatusContext) {
-        errors.push(`${kind} case does not correlate to the ruleset status context`);
-      }
-      if (proofCase.claIntegrationId !== ruleset?.claIntegrationId) {
-        errors.push(`${kind} case does not correlate to the ruleset integration_id`);
-      }
     }
   }
 
@@ -202,6 +212,81 @@ function validateRedactedProof(value: unknown): string[] {
   }
   return errors;
 }
+
+const RULESET_PAYLOAD_KEYS = [
+  "name",
+  "target",
+  "enforcement",
+  "conditions",
+  "rules",
+  "bypass_actors",
+] as const;
+const RULESET_READ_ONLY_KEYS = new Set([
+  "id",
+  "source_type",
+  "source",
+  "node_id",
+  "created_at",
+  "updated_at",
+  "current_user_can_bypass",
+  "_links",
+]);
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, canonicalJson(value[key])]),
+  );
+}
+
+function deepJsonEqual(left: unknown, right: unknown): boolean {
+  return JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right));
+}
+
+function mutableRulesetPayload(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  if (!RULESET_PAYLOAD_KEYS.every((key) => key in value)) return null;
+  if (
+    Object.keys(value).some(
+      (key) =>
+        !RULESET_PAYLOAD_KEYS.includes(key as (typeof RULESET_PAYLOAD_KEYS)[number]) &&
+        !RULESET_READ_ONLY_KEYS.has(key),
+    )
+  ) {
+    return null;
+  }
+  return Object.fromEntries(RULESET_PAYLOAD_KEYS.map((key) => [key, value[key]]));
+}
+
+function matchesAuthorizedRulesetPayload(response: unknown, authorizedPayload: unknown): boolean {
+  if (!isRecord(authorizedPayload)) return false;
+  if (
+    Object.keys(authorizedPayload).length !== RULESET_PAYLOAD_KEYS.length ||
+    Object.keys(authorizedPayload).some(
+      (key) => !RULESET_PAYLOAD_KEYS.includes(key as (typeof RULESET_PAYLOAD_KEYS)[number]),
+    )
+  ) {
+    return false;
+  }
+  const responsePayload = mutableRulesetPayload(response);
+  return responsePayload !== null && deepJsonEqual(responsePayload, authorizedPayload);
+}
+
+type RulesetDocument = {
+  name: string;
+  target: string;
+  enforcement: string;
+  conditions: Record<string, unknown>;
+  rules: Array<{ type: string; parameters?: Record<string, unknown> }>;
+  bypass_actors: unknown[];
+};
 
 describe("external CLA enforcement contract", () => {
   it("pins the exact approved ICLA version and bytes", () => {
@@ -349,6 +434,68 @@ describe("external CLA enforcement contract", () => {
     expect(ruleset.bypass_actors).toEqual([]);
   });
 
+  it("deeply compares the post-PUT ruleset with the authorized payload", () => {
+    const liveBefore = cloneJson(readJson<RulesetDocument>(rulesetPath));
+    liveBefore.bypass_actors = [
+      {
+        actor_id: 5,
+        actor_type: "RepositoryRole",
+        bypass_mode: "pull_request",
+      },
+    ];
+    const candidate = cloneJson(liveBefore);
+    const statusRule = candidate.rules.find((rule) => rule.type === "required_status_checks");
+    if (!statusRule?.parameters || !Array.isArray(statusRule.parameters.required_status_checks)) {
+      throw new Error("the ruleset fixture must have one required-status rule");
+    }
+    (statusRule.parameters.required_status_checks as Array<Record<string, unknown>>).push({
+      context: "observed-cla-status",
+      integration_id: 424242,
+    });
+    candidate.bypass_actors = [];
+
+    const authorizedPayload = {
+      name: candidate.name,
+      target: candidate.target,
+      enforcement: candidate.enforcement,
+      conditions: candidate.conditions,
+      rules: candidate.rules,
+      bypass_actors: candidate.bypass_actors,
+    };
+    const postPutResponse = {
+      ...authorizedPayload,
+      id: 19995472,
+      source_type: "Repository",
+      source: "nick-neely/tendnote",
+      node_id: "RRS_fixture",
+      created_at: "2026-08-22T00:00:00Z",
+      updated_at: "2026-08-22T00:01:00Z",
+      current_user_can_bypass: "pull_requests_only",
+      _links: {
+        self: { href: "https://api.github.com/repos/nick-neely/tendnote/rulesets/19995472" },
+        html: { href: "https://github.com/nick-neely/tendnote/rules/19995472" },
+      },
+    };
+
+    expect(matchesAuthorizedRulesetPayload(postPutResponse, authorizedPayload)).toBe(true);
+
+    const changedNestedParameter = cloneJson(postPutResponse);
+    const changedPullRequestRule = changedNestedParameter.rules.find(
+      (rule) => rule.type === "pull_request",
+    );
+    if (!changedPullRequestRule?.parameters) throw new Error("missing pull-request parameters");
+    changedPullRequestRule.parameters.require_code_owner_review = false;
+    expect(matchesAuthorizedRulesetPayload(changedNestedParameter, authorizedPayload)).toBe(false);
+
+    const removedRule = cloneJson(postPutResponse);
+    removedRule.rules = removedRule.rules.filter((rule) => rule.type !== "deletion");
+    expect(matchesAuthorizedRulesetPayload(removedRule, authorizedPayload)).toBe(false);
+
+    const unexpectedResponseField = cloneJson(postPutResponse) as Record<string, unknown>;
+    unexpectedResponseField.mutable_server_field = true;
+    expect(matchesAuthorizedRulesetPayload(unexpectedResponseField, authorizedPayload)).toBe(false);
+  });
+
   it("does not define a CLA allowlist or undocumented bypass", () => {
     const config = readJson<{
       enforcement: {
@@ -410,6 +557,7 @@ describe("external CLA enforcement contract", () => {
         "repository",
         "agreement",
         "ruleset",
+        "claCheck",
         "cases",
         "redaction",
       ]),
@@ -421,10 +569,15 @@ describe("external CLA enforcement contract", () => {
       required: string[];
       properties: Record<string, unknown>;
     };
-    expect(rulesetSchema.required).toEqual(
+    expect(rulesetSchema.required).not.toEqual(
       expect.arrayContaining(["claStatusContext", "claIntegrationId"]),
     );
-    expect(rulesetSchema.properties.claIntegrationId).toEqual({
+    const claCheckSchema = schema.properties.claCheck as {
+      required: string[];
+      properties: Record<string, unknown>;
+    };
+    expect(claCheckSchema.required).toEqual(["statusContext", "integrationId"]);
+    expect(claCheckSchema.properties.integrationId).toEqual({
       type: "integer",
       minimum: 1,
     });
@@ -444,6 +597,9 @@ describe("external CLA enforcement contract", () => {
     expect(casesSchema.maxItems).toBe(4);
     expect(casesSchema.items.oneOf).toHaveLength(4);
     expect(JSON.stringify(casesSchema)).toContain("maxContains");
+    expect(JSON.stringify(casesSchema.items)).not.toContain("claStatusContext");
+    expect(JSON.stringify(casesSchema.items)).not.toContain("claIntegrationId");
+    expect(JSON.stringify(casesSchema.items)).toContain('"pending"');
     expect(runbook).toContain("CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE");
     expect(runbook).toContain("CLA_INTEGRATION_ID_TO_OBSERVE_LIVE");
     expect(runbook).toContain("integration_id");
@@ -456,6 +612,10 @@ describe("external CLA enforcement contract", () => {
     expect(runbook).toContain("do not");
     expect(runbook).toContain("bypass_actors = []");
     expect(runbook).toContain("full replacement");
+    expect(runbook).toContain("--slurpfile authorized");
+    expect(runbook).toContain("source_type");
+    expect(runbook).toContain("current_user_can_bypass");
+    expect(runbook).toContain("ruleset.after-requery");
     expect(runbook).toContain("mktemp -d");
     expect(runbook).toContain("chmod 700");
     expect(runbook).toContain("umask 077");
@@ -472,7 +632,25 @@ describe("external CLA enforcement contract", () => {
     expect(validateRedactedProof(proof)).toEqual([]);
   });
 
-  it("rejects duplicate and mis-correlated proof cases in the invalid fixture", () => {
+  it("accepts a pending unsigned proof while keeping it open-unmergeable", () => {
+    const proof = readJson<ProofFixture>(pendingProofPath);
+
+    expect(validateRedactedProof(proof)).toEqual([]);
+    expect(proof.cases.find((proofCase) => proofCase.kind === "unsigned")).toMatchObject({
+      status: "pending",
+      outcome: "open-unmergeable",
+    });
+
+    const contradictory = cloneJson(proof);
+    const unsigned = contradictory.cases.find((proofCase) => proofCase.kind === "unsigned");
+    if (!unsigned) throw new Error("pending fixture must include an unsigned case");
+    unsigned.outcome = "eligible";
+    expect(validateRedactedProof(contradictory)).toContain(
+      "unsigned case has an unexpected status/outcome",
+    );
+  });
+
+  it("rejects duplicate and contradictory proof cases in the invalid fixture", () => {
     const proof = readJson<ProofFixture>(invalidProofPath);
     const errors = validateRedactedProof(proof);
 
@@ -481,7 +659,6 @@ describe("external CLA enforcement contract", () => {
         "proof must contain exactly one unsigned case",
         "proof must contain exactly one corporate case",
         "unsigned case has an unexpected status/outcome",
-        "accepted case does not correlate to the ruleset integration_id",
         "agreement hash does not match the approved ICLA",
       ]),
     );

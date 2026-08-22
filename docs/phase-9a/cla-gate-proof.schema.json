@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/nick-neely/tendnote/blob/main/docs/phase-9a/cla-gate-proof.schema.json",
   "title": "Redacted CLA gate qualification evidence",
-  "description": "A public-safe shape for recording an observed CLA status and synthetic disposable cases. It intentionally has no signer, contact, agreement-record, Gist, or account fields. The status context and GitHub integration_id must be observed together; placeholders and guessed values are invalid.",
+  "description": "A public-safe shape for recording an observed CLA status and synthetic disposable cases. It intentionally has no signer, contact, agreement-record, Gist, or account fields. The shared claCheck object pins the observed status context and GitHub integration_id once; placeholders and guessed values are invalid.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,6 +11,7 @@
     "commit",
     "agreement",
     "ruleset",
+    "claCheck",
     "cases",
     "redaction"
   ],
@@ -41,14 +42,7 @@
     "ruleset": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "id",
-        "name",
-        "observedAt",
-        "requiredStatusContexts",
-        "claStatusContext",
-        "claIntegrationId"
-      ],
+      "required": ["id", "name", "observedAt", "requiredStatusContexts"],
       "properties": {
         "id": {
           "const": 19995472
@@ -63,12 +57,19 @@
         "requiredStatusContexts": {
           "type": "array",
           "const": ["Verify", "Full CI qualification", "Vercel"]
-        },
-        "claStatusContext": {
+        }
+      }
+    },
+    "claCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statusContext", "integrationId"],
+      "properties": {
+        "statusContext": {
           "type": "string",
           "pattern": "^(?!CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE$)\\S(?:.*\\S)?$"
         },
-        "claIntegrationId": {
+        "integrationId": {
           "type": "integer",
           "minimum": 1
         }
@@ -117,16 +118,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "kind",
-          "proofId",
-          "status",
-          "outcome",
-          "observedAt",
-          "claStatusContext",
-          "claIntegrationId",
-          "identity"
-        ],
+        "required": ["kind", "proofId", "status", "outcome", "observedAt", "identity"],
         "properties": {
           "kind": {
             "enum": ["unsigned", "accepted", "employer", "corporate"]
@@ -136,7 +128,7 @@
             "pattern": "^redacted-[a-z0-9-]+$"
           },
           "status": {
-            "enum": ["failure", "success"]
+            "enum": ["failure", "pending", "success"]
           },
           "outcome": {
             "enum": ["open-unmergeable", "eligible"]
@@ -144,14 +136,6 @@
           "observedAt": {
             "type": "string",
             "format": "date-time"
-          },
-          "claStatusContext": {
-            "type": "string",
-            "pattern": "^(?!CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE$)\\S(?:.*\\S)?$"
-          },
-          "claIntegrationId": {
-            "type": "integer",
-            "minimum": 1
           },
           "identity": {
             "const": "redacted"
@@ -162,7 +146,7 @@
             "required": ["kind", "status", "outcome"],
             "properties": {
               "kind": { "const": "unsigned" },
-              "status": { "const": "failure" },
+              "status": { "enum": ["failure", "pending"] },
               "outcome": { "const": "open-unmergeable" }
             }
           },

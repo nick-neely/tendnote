@@ -186,6 +186,22 @@ gh api --method PUT repos/nick-neely/tendnote/rulesets/19995472 \
   > "$CLA_WORKDIR/ruleset.after.json"
 gh api repos/nick-neely/tendnote/rulesets/19995472 > "$CLA_WORKDIR/ruleset.after-requery.json"
 
+jq -e --slurpfile authorized "$CLA_WORKDIR/ruleset.payload.json" '
+  def mutable: {name, target, enforcement, conditions, rules, bypass_actors};
+  def is_read_only:
+    . == "id" or . == "source_type" or . == "source" or . == "node_id"
+    or . == "created_at" or . == "updated_at"
+    or . == "current_user_can_bypass" or . == "_links";
+  ($authorized[0]) as $authorized_payload
+  | (mutable) as $response_payload
+  | (keys - ($response_payload | keys)) as $extra_keys
+  | ($extra_keys | all(.[]; is_read_only)) as $read_only_normalized
+  | (($response_payload | keys) == ($authorized_payload | keys)) as $complete_payload_shape
+  | $read_only_normalized
+    and $complete_payload_shape
+    and ($response_payload == $authorized_payload)
+' "$CLA_WORKDIR/ruleset.after-requery.json"
+
 jq -e --arg context "$CLA_STATUS_CONTEXT" --argjson integration_id "$CLA_INTEGRATION_ID" '
   ([.rules[] | select(.type == "required_status_checks")]
     | map(.parameters.required_status_checks) | add) as $checks
@@ -198,10 +214,14 @@ jq -e --arg context "$CLA_STATUS_CONTEXT" --argjson integration_id "$CLA_INTEGRA
 ```
 
 Preserve the live response and verify the resulting rule immediately. The
-post-update response must contain the observed context with the same positive
-`integration_id`, every existing rule/check, and `bypass_actors = []`. If any
-existing rule or context is missing, stop and ask the owner to restore the
-prior authorized payload; never “fix” a mismatch by weakening protection.
+post-update response must be deeply equal to the authorized payload for every
+mutable field and may add only the GitHub response fields explicitly normalized
+above. This proves every preexisting rule and parameter survived, with only
+the intended CLA required-check append and repository-role bypass removal. It
+must also contain the observed context with the same positive `integration_id`
+and `bypass_actors = []`. If any field, rule, or parameter is missing or
+changed, stop and ask the owner to restore the prior authorized payload; never
+“fix” a mismatch by weakening protection.
 
 ## 4. Run the disposable proof cases
 
@@ -228,7 +248,10 @@ proof must not include names, email addresses, account IDs, raw comments,
 signer exports, or agreement records. The proof schema requires exactly one
 unsigned, accepted, employer, and corporate case; it rejects duplicate kinds,
 contradictory status/outcome pairs, unobserved integration IDs, and an
-agreement hash other than the approved Version 1.0 bytes.
+agreement hash other than the approved Version 1.0 bytes. The shared `claCheck`
+object records the observed context and integration ID once for all cases. An
+unsigned or declined case may be `failure` or `pending`, but it must always be
+`open-unmergeable`; `success` or `eligible` is contradictory.
 
 ## 5. Preserve evidence and clean up
 
