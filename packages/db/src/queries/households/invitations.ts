@@ -296,6 +296,71 @@ export function createHouseholdInvitationLifecycle(
     return membership;
   }
 
+  /**
+   * A proven recipient may replay an already-committed acceptance. Every other
+   * caller - a different account, a different mailbox, or an account that has
+   * since joined elsewhere - must see the same dead link everyone else sees.
+   */
+  async function replayAcceptedInvitation(
+    tx: HouseholdInvitationStore,
+    invitation: HouseholdInvitation,
+    proof: RecipientProof,
+  ): Promise<{ householdId: string }> {
+    if (
+      invitation.acceptedByUserId !== proof.userId ||
+      normalizeInvitationEmail(proof.userEmail) !== invitation.normalizedEmail
+    ) {
+      unusableLink();
+    }
+
+    const memberships = await tx.households.listActiveHouseholdMembershipsForUser({
+      userId: proof.userId,
+    });
+    if (memberships.some((membership) => membership.householdId !== invitation.householdId)) {
+      assertHouseholdAdmissionAvailable(memberships);
+    }
+    if (!memberships.some((membership) => membership.householdId === invitation.householdId)) {
+      unusableLink();
+    }
+
+    // A successful first acceptance always leaves this grant in the same
+    // transaction. Repairing a legacy accepted row that lacks it is
+    // idempotent and keeps the persisted admission invariant true.
+    await grantHouseholdInvitationAccess(tx, proof.userId);
+    return { householdId: invitation.householdId };
+  }
+
+  async function admitMembership(
+    tx: HouseholdInvitationStore,
+    invitation: HouseholdInvitation,
+    userId: string,
+    at: Date,
+  ) {
+    const existing = await tx.households.getHouseholdMembership({
+      householdId: invitation.householdId,
+      userId,
+    });
+    if (existing) {
+      // Someone who left or was removed and came back through a fresh
+      // invitation reuses their row rather than colliding with its unique index.
+      await tx.households.updateHouseholdMembership({
+        membershipId: existing.id,
+        patch: { status: "active", role: invitation.role, acceptedAt: at, removedAt: null },
+      });
+      return;
+    }
+    await tx.households.createHouseholdMembership({
+      householdId: invitation.householdId,
+      userId,
+      invitedByUserId: invitation.invitedByUserId,
+      role: invitation.role,
+      status: "active",
+      invitedAt: invitation.createdAt,
+      acceptedAt: at,
+      removedAt: null,
+    });
+  }
+
   return {
     async sendInvitation(input: {
       ownerUserId: string;
@@ -572,35 +637,7 @@ export function createHouseholdInvitationLifecycle(
         }
 
         if (invitation.state === "accepted") {
-          if (
-            invitation.acceptedByUserId !== proof.userId ||
-            normalizeInvitationEmail(proof.userEmail) !== invitation.normalizedEmail
-          ) {
-            unusableLink();
-          }
-
-          const currentActiveMemberships =
-            await tx.households.listActiveHouseholdMembershipsForUser({ userId: proof.userId });
-          if (
-            currentActiveMemberships.some(
-              (membership) => membership.householdId !== invitation.householdId,
-            )
-          ) {
-            assertHouseholdAdmissionAvailable(currentActiveMemberships);
-          }
-          if (
-            !currentActiveMemberships.some(
-              (membership) => membership.householdId === invitation.householdId,
-            )
-          ) {
-            unusableLink();
-          }
-
-          // A successful first acceptance always leaves this grant in the same
-          // transaction. Repairing a legacy accepted row that lacks it is
-          // idempotent and keeps the persisted admission invariant true.
-          await grantHouseholdInvitationAccess(tx, proof.userId);
-          return { householdId: invitation.householdId };
+          return replayAcceptedInvitation(tx, invitation, proof);
         }
 
         if (!isHouseholdInvitationLive(invitation, at)) {
@@ -630,29 +667,7 @@ export function createHouseholdInvitationLifecycle(
         // failure in either write rolls the other back in production.
         await grantHouseholdInvitationAccess(tx, proof.userId);
 
-        const existing = await tx.households.getHouseholdMembership({
-          householdId: invitation.householdId,
-          userId: proof.userId,
-        });
-        if (existing) {
-          // Someone who left or was removed and came back through a fresh
-          // invitation reuses their row rather than colliding with its unique index.
-          await tx.households.updateHouseholdMembership({
-            membershipId: existing.id,
-            patch: { status: "active", role: invitation.role, acceptedAt: at, removedAt: null },
-          });
-        } else {
-          await tx.households.createHouseholdMembership({
-            householdId: invitation.householdId,
-            userId: proof.userId,
-            invitedByUserId: invitation.invitedByUserId,
-            role: invitation.role,
-            status: "active",
-            invitedAt: invitation.createdAt,
-            acceptedAt: at,
-            removedAt: null,
-          });
-        }
+        await admitMembership(tx, invitation, proof.userId, at);
 
         const accepted = await tx.updateInvitation({
           invitationId: invitation.id,

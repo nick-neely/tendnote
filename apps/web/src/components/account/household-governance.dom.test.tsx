@@ -348,6 +348,28 @@ describe("ending the household", () => {
     });
 
   /**
+   * The screen where this owner's press is the one that actually ends the
+   * household: one other owner has already agreed, so the dialog carries the
+   * destructive weight and the retyped phrase.
+   */
+  async function openFinalDissolutionDialog(options: { supportEmail?: string } = {}) {
+    const confirmDissolution = vi.fn().mockResolvedValue({
+      ok: true,
+      view: { dissolution: { unanimous: true }, view: null },
+    });
+    render(
+      <HouseholdSurface
+        governanceActions={{ confirmDissolution }}
+        initialOverview={twoOwners({ confirmed: 1, awaitingUserIds: ["ana"] })}
+        {...(options.supportEmail === undefined ? {} : { supportEmail: options.supportEmail })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "End this household" }));
+    return { confirmDissolution, dialog: within(screen.getByRole("alertdialog")) };
+  }
+
+  /**
    * With another owner still to agree, this press commits nothing irreversible,
    * so it must not be dressed as though it does — and it must say who it waits on.
    */
@@ -412,20 +434,9 @@ describe("ending the household", () => {
    * and a retyped phrase so it cannot happen on a reflex.
    */
   it("gates the final press behind a retyped phrase and states the recovery boundary", async () => {
-    const confirmDissolution = vi.fn().mockResolvedValue({
-      ok: true,
-      view: { dissolution: { unanimous: true }, view: null },
+    const { confirmDissolution, dialog } = await openFinalDissolutionDialog({
+      supportEmail: "support@example.test",
     });
-    render(
-      <HouseholdSurface
-        governanceActions={{ confirmDissolution }}
-        initialOverview={twoOwners({ confirmed: 1, awaitingUserIds: ["ana"] })}
-        supportEmail="support@example.test"
-      />,
-    );
-
-    await userEvent.click(screen.getByRole("button", { name: "End this household" }));
-    const dialog = within(screen.getByRole("alertdialog"));
     // Both halves of the window, because the purge sweep now keeps the second
     // one: support can put it back for thirty days, and after that what the
     // household held is deleted (#391).
@@ -510,20 +521,9 @@ describe("ending the household", () => {
   });
 
   it("gives the reader who ended it the way to reach support", async () => {
-    const confirmDissolution = vi.fn().mockResolvedValue({
-      ok: true,
-      view: { dissolution: { unanimous: true }, view: null },
+    const { dialog } = await openFinalDissolutionDialog({
+      supportEmail: "support@example.test",
     });
-    render(
-      <HouseholdSurface
-        governanceActions={{ confirmDissolution }}
-        initialOverview={twoOwners({ confirmed: 1, awaitingUserIds: ["ana"] })}
-        supportEmail="support@example.test"
-      />,
-    );
-
-    await userEvent.click(screen.getByRole("button", { name: "End this household" }));
-    const dialog = within(screen.getByRole("alertdialog"));
     const phrase = (dialog.getByRole("code" as never) as HTMLElement | null)?.textContent ?? "";
     await userEvent.type(dialog.getByLabelText(/to confirm/i), phrase);
     await userEvent.click(dialog.getByRole("button", { name: "End it" }));
@@ -537,19 +537,7 @@ describe("ending the household", () => {
   });
 
   it("does not invent a recovery address when the operator has not configured one", async () => {
-    const confirmDissolution = vi.fn().mockResolvedValue({
-      ok: true,
-      view: { dissolution: { unanimous: true }, view: null },
-    });
-    render(
-      <HouseholdSurface
-        governanceActions={{ confirmDissolution }}
-        initialOverview={twoOwners({ confirmed: 1, awaitingUserIds: ["ana"] })}
-      />,
-    );
-
-    await userEvent.click(screen.getByRole("button", { name: "End this household" }));
-    const dialog = within(screen.getByRole("alertdialog"));
+    const { dialog } = await openFinalDissolutionDialog();
 
     expect(dialog.queryByRole("link")).toBeNull();
     expect(dialog.getByText(/handled by support/i).textContent).toMatch(

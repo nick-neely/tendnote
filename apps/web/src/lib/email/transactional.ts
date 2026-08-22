@@ -34,7 +34,7 @@ export class EmailTransportUnavailableError extends Error {
 /** A non-routable address used only by tests and local operator logs. */
 export const SYNTHETIC_SUPPORT_EMAIL = "support@example.test";
 
-export class EmailConfigurationError extends Error {
+class EmailConfigurationError extends Error {
   override name = "EmailConfigurationError";
 }
 

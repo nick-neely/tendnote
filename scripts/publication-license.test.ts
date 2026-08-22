@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { expectAllMatch } from "./text-expectations";
 
 const root = resolve(import.meta.dirname, "..");
 
@@ -272,12 +273,14 @@ describe("fresh-clone publication gate", () => {
     const canonical = read("docs/security.md");
 
     expect(entryPoint).toContain("https://github.com/nick-neely/tendnote/security/advisories");
-    expect(entryPoint).toMatch(/sole reporting channel/i);
-    expect(entryPoint).toMatch(/credentials[\s\S]*private records[\s\S]*personal data/i);
-    expect(entryPoint).toMatch(/public Issues[\s\S]*pull requests/i);
-    expect(entryPoint).toMatch(/seven calendar days/i);
-    expect(entryPoint).toMatch(/best-effort acknowledgement/i);
-    expect(entryPoint).toMatch(/not a remediation deadline/i);
+    expectAllMatch(entryPoint, [
+      /sole reporting channel/i,
+      /credentials[\s\S]*private records[\s\S]*personal data/i,
+      /public Issues[\s\S]*pull requests/i,
+      /seven calendar days/i,
+      /best-effort acknowledgement/i,
+      /not a remediation deadline/i,
+    ]);
     expect(entryPoint).not.toMatch(/has been (?:certified|audited)/i);
     expect(entryPoint).not.toMatch(/comprehensive security coverage/i);
     expect(entryPoint).not.toMatch(/blanket security claim/i);
@@ -368,9 +371,11 @@ describe("fresh-clone publication gate", () => {
     expect(agreement).toMatch(
       /agreement packet[\s\S]*counsel-reviewed[\s\S]*owner-approved[\s\S]*effective 2026-08-21/i,
     );
-    expect(agreement).toMatch(/not a\s+Contributor License Agreement/i);
-    expect(agreement).toMatch(/owner-confirmed as executed/i);
-    expect(agreement).toMatch(/does\s+not\s+claim\s+that counsel\s+has\s+verified/i);
+    expectAllMatch(agreement, [
+      /not a\s+Contributor License Agreement/i,
+      /owner-confirmed as executed/i,
+      /does\s+not\s+claim\s+that counsel\s+has\s+verified/i,
+    ]);
     expect(agreement).not.toMatch(/has not been executed or verified/i);
     expect(agreement).toMatch(/CLA Assistant/i);
     expect(agreement).toContain("legal/README.md");
@@ -380,15 +385,19 @@ describe("fresh-clone publication gate", () => {
     );
     expect(agreement).toMatch(/effective 2026-08-21/i);
 
-    expect(support).toMatch(/no\s+service\s+level\s+agreement/i);
-    expect(support).toMatch(/self-host support is community-only/i);
-    expect(support).toMatch(/private reporting path/i);
+    expectAllMatch(support, [
+      /no\s+service\s+level\s+agreement/i,
+      /self-host support is community-only/i,
+      /private reporting path/i,
+    ]);
 
-    expect(legalReadme).toMatch(/individual\s+contributor\s+license\s+agreement/i);
-    expect(legalReadme).toMatch(/employer\s+contribution\s+authorization/i);
-    expect(legalReadme).toMatch(/corporate\s+contributor\s+license\s+agreement/i);
-    expect(legalReadme).toMatch(/records\s+are\s+private/i);
-    expect(legalReadme).toMatch(/CLA status may be public/i);
+    expectAllMatch(legalReadme, [
+      /individual\s+contributor\s+license\s+agreement/i,
+      /employer\s+contribution\s+authorization/i,
+      /corporate\s+contributor\s+license\s+agreement/i,
+      /records\s+are\s+private/i,
+      /CLA status may be public/i,
+    ]);
     expect(legalReadme).toMatch(
       /Version 1\.0[\s\S]*counsel-reviewed[\s\S]*owner-approved[\s\S]*effective 2026-08-21/i,
     );
@@ -405,57 +414,65 @@ describe("fresh-clone publication gate", () => {
       );
     }
 
-    expect(individualCla).toMatch(/Tendnote Individual Contributor License Agreement/i);
-    expect(individualCla).toMatch(/Version 1\.0/i);
-    expect(individualCla).toMatch(/CLA Assistant/i);
-    expect(individualCla).toMatch(/Contributor retains ownership/i);
+    expectAllMatch(individualCla, [
+      /Tendnote Individual Contributor License Agreement/i,
+      /Version 1\.0/i,
+      /CLA Assistant/i,
+      /Contributor retains ownership/i,
+    ]);
     expect(individualCla).toMatch(
       /perpetual[\s\S]*worldwide[\s\S]*non-exclusive[\s\S]*royalty-free[\s\S]*irrevocable/i,
     );
-    expect(individualCla).toMatch(/sublicense\s+and\s+relicense/i);
-    expect(individualCla).toMatch(/open-source\s+and\s+commercial\s+distribution/i);
-    expect(individualCla).toMatch(/necessarily infringed/i);
-    expect(individualCla).toMatch(/patent license[\s\S]*terminate/i);
-    expect(individualCla).toMatch(/legally entitled/i);
-    expect(individualCla).toMatch(/employer/i);
-    expect(individualCla).toMatch(/third-party material/i);
-    expect(individualCla).toMatch(/AI-assisted Contributions are permitted/i);
-    expect(individualCla).toMatch(/tool terms/i);
-    expect(individualCla).toMatch(/knows[\s\S]*third-party/i);
-    expect(individualCla).toMatch(/not request prompts/i);
-    expect(individualCla).toMatch(/no support/i);
-    expect(individualCla).toMatch(/AS IS/i);
-    expect(individualCla).toMatch(/no obligation to accept/i);
-    expect(individualCla).toMatch(/electronic record/i);
-    expect(individualCla).toMatch(/entire agreement/i);
-    expect(individualCla).toMatch(/severed/i);
-    expect(individualCla).toMatch(/electronic\s+counterparts/i);
-    expect(individualCla).toMatch(/Acceptance record/i);
+    expectAllMatch(individualCla, [
+      /sublicense\s+and\s+relicense/i,
+      /open-source\s+and\s+commercial\s+distribution/i,
+      /necessarily infringed/i,
+      /patent license[\s\S]*terminate/i,
+      /legally entitled/i,
+      /employer/i,
+      /third-party material/i,
+      /AI-assisted Contributions are permitted/i,
+      /tool terms/i,
+      /knows[\s\S]*third-party/i,
+      /not request prompts/i,
+      /no support/i,
+      /AS IS/i,
+      /no obligation to accept/i,
+      /electronic record/i,
+      /entire agreement/i,
+      /severed/i,
+      /electronic\s+counterparts/i,
+      /Acceptance record/i,
+    ]);
     expect(individualCla).not.toMatch(/Proposed acceptance record/i);
 
-    expect(employerAuthorization).toMatch(/authorized employer representative/i);
-    expect(employerAuthorization).toMatch(/GitHub account/i);
-    expect(employerAuthorization).toMatch(/scope/i);
-    expect(employerAuthorization).toMatch(/one-off/i);
-    expect(employerAuthorization).toMatch(/named contributor/i);
-    expect(employerAuthorization).toMatch(/copyright license/i);
-    expect(employerAuthorization).toMatch(/patent license/i);
-    expect(employerAuthorization).toMatch(/AI-assisted Contributions are permitted/i);
-    expect(employerAuthorization).toMatch(/third-party material/i);
-    expect(employerAuthorization).toMatch(/signed/i);
+    expectAllMatch(employerAuthorization, [
+      /authorized employer representative/i,
+      /GitHub account/i,
+      /scope/i,
+      /one-off/i,
+      /named contributor/i,
+      /copyright license/i,
+      /patent license/i,
+      /AI-assisted Contributions are permitted/i,
+      /third-party material/i,
+      /signed/i,
+    ]);
 
-    expect(corporateCla).toMatch(/reusable entity agreement/i);
-    expect(corporateCla).toMatch(/authorized contributor schedule/i);
-    expect(corporateCla).toMatch(/GitHub account/i);
-    expect(corporateCla).toMatch(/copyright license/i);
-    expect(corporateCla).toMatch(/patent license/i);
-    expect(corporateCla).toMatch(/third-party material/i);
-    expect(corporateCla).toMatch(/AI-assisted Contributions are permitted/i);
-    expect(corporateCla).toMatch(/update duties/i);
-    expect(corporateCla).toMatch(/no support/i);
-    expect(corporateCla).toMatch(/entire agreement/i);
-    expect(corporateCla).toMatch(/severed/i);
-    expect(corporateCla).toMatch(/electronic\s+counterparts/i);
+    expectAllMatch(corporateCla, [
+      /reusable entity agreement/i,
+      /authorized contributor schedule/i,
+      /GitHub account/i,
+      /copyright license/i,
+      /patent license/i,
+      /third-party material/i,
+      /AI-assisted Contributions are permitted/i,
+      /update duties/i,
+      /no support/i,
+      /entire agreement/i,
+      /severed/i,
+      /electronic\s+counterparts/i,
+    ]);
   });
 
   it("keeps the current tree free of maintainer deployment values", () => {

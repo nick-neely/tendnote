@@ -1,11 +1,7 @@
-import {
-  createAccessProfileQueries,
-  createInMemoryAccessProfileStore,
-} from "@tendnote/db/queries/access-profiles";
 import { ForbiddenError } from "eve/channels/auth";
 import { describe, expect, it, vi } from "vitest";
-import { createTendnoteAdmissionAuth } from "../../../../agent/agent/lib/eve-auth";
-import { createPrivateBetaAccessResolver } from "./resolve-access";
+import { createAdmissionHarness, createAdmissionPair } from "./admission-harness";
+import type { createPrivateBetaAccessResolver } from "./resolve-access";
 
 const request = new Request("https://app.tendnote.test/eve/v1/session");
 
@@ -14,19 +10,7 @@ async function createBoundary(input: {
   evaluateFlag: Parameters<typeof createPrivateBetaAccessResolver>[0]["evaluateFlag"];
   user: { id: string; email: string };
 }) {
-  const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
-  const admission = {
-    accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
-    evaluateFlag: input.evaluateFlag,
-    policy: input.policy,
-  };
-  const web = createPrivateBetaAccessResolver(admission);
-  const eve = createTendnoteAdmissionAuth({
-    admission,
-    getSession: vi.fn().mockResolvedValue({ user: input.user }),
-    checkIngressBudget: vi.fn().mockResolvedValue({ allowed: true }),
-  });
-
+  const { eve, queries, web } = createAdmissionHarness(input);
   return { eve, queries, web };
 }
 
@@ -102,8 +86,8 @@ describe("shared Web/Eve admission boundary", () => {
       status: "pending",
     });
 
-    const pendingAuth = createTendnoteAdmissionAuth({
-      admission: {
+    const { eve: pendingAuth } = createAdmissionPair(
+      {
         accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
         evaluateFlag,
         policy: {
@@ -112,11 +96,8 @@ describe("shared Web/Eve admission boundary", () => {
           bootstrapOwnerEmail: owner.email,
         },
       },
-      getSession: vi.fn().mockResolvedValue({
-        user: { id: "other-1", email: "other@example.com" },
-      }),
-      checkIngressBudget: vi.fn().mockResolvedValue({ allowed: true }),
-    });
+      { id: "other-1", email: "other@example.com" },
+    );
     await expect(pendingAuth(request)).rejects.toBeInstanceOf(ForbiddenError);
     expect(evaluateFlag).not.toHaveBeenCalled();
   });

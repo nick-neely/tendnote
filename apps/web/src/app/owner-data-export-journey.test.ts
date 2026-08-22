@@ -46,41 +46,6 @@ function asRecord<T>(value: object) {
   return value as T;
 }
 
-function readStoredZipEntries(bytes: Uint8Array) {
-  const entries = new Map<string, string>();
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const decoder = new TextDecoder();
-  let offset = 0;
-  while (offset + 30 <= bytes.byteLength && view.getUint32(offset, true) === 0x04034b50) {
-    const nameLength = view.getUint16(offset + 26, true);
-    const extraLength = view.getUint16(offset + 28, true);
-    const size = view.getUint32(offset + 18, true);
-    const nameStart = offset + 30;
-    const contentStart = nameStart + nameLength + extraLength;
-    const name = decoder.decode(bytes.slice(nameStart, nameStart + nameLength));
-    entries.set(name, decoder.decode(bytes.slice(contentStart, contentStart + size)));
-    offset = contentStart + size;
-  }
-  return entries;
-}
-
-function readStoredZipEntryBytes(bytes: Uint8Array, wantedPath: string) {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const decoder = new TextDecoder();
-  let offset = 0;
-  while (offset + 30 <= bytes.byteLength && view.getUint32(offset, true) === 0x04034b50) {
-    const nameLength = view.getUint16(offset + 26, true);
-    const extraLength = view.getUint16(offset + 28, true);
-    const size = view.getUint32(offset + 18, true);
-    const nameStart = offset + 30;
-    const contentStart = nameStart + nameLength + extraLength;
-    const name = decoder.decode(bytes.slice(nameStart, nameStart + nameLength));
-    if (name === wantedPath) return bytes.slice(contentStart, contentStart + size);
-    offset = contentStart + size;
-  }
-  throw new Error(`Missing ZIP entry ${wantedPath}`);
-}
-
 function requireState<T>(value: T | null, label: string): T {
   if (value === null) throw new Error(`${label} is not initialized.`);
   return value;
@@ -191,6 +156,10 @@ vi.mock("@/lib/background-jobs/owner-data-export-queue", async (importOriginal) 
   };
 });
 
+import {
+  readStoredZipEntries,
+  readStoredZipEntryBytes,
+} from "@tendnote/db/queries/owner-data-export/archive-reader";
 import { consumeOwnerDataExportQueueMessage } from "@/lib/background-jobs/owner-data-export-queue";
 import { requestOwnerDataExportAction } from "./actions/owner-data-export";
 import { GET } from "./api/account/data-export/[jobId]/route";

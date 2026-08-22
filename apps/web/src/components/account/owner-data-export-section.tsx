@@ -1,14 +1,17 @@
 "use client";
 
 import type { OwnerDataExportJob } from "@tendnote/db/queries/owner-data-export";
+import type { ReactNode } from "react";
 import { useState, useTransition } from "react";
 import { requestOwnerDataExportAction } from "@/app/actions/owner-data-export";
+
+type ExportStatus = OwnerDataExportJob["status"] | "idle";
 
 type OwnerDataExportSectionProps = {
   initialJob: OwnerDataExportJob | null;
 };
 
-function stateLabel(status: OwnerDataExportJob["status"] | "idle") {
+function stateLabel(status: ExportStatus) {
   switch (status) {
     case "pending":
       return "Waiting to start";
@@ -25,17 +28,76 @@ function stateLabel(status: OwnerDataExportJob["status"] | "idle") {
   }
 }
 
+/** The one place that turns job + transition state into what the UI renders. */
+function exportView(job: OwnerDataExportJob | null, isPending: boolean) {
+  const status: ExportStatus = isPending && !job ? "pending" : (job?.status ?? "idle");
+  const failed = job?.status === "failed";
+  return {
+    status,
+    failed,
+    expired: job?.status === "expired",
+    canRequest: !isPending && !failed && job?.status !== "pending" && job?.status !== "running",
+    downloadHref: job?.status === "completed" ? `/api/account/data-export/${job.id}` : null,
+    actionLabel: requestLabel(isPending, failed),
+  };
+}
+
+function requestLabel(isPending: boolean, failed: boolean) {
+  if (isPending) return "Requesting…";
+  return failed ? "Retry scheduled" : "Request export";
+}
+
+function DownloadLink({ href }: { href: string }) {
+  return (
+    <a
+      className="inline-flex min-h-9 items-center rounded-md border px-3 text-sm font-medium hover:bg-muted"
+      download="tendnote-owner-export.zip"
+      href={href}
+    >
+      Download ZIP
+    </a>
+  );
+}
+
+function RequestButton({
+  label,
+  disabled,
+  onRequest,
+}: {
+  label: string;
+  disabled: boolean;
+  onRequest: () => void;
+}) {
+  return (
+    <button
+      className="inline-flex min-h-9 items-center rounded-md border px-3 text-sm font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+      disabled={disabled}
+      onClick={onRequest}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+}
+
+function Notice({ children }: { children: ReactNode }) {
+  return <p className="text-[length:var(--text-small)] text-muted-foreground">{children}</p>;
+}
+
 export function OwnerDataExportSection({ initialJob }: OwnerDataExportSectionProps) {
   const [job, setJob] = useState(initialJob);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const status = isPending && !job ? "pending" : (job?.status ?? "idle");
-  const canRequest =
-    !isPending &&
-    job?.status !== "pending" &&
-    job?.status !== "running" &&
-    job?.status !== "failed";
-  const downloadHref = job?.status === "completed" ? `/api/account/data-export/${job.id}` : null;
+  const view = exportView(job, isPending);
+
+  const requestExport = () => {
+    setError(null);
+    startTransition(async () => {
+      const result = await requestOwnerDataExportAction();
+      if (result.ok) setJob(result.view);
+      else setError(result.error);
+    });
+  };
 
   return (
     <section aria-labelledby="owner-data-export-heading" className="flex flex-col gap-3">
@@ -61,48 +123,26 @@ export function OwnerDataExportSection({ initialJob }: OwnerDataExportSectionPro
               aria-live="polite"
               className="text-[length:var(--text-small)] text-muted-foreground"
             >
-              {stateLabel(status)}
+              {stateLabel(view.status)}
             </span>
           </div>
-          {downloadHref ? (
-            <a
-              className="inline-flex min-h-9 items-center rounded-md border px-3 text-sm font-medium hover:bg-muted"
-              download="tendnote-owner-export.zip"
-              href={downloadHref}
-            >
-              Download ZIP
-            </a>
+          {view.downloadHref ? (
+            <DownloadLink href={view.downloadHref} />
           ) : (
-            <button
-              className="inline-flex min-h-9 items-center rounded-md border px-3 text-sm font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!canRequest}
-              onClick={() => {
-                setError(null);
-                startTransition(async () => {
-                  const result = await requestOwnerDataExportAction();
-                  if (result.ok) setJob(result.view);
-                  else setError(result.error);
-                });
-              }}
-              type="button"
-            >
-              {isPending
-                ? "Requesting…"
-                : job?.status === "failed"
-                  ? "Retry scheduled"
-                  : "Request export"}
-            </button>
+            <RequestButton
+              disabled={!view.canRequest}
+              label={view.actionLabel}
+              onRequest={requestExport}
+            />
           )}
         </div>
-        {job?.status === "failed" ? (
-          <p className="text-[length:var(--text-small)] text-muted-foreground">
+        {view.failed ? (
+          <Notice>
             We'll retry this request automatically. Nothing was sent outside Tendnote.
-          </p>
+          </Notice>
         ) : null}
-        {job?.status === "expired" ? (
-          <p className="text-[length:var(--text-small)] text-muted-foreground">
-            The temporary archive was removed. You can request another copy.
-          </p>
+        {view.expired ? (
+          <Notice>The temporary archive was removed. You can request another copy.</Notice>
         ) : null}
         {error ? (
           <p role="alert" className="text-[length:var(--text-small)] text-destructive">

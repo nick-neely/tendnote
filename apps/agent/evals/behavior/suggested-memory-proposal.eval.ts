@@ -1,6 +1,6 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
-import { toolOutputs, without } from "../expectations";
+import { hasGroundedSuggestedMemoryProposal, without } from "../expectations";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -42,39 +42,10 @@ export default defineEval({
     // The owning tool result is the proof that Eve did not merely promise a card: its
     // suggested memory is grounded in the exact source record and the person that the
     // preceding calls resolved. The persisted status is still tentative.
-    t.eventsSatisfy("the Suggested Memory proposal is grounded and reviewable", (events) => {
-      const search = toolOutputs(events, "search_people").find(isRecord);
-      const capture = toolOutputs(events, "capture_source_record").find(isRecord);
-      const proposal = toolOutputs(events, "propose_suggested_memory").find(isRecord);
-      if (!search || !capture || !proposal) return false;
-
-      const people = search.people;
-      const resolvedPersonId =
-        Array.isArray(people) && people.length === 1 && isRecord(people[0])
-          ? nestedString(people[0], "id")
-          : null;
-
-      const capturedSourceId = nestedString(capture, "sourceRecord", "id");
-      const capturedPersonId = nestedString(capture, "linkedPersonId");
-      const proposalSourceId = nestedString(proposal, "sourceRecord", "id");
-      const memorySourceId = nestedString(proposal, "memory", "sourceRecordId");
-      const proposedPersonId = nestedString(proposal, "memory", "personId");
-      const status = nestedString(proposal, "memory", "status");
-      const componentType = nestedString(proposal, "component", "type");
-
-      return (
-        search.requiresDisambiguation === false &&
-        resolvedPersonId !== null &&
-        capturedSourceId !== null &&
-        capturedSourceId === proposalSourceId &&
-        proposalSourceId === memorySourceId &&
-        capturedPersonId !== null &&
-        capturedPersonId === resolvedPersonId &&
-        proposedPersonId === resolvedPersonId &&
-        status === "suggested" &&
-        componentType === "suggested_memory_review"
-      );
-    });
+    t.eventsSatisfy(
+      "the Suggested Memory proposal is grounded and reviewable",
+      hasGroundedSuggestedMemoryProposal,
+    );
     // "Remember" was never said, so nothing durable may be written.
     t.notCalledTool("capture_memory");
     t.notCalledTool("approve_suggested_memory");
@@ -90,16 +61,3 @@ export default defineEval({
     t.check(t.reply, includes(/review|approve|suggestion|waiting/i));
   },
 });
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function nestedString(value: Record<string, unknown>, ...path: string[]): string | null {
-  let current: unknown = value;
-  for (const key of path) {
-    if (!isRecord(current)) return null;
-    current = current[key];
-  }
-  return typeof current === "string" ? current : null;
-}

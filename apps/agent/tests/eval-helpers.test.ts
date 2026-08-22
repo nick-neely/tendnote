@@ -10,10 +10,14 @@ import {
 import { statesPurchaseLocationLimitation } from "../evals/behavior/phase-seven-recall-limitations.eval";
 import {
   hasCapturePersonClarification,
+  hasFields,
   hasGroundedPendingAssetProposal,
+  hasGroundedSuggestedMemoryProposal,
   hasNoRuntimeFailures,
+  isEmptyArray,
   isNonEmptyUuidArray,
   isPrivateOrOmitted,
+  someToolOutputHasFields,
   toolOutputs,
 } from "../evals/expectations";
 import {
@@ -435,3 +439,140 @@ function recordedVerdict(events: readonly unknown[]): boolean {
   usedNoSubagents(scope);
   return recorded[0]?.passed ?? false;
 }
+
+/**
+ * The field-shape and grounding predicates used to live inside individual eval
+ * files, where nothing could exercise them: `eve eval` runs those files, vitest
+ * never does. A predicate that quietly returns true is a gate that passes on
+ * every run, so the shared versions are pinned here.
+ */
+describe("tool output field expectations", () => {
+  const result = (toolName: string, output: unknown) => ({
+    type: "action.result",
+    data: { result: { toolName, output } },
+  });
+
+  it("matches exact field values and rejects near misses", () => {
+    expect(hasFields({ a: 1, b: "x" }, { a: 1, b: "x" })).toBe(true);
+    expect(hasFields({ a: 1, b: "x" }, { a: 1, b: "y" })).toBe(false);
+    expect(hasFields({ a: 1 }, { a: 1, b: undefined })).toBe(true);
+    expect(hasFields({ a: "1" }, { a: 1 })).toBe(false);
+    expect(hasFields(null, { a: 1 })).toBe(false);
+    expect(hasFields("nope", { a: 1 })).toBe(false);
+  });
+
+  it("calls a function expectation with the field instead of comparing it", () => {
+    expect(hasFields({ areas: [] }, { areas: isEmptyArray })).toBe(true);
+    expect(hasFields({ areas: [1] }, { areas: isEmptyArray })).toBe(false);
+    expect(hasFields({ areas: null }, { areas: isEmptyArray })).toBe(false);
+    expect(isEmptyArray([])).toBe(true);
+    expect(isEmptyArray({})).toBe(false);
+  });
+
+  it("walks into a nested record and fails closed when the path is absent", () => {
+    const events = [result("create_general_action", { action: { areaId: null, status: "open" } })];
+    expect(
+      someToolOutputHasFields(
+        events,
+        "create_general_action",
+        { areaId: null, status: "open" },
+        "action",
+      ),
+    ).toBe(true);
+    expect(
+      someToolOutputHasFields(
+        events,
+        "create_general_action",
+        { areaId: null, status: "done" },
+        "action",
+      ),
+    ).toBe(false);
+    expect(
+      someToolOutputHasFields(events, "create_general_action", { areaId: null }, "missing"),
+    ).toBe(false);
+    expect(someToolOutputHasFields(events, "other_tool", { areaId: null }, "action")).toBe(false);
+    expect(someToolOutputHasFields([], "create_general_action", { areaId: null })).toBe(false);
+  });
+});
+
+describe("grounded Suggested Memory proposal", () => {
+  const PERSON = "11111111-1111-4111-8111-111111111111";
+  const SOURCE = "22222222-2222-4222-8222-222222222222";
+  const result = (toolName: string, output: unknown) => ({
+    type: "action.result",
+    data: { result: { toolName, output } },
+  });
+
+  const groundedEvents = (
+    overrides: {
+      search?: Record<string, unknown>;
+      capture?: Record<string, unknown>;
+      proposal?: Record<string, unknown>;
+    } = {},
+  ) => [
+    result("search_people", {
+      requiresDisambiguation: false,
+      people: [{ id: PERSON }],
+      ...overrides.search,
+    }),
+    result("capture_source_record", {
+      sourceRecord: { id: SOURCE },
+      linkedPersonId: PERSON,
+      ...overrides.capture,
+    }),
+    result("propose_suggested_memory", {
+      sourceRecord: { id: SOURCE },
+      memory: { sourceRecordId: SOURCE, personId: PERSON, status: "suggested" },
+      component: { type: "suggested_memory_review" },
+      ...overrides.proposal,
+    }),
+  ];
+
+  it("accepts a proposal tied to the exact resolved person and source record", () => {
+    expect(hasGroundedSuggestedMemoryProposal(groundedEvents())).toBe(true);
+  });
+
+  it("refuses an ungrounded, ambiguous, approved, or uncorrelated proposal", () => {
+    expect(hasGroundedSuggestedMemoryProposal([])).toBe(false);
+    expect(
+      hasGroundedSuggestedMemoryProposal(
+        groundedEvents({ search: { requiresDisambiguation: true } }),
+      ),
+    ).toBe(false);
+    expect(
+      hasGroundedSuggestedMemoryProposal(
+        groundedEvents({ search: { people: [{ id: PERSON }, { id: SOURCE }] } }),
+      ),
+    ).toBe(false);
+    expect(
+      hasGroundedSuggestedMemoryProposal(groundedEvents({ capture: { linkedPersonId: SOURCE } })),
+    ).toBe(false);
+    expect(
+      hasGroundedSuggestedMemoryProposal(
+        groundedEvents({
+          proposal: {
+            sourceRecord: { id: SOURCE },
+            memory: { sourceRecordId: SOURCE, personId: PERSON, status: "approved" },
+            component: { type: "suggested_memory_review" },
+          },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      hasGroundedSuggestedMemoryProposal(
+        groundedEvents({
+          proposal: {
+            sourceRecord: { id: PERSON },
+            memory: { sourceRecordId: SOURCE, personId: PERSON, status: "suggested" },
+            component: { type: "suggested_memory_review" },
+          },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      hasGroundedSuggestedMemoryProposal(
+        groundedEvents({ proposal: { component: { type: "plain_text" } } }),
+      ),
+    ).toBe(false);
+  });
+});

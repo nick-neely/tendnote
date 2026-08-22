@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OwnerDataExportActionsPlanningContext } from "./actions-planning";
+import { readStoredZipEntries, readStoredZipEntryBytes } from "./archive-reader";
 import type { OwnerDataExportAssetsContext } from "./assets";
 import { generateOwnerDataExportArchive } from "./generator";
 import {
@@ -12,7 +13,6 @@ import {
   processOwnerDataExportJob,
 } from "./processor";
 import type { OwnerDataExportRelationshipContext } from "./relationship-context";
-import { readStoredZipEntries, readStoredZipEntryBytes } from "./test-utils";
 
 const OWNER = "owner-1";
 const OTHER_OWNER = "owner-2";

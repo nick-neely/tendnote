@@ -1,5 +1,5 @@
 import { defineEval } from "eve/evals";
-import { toolOutputs, without } from "../expectations";
+import { someToolOutputHasFields, without } from "../expectations";
 
 const ALTERNATE_SELF_CONTEXT_WRITES = [
   "capture_saved_item",
@@ -29,18 +29,10 @@ export default defineEval({
       first.notCalledTool(tool);
     }
     first.eventsSatisfy("the first direct write creates the fact", (events) =>
-      toolOutputs(events, "remember_self_context").some((output) => {
-        if (typeof output !== "object" || output === null) return false;
-        const candidate = output as {
-          decision?: unknown;
-          created?: unknown;
-          reusedExisting?: unknown;
-        };
-        return (
-          candidate.decision === "created" &&
-          candidate.created === true &&
-          candidate.reusedExisting === false
-        );
+      someToolOutputHasFields(events, "remember_self_context", {
+        decision: "created",
+        created: true,
+        reusedExisting: false,
       }),
     );
 
@@ -60,18 +52,10 @@ export default defineEval({
       repeated.notCalledTool(tool);
     }
     repeated.eventsSatisfy("the repeated direct write reuses the existing fact", (events) =>
-      toolOutputs(events, "remember_self_context").some((output) => {
-        if (typeof output !== "object" || output === null) return false;
-        const candidate = output as {
-          decision?: unknown;
-          created?: unknown;
-          reusedExisting?: unknown;
-        };
-        return (
-          candidate.decision === "existing" &&
-          candidate.created === false &&
-          candidate.reusedExisting === true
-        );
+      someToolOutputHasFields(events, "remember_self_context", {
+        decision: "existing",
+        created: false,
+        reusedExisting: true,
       }),
     );
     // `remember_self_context` writes an active fact directly. The old gate echoed the

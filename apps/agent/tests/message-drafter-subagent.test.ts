@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { expectAllMatch } from "./instruction-expectations";
 import { authoredInstructions } from "./instructions-source";
 
 const subagentRoot = join(process.cwd(), "agent/subagents/message_drafter");
@@ -19,11 +20,13 @@ describe("Message Drafter subagent", () => {
   });
 
   it("blocks durable persistence and external drafts inside isolated instructions", () => {
-    expect(instructions()).toMatch(/ephemeral/i);
-    expect(instructions()).toMatch(/revisionContext/i);
-    expect(instructions()).toMatch(/acceptedProposal/i);
-    expect(instructions()).toMatch(/must not call or simulate durable draft persistence/i);
-    expect(instructions()).toMatch(/must not create Gmail drafts, external drafts, sends/i);
+    expectAllMatch(instructions(), [
+      /ephemeral/i,
+      /revisionContext/i,
+      /acceptedProposal/i,
+      /must not call or simulate durable draft persistence/i,
+      /must not create Gmail drafts, external drafts, sends/i,
+    ]);
   });
 
   /**
@@ -35,18 +38,22 @@ describe("Message Drafter subagent", () => {
    */
   it("carries the drafting quality bar the root's skill never reaches it", () => {
     // Trust tiers, by the names that actually appear in `sourceRefs`.
-    expect(instructions()).toMatch(/approved_memory/);
-    expect(instructions()).toMatch(/source_record/);
-    expect(instructions()).toMatch(/suggested_memory/);
-    expect(instructions()).toMatch(/never as an established fact/i);
+    expectAllMatch(instructions(), [
+      /approved_memory/,
+      /source_record/,
+      /suggested_memory/,
+      /never as an established fact/i,
+    ]);
 
-    expect(instructions()).toMatch(/No fake memory/i);
-    expect(instructions()).toMatch(/Never invent a shared event/i);
-    expect(instructions()).toMatch(/No fake sentimentality/i);
-    expect(instructions()).toMatch(/Hope this finds you well/);
-    expect(instructions()).toMatch(/tone request verbatim as `toneInstruction`/i);
-    expect(instructions()).toMatch(/Do not invent a tone the owner\s+did not ask for/i);
-    expect(instructions()).toMatch(/includeRestricted/);
+    expectAllMatch(instructions(), [
+      /No fake memory/i,
+      /Never invent a shared event/i,
+      /No fake sentimentality/i,
+      /Hope this finds you well/,
+      /tone request verbatim as `toneInstruction`/i,
+      /Do not invent a tone the owner\s+did not ask for/i,
+      /includeRestricted/,
+    ]);
 
     // The tool writes the wording; a body edited on the way past is wording nobody
     // reviewed, because the parent persists what the owner accepted.

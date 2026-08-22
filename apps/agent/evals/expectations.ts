@@ -23,10 +23,10 @@ export const NO_RAW_IDS = without("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}");
 
 export type ToolResult = { toolName?: string; output?: unknown };
 
-export type ToolCall = { toolName: string; input?: unknown };
+type ToolCall = { toolName: string; input?: unknown };
 
 /** Every authored tool that can persist, propose, review, or externalize data. */
-export const MUTATING_TOOL_NAMES = new Set([
+const MUTATING_TOOL_NAMES = new Set([
   "accept_suggested_followup",
   "accept_suggested_general_action",
   "add_gift_idea",
@@ -76,7 +76,7 @@ export const MUTATING_TOOL_NAMES = new Set([
  * on exactly the runs that delegated, and an eval that judges an answer against the
  * records it loaded judges it against nothing instead.
  */
-export function toolResultOf(event: unknown): ToolResult | null {
+function toolResultOf(event: unknown): ToolResult | null {
   if (typeof event !== "object" || event === null) {
     return null;
   }
@@ -110,7 +110,7 @@ export function toolOutputs(events: readonly unknown[], toolName: string): unkno
 }
 
 /** Every authored tool call in a turn, including nested subagent events. */
-export function toolCalls(events: readonly unknown[]): ToolCall[] {
+function toolCalls(events: readonly unknown[]): ToolCall[] {
   return events.flatMap((event) => {
     if (typeof event !== "object" || event === null) return [];
 
@@ -279,4 +279,82 @@ function nestedString(value: Record<string, unknown>, ...path: string[]): string
     current = current[key];
   }
   return typeof current === "string" ? current : null;
+}
+
+/**
+ * True when some output of `toolName` is a record whose fields hold the exact
+ * expected values. An expected value that is a function is called with the
+ * field instead, so a shape check reads the same way as an equality check.
+ *
+ * Every eval that asserts "the tool returned exactly this" carried its own
+ * copy of the record guard plus field comparison. One helper here keeps those
+ * assertions readable and, unlike an eval file, unit-tested.
+ */
+export function someToolOutputHasFields(
+  events: readonly unknown[],
+  toolName: string,
+  expected: Record<string, unknown>,
+  ...path: string[]
+): boolean {
+  return toolOutputs(events, toolName).some((output) =>
+    hasFields(nestedRecord(output, ...path), expected),
+  );
+}
+
+export function hasFields(value: unknown, expected: Record<string, unknown>): boolean {
+  if (!isRecord(value)) return false;
+  return Object.entries(expected).every(([key, want]) =>
+    typeof want === "function" ? Boolean(want(value[key])) : value[key] === want,
+  );
+}
+
+export function isEmptyArray(value: unknown): boolean {
+  return Array.isArray(value) && value.length === 0;
+}
+
+function nestedRecord(value: unknown, ...path: string[]): unknown {
+  let current: unknown = value;
+  for (const key of path) {
+    if (!isRecord(current)) return null;
+    current = current[key];
+  }
+  return current;
+}
+
+/**
+ * The Suggested Memory proposal is grounded and reviewable: the search
+ * resolved exactly one person, the capture wrote a source record for that
+ * person, and the proposal names the same source record and person while the
+ * memory stays tentative behind a review card.
+ *
+ * This is the whole point of `propose_suggested_memory`: a card is not a saved
+ * fact, and a proposal that is not tied to the exact record and person the
+ * preceding calls resolved is not evidence of anything.
+ */
+export function hasGroundedSuggestedMemoryProposal(events: readonly unknown[]): boolean {
+  const search = toolOutputs(events, "search_people").find(isRecord);
+  const capture = toolOutputs(events, "capture_source_record").find(isRecord);
+  const proposal = toolOutputs(events, "propose_suggested_memory").find(isRecord);
+  if (!search || !capture || !proposal) return false;
+  if (search.requiresDisambiguation !== false) return false;
+
+  const personId = soleResolvedPersonId(search);
+  const sourceRecordId = nestedString(capture, "sourceRecord", "id");
+  if (personId === null || sourceRecordId === null) return false;
+
+  return (
+    sourceRecordId === nestedString(proposal, "sourceRecord", "id") &&
+    sourceRecordId === nestedString(proposal, "memory", "sourceRecordId") &&
+    personId === nestedString(capture, "linkedPersonId") &&
+    personId === nestedString(proposal, "memory", "personId") &&
+    nestedString(proposal, "memory", "status") === "suggested" &&
+    nestedString(proposal, "component", "type") === "suggested_memory_review"
+  );
+}
+
+/** The id of the one person a search resolved, or null if it was not exactly one. */
+function soleResolvedPersonId(search: Record<string, unknown>): string | null {
+  const people = search.people;
+  if (!Array.isArray(people) || people.length !== 1 || !isRecord(people[0])) return null;
+  return nestedString(people[0], "id");
 }

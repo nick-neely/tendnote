@@ -168,7 +168,7 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
   );
 }
 
-export async function OwnerDataExportStream({ ownerUserId }: { ownerUserId: string }) {
+async function OwnerDataExportStream({ ownerUserId }: { ownerUserId: string }) {
   try {
     const job = await getLatestOwnerDataExportJob(ownerUserId);
     return <OwnerDataExportSection initialJob={job} />;

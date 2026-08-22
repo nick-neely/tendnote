@@ -1,6 +1,6 @@
 import { defineEval } from "eve/evals";
 import { satisfies } from "eve/evals/expect";
-import { toolOutputs } from "../expectations";
+import { isEmptyArray, someToolOutputHasFields } from "../expectations";
 
 const EXPLICIT_COMPLETION = /(?:^|[.!]\s*)(?:done|complete(?:d)?|success(?:fully)?)\b/i;
 const PRESENT_ACTION_LIST_STATE =
@@ -79,18 +79,18 @@ export default defineEval({
     });
     t.toolOrder(["list_general_action_areas", "create_general_action"]);
     t.eventsSatisfy("the Area lookup actually returned no Areas", (events) =>
-      toolOutputs(events, "list_general_action_areas").some((output) => {
-        if (typeof output !== "object" || output === null) return false;
-        const result = output as { count?: unknown; areas?: unknown };
-        return result.count === 0 && Array.isArray(result.areas) && result.areas.length === 0;
+      someToolOutputHasFields(events, "list_general_action_areas", {
+        count: 0,
+        areas: isEmptyArray,
       }),
     );
     t.eventsSatisfy("the explicit Action was persisted without an Area", (events) =>
-      toolOutputs(events, "create_general_action").some((output) => {
-        if (typeof output !== "object" || output === null) return false;
-        const action = (output as { action?: { areaId?: unknown; status?: unknown } }).action;
-        return action?.areaId === null && action.status === "open";
-      }),
+      someToolOutputHasFields(
+        events,
+        "create_general_action",
+        { areaId: null, status: "open" },
+        "action",
+      ),
     );
     t.notCalledTool("suggest_general_action");
     t.notCalledTool("plan_suggested_general_actions");

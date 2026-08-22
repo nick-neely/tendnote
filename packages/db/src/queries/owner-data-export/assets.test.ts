@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { OwnerDataExportActionsPlanningContext } from "./actions-planning";
+import { readStoredZipEntries, readStoredZipEntryBytes } from "./archive-reader";
 import type { OwnerDataExportAssetsContext } from "./assets";
 import { generateOwnerDataExportArchive } from "./generator";
 import type { OwnerDataExportRelationshipContext } from "./relationship-context";
-import { readStoredZipEntries, readStoredZipEntryBytes } from "./test-utils";
 
 const ACCOUNT = {
   id: "owner-1",
