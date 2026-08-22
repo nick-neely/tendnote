@@ -424,30 +424,44 @@ describe("external CLA enforcement contract", () => {
     expect(config.enforcement.required).toBe(true);
     expect(config.enforcement.observeBeforeEnforce).toBe(true);
     expect(config.enforcement.statusContext).toEqual({
-      value: null,
+      value: "license/cla",
       placeholder: "CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE",
-      integrationId: null,
+      integrationId: 128106,
       integrationIdPlaceholder: "CLA_INTEGRATION_ID_TO_OBSERVE_LIVE",
     });
     expect(config.enforcement.rulesetId).toBe(19995472);
     expect(config.enforcement.preserveExistingChecks).toBe(true);
-    expect(config.enforcement.removeExistingBypassActors).toBe(true);
-    expect(config.enforcement.desiredBypassActors).toEqual([]);
+    expect(config.enforcement.removeExistingBypassActors).toBe(false);
+    expect(config.enforcement.desiredBypassActors).toEqual([
+      {
+        actorId: 5,
+        actorType: "RepositoryRole",
+        bypassMode: "pull_request",
+      },
+    ]);
     expect(config.enforcement.requiresPostUpdateVerification).toBe(true);
     expect(config.enforcement.existingRequiredStatusContexts).toEqual([
       "Verify",
       "Full CI qualification",
       "Vercel",
+      "license/cla",
     ]);
     expect(statusRule?.parameters?.required_status_checks?.map(({ context }) => context)).toEqual([
       "Verify",
       "Full CI qualification",
       "Vercel",
+      "license/cla",
     ]);
     expect(statusRule?.parameters?.required_status_checks).not.toContainEqual({
       context: "CLA Assistant",
     });
-    expect(ruleset.bypass_actors).toEqual([]);
+    expect(ruleset.bypass_actors).toEqual([
+      {
+        actor_id: 5,
+        actor_type: "RepositoryRole",
+        bypass_mode: "pull_request",
+      },
+    ]);
   });
 
   it("deeply compares the post-PUT ruleset with the authorized payload", () => {
@@ -468,7 +482,6 @@ describe("external CLA enforcement contract", () => {
       context: "observed-cla-status",
       integration_id: 424242,
     });
-    candidate.bypass_actors = [];
 
     const authorizedPayload = {
       name: candidate.name,
@@ -512,7 +525,7 @@ describe("external CLA enforcement contract", () => {
     expect(matchesAuthorizedRulesetPayload(unexpectedResponseField, authorizedPayload)).toBe(false);
   });
 
-  it("does not define a CLA allowlist or undocumented bypass", () => {
+  it("keeps routes fail-closed while documenting the repository-admin override", () => {
     const config = readJson<{
       enforcement: {
         claAssistantAllowlist: string[];
@@ -522,7 +535,7 @@ describe("external CLA enforcement contract", () => {
     }>(configPath);
 
     expect(config.enforcement.claAssistantAllowlist).toEqual([]);
-    expect(config.enforcement.maintainerOverride).toBe(false);
+    expect(config.enforcement.maintainerOverride).toBe(true);
     for (const route of Object.values(config.routes)) {
       expect(route.bypass).toBe(false);
       expect(route.statusRequirement).toBe("required");
@@ -626,7 +639,7 @@ describe("external CLA enforcement contract", () => {
     expect(runbook).toContain("corporate");
     expect(runbook).toContain("redacted");
     expect(runbook).toContain("do not");
-    expect(runbook).toContain("bypass_actors = []");
+    expect(runbook).toContain("repository-admin pull-request bypass");
     expect(runbook).toContain("full replacement");
     expect(runbook).toContain("--slurpfile authorized");
     expect(runbook).toContain("source_type");

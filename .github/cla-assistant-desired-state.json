@@ -25,20 +25,27 @@
     "required": true,
     "observeBeforeEnforce": true,
     "statusContext": {
-      "value": null,
+      "value": "license/cla",
       "placeholder": "CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE",
-      "integrationId": null,
+      "integrationId": 128106,
       "integrationIdPlaceholder": "CLA_INTEGRATION_ID_TO_OBSERVE_LIVE"
     },
     "rulesetId": 19995472,
     "trackedRulesetPath": ".github/rulesets/protect-main.json",
-    "existingRequiredStatusContexts": ["Verify", "Full CI qualification", "Vercel"],
+    "existingRequiredStatusContexts": ["Verify", "Full CI qualification", "Vercel", "license/cla"],
     "preserveExistingChecks": true,
-    "removeExistingBypassActors": true,
-    "desiredBypassActors": [],
+    "removeExistingBypassActors": false,
+    "desiredBypassActors": [
+      {
+        "actorId": 5,
+        "actorType": "RepositoryRole",
+        "bypassMode": "pull_request"
+      }
+    ],
     "requiresPostUpdateVerification": true,
     "claAssistantAllowlist": [],
-    "maintainerOverride": false
+    "maintainerOverride": true,
+    "maintainerOverrideScope": "repository administrators may consciously bypass pull-request rules; this is not an automatic CLA exemption"
   },
   "routes": {
     "individual": {
