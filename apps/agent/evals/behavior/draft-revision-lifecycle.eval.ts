@@ -1,6 +1,6 @@
 import { defineEval } from "eve/evals";
 import { satisfies } from "eve/evals/expect";
-import { NO_RAW_IDS, toolOutputs } from "../expectations";
+import { NO_RAW_IDS, someToolOutputHasFields, toolOutputs } from "../expectations";
 import { isDraftRevisionReplyCanonical } from "./draft-revision-assertions";
 
 /**
@@ -45,10 +45,10 @@ export default defineEval({
     edited.notCalledTool("create_message_draft");
     edited.notCalledTool("save_draft_to_gmail");
     edited.eventsSatisfy("the edit returned an active unapproved text draft", (events) =>
-      toolOutputs(events, "edit_draft_body").some((output) => {
-        if (typeof output !== "object" || output === null) return false;
-        const result = output as { updated?: unknown; status?: unknown; channel?: unknown };
-        return result.updated === true && result.status === "draft" && result.channel === "text";
+      someToolOutputHasFields(events, "edit_draft_body", {
+        updated: true,
+        status: "draft",
+        channel: "text",
       }),
     );
     t.check(

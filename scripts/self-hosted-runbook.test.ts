@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { createTendnoteAdmissionAuth } from "../apps/agent/agent/lib/eve-auth";
-import { createPrivateBetaAccessResolver } from "../apps/web/src/lib/access/resolve-access";
+import { createAdmissionHarness } from "../apps/web/src/lib/access/admission-harness";
+import type { createPrivateBetaAccessResolver } from "../apps/web/src/lib/access/resolve-access";
 import {
   createAccessProfileQueries,
   createInMemoryAccessProfileStore,
@@ -39,18 +39,7 @@ async function assertDocumentedBoundary(input: {
 }) {
   const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
   await queries.ensureAccessProfile({ userId: input.user.id });
-
-  const admission = {
-    accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
-    evaluateFlag: input.evaluateFlag,
-    policy: input.policy,
-  };
-  const web = createPrivateBetaAccessResolver(admission);
-  const eve = createTendnoteAdmissionAuth({
-    admission,
-    getSession: vi.fn().mockResolvedValue({ user: input.user }),
-    checkIngressBudget: vi.fn().mockResolvedValue({ allowed: true }),
-  });
+  const { eve, web } = createAdmissionHarness({ ...input, queries });
 
   const decision = await web.resolveAccess({ userId: input.user.id, email: input.user.email });
   expect(decision.admitted).toBe(false);

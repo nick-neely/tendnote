@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { readStoredZipEntries } from "./archive-reader";
 import { generateOwnerDataExportArchive } from "./generator";
 import type { OwnerDataExportRelationshipContext } from "./relationship-context";
-import { readStoredZipEntries } from "./test-utils";
 
 const ACCOUNT = {
   id: "owner-1",

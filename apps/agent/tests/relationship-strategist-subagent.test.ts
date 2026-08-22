@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { expectAllMatch } from "./instruction-expectations";
 import { authoredInstructions } from "./instructions-source";
 import { asTestTool, parseToolInput, toolModelValue } from "./test-tool";
 
@@ -50,19 +51,21 @@ describe("Relationship Strategist subagent", () => {
   });
 
   it("blocks durable and external mutations inside isolated instructions", () => {
-    expect(instructions()).toMatch(/get_relationship_agenda/i);
-    expect(instructions()).toMatch(/read-only ranking surface/i);
-    expect(instructions()).toMatch(/list_calendar_events/i);
-    expect(instructions()).toMatch(/Calendar output is provider-derived context/i);
-    expect(instructions()).toMatch(/list_message_drafts/i);
-    expect(instructions()).toMatch(/Draft reads are read-only/i);
-    expect(instructions()).toMatch(/propose_followup/i);
-    expect(instructions()).toMatch(/concrete `sourceRecordId`/i);
-    expect(instructions()).toMatch(/must not create active Follow-Ups/i);
-    expect(instructions()).toMatch(/must not create .*Memories/i);
-    expect(instructions()).toMatch(/create Source Records/i);
-    expect(instructions()).toMatch(/create Message Drafts/i);
-    expect(instructions()).toMatch(/external actions/i);
+    expectAllMatch(instructions(), [
+      /get_relationship_agenda/i,
+      /read-only ranking surface/i,
+      /list_calendar_events/i,
+      /Calendar output is provider-derived context/i,
+      /list_message_drafts/i,
+      /Draft reads are read-only/i,
+      /propose_followup/i,
+      /concrete `sourceRecordId`/i,
+      /must not create active Follow-Ups/i,
+      /must not create .*Memories/i,
+      /create Source Records/i,
+      /create Message Drafts/i,
+      /external actions/i,
+    ]);
   });
 
   /**
@@ -72,20 +75,24 @@ describe("Relationship Strategist subagent", () => {
    * that forgot from dead-ending.
    */
   it("can reach a personId from the delegated message and from its own lookup", () => {
-    expect(instructions()).toMatch(/carries the exact `personId`/i);
-    expect(instructions()).toMatch(/search_people/);
-    expect(instructions()).toMatch(/hand the choice back to the parent agent/i);
-    expect(instructions()).toMatch(/never ask the owner for a raw id/i);
+    expectAllMatch(instructions(), [
+      /carries the exact `personId`/i,
+      /search_people/,
+      /hand the choice back to the parent agent/i,
+      /never ask the owner for a raw id/i,
+    ]);
     // The parent's own contract has to agree with the child's.
     expect(authoredInstructions()).toMatch(/Pass\s+the resolved `personId` for every person/i);
   });
 
   it("keeps its anti-CRM, anti-guilt tone rules", () => {
-    expect(instructions()).toMatch(/non-salesy/i);
-    expect(instructions()).toMatch(/relationship impact/);
-    expect(instructions()).toMatch(/lead\/deal\/pipeline language/);
-    expect(instructions()).toMatch(/Do not guilt the owner/i);
-    expect(instructions()).toMatch(/thoughtful options the owner can consider/i);
+    expectAllMatch(instructions(), [
+      /non-salesy/i,
+      /relationship impact/,
+      /lead\/deal\/pipeline language/,
+      /Do not guilt the owner/i,
+      /thoughtful options the owner can consider/i,
+    ]);
   });
 
   /**
@@ -110,9 +117,11 @@ describe("Relationship Strategist subagent", () => {
 
   it("keeps both refusal clauses on the suggestion path, for the root and the subagent", () => {
     const shared = readFileSync(join(process.cwd(), "agent/lib/tools/propose-followup.ts"), "utf8");
-    expect(shared).toMatch(/Do NOT use this to scan everyone and invent follow-ups/);
-    expect(shared).toMatch(/do NOT rank who to check in with/);
-    expect(shared).toMatch(/never an active reminder/);
+    expectAllMatch(shared, [
+      /Do NOT use this to scan everyone and invent follow-ups/,
+      /do NOT rank who to check in with/,
+      /never an active reminder/,
+    ]);
     // The one field that used to describe source refs as an identity lookup.
     expect(shared).toMatch(/Resolve identity with search_people first/);
     expect(shared).not.toMatch(/agenda source refs or identity lookup/);

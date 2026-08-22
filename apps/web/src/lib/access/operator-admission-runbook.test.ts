@@ -10,7 +10,7 @@ import {
 import { parseAdmissionPolicy } from "@tendnote/domain";
 import { ForbiddenError } from "eve/channels/auth";
 import { describe, expect, it, vi } from "vitest";
-import { createTendnoteAdmissionAuth } from "../../../../agent/agent/lib/eve-auth";
+import { type Admission, createAdmissionPair } from "./admission-harness";
 import { createPrivateBetaAccessResolver } from "./resolve-access";
 
 const REQUEST = new Request("https://operator.example.test/eve/v1/session");
@@ -18,20 +18,13 @@ const OWNER = { id: "owner-1", email: "owner@example.test" };
 const INVITEE = { id: "invitee-1", email: "member@example.test" };
 const UNRELATED = { id: "unrelated-1", email: "other@example.test" };
 
-type Admission = Parameters<typeof createPrivateBetaAccessResolver>[0];
-
 async function assertSharedBoundary(input: {
   admission: Admission;
   user: { id: string; email: string };
   admitted: boolean;
   source?: string;
 }) {
-  const web = createPrivateBetaAccessResolver(input.admission);
-  const eve = createTendnoteAdmissionAuth({
-    admission: input.admission,
-    getSession: vi.fn().mockResolvedValue({ user: input.user }),
-    checkIngressBudget: vi.fn().mockResolvedValue({ allowed: true }),
-  });
+  const { web, eve } = createAdmissionPair(input.admission, input.user);
 
   const decision = await web.resolveAccess({ userId: input.user.id, email: input.user.email });
   expect(decision.admitted).toBe(input.admitted);

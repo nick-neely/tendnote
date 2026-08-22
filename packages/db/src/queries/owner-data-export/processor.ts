@@ -7,6 +7,7 @@ import { generateOwnerDataExportArchive } from "./generator";
 import type {
   EnqueueOwnerDataExportJobInput,
   OwnerDataExportArtifactStore,
+  OwnerDataExportJob,
   OwnerDataExportJobStore,
 } from "./types";
 
@@ -96,50 +97,106 @@ export async function processOwnerDataExportJob(input: {
   generate?: typeof generateOwnerDataExportArchive;
   now?: Date;
 }): Promise<OwnerDataExportProcessResult> {
-  const deps: ProcessorDependencies = {
-    jobs: input.jobs ?? defaultDependencies().jobs,
-    artifacts: input.artifacts ?? defaultDependencies().artifacts,
-    generate: input.generate ?? generateOwnerDataExportArchive,
-    now: () => input.now ?? new Date(),
-  };
+  const deps = processorDependencies(input);
   const now = nowFor(deps);
   const current = await deps.jobs.get({ jobId: input.jobId });
   if (!current) {
     return { outcome: "failed", job: null, error: "Owner data export job not found." };
   }
 
+  const settled = settledResultFor(current);
+  if (settled) return settled;
+
+  const claim = await acquireClaim(deps, input, current, now);
+  if ("result" in claim) return claim.result;
+
+  return writeArchive(deps, claim.job, claim.claimToken, now);
+}
+
+function processorDependencies(input: {
+  jobs?: OwnerDataExportJobStore;
+  artifacts?: OwnerDataExportArtifactStore;
+  generate?: typeof generateOwnerDataExportArchive;
+  now?: Date;
+}): ProcessorDependencies {
+  const defaults = defaultDependencies();
+  return {
+    jobs: input.jobs ?? defaults.jobs,
+    artifacts: input.artifacts ?? defaults.artifacts,
+    generate: input.generate ?? generateOwnerDataExportArchive,
+    now: () => input.now ?? new Date(),
+  };
+}
+
+/** A job that already reached a terminal state is never reprocessed. */
+function settledResultFor(current: OwnerDataExportJob): OwnerDataExportProcessResult | null {
   if (current.status === "completed") return { outcome: "completed", job: current };
   if (current.status === "expired") {
     return { outcome: "failed", job: current, error: "Owner data export artifact expired." };
   }
+  return null;
+}
 
-  let claimed = current;
-  if (input.claim !== false) {
-    const acquired = await deps.jobs.claim({ jobId: input.jobId, now });
-    if (!acquired) {
-      const latest = await deps.jobs.get({ jobId: input.jobId });
-      if (latest?.status === "completed") return { outcome: "completed", job: latest };
-      return notClaimableResult(deps.jobs, input.jobId, latest);
-    }
-    claimed = acquired;
-  } else if (
-    current.status !== "running" ||
-    !input.claimToken ||
-    current.claimToken !== input.claimToken
-  ) {
-    return notClaimableResult(deps.jobs, input.jobId, current);
+/**
+ * Take (or re-present) the exclusive claim this worker needs. Returns either
+ * the claimed job and its token, or the result to hand straight back.
+ */
+async function acquireClaim(
+  deps: ProcessorDependencies,
+  input: { jobId: string; claim?: boolean; claimToken?: string },
+  current: OwnerDataExportJob,
+  now: Date,
+): Promise<
+  { job: OwnerDataExportJob; claimToken: string } | { result: OwnerDataExportProcessResult }
+> {
+  const claimed = await claimedJob(deps, input, current, now);
+  if ("result" in claimed) return claimed;
+  const claimToken = claimed.job.claimToken;
+  if (!claimToken) {
+    return { result: await notClaimableResult(deps.jobs, input.jobId, claimed.job) };
   }
+  return { job: claimed.job, claimToken };
+}
 
-  const claimToken = claimed.claimToken;
-  if (!claimToken) return notClaimableResult(deps.jobs, input.jobId, claimed);
+async function claimedJob(
+  deps: ProcessorDependencies,
+  input: { jobId: string; claim?: boolean; claimToken?: string },
+  current: OwnerDataExportJob,
+  now: Date,
+): Promise<{ job: OwnerDataExportJob } | { result: OwnerDataExportProcessResult }> {
+  if (input.claim === false) {
+    return presentedClaim(deps, input, current);
+  }
+  const acquired = await deps.jobs.claim({ jobId: input.jobId, now });
+  if (acquired) return { job: acquired };
+  const latest = await deps.jobs.get({ jobId: input.jobId });
+  if (latest?.status === "completed") return { result: { outcome: "completed", job: latest } };
+  return { result: await notClaimableResult(deps.jobs, input.jobId, latest) };
+}
 
+/** `claim: false` means the caller already holds the claim and must prove it. */
+async function presentedClaim(
+  deps: ProcessorDependencies,
+  input: { jobId: string; claimToken?: string },
+  current: OwnerDataExportJob,
+): Promise<{ job: OwnerDataExportJob } | { result: OwnerDataExportProcessResult }> {
+  const valid =
+    current.status === "running" &&
+    Boolean(input.claimToken) &&
+    current.claimToken === input.claimToken;
+  if (valid) return { job: current };
+  return { result: await notClaimableResult(deps.jobs, input.jobId, current) };
+}
+
+async function writeArchive(
+  deps: ProcessorDependencies,
+  claimed: OwnerDataExportJob,
+  claimToken: string,
+  now: Date,
+): Promise<OwnerDataExportProcessResult> {
   const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   try {
-    const archive = await deps.generate({
-      ownerUserId: claimed.ownerUserId,
-      now,
-      expiresAt,
-    });
+    const archive = await deps.generate({ ownerUserId: claimed.ownerUserId, now, expiresAt });
     const artifact = await deps.artifacts.put({
       jobId: claimed.id,
       ownerUserId: claimed.ownerUserId,
@@ -157,16 +214,26 @@ export async function processOwnerDataExportJob(input: {
     if (!completed) return notClaimableResult(deps.jobs, claimed.id, claimed);
     return { outcome: "completed", job: completed };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const failed = await deps.jobs.markFailed({
-      jobId: claimed.id,
-      expectedClaimToken: claimToken,
-      error: message,
-      runAfter: new Date(now.getTime() + OWNER_DATA_EXPORT_RETRY_DELAY_MS),
-    });
-    if (!failed) return notClaimableResult(deps.jobs, claimed.id, claimed);
-    return { outcome: "failed", job: failed, error: message };
+    return recordFailure(deps, claimed, claimToken, now, error);
   }
+}
+
+async function recordFailure(
+  deps: ProcessorDependencies,
+  claimed: OwnerDataExportJob,
+  claimToken: string,
+  now: Date,
+  error: unknown,
+): Promise<OwnerDataExportProcessResult> {
+  const message = error instanceof Error ? error.message : String(error);
+  const failed = await deps.jobs.markFailed({
+    jobId: claimed.id,
+    expectedClaimToken: claimToken,
+    error: message,
+    runAfter: new Date(now.getTime() + OWNER_DATA_EXPORT_RETRY_DELAY_MS),
+  });
+  if (!failed) return notClaimableResult(deps.jobs, claimed.id, claimed);
+  return { outcome: "failed", job: failed, error: message };
 }
 
 export async function enqueueAndTriggerOwnerDataExportJob(
@@ -203,29 +270,35 @@ export async function getOwnerDataExportJob(jobId: string) {
   return createDrizzleOwnerDataExportJobStore().get({ jobId });
 }
 
+function artifactHasLapsed(job: OwnerDataExportJob | null, now: Date): job is OwnerDataExportJob {
+  return Boolean(
+    job?.status === "completed" && job.artifactExpiresAt && job.artifactExpiresAt <= now,
+  );
+}
+
+/**
+ * Clear the cleanup cursor only after physical deletion. Any failed phase is
+ * therefore retried by the bounded recovery pass rather than being forgotten.
+ */
+async function deleteLapsedArtifact(jobId: string, now: Date, expired: OwnerDataExportJob) {
+  const jobs = createDrizzleOwnerDataExportJobStore();
+  try {
+    await createDrizzleOwnerDataExportArtifactStore().delete({ jobId });
+    return (await jobs.markArtifactDeleted({ jobId, now })) ?? expired;
+  } catch {
+    return expired;
+  }
+}
+
 export async function getLatestOwnerDataExportJob(ownerUserId: string) {
   const jobs = createDrizzleOwnerDataExportJobStore();
-  const artifacts = createDrizzleOwnerDataExportArtifactStore();
   const now = new Date();
   const latest = await jobs.getLatestForOwner({ ownerUserId });
-  if (
-    latest?.status === "completed" &&
-    latest.artifactExpiresAt &&
-    latest.artifactExpiresAt <= now
-  ) {
-    const expired = await jobs.markExpired({ jobId: latest.id, now });
-    if (expired) {
-      // Clear the cleanup cursor only after physical deletion. Any failed
-      // phase is therefore retried by the bounded recovery pass.
-      try {
-        await artifacts.delete({ jobId: latest.id });
-        return (await jobs.markArtifactDeleted({ jobId: latest.id, now })) ?? expired;
-      } catch {
-        return expired;
-      }
-    }
-  }
-  return latest;
+  if (!artifactHasLapsed(latest, now)) return latest;
+
+  const expired = await jobs.markExpired({ jobId: latest.id, now });
+  if (!expired) return latest;
+  return deleteLapsedArtifact(latest.id, now, expired);
 }
 
 export async function claimNextOwnerDataExportJob(input: { now?: Date }) {

@@ -20,6 +20,16 @@ function onboardingStateFromProfile(profile: AccessProfile): SelfContextOnboardi
  * actions, and Eve ingress should branch on the {@link AccessDecision} returned
  * by `checkAccess` and never derive access from user ordering.
  */
+/** Postgres reports a unique-constraint violation as SQLSTATE 23505. */
+const UNIQUE_VIOLATION = "23505";
+
+/** The driver reports the SQLSTATE on the error or on its wrapped cause. */
+function sqlStates(error: unknown): unknown[] {
+  const candidate = error as { code?: unknown; cause?: { code?: unknown } } | null;
+  if (typeof candidate !== "object" || candidate === null) return [];
+  return [candidate.code, candidate.cause?.code];
+}
+
 export function createAccessProfileQueries(store: AccessProfileStore) {
   async function updateSelfContextOnboarding(input: {
     userId: string;
@@ -39,62 +49,67 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
     return onboardingStateFromProfile(updated);
   }
 
+  /**
+   * Resolve the profile after `insertIfAbsent` lost a race. A singleton-source
+   * conflict belongs to another user, so this caller is settled as pending
+   * rather than having a uniqueness race reported as an admission error.
+   */
+  async function settleContendedGrant(
+    userId: string,
+    source: AccessSource,
+  ): Promise<AccessProfile> {
+    const settled = await store.getByUserId(userId);
+    if (settled) {
+      return settled.status === "granted" ? settled : grantExisting(settled, source);
+    }
+    const pending = await store.insertIfAbsent({
+      userId,
+      status: "pending",
+      source: null,
+      grantedAt: null,
+    });
+    if (pending) return pending;
+
+    const retry = await store.getByUserId(userId);
+    if (!retry) throw new Error("Failed to grant access profile.");
+    return retry.status === "granted" ? retry : grantExisting(retry, source);
+  }
+
+  /**
+   * A configured self-hosted owner may be transitioning from a legacy
+   * hosted/local grant. Reclassify only that explicit provenance; ordinary
+   * grants remain authoritative and retain their original audit source.
+   */
+  function reclassifiesToBootstrap(existing: AccessProfile, source: AccessSource): boolean {
+    return (
+      source === "self_hosted_bootstrap" &&
+      existing.source !== "self_hosted_bootstrap" &&
+      existing.source !== "household_invitation"
+    );
+  }
+
+  async function grantFresh(userId: string, source: AccessSource): Promise<AccessProfile> {
+    const inserted = await store.insertIfAbsent({
+      userId,
+      status: "granted",
+      source,
+      grantedAt: new Date(),
+    });
+    return inserted ?? settleContendedGrant(userId, source);
+  }
+
   /** Durably grant one profile, preserving the source for audit and display. */
   async function grantAccess(input: {
     userId: string;
     source: AccessSource;
   }): Promise<AccessProfile> {
     const existing = await store.getByUserId(input.userId);
-    const grantedAt = new Date();
-
-    if (!existing) {
-      const inserted = await store.insertIfAbsent({
-        userId: input.userId,
-        status: "granted",
-        source: input.source,
-        grantedAt,
-      });
-
-      if (inserted) {
-        return inserted;
-      }
-
-      const settled = await store.getByUserId(input.userId);
-      if (settled) {
-        return settled.status === "granted" ? settled : grantExisting(settled, input.source);
-      }
-
-      // A singleton-source conflict belongs to another user. Keep this caller
-      // pending instead of turning a uniqueness race into an admission error.
-      const pending = await store.insertIfAbsent({
-        userId: input.userId,
-        status: "pending",
-        source: null,
-        grantedAt: null,
-      });
-      if (pending) return pending;
-
-      const retry = await store.getByUserId(input.userId);
-      if (!retry) throw new Error("Failed to grant access profile.");
-      return retry.status === "granted" ? retry : grantExisting(retry, input.source);
+    if (!existing) return grantFresh(input.userId, input.source);
+    if (existing.status !== "granted") return grantExisting(existing, input.source);
+    if (reclassifiesToBootstrap(existing, input.source)) {
+      return grantExisting(existing, input.source);
     }
-
-    if (existing.status === "granted") {
-      // A configured self-hosted owner may be transitioning from a legacy
-      // hosted/local grant. Reclassify only that explicit provenance; ordinary
-      // grants remain authoritative and retain their original audit source.
-      if (
-        input.source === "self_hosted_bootstrap" &&
-        existing.source !== "self_hosted_bootstrap" &&
-        existing.source !== "household_invitation"
-      ) {
-        return grantExisting(existing, input.source);
-      }
-
-      return existing;
-    }
-
-    return grantExisting(existing, input.source);
+    return existing;
   }
 
   return {
@@ -254,9 +269,6 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
   }
 
   function isUniqueConstraintError(error: unknown): boolean {
-    if (typeof error !== "object" || error === null) return false;
-
-    const candidate = error as { code?: unknown; cause?: { code?: unknown } };
-    return candidate.code === "23505" || candidate.cause?.code === "23505";
+    return sqlStates(error).includes(UNIQUE_VIOLATION);
   }
 }

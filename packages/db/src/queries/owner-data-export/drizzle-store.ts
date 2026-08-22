@@ -15,33 +15,44 @@ function scrubError(error: string) {
   return error.replace(/\s+/g, " ").trim().slice(0, 500);
 }
 
+/** A caller-supplied key makes the enqueue idempotent; otherwise it is unique. */
+function enqueueIdempotencyKey(input: EnqueueOwnerDataExportJobInput) {
+  return input.idempotencyKey ?? `owner-data-export:${input.ownerUserId}:${randomUUID()}`;
+}
+
+/** The insert lost the conflict race, so the winning row must already exist. */
+async function requireExistingJob(ownerUserId: string, idempotencyKey: string) {
+  const [existing] = await getDb()
+    .select()
+    .from(ownerDataExportJobs)
+    .where(
+      and(
+        eq(ownerDataExportJobs.ownerUserId, ownerUserId),
+        eq(ownerDataExportJobs.idempotencyKey, idempotencyKey),
+      ),
+    )
+    .limit(1);
+  if (!existing) throw new Error("Failed to create owner data export job.");
+  return existing;
+}
+
 export function createDrizzleOwnerDataExportJobStore(): OwnerDataExportJobStore {
   return {
     async enqueue(input: EnqueueOwnerDataExportJobInput) {
-      const now = input.now ?? new Date();
-      const idempotencyKey =
-        input.idempotencyKey ?? `owner-data-export:${input.ownerUserId}:${randomUUID()}`;
+      const idempotencyKey = enqueueIdempotencyKey(input);
       const [created] = await getDb()
         .insert(ownerDataExportJobs)
-        .values({ ownerUserId: input.ownerUserId, idempotencyKey, runAfter: now })
+        .values({
+          ownerUserId: input.ownerUserId,
+          idempotencyKey,
+          runAfter: input.now ?? new Date(),
+        })
         .onConflictDoNothing({
           target: [ownerDataExportJobs.ownerUserId, ownerDataExportJobs.idempotencyKey],
         })
         .returning();
       if (created) return { job: created, created: true };
-
-      const [existing] = await getDb()
-        .select()
-        .from(ownerDataExportJobs)
-        .where(
-          and(
-            eq(ownerDataExportJobs.ownerUserId, input.ownerUserId),
-            eq(ownerDataExportJobs.idempotencyKey, idempotencyKey),
-          ),
-        )
-        .limit(1);
-      if (!existing) throw new Error("Failed to create owner data export job.");
-      return { job: existing, created: false };
+      return { job: await requireExistingJob(input.ownerUserId, idempotencyKey), created: false };
     },
     async get(input) {
       const filters = [eq(ownerDataExportJobs.id, input.jobId)];

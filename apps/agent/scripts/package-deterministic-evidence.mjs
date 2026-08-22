@@ -63,6 +63,75 @@ function junitCounts(xml) {
   return { tests: number("tests"), failures: number("failures"), skipped: number("skipped"), ids };
 }
 
+function initialCounts(initial) {
+  return {
+    passed: Number(initial.passed ?? 0),
+    failed: Number(initial.failed ?? 0),
+    skipped: Number(initial.skipped ?? 0),
+    errored: Number(initial.errored ?? 0),
+    total: Number(initial.totalEvals ?? initial.evals?.length ?? 0),
+  };
+}
+
+/** The summary, the JSONL rows, and the JUnit report must name the same evals. */
+function idSetsAgree(evalIds, rowIds, junitIds, total) {
+  return (
+    uniqueIds(evalIds) &&
+    uniqueIds(rowIds) &&
+    uniqueIds(junitIds) &&
+    sameIdSet(evalIds, rowIds) &&
+    sameIdSet(evalIds, junitIds) &&
+    evalIds.length === total
+  );
+}
+
+function countsMatch(machineCounts, counts) {
+  return (
+    machineCounts.total === counts.total &&
+    machineCounts.passed === counts.passed &&
+    machineCounts.failed === counts.failed &&
+    machineCounts.skipped === counts.skipped &&
+    machineCounts.errored === counts.errored
+  );
+}
+
+function isPerfectFirstSample(counts, exitCode, retryRounds) {
+  return (
+    exitCode === 0 &&
+    counts.total > 0 &&
+    counts.passed === counts.total &&
+    counts.failed === 0 &&
+    counts.skipped === 0 &&
+    counts.errored === 0 &&
+    retryRounds === 0
+  );
+}
+
+/**
+ * "Clean" is not a claim the run gets to make about itself: every count the
+ * bundle carries has to agree with every other one, and the first sample has
+ * to have passed outright, before this returns true.
+ */
+function isCleanRun({
+  counts,
+  exitCode,
+  retryRounds,
+  machineCounts,
+  summaryStatuses,
+  idsAgree,
+  junit,
+}) {
+  return (
+    isPerfectFirstSample(counts, exitCode, retryRounds) &&
+    countsMatch(machineCounts, counts) &&
+    JSON.stringify(machineCounts.statuses) === JSON.stringify(summaryStatuses) &&
+    idsAgree &&
+    junit.tests === counts.total &&
+    junit.failures === 0 &&
+    junit.skipped === 0
+  );
+}
+
 export function buildEvidenceMetadata({
   sourceCommit,
   workflowUrl,
@@ -77,45 +146,25 @@ export function buildEvidenceMetadata({
   const initial = reports[0];
   if (!initial)
     throw new Error("No initial eval report was produced; this is a bootstrap failure.");
-  const counts = {
-    passed: Number(initial.passed ?? 0),
-    failed: Number(initial.failed ?? 0),
-    skipped: Number(initial.skipped ?? 0),
-    errored: Number(initial.errored ?? 0),
-    total: Number(initial.totalEvals ?? initial.evals?.length ?? 0),
-  };
+  const counts = initialCounts(initial);
   const runtime = observedRuntimeIdentity(reports, agentModel);
   const machineCounts = jsonlCounts(resultRows[0] ?? []);
   const evalIds = idsOf(initial.evals);
-  const rowIds = idsOf(resultRows[0] ?? []);
-  const junitIds = Array.isArray(junit.ids) ? junit.ids : [];
-  const idSetsAgree =
-    uniqueIds(evalIds) &&
-    uniqueIds(rowIds) &&
-    uniqueIds(junitIds) &&
-    sameIdSet(evalIds, rowIds) &&
-    sameIdSet(evalIds, junitIds) &&
-    evalIds.length === counts.total;
-  const summaryStatuses = statusCounts((initial.evals ?? []).map((entry) => entry?.result?.status));
   const retryRounds = Math.max(0, reports.length - 1);
-  const clean =
-    exitCode === 0 &&
-    counts.total > 0 &&
-    counts.passed === counts.total &&
-    counts.failed === 0 &&
-    counts.skipped === 0 &&
-    counts.errored === 0 &&
-    retryRounds === 0 &&
-    machineCounts.total === counts.total &&
-    machineCounts.passed === counts.passed &&
-    machineCounts.failed === counts.failed &&
-    machineCounts.skipped === counts.skipped &&
-    machineCounts.errored === counts.errored &&
-    JSON.stringify(machineCounts.statuses) === JSON.stringify(summaryStatuses) &&
-    idSetsAgree &&
-    junit.tests === counts.total &&
-    junit.failures === 0 &&
-    junit.skipped === 0;
+  const clean = isCleanRun({
+    counts,
+    exitCode,
+    retryRounds,
+    machineCounts,
+    summaryStatuses: statusCounts((initial.evals ?? []).map((entry) => entry?.result?.status)),
+    idsAgree: idSetsAgree(
+      evalIds,
+      idsOf(resultRows[0] ?? []),
+      Array.isArray(junit.ids) ? junit.ids : [],
+      counts.total,
+    ),
+    junit,
+  });
 
   return {
     schemaVersion: 1,
@@ -173,7 +222,7 @@ function sameIdSet(left, right) {
   );
 }
 
-export function observedRuntimeIdentity(reports, expectedModel) {
+function observedRuntimeIdentity(reports, expectedModel) {
   const identities = reports.flatMap((report) =>
     (report.evals ?? []).flatMap((entry) =>
       (entry.result?.events ?? [])
@@ -194,7 +243,7 @@ export function observedRuntimeIdentity(reports, expectedModel) {
   return { modelId: identity.modelId, eveVersion: identity.eveVersion ?? null };
 }
 
-export function jsonlCounts(rows) {
+function jsonlCounts(rows) {
   const counts = {
     passed: 0,
     failed: 0,
@@ -216,64 +265,64 @@ export function jsonlCounts(rows) {
   return counts;
 }
 
-function readme(metadata) {
-  const result = metadata.clean
+function evidenceVerdict(clean) {
+  return clean
     ? "CLEAN — every selected case passed its first sample."
     : "BLOCKED — this run is not clean publication evidence.";
-  return `# Eve deterministic evaluation — ${metadata.timestamps.completedAt?.slice(0, 10) ?? "unknown date"}\n\n## Result\n\n**${result}**\n\n| Field | Value |\n| --- | --- |\n| Source commit | \`${metadata.sourceCommit}\` |\n| Workflow | ${metadata.workflow.url} |\n| Trigger | \`${metadata.workflow.trigger}\` |\n| Command | \`${metadata.workflow.command}\` |\n| Execution window | ${metadata.timestamps.startedAt}–${metadata.timestamps.completedAt} |\n| Agent model | \`${metadata.configuration.agentModel}\` |\n| Eve version | \`${metadata.configuration.eveVersion ?? "unknown"}\` |\n| Counts | ${metadata.counts.passed} passed, ${metadata.counts.failed} failed, ${metadata.counts.skipped} skipped, ${metadata.counts.errored} errored, ${metadata.counts.total} total |\n| Retry status | ${metadata.retry.attempted ? `${metadata.retry.rounds} retry round(s); not clean` : "No retry; first sample only"} |\n| Wrapper exit code | ${metadata.exitCode} |\n\nMachine-readable details are in \`metadata.json\`, \`junit.xml\`, and \`raw/\`. Verify every preserved file with \`sha256sum -c SHA256SUMS\`. Workflow artifacts supplement this repository bundle; they do not replace it.\n`;
 }
 
-export function main() {
-  const sourceCommit = required("--source-sha");
-  if (!SHA.test(sourceCommit)) throw new Error("--source-sha must be a full lowercase commit SHA.");
-  const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), "../../..");
+function retryStatus(retry) {
+  return retry.attempted
+    ? `${retry.rounds} retry round(s); not clean`
+    : "No retry; first sample only";
+}
+
+function readme(metadata) {
+  const day = metadata.timestamps.completedAt?.slice(0, 10) ?? "unknown date";
+  const eveVersion = metadata.configuration.eveVersion ?? "unknown";
+  return `# Eve deterministic evaluation — ${day}\n\n## Result\n\n**${evidenceVerdict(metadata.clean)}**\n\n| Field | Value |\n| --- | --- |\n| Source commit | \`${metadata.sourceCommit}\` |\n| Workflow | ${metadata.workflow.url} |\n| Trigger | \`${metadata.workflow.trigger}\` |\n| Command | \`${metadata.workflow.command}\` |\n| Execution window | ${metadata.timestamps.startedAt}–${metadata.timestamps.completedAt} |\n| Agent model | \`${metadata.configuration.agentModel}\` |\n| Eve version | \`${eveVersion}\` |\n| Counts | ${metadata.counts.passed} passed, ${metadata.counts.failed} failed, ${metadata.counts.skipped} skipped, ${metadata.counts.errored} errored, ${metadata.counts.total} total |\n| Retry status | ${retryStatus(metadata.retry)} |\n| Wrapper exit code | ${metadata.exitCode} |\n\nMachine-readable details are in \`metadata.json\`, \`junit.xml\`, and \`raw/\`. Verify every preserved file with \`sha256sum -c SHA256SUMS\`. Workflow artifacts supplement this repository bundle; they do not replace it.\n`;
+}
+
+function repositoryRoot() {
+  return resolve(dirname(new URL(import.meta.url).pathname), "../../..");
+}
+
+function assertCandidateCheckedOut(repoRoot, sourceCommit) {
   const actual = spawnSync("git", ["rev-parse", "HEAD"], {
     cwd: repoRoot,
     encoding: "utf8",
   }).stdout.trim();
   if (actual !== sourceCommit)
     throw new Error(`Checked out ${actual}, not requested candidate ${sourceCommit}.`);
+}
 
-  const evalRoot = resolve(repoRoot, value("--eval-root") ?? "apps/agent/.eve/evals");
-  const output = resolve(repoRoot, value("--output") ?? `evidence/evals/${sourceCommit}`);
-  const exitCode = Number(readFileSync(required("--exit-code-file"), "utf8").trim());
-  const explicitReport = value("--report-dir");
-  const dirs = explicitReport ? [resolve(repoRoot, explicitReport)] : reportDirectories(evalRoot);
-  const reports = dirs.map((dir) => json(join(dir, "summary.json")));
-  const resultRows = dirs.map((dir) => jsonl(join(dir, "results.jsonl")));
-  const junitSource = join(evalRoot, "junit.xml");
-  const junit = junitCounts(readFileSync(junitSource, "utf8"));
-  const metadata = buildEvidenceMetadata({
-    sourceCommit,
-    workflowUrl: required("--workflow-url"),
-    command: required("--command"),
-    agentModel: required("--agent-model"),
-    exitCode,
-    reports,
-    resultRows,
-    junit,
-    packagedAt: new Date().toISOString(),
-  });
+function optionPath(repoRoot, name, fallback) {
+  return resolve(repoRoot, value(name) ?? fallback);
+}
 
-  mkdirSync(join(output, "raw"), { recursive: true });
-  copyFileSync(junitSource, join(output, "junit.xml"));
-  dirs.forEach((dir, index) => {
-    const label = index === 0 ? "initial" : `retry-${index}`;
-    const summary = join(dir, "summary.json");
-    const results = join(dir, "results.jsonl");
-    if (!statSync(results, { throwIfNoEntry: false }))
-      throw new Error(`${label} has no results.jsonl.`);
-    if (
-      countJsonl(results) !== Number(reports[index].totalEvals ?? reports[index].evals?.length ?? 0)
-    ) {
-      throw new Error(`${label} JSONL count disagrees with its summary.`);
-    }
-    copyFileSync(summary, join(output, "raw", `${label}-summary.json`));
-    copyFileSync(results, join(output, "raw", `${label}-results.jsonl`));
-  });
-  writeFileSync(join(output, "metadata.json"), `${JSON.stringify(metadata, null, 2)}\n`);
-  writeFileSync(join(output, "README.md"), readme(metadata));
+function reportRoundDirectories(repoRoot, evalRoot) {
+  const explicit = value("--report-dir");
+  return explicit ? [resolve(repoRoot, explicit)] : reportDirectories(evalRoot);
+}
 
+function summaryTotal(report) {
+  return Number(report.totalEvals ?? report.evals?.length ?? 0);
+}
+
+/** Copy one sample's raw pair, refusing a round whose JSONL and summary disagree. */
+function copyReportRound(dir, index, report, output) {
+  const label = index === 0 ? "initial" : `retry-${index}`;
+  const summary = join(dir, "summary.json");
+  const results = join(dir, "results.jsonl");
+  if (!statSync(results, { throwIfNoEntry: false }))
+    throw new Error(`${label} has no results.jsonl.`);
+  if (countJsonl(results) !== summaryTotal(report))
+    throw new Error(`${label} JSONL count disagrees with its summary.`);
+  copyFileSync(summary, join(output, "raw", `${label}-summary.json`));
+  copyFileSync(results, join(output, "raw", `${label}-results.jsonl`));
+}
+
+function writeChecksums(output) {
   const files = [
     "README.md",
     "junit.xml",
@@ -286,6 +335,37 @@ export function main() {
     join(output, "SHA256SUMS"),
     `${files.map((name) => `${sha256(join(output, name))}  ${name}`).join("\n")}\n`,
   );
+}
+
+function main() {
+  const sourceCommit = required("--source-sha");
+  if (!SHA.test(sourceCommit)) throw new Error("--source-sha must be a full lowercase commit SHA.");
+  const repoRoot = repositoryRoot();
+  assertCandidateCheckedOut(repoRoot, sourceCommit);
+
+  const evalRoot = optionPath(repoRoot, "--eval-root", "apps/agent/.eve/evals");
+  const output = optionPath(repoRoot, "--output", `evidence/evals/${sourceCommit}`);
+  const dirs = reportRoundDirectories(repoRoot, evalRoot);
+  const reports = dirs.map((dir) => json(join(dir, "summary.json")));
+  const junitSource = join(evalRoot, "junit.xml");
+  const metadata = buildEvidenceMetadata({
+    sourceCommit,
+    workflowUrl: required("--workflow-url"),
+    command: required("--command"),
+    agentModel: required("--agent-model"),
+    exitCode: Number(readFileSync(required("--exit-code-file"), "utf8").trim()),
+    reports,
+    resultRows: dirs.map((dir) => jsonl(join(dir, "results.jsonl"))),
+    junit: junitCounts(readFileSync(junitSource, "utf8")),
+    packagedAt: new Date().toISOString(),
+  });
+
+  mkdirSync(join(output, "raw"), { recursive: true });
+  copyFileSync(junitSource, join(output, "junit.xml"));
+  for (const [index, dir] of dirs.entries()) copyReportRound(dir, index, reports[index], output);
+  writeFileSync(join(output, "metadata.json"), `${JSON.stringify(metadata, null, 2)}\n`);
+  writeFileSync(join(output, "README.md"), readme(metadata));
+  writeChecksums(output);
   process.stdout.write(`${output}\n`);
   if (!metadata.clean) throw new Error("Deterministic evaluation was not first-sample clean.");
 }

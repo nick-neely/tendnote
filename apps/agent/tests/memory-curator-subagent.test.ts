@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { expectAllMatch } from "./instruction-expectations";
 import { authoredInstructions } from "./instructions-source";
 import { asTestTool, toolModelValue } from "./test-tool";
 
@@ -43,18 +44,22 @@ describe("Memory Curator subagent", () => {
    * cleanup proposal is actually judged by (ADR 0123 keeps it review-only).
    */
   it("says what a good cleanup proposal looks like, not only what is forbidden", () => {
-    expect(instructions()).toMatch(/what a good proposal looks like/i);
-    expect(instructions()).toMatch(/Grounded/);
-    expect(instructions()).toMatch(/Few\./);
-    expect(instructions()).toMatch(/A long list is not review/i);
-    expect(instructions()).toMatch(/do not judge the owner's record-keeping/i);
-    expect(instructions()).toMatch(/Never a raw id/i);
-    expect(instructions()).toMatch(/do not invent a candidate/i);
+    expectAllMatch(instructions(), [
+      /what a good proposal looks like/i,
+      /Grounded/,
+      /Few\./,
+      /A long list is not review/i,
+      /do not judge the owner's record-keeping/i,
+      /Never a raw id/i,
+      /do not invent a candidate/i,
+    ]);
     // It inherits nothing, including the date its own staleness judgements need.
-    expect(instructions()).toMatch(/inherit nothing from the parent agent/i);
-    expect(instructions()).toMatch(/date anchor/i);
-    expect(instructions()).toMatch(/PROPOSAL_COUNT: N/);
-    expect(instructions()).toMatch(/count[\s\S]*propose_memory_cleanup/i);
+    expectAllMatch(instructions(), [
+      /inherit nothing from the parent agent/i,
+      /date anchor/i,
+      /PROPOSAL_COUNT: N/,
+      /count[\s\S]*propose_memory_cleanup/i,
+    ]);
   });
 
   it("exposes only a read-only proposal tool with no memory mutation imports", () => {

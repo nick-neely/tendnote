@@ -62,23 +62,23 @@ export function createInMemoryHouseholdInvitationStore(options?: {
     };
   }
 
+  /** Roll back the touched entries only: restore each id, or drop it. */
+  function restoreEntries<T>(
+    ids: Iterable<string> | undefined,
+    map: Map<string, T>,
+    rows: readonly (readonly [string, T])[],
+  ) {
+    if (!ids) return;
+    for (const id of ids) {
+      const row = rows.find(([candidate]) => candidate === id)?.[1];
+      if (row) map.set(id, { ...row });
+      else map.delete(id);
+    }
+  }
+
   function restore(state: InMemoryStoreSnapshot, mutations: InMemoryMutationLog) {
-    const invitationIds = mutations.get("invitations");
-    if (invitationIds) {
-      for (const id of invitationIds) {
-        const row = state.invitations.find(([candidate]) => candidate === id)?.[1];
-        if (row) invitations.set(id, { ...row });
-        else invitations.delete(id);
-      }
-    }
-    const deliveryIds = mutations.get("deliveries");
-    if (deliveryIds) {
-      for (const id of deliveryIds) {
-        const row = state.deliveries.find(([candidate]) => candidate === id)?.[1];
-        if (row) deliveries.set(id, { ...row });
-        else deliveries.delete(id);
-      }
-    }
+    restoreEntries(mutations.get("invitations"), invitations, state.invitations);
+    restoreEntries(mutations.get("deliveries"), deliveries, state.deliveries);
     households.restore(state.households, mutations);
     accessProfiles.restore(state.accessProfiles, mutations);
   }

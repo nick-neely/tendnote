@@ -65,152 +65,168 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function validateRedactedProof(value: unknown): string[] {
-  const errors: string[] = [];
-  if (!isRecord(value)) return ["proof must be an object"];
+const REQUIRED_TOP_LEVEL = [
+  "schemaVersion",
+  "repository",
+  "commit",
+  "agreement",
+  "ruleset",
+  "claCheck",
+  "cases",
+  "redaction",
+];
+const CASE_FIELDS = ["kind", "proofId", "status", "outcome", "observedAt", "identity"];
+const REDACTION_FLAGS = [
+  "identities",
+  "contactDetails",
+  "acceptanceRecords",
+  "temporaryPullRequests",
+  "gistReferences",
+];
+const FORBIDDEN_SUBSTRINGS = ["signature", "signer", "email", "account_id", "gist_url"];
+const EXPECTED_CASES: Record<
+  ProofCase["kind"],
+  { statuses: readonly ProofCase["status"][]; outcome: ProofCase["outcome"] }
+> = {
+  unsigned: { statuses: ["failure", "pending"], outcome: "open-unmergeable" },
+  accepted: { statuses: ["success"], outcome: "eligible" },
+  employer: { statuses: ["success"], outcome: "eligible" },
+  corporate: { statuses: ["success"], outcome: "eligible" },
+};
 
-  const proof = value as Partial<ProofFixture>;
-  const requiredTopLevel = [
-    "schemaVersion",
-    "repository",
-    "commit",
-    "agreement",
-    "ruleset",
-    "claCheck",
-    "cases",
-    "redaction",
-  ];
-  for (const key of requiredTopLevel) {
+function shapeErrors(proof: Partial<ProofFixture>): string[] {
+  const errors: string[] = [];
+  for (const key of REQUIRED_TOP_LEVEL) {
     if (!(key in proof)) errors.push(`missing top-level field: ${key}`);
   }
   for (const key of Object.keys(proof)) {
-    if (!requiredTopLevel.includes(key)) errors.push(`unexpected top-level field: ${key}`);
+    if (!REQUIRED_TOP_LEVEL.includes(key)) errors.push(`unexpected top-level field: ${key}`);
   }
-
   if (proof.schemaVersion !== "1.0") errors.push("schemaVersion must be 1.0");
   if (proof.repository !== "nick-neely/tendnote") errors.push("repository is not Tendnote");
   if (typeof proof.commit !== "string" || !/^[0-9a-f]{40}$/.test(proof.commit)) {
     errors.push("commit must be a lowercase 40-character SHA");
   }
-  if (!isRecord(proof.agreement)) {
-    errors.push("agreement must be an object");
-  } else {
-    if (proof.agreement.version !== "1.0") errors.push("agreement version must be 1.0");
-    if (proof.agreement.sha256 !== APPROVED_AGREEMENT_SHA256) {
-      errors.push("agreement hash does not match the approved ICLA");
-    }
-  }
+  return errors;
+}
 
-  const ruleset = proof.ruleset;
-  if (!isRecord(ruleset)) {
-    errors.push("ruleset must be an object");
-  } else {
-    if (ruleset.id !== 19995472) errors.push("ruleset id is not 19995472");
-    if (ruleset.name !== "Protect main") errors.push("ruleset name is not Protect main");
-    if (!Array.isArray(ruleset.requiredStatusContexts)) {
-      errors.push("ruleset requiredStatusContexts must be an array");
-    } else if (
-      JSON.stringify(ruleset.requiredStatusContexts) !==
-      JSON.stringify(["Verify", "Full CI qualification", "Vercel"])
-    ) {
-      errors.push("ruleset requiredStatusContexts changed");
-    }
-  }
-
-  const claCheck = proof.claCheck;
-  if (!isRecord(claCheck)) {
-    errors.push("claCheck must be an object");
-  } else {
-    for (const key of Object.keys(claCheck)) {
-      if (!["statusContext", "integrationId"].includes(key)) {
-        errors.push(`claCheck has unexpected field: ${key}`);
-      }
-    }
-    if (
-      typeof claCheck.statusContext !== "string" ||
-      !/^\S(?:.*\S)?$/.test(claCheck.statusContext) ||
-      claCheck.statusContext === "CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE"
-    ) {
-      errors.push("claCheck status context must be observed");
-    }
-    if (
-      typeof claCheck.integrationId !== "number" ||
-      !Number.isInteger(claCheck.integrationId) ||
-      claCheck.integrationId < 1
-    ) {
-      errors.push("claCheck integration_id must be a positive integer");
-    }
-  }
-
-  const cases = proof.cases;
-  if (!Array.isArray(cases) || cases.length !== 4) {
-    errors.push("proof must contain exactly four cases");
-  } else {
-    const kinds = cases.map((proofCase) => (isRecord(proofCase) ? proofCase.kind : undefined));
-    for (const kind of ["unsigned", "accepted", "employer", "corporate"] as const) {
-      if (kinds.filter((candidate) => candidate === kind).length !== 1) {
-        errors.push(`proof must contain exactly one ${kind} case`);
-      }
-    }
-
-    const expected: Record<
-      ProofCase["kind"],
-      { statuses: readonly ProofCase["status"][]; outcome: ProofCase["outcome"] }
-    > = {
-      unsigned: { statuses: ["failure", "pending"], outcome: "open-unmergeable" },
-      accepted: { statuses: ["success"], outcome: "eligible" },
-      employer: { statuses: ["success"], outcome: "eligible" },
-      corporate: { statuses: ["success"], outcome: "eligible" },
-    };
-    for (const [index, proofCase] of cases.entries()) {
-      if (!isRecord(proofCase)) {
-        errors.push(`case ${index} must be an object`);
-        continue;
-      }
-      for (const key of Object.keys(proofCase)) {
-        if (!["kind", "proofId", "status", "outcome", "observedAt", "identity"].includes(key)) {
-          errors.push(`case ${index} has unexpected field: ${key}`);
-        }
-      }
-      const kind = proofCase.kind as ProofCase["kind"];
-      const expectedCase = expected[kind];
-      if (!expectedCase) {
-        errors.push(`case ${index} has an unknown kind`);
-        continue;
-      }
-      const status = proofCase.status as ProofCase["status"];
-      if (!expectedCase.statuses.includes(status) || proofCase.outcome !== expectedCase.outcome) {
-        errors.push(`${kind} case has an unexpected status/outcome`);
-      }
-      if (
-        typeof proofCase.proofId !== "string" ||
-        !/^redacted-[a-z0-9-]+$/.test(proofCase.proofId)
-      ) {
-        errors.push(`${kind} case proofId must be redacted`);
-      }
-      if (proofCase.identity !== "redacted") errors.push(`${kind} case identity must be redacted`);
-    }
-  }
-
-  if (!isRecord(proof.redaction)) {
-    errors.push("redaction must be an object");
-  } else {
-    for (const key of [
-      "identities",
-      "contactDetails",
-      "acceptanceRecords",
-      "temporaryPullRequests",
-      "gistReferences",
-    ]) {
-      if (proof.redaction[key] !== true) errors.push(`redaction.${key} must be true`);
-    }
-  }
-
-  const serialized = JSON.stringify(value).toLowerCase();
-  for (const forbidden of ["signature", "signer", "email", "account_id", "gist_url"]) {
-    if (serialized.includes(forbidden)) errors.push(`proof contains forbidden ${forbidden} data`);
+function agreementErrors(agreement: unknown): string[] {
+  if (!isRecord(agreement)) return ["agreement must be an object"];
+  const errors: string[] = [];
+  if (agreement.version !== "1.0") errors.push("agreement version must be 1.0");
+  if (agreement.sha256 !== APPROVED_AGREEMENT_SHA256) {
+    errors.push("agreement hash does not match the approved ICLA");
   }
   return errors;
+}
+
+function rulesetErrors(ruleset: unknown): string[] {
+  if (!isRecord(ruleset)) return ["ruleset must be an object"];
+  const errors: string[] = [];
+  if (ruleset.id !== 19995472) errors.push("ruleset id is not 19995472");
+  if (ruleset.name !== "Protect main") errors.push("ruleset name is not Protect main");
+  if (!Array.isArray(ruleset.requiredStatusContexts)) {
+    errors.push("ruleset requiredStatusContexts must be an array");
+  } else if (
+    JSON.stringify(ruleset.requiredStatusContexts) !==
+    JSON.stringify(["Verify", "Full CI qualification", "Vercel"])
+  ) {
+    errors.push("ruleset requiredStatusContexts changed");
+  }
+  return errors;
+}
+
+function claCheckErrors(claCheck: unknown): string[] {
+  if (!isRecord(claCheck)) return ["claCheck must be an object"];
+  const errors: string[] = [];
+  for (const key of Object.keys(claCheck)) {
+    if (!["statusContext", "integrationId"].includes(key)) {
+      errors.push(`claCheck has unexpected field: ${key}`);
+    }
+  }
+  if (
+    typeof claCheck.statusContext !== "string" ||
+    !/^\S(?:.*\S)?$/.test(claCheck.statusContext) ||
+    claCheck.statusContext === "CLA_STATUS_CONTEXT_TO_OBSERVE_LIVE"
+  ) {
+    errors.push("claCheck status context must be observed");
+  }
+  if (
+    typeof claCheck.integrationId !== "number" ||
+    !Number.isInteger(claCheck.integrationId) ||
+    claCheck.integrationId < 1
+  ) {
+    errors.push("claCheck integration_id must be a positive integer");
+  }
+  return errors;
+}
+
+function caseErrors(proofCase: unknown, index: number): string[] {
+  if (!isRecord(proofCase)) return [`case ${index} must be an object`];
+  const errors: string[] = [];
+  for (const key of Object.keys(proofCase)) {
+    if (!CASE_FIELDS.includes(key)) errors.push(`case ${index} has unexpected field: ${key}`);
+  }
+  const kind = proofCase.kind as ProofCase["kind"];
+  const expectedCase = EXPECTED_CASES[kind];
+  if (!expectedCase) return [...errors, `case ${index} has an unknown kind`];
+  const status = proofCase.status as ProofCase["status"];
+  if (!expectedCase.statuses.includes(status) || proofCase.outcome !== expectedCase.outcome) {
+    errors.push(`${kind} case has an unexpected status/outcome`);
+  }
+  if (typeof proofCase.proofId !== "string" || !/^redacted-[a-z0-9-]+$/.test(proofCase.proofId)) {
+    errors.push(`${kind} case proofId must be redacted`);
+  }
+  if (proofCase.identity !== "redacted") errors.push(`${kind} case identity must be redacted`);
+  return errors;
+}
+
+function casesErrors(cases: unknown): string[] {
+  if (!Array.isArray(cases) || cases.length !== 4) {
+    return ["proof must contain exactly four cases"];
+  }
+  const errors: string[] = [];
+  const kinds = cases.map((proofCase) => (isRecord(proofCase) ? proofCase.kind : undefined));
+  for (const kind of ["unsigned", "accepted", "employer", "corporate"] as const) {
+    if (kinds.filter((candidate) => candidate === kind).length !== 1) {
+      errors.push(`proof must contain exactly one ${kind} case`);
+    }
+  }
+  for (const [index, proofCase] of cases.entries()) errors.push(...caseErrors(proofCase, index));
+  return errors;
+}
+
+function redactionErrors(redaction: unknown): string[] {
+  if (!isRecord(redaction)) return ["redaction must be an object"];
+  return REDACTION_FLAGS.filter((key) => redaction[key] !== true).map(
+    (key) => `redaction.${key} must be true`,
+  );
+}
+
+function leakErrors(value: unknown): string[] {
+  const serialized = JSON.stringify(value).toLowerCase();
+  return FORBIDDEN_SUBSTRINGS.filter((forbidden) => serialized.includes(forbidden)).map(
+    (forbidden) => `proof contains forbidden ${forbidden} data`,
+  );
+}
+
+/**
+ * The redacted proof has to be complete, exact, and free of contributor
+ * identity. Each part reports independently so a fixture shows every violation
+ * at once rather than only the first.
+ */
+function validateRedactedProof(value: unknown): string[] {
+  if (!isRecord(value)) return ["proof must be an object"];
+  const proof = value as Partial<ProofFixture>;
+  return [
+    ...shapeErrors(proof),
+    ...agreementErrors(proof.agreement),
+    ...rulesetErrors(proof.ruleset),
+    ...claCheckErrors(proof.claCheck),
+    ...casesErrors(proof.cases),
+    ...redactionErrors(proof.redaction),
+    ...leakErrors(value),
+  ];
 }
 
 const RULESET_PAYLOAD_KEYS = [

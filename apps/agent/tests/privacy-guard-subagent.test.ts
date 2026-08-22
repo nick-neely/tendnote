@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { expectAllMatch } from "./instruction-expectations";
 import { authoredInstructions } from "./instructions-source";
 
 const subagentRoot = join(process.cwd(), "agent/subagents/privacy_guard");
@@ -34,12 +35,14 @@ describe("Privacy Guard subagent", () => {
   it("has isolated instructions that block access-policy decisions and extra context", () => {
     const instructions = readFileSync(instructionsPath, "utf8");
 
-    expect(instructions).toMatch(/reviewer-only/i);
-    expect(instructions).toMatch(/inherit nothing from the parent agent/i);
-    expect(instructions).toMatch(/after deterministic scope enforcement/i);
-    expect(instructions).toMatch(/must not decide access/i);
-    expect(instructions).toMatch(/must not add records, context, tools, or actions/i);
-    expect(instructions).toMatch(/deterministic\s+policy wins/i);
+    expectAllMatch(instructions, [
+      /reviewer-only/i,
+      /inherit nothing from the parent agent/i,
+      /after deterministic scope enforcement/i,
+      /must not decide access/i,
+      /must not add records, context, tools, or actions/i,
+      /deterministic\s+policy wins/i,
+    ]);
   });
 
   it("pins the authored Privacy Guard surface covered by reviewer-only checks", () => {
