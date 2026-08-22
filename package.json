@@ -25,6 +25,7 @@
     "test": "vitest run scripts/*.test.ts && turbo test",
     "test:affected": "vitest run scripts/*.test.ts && turbo test --affected",
     "publication:check": "vitest run scripts/publication-license.test.ts",
+    "publication:qualification": "node scripts/publication-qualification.mjs",
     "test:browser": "pnpm --filter @tendnote/web test:browser",
     "test:instant": "pnpm --filter @tendnote/web test:instant",
     "test:instant:full": "pnpm --filter @tendnote/web test:instant:full",
