@@ -4,9 +4,13 @@
 
 Counsel reviewed the exact Version 1.0 contribution agreements, and the owner
 approved them effective 2026-08-21. The forms may be accepted or signed through
-the approved process. Publication of these documents does not configure CLA
-Assistant or default-branch enforcement; those operational controls remain
-owned by [issue #473](https://github.com/nick-neely/tendnote/issues/473).
+the approved process. The repository-owned [CLA Assistant desired-state
+manifest](../../.github/cla-assistant-desired-state.json), [metadata](cla-assistant-metadata.json),
+[redacted proof schema](../phase-9a/cla-gate-proof.schema.json), and [operator
+runbook](../phase-9a/cla-enforcement-runbook.md) are prepared. Hosted activation,
+default-branch enforcement, and disposable proof remain owner-gated work in
+[issue #473](https://github.com/nick-neely/tendnote/issues/473); these documents
+do not claim that the hosted service is currently live.
 
 ## Choose the route
 
@@ -28,9 +32,11 @@ Use the narrowest route that matches who owns or controls the work:
 The employer and corporate routes are rights-authority records, not an
 undocumented bypass of the individual contribution gate. The selected
 agreement must be accepted or signed through the approved process before the
-associated contribution is eligible for merge. CLA Assistant and
-default-branch enforcement are not live until the operational work in [issue
-#473](https://github.com/nick-neely/tendnote/issues/473) is completed.
+associated contribution is eligible for merge. Their route still satisfies the
+same required CLA status; it never creates an allowlist or maintainer bypass.
+CLA Assistant and default-branch enforcement are not live until the operational
+work in [issue #473](https://github.com/nick-neely/tendnote/issues/473) is
+completed.
 
 ## Records and status
 

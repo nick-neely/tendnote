@@ -39,11 +39,15 @@ route that matches ownership:
 
 An unsigned or declined external pull request remains open but cannot merge
 once the required status is live. Corporate authorization satisfies the same
-gate; it is not an undocumented bypass. The live configuration and disposable
-external-contributor proof are owned by
-[#473](https://github.com/nick-neely/tendnote/issues/473). This checkout
-intentionally does not claim that the hosted app, CLA Assistant, or
-default-branch ruleset is configured or live.
+gate; it is not an undocumented bypass. The repository-owned [CLA Assistant
+desired-state manifest](../.github/cla-assistant-desired-state.json), [metadata](legal/cla-assistant-metadata.json),
+[redacted proof schema](phase-9a/cla-gate-proof.schema.json), and [operator
+runbook](phase-9a/cla-enforcement-runbook.md) are prepared. Hosted activation,
+observation of the actual status context, live ruleset update, and disposable
+external-contributor proof are still owner-gated work in [#473](https://github.com/nick-neely/tendnote/issues/473).
+This checkout intentionally does not claim that the hosted app, CLA Assistant,
+or default-branch ruleset is currently configured or enforcing the gate, and it
+does not claim live proof.
 
 ## AI-assisted contributions
 

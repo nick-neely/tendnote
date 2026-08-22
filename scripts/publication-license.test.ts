@@ -33,6 +33,7 @@ const CONTRIBUTION_MARKDOWN_ENTRY_POINTS = [
   "docs/legal/individual-contributor-license-agreement.md",
   "docs/legal/employer-contribution-authorization.md",
   "docs/legal/corporate-contributor-license-agreement.md",
+  "docs/phase-9a/cla-enforcement-runbook.md",
 ] as const;
 
 const CURRENT_TREE_MAINTAINER_PATTERNS = [
@@ -65,6 +66,9 @@ function currentTextFiles(repositoryRoot = root): string[] {
   const files: string[] = [];
   for (const relativePath of publishablePaths) {
     if (HISTORICAL_EVIDENCE_PATHS.has(relativePath)) continue;
+    // A renamed/deleted tracked path may still appear in an intentionally
+    // dirty worktree before the replacement has been staged.
+    if (!existsSync(resolve(repositoryRoot, relativePath))) continue;
     // The fixture necessarily contains the forbidden patterns as regexes.
     if (relativePath.endsWith("scripts/publication-license.test.ts")) continue;
     if (THIRD_PARTY_PATH_PREFIXES.some((path) => relativePath.startsWith(path))) continue;
@@ -334,9 +338,12 @@ describe("fresh-clone publication gate", () => {
     expect(guide).toContain("docs/ci-contributing.md#verification-labels");
     expect(guide).toContain(".github/rulesets/protect-main.json");
     expect(guide).toMatch(
-      /live default-branch protection and CLA Assistant\s+enforcement remain pending #473/i,
+      /CLA Assistant (?:desired-state )?manifest[\s\S]*redacted proof schema[\s\S]*operator runbook/i,
     );
-    expect(guide).toMatch(/does not claim current\s+protection or CLA enforcement/i);
+    expect(guide).toMatch(
+      /hosted activation[\s\S]*actual CLA status context[\s\S]*owner-gated work in #473/i,
+    );
+    expect(guide).toMatch(/does not claim current CLA enforcement or live proof/i);
     expect(guide).toMatch(
       /agreement packet[\s\S]*counsel-reviewed[\s\S]*owner-approved[\s\S]*effective 2026-08-21/i,
     );
@@ -385,7 +392,8 @@ describe("fresh-clone publication gate", () => {
     expect(legalReadme).toMatch(
       /Version 1\.0[\s\S]*counsel-reviewed[\s\S]*owner-approved[\s\S]*effective 2026-08-21/i,
     );
-    expect(legalReadme).toMatch(/CLA Assistant[\s\S]*not live[\s\S]*#473/i);
+    expect(legalReadme).toMatch(/CLA Assistant[\s\S]*owner-gated work in[\s\S]*#473/i);
+    expect(legalReadme).toMatch(/do not claim that the hosted service is currently live/i);
     expect(legalReadme).not.toMatch(/DRAFT|PENDING COUNSEL APPROVAL/i);
 
     for (const agreementDocument of [individualCla, employerAuthorization, corporateCla]) {
