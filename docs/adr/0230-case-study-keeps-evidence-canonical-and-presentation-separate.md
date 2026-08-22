@@ -32,9 +32,12 @@ work are outside this slice.
 ## Consequences
 
 The repository remains the durable and citable source of truth. The exact
-evaluation summary, raw output, checksums, decision record, and candidate
-commit must be reachable through immutable links or one immutable source
-bundle; a moving branch URL is not evidence.
+evaluation summary, raw output, checksums, and decision records are reviewed
+as one immutable content bundle. The exact qualified integration/publication
+commit is deliberately not claimed by this decision: #488 owns the
+qualification report and must pin that SHA only after every publication gate
+passes. A pre-qualification SHA or moving branch URL is not evidence of
+publication.
 
 Publication cannot treat attractive presentation as a substitute for proof:
 the Case Study must preserve and label the exact result it cites. Later

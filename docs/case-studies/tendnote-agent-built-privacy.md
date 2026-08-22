@@ -86,23 +86,23 @@ The latest approved disclosure belongs beside the result above:
 These are scope limits on the case study, not rhetorical footnotes. They are
 why the decision record and exact raw output remain part of the path.
 
-## Immutable source bundle
+## Reviewed content bundle
 
-The links that carry evidence or decision authority resolve through the exact
-candidate integration commit
-[`369f2fe75926c20e42f9c1d47997e6cd373c3c12`](https://github.com/nick-neely/tendnote/commit/369f2fe75926c20e42f9c1d47997e6cd373c3c12).
-The evaluated source inside that bundle is identified by the evidence
-metadata as
+This Case Study, ADR 0230, ADR 0228, ADR 0234, the documentation indexes,
+and the preserved deterministic evidence are reviewed as one content bundle.
+The bundle is not an exact qualified integration or publication commit. A
+pre-qualification SHA must not be presented as that final pin.
+
+The exact integration commit and release verdict are reserved for [#488](https://github.com/nick-neely/tendnote/issues/488),
+which owns the Phase 9a qualification report. It must identify the commit only
+after the clean gate and every other publication check pass. Until that report
+exists, this Case Study records the reviewed content and the evidence it
+contains; it does not imply repository publication.
+
+The evaluated source is identified by the evidence metadata as
 [`0031e09bd92b1ce51d2f5235a0d10172aa1da8c8`](https://github.com/nick-neely/tendnote/commit/0031e09bd92b1ce51d2f5235a0d10172aa1da8c8).
-Those full commit links are the immutable source anchors; no branch, moving
-preview, or latest-history URL is evidence.
-
-For readers who want the exact files at the candidate integration commit:
-
-- [ADR 0230 at the candidate commit](https://github.com/nick-neely/tendnote/blob/369f2fe75926c20e42f9c1d47997e6cd373c3c12/docs/adr/0230-case-study-keeps-evidence-canonical-and-presentation-separate.md)
-- [ADR 0228 at the candidate commit](https://github.com/nick-neely/tendnote/blob/369f2fe75926c20e42f9c1d47997e6cd373c3c12/docs/adr/0228-publication-precedes-commercialization.md)
-- [Raw evidence and checksums at the candidate commit](https://github.com/nick-neely/tendnote/tree/369f2fe75926c20e42f9c1d47997e6cd373c3c12/evidence/evals/0031e09bd92b1ce51d2f5235a0d10172aa1da8c8)
-- [The candidate commit in preserved history](https://github.com/nick-neely/tendnote/commit/369f2fe75926c20e42f9c1d47997e6cd373c3c12)
+The checked-in evidence directory contains the exact reports and checksums for
+that source. No branch, moving preview, or latest-history URL is evidence.
 
 This document is the repository source of truth for the case-study claim. No
 parallel launch document or commercial material belongs in this path.
