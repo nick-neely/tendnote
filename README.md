@@ -4,6 +4,16 @@ Tendnote is a private, consent-first memory for your life — the people you car
 
 It is not a sales CRM. There are no pipelines, no lead scores, and no autonomous outreach. Nothing leaves Tendnote without you approving it. Eve can do bounded public web research in chat, but it builds those queries only from what you said in that turn, never from your stored context.
 
+## Read the evidence
+
+If you are here to inspect how those privacy boundaries were designed and
+tested, start with the [Canonical Case Study in the immutable reviewed-content bundle](https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/case-studies/tendnote-agent-built-privacy.md).
+It follows one bounded claim through the governing decision, the exact
+deterministic-evaluation evidence, and the preserved git history. That is the
+technical reader path; it is not a blanket correctness claim or a security
+audit. The exact qualified integration/publication commit is reserved for
+#488 after qualification.
+
 ## What it does
 
 ### Capture, Today, and recall
@@ -127,4 +137,4 @@ replace its synthetic example values for an operator-owned deployment.
 - [`docs/discord-setup.md`](docs/discord-setup.md) — Discord app, capture, and delivery setup
 - [`docs/background-job-delivery.md`](docs/background-job-delivery.md) — production queue foundation
 - [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) — redistributed third-party provenance and licenses
-- [`docs/prd.md`](docs/prd.md) — product roadmap · [`AGENTS.md`](AGENTS.md) — agent-facing guidance
+- [`docs/README.md`](docs/README.md) — focused documentation landing page · [`AGENTS.md`](AGENTS.md) — agent-facing guidance
