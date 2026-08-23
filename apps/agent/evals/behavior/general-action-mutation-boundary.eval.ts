@@ -1,25 +1,73 @@
 import { defineEval } from "eve/evals";
 import { satisfies } from "eve/evals/expect";
-import { hasNoRuntimeFailures } from "../expectations";
+import { hasNoRuntimeFailures, isSemanticClarification } from "../expectations";
 
 const SAFE_CLARIFICATION =
   /which|confirm|want me to|let me know|tell me which|specify|clean|finished|nothing|none|no (active|resolved|open)|don't have|already (cleared|done|finished|completed)/i;
 
 export function requestedQuestionMatches(events: readonly unknown[], pattern: RegExp) {
+  return events.some((event) => questionPrompts(event).some((prompt) => pattern.test(prompt)));
+}
+
+/**
+ * The action request is useful before execution, while `input.requested` is the
+ * durable HITL projection. Eve can expose either shape depending on where the
+ * eval snapshot is taken, so clarification assertions must understand both.
+ */
+function questionPrompts(event: unknown): string[] {
+  if (!isRecord(event)) return [];
+  const data = isRecord(event.data) ? event.data : null;
+  if (event.type === "actions.requested") {
+    const actions = Array.isArray(data?.actions) ? data.actions : [];
+    return actions.flatMap((action) => {
+      if (!isRecord(action) || action.toolName !== "ask_question") return [];
+      return (
+        promptFrom(action.input) ?? promptFrom(action.args) ?? promptFrom(action.arguments) ?? []
+      );
+    });
+  }
+  if (event.type === "input.requested") {
+    const requests = Array.isArray(data?.requests) ? data.requests : [];
+    return requests.flatMap((request) => {
+      if (!isRecord(request)) return [];
+      const isQuestion = request.toolName === "ask_question" || request.kind === "question";
+      if (!isQuestion) return [];
+      return (
+        promptFrom(request) ??
+        promptFrom(request.input) ??
+        promptFrom(request.toolInput) ??
+        promptFrom(request.args) ??
+        []
+      );
+    });
+  }
+  return [];
+}
+
+function promptFrom(value: unknown): string[] | null {
+  if (!isRecord(value) || typeof value.prompt !== "string") return null;
+  return [value.prompt];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/** Match the final assistant prose when a turn did not park on HITL. */
+export function assistantMessageMatches(events: readonly unknown[], pattern: RegExp): boolean {
   return events.some((event) => {
-    if (typeof event !== "object" || event === null) return false;
-    const candidate = event as {
-      type?: unknown;
-      data?: { actions?: Array<{ toolName?: unknown; input?: { prompt?: unknown } }> };
-    };
+    if (
+      !isRecord(event) ||
+      (event.type !== "message.completed" && event.type !== "message.appended")
+    ) {
+      return false;
+    }
+    const data = isRecord(event.data) ? event.data : null;
+    const message = data?.message;
+    const text = data?.text;
     return (
-      candidate.type === "actions.requested" &&
-      candidate.data?.actions?.some(
-        (action) =>
-          action.toolName === "ask_question" &&
-          typeof action.input?.prompt === "string" &&
-          pattern.test(action.input.prompt),
-      ) === true
+      (typeof message === "string" && pattern.test(message)) ||
+      (typeof text === "string" && pattern.test(text))
     );
   });
 }
@@ -48,7 +96,10 @@ export default defineEval({
     t.check(
       t.reply,
       satisfies(
-        (reply) => parkedSafely || (typeof reply === "string" && SAFE_CLARIFICATION.test(reply)),
+        (reply) =>
+          parkedSafely ||
+          (typeof reply === "string" &&
+            (SAFE_CLARIFICATION.test(reply) || isSemanticClarification(reply))),
         "asks which Action to change through prose or a parked question",
       ),
     );

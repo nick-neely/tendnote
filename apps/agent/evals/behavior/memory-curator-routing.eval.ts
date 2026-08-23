@@ -3,11 +3,19 @@ import { includes, satisfies } from "eve/evals/expect";
 import { hasNoRuntimeFailures, without } from "../expectations";
 
 export function memoryCleanupReplyMatchesCount(reply: string, count: number) {
-  return count === 0
-    ? /\b(?:nothing|none|no\s+(?:duplicates|stale|contradictions?|candidates?|proposals?))\b/i.test(
+  if (count === 0) {
+    const reportsNoCleanup =
+      /\b(?:nothing|none|no\s+(?:duplicates?|stale|contradictions?|contradictory(?:\s+memories?)?|candidates?|proposals?))\b/i.test(
         reply,
-      )
-    : /\b(?:review|approv(?:e|al)|sign[ -]?off|go-ahead|consent|proposal|suggest)\b/i.test(reply);
+      );
+    const reportsCleanup =
+      /\b(?:\d+|one|two|three|any|some|proposal|suggest(?:ion)?|candidate|review)\b/i.test(reply);
+    return reportsNoCleanup && !reportsCleanup;
+  }
+
+  return /\b(?:review|approv(?:e|al)|sign[ -]?off|go-ahead|consent|proposal|suggest)\b/i.test(
+    reply,
+  );
 }
 
 export function curatorProposalCount(events: readonly unknown[]): number | null {

@@ -1,5 +1,6 @@
 import { defineEval } from "eve/evals";
 import { satisfies } from "eve/evals/expect";
+import { toolOutputs } from "../expectations";
 import { usedRelationshipStrategyPath } from "../helpers";
 import { subagentOutput } from "./helpers";
 
@@ -11,6 +12,8 @@ export default defineEval({
     const turn = await t.send(
       "Who should I prioritize this week, and what thoughtful next action should I consider? Keep it calm and reviewable: don't infer anyone is waiting, don't pressure me, and don't set active reminders.",
     );
+    const directAgendaOutputs = toolOutputs(turn.events, "get_relationship_agenda");
+    const dueFollowupOutputs = toolOutputs(turn.events, "list_due_followups");
 
     t.succeeded();
     t.eventsSatisfy("uses direct agenda grounding or the relationship strategist", (events) =>
@@ -36,6 +39,8 @@ export default defineEval({
         {
           on: JSON.stringify({
             reply: turn.message,
+            directAgendaOutputs,
+            dueFollowupOutputs,
             relationshipStrategistOutput: subagentOutput(turn, "relationship_strategist"),
           }),
         },

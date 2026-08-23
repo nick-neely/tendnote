@@ -264,8 +264,9 @@ export function hasGroundedPendingAssetProposal(
   });
 }
 
-function arrayValue(value: Record<string, unknown>, key: string): unknown[] {
-  return Array.isArray(value[key]) ? value[key] : [];
+function arrayValue(value: Record<string, unknown> | null, key: string): unknown[] {
+  const candidate = value?.[key];
+  return Array.isArray(candidate) ? candidate : [];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -306,6 +307,130 @@ export function hasFields(value: unknown, expected: Record<string, unknown>): bo
   return Object.entries(expected).every(([key, want]) =>
     typeof want === "function" ? Boolean(want(value[key])) : value[key] === want,
   );
+}
+
+type ExpectedValue = unknown | RegExp | ((value: unknown) => boolean);
+
+type FollowupLifecycleExpectation = {
+  id?: ExpectedValue;
+  personId?: ExpectedValue;
+  reason?: ExpectedValue;
+  dueAt?: ExpectedValue;
+  status?: ExpectedValue;
+};
+
+/**
+ * Grade persisted Follow-Up state from the owning tool's result. The list tool
+ * nests references under `followups`; lifecycle mutations nest one reference
+ * under `followup`. Keeping this projection here prevents a lifecycle eval from
+ * passing merely because a tool was requested while the returned state was wrong.
+ */
+export function hasFollowupLifecycleState(
+  events: readonly unknown[],
+  toolName: string,
+  expected: FollowupLifecycleExpectation,
+): boolean {
+  return toolOutputs(events, toolName).some((output) => {
+    const candidates =
+      toolName === "list_due_followups"
+        ? arrayValue(asRecord(output), "followups")
+        : [asRecord(output)?.followup];
+    return candidates.some((candidate) => matchesExpectedFields(candidate, expected));
+  });
+}
+
+/** Return the first persisted follow-up id from a lifecycle/read result for cross-turn correlation. */
+export function followupIdFromToolOutput(
+  events: readonly unknown[],
+  toolName: string,
+): string | null {
+  for (const output of toolOutputs(events, toolName)) {
+    const record = asRecord(output);
+    const candidate =
+      toolName === "list_due_followups" ? arrayValue(record, "followups")[0] : record?.followup;
+    const id = asRecord(candidate)?.id;
+    if (typeof id === "string") return id;
+  }
+  return null;
+}
+
+/**
+ * A shallow plan succeeds only when its persisted review cards are present,
+ * tentative, and grounded in the Source Record captured for the request. Root
+ * prose intentionally does not repeat every card title because the channel
+ * renders those cards as the authoritative result.
+ */
+export function hasReviewGatedGeneralActionPlan(events: readonly unknown[]): boolean {
+  const capturedSourceRecordId = toolOutputs(events, "capture_source_record")
+    .map((output) => {
+      const record = asRecord(output);
+      return record === null ? null : nestedString(record, "sourceRecord", "id");
+    })
+    .find((id): id is string => id !== null);
+
+  if (capturedSourceRecordId === undefined) return false;
+
+  return toolOutputs(events, "plan_suggested_general_actions").some((output) => {
+    const record = asRecord(output);
+    const proposed = arrayValue(record, "proposed");
+    const count = record?.count;
+    return (
+      record?.found === true &&
+      typeof count === "number" &&
+      Number.isSafeInteger(count) &&
+      count > 0 &&
+      count <= 5 &&
+      proposed.length === count &&
+      proposed.every((entry) => {
+        const item = asRecord(entry);
+        const component = asRecord(item?.component);
+        const action = asRecord(item?.action);
+        return (
+          typeof component?.sourceRecordId === "string" &&
+          UUID.test(component.sourceRecordId) &&
+          component.sourceRecordId === capturedSourceRecordId &&
+          component.type === "suggested_general_action_review" &&
+          typeof action?.id === "string" &&
+          UUID.test(action.id) &&
+          typeof action.title === "string" &&
+          action.title.length > 0 &&
+          action.status === "suggested"
+        );
+      })
+    );
+  });
+}
+
+/** Semantic hand-back for a review choice; punctuation is optional. */
+export function isSemanticClarification(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    /\b(?:let me know|tell me|which\s+(?:specific\s+)?(?:item|items|action|actions|one)|what\s+(?:you'?d like|to)|confirm|specify)\b/i.test(
+      value,
+    )
+  );
+}
+
+function matchesExpectedFields(value: unknown, expected: Record<string, ExpectedValue>): boolean {
+  const record = asRecord(value);
+  return (
+    record !== null &&
+    Object.entries(expected).every(([key, want]) => matchesExpectedValue(record[key], want))
+  );
+}
+
+function matchesExpectedValue(value: unknown, expected: ExpectedValue): boolean {
+  if (expected instanceof RegExp) {
+    return typeof value === "string" && expected.test(value);
+  }
+  if (typeof expected === "function") {
+    return Boolean(expected(value));
+  }
+  return value === expected;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) ? value : null;
 }
 
 export function isEmptyArray(value: unknown): boolean {

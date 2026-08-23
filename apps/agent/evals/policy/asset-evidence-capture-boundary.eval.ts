@@ -1,7 +1,7 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
 import { without } from "../expectations";
-import { usedNoToolsOrSubagents } from "../helpers";
+import { usedNoSubagents, usedOnlyAllowedTools } from "../helpers";
 
 /**
  * Chat uploads are Asset Evidence, and Eve never reads them (#196 stories 23-24, #201, #205).
@@ -32,8 +32,11 @@ export default defineEval({
     );
 
     t.succeeded();
-    // There is no tool that could do this, and she reaches for none.
-    usedNoToolsOrSubagents(t);
+    // The boundary is absence of capability/mutation, not absence of framework
+    // grounding. `load_skill` and an owner-scoped Asset read are safe; anything
+    // outside this precise allowlist (including a subagent) fails the gate.
+    usedOnlyAllowedTools(t, ["load_skill", "search_assets", "get_asset_context"]);
+    usedNoSubagents(t);
     // The capture path, named as it appears on screen. `photo` is gone from the
     // alternation: the prompt says "label photo", so a reply that named no path at all
     // passed this gate by repeating the request back.
