@@ -319,7 +319,7 @@ function reportRoundDirectories(repoRoot, evalRoot) {
  * `evals/<id>.json`. Hydrate only the runtime-bearing result used for identity
  * verification; the canonical summary copied into evidence remains untouched.
  */
-function reportWithRuntimeDetails(dir, report) {
+export function reportWithRuntimeDetails(dir, report) {
   const detailsRoot = resolve(dir, "evals");
   return {
     ...report,

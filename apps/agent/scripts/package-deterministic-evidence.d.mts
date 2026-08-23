@@ -26,6 +26,8 @@ export type EvidenceReport = {
 
 export type EvidenceResultRow = { id?: string; verdict?: string; status?: string };
 
+export function reportWithRuntimeDetails(directory: string, report: EvidenceReport): EvidenceReport;
+
 export function buildEvidenceMetadata(input: {
   sourceCommit: string;
   workflowUrl: string;
