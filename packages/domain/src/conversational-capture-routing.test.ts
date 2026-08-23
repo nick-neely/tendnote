@@ -42,6 +42,32 @@ describe("explicit conversational Capture routing", () => {
     expect(
       routeExplicitConversationalCapture({
         now,
+        originalText:
+          "Use Capture for both explicit clauses: save a note that the filter is noisy; I need to order a replacement.",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({
+      destination: "group",
+      outcomes: [
+        {
+          destination: "saved_item",
+          explicit: true,
+          kind: "note",
+          text: "that the filter is noisy",
+          bringBackAt: null,
+        },
+        {
+          destination: "action",
+          title: "Order a replacement",
+          dueAt: null,
+          recurrence: null,
+        },
+      ],
+    });
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
         originalText: "Save this about me: I live in Chicago",
         timeZone: "America/Chicago",
       }),
