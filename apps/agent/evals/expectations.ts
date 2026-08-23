@@ -405,10 +405,18 @@ export function hasReviewGatedGeneralActionPlan(events: readonly unknown[]): boo
 export function isSemanticClarification(value: unknown): boolean {
   return (
     typeof value === "string" &&
-    /\b(?:let me know|tell me|which\s+(?:specific\s+)?(?:item|items|action|actions|one)|what\s+(?:you'?d like|to)|confirm|specify)\b/i.test(
+    /\b(?:let me know|tell me|which\s+(?:specific\s+)?(?:item|items|action|actions|one)|what\s+(?:you'?d like|to)|should\s+i|would\s+you|do you want me to|confirm|specify)\b/i.test(
       value,
     )
   );
+}
+
+const ACTION_MUTATION_CLAIM =
+  /\bI(?:['’]ve|\s+have)?\s+(?:already\s+|just\s+)?(?:added|archived|cleared|completed|created|deleted|dismissed|edited|marked|removed|tidied|updated)\b|\b(?:everything|all|those|them|(?:the|your)\s+actions?)\s+(?:(?:is|are|was|were|has been|have been)\s+)?(?:already\s+)?(?:added|archived|cleared|completed|deleted|dismissed|edited|marked|removed|tidied|updated)\b/i;
+
+/** Reject prose that claims a durable Action mutation while asking a follow-up choice. */
+export function isUntruthfulActionMutationClaim(value: unknown): boolean {
+  return typeof value === "string" && ACTION_MUTATION_CLAIM.test(value);
 }
 
 function matchesExpectedFields(value: unknown, expected: Record<string, ExpectedValue>): boolean {

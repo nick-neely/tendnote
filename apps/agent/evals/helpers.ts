@@ -88,9 +88,37 @@ export function firstSubagentIndex(events: readonly unknown[], subagentName: str
 
 export function usedRelationshipStrategyPath(events: readonly unknown[]): boolean {
   return (
-    requestedTool(events, "get_relationship_agenda") ||
-    usedSubagent(events, "relationship_strategist")
+    hasCompletedToolResult(events, "get_relationship_agenda") ||
+    hasCompletedSubagentOutput(events, "relationship_strategist")
   );
+}
+
+/** A direct grounding call only counts once Eve received a successful final result. */
+function hasCompletedToolResult(events: readonly unknown[], toolName: string): boolean {
+  return events.some((event) => {
+    if (!isEvalEvent(event) || event.type !== "action.result" || !isRecord(event.data)) {
+      return false;
+    }
+    const result = event.data.result;
+    return (
+      event.data.status === "completed" &&
+      isRecord(result) &&
+      result.toolName === toolName &&
+      result.isError !== true &&
+      "output" in result
+    );
+  });
+}
+
+/** A delegated grounding path only counts after the named child emitted output. */
+function hasCompletedSubagentOutput(events: readonly unknown[], subagentName: string): boolean {
+  return events.some((event) => {
+    if (!isEvalEvent(event) || event.type !== "subagent.completed" || !isRecord(event.data)) {
+      return false;
+    }
+    const { output, subagentName: completedName } = event.data;
+    return completedName === subagentName && typeof output === "string" && output.trim().length > 0;
+  });
 }
 
 /**

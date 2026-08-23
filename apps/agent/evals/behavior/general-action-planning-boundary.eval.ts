@@ -35,6 +35,8 @@ export default defineEval({
     t.notCalledTool("create_general_action");
     t.notCalledTool("update_general_action_status");
     t.notCalledTool("edit_general_action");
+    t.notCalledTool("accept_suggested_general_action");
+    t.notCalledTool("dismiss_suggested_general_action");
     // The cards already render the concrete steps. Keep only the brief review-gated
     // framing and reject an untruthful claim that the suggestions became active.
     t.check(t.reply, includes(/review|suggest|accept|dismiss/i));
