@@ -2,12 +2,62 @@ import { defineEval } from "eve/evals";
 import { includes, satisfies } from "eve/evals/expect";
 import { hasNoRuntimeFailures, without } from "../expectations";
 
+const CLEANUP_TERMS =
+  "cleanup|duplicates?|stale|contradictions?|contradictory(?:\\s+memories?)?|candidates?|proposals?|suggestions?";
+
 export function memoryCleanupReplyMatchesCount(reply: string, count: number) {
-  return count === 0
-    ? /\b(?:nothing|none|no\s+(?:duplicates|stale|contradictions?|candidates?|proposals?))\b/i.test(
-        reply,
-      )
-    : /\b(?:review|approv(?:e|al)|sign[ -]?off|go-ahead|consent|proposal|suggest)\b/i.test(reply);
+  if (count === 0) {
+    const reportsNoCleanup =
+      /\b(?:nothing|none)\b/i.test(reply) ||
+      new RegExp(`\\b(?:no|zero)\\b[\\s\\S]{0,70}\\b(?:${CLEANUP_TERMS})\\b`, "i").test(reply);
+    return reportsNoCleanup && !hasPositiveCleanupClaim(reply);
+  }
+
+  return (
+    hasPositiveCleanupClaim(reply) &&
+    /\b(?:review|approv(?:e|al)|sign[ -]?off|go-ahead|consent|proposal|suggest)\b/i.test(reply)
+  );
+}
+
+function hasPositiveCleanupClaim(reply: string): boolean {
+  const quantity = new RegExp(
+    `\\b(?:\\d+|one|two|three|some|several|a|an)\\s+(?:cleanup\\s+)?(?:${CLEANUP_TERMS})\\b`,
+    "i",
+  );
+  const firstPerson = new RegExp(
+    `\\b(?:I|we)\\s+(?:found|identified|flagged|have|has|see|noted)\\s+(?![\\s\\S]{0,30}\\b(?:no|none|nothing|zero)\\b)[\\s\\S]{0,60}\\b(?:${CLEANUP_TERMS})\\b`,
+    "i",
+  );
+  const existential = new RegExp(
+    `\\bthere\\s+(?:is|are)\\s+(?![\\s\\S]{0,30}\\b(?:no|none|nothing|zero)\\b)[\\s\\S]{0,60}\\b(?:${CLEANUP_TERMS})\\b`,
+    "i",
+  );
+  const describedMemory =
+    /\b(?:\d+|one|two|three|some|several|a|an)\s+memor(?:y|ies)\s+(?:(?:is|are)\s+)?(?:stale|duplicates?|contradictory)\b/i;
+  return (
+    quantity.test(reply) ||
+    firstPerson.test(reply) ||
+    existential.test(reply) ||
+    describedMemory.test(reply) ||
+    hasUnnegatedCleanupRemain(reply)
+  );
+}
+
+function hasUnnegatedCleanupRemain(reply: string): boolean {
+  const remaining =
+    /\b(?:cleanup\s+)?(?:proposals?|suggestions?|candidates?)\s+remain(?:s|ed)?\b/gi;
+  for (const match of reply.matchAll(remaining)) {
+    const start = match.index ?? 0;
+    const clauseStart = Math.max(
+      reply.lastIndexOf(",", start),
+      reply.lastIndexOf(";", start),
+      reply.lastIndexOf(".", start),
+      reply.lastIndexOf("\n", start),
+    );
+    const clausePrefix = reply.slice(clauseStart + 1, start);
+    if (!/\b(?:no|none|nothing|zero)\b/i.test(clausePrefix)) return true;
+  }
+  return false;
 }
 
 export function curatorProposalCount(events: readonly unknown[]): number | null {

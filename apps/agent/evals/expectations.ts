@@ -264,12 +264,83 @@ export function hasGroundedPendingAssetProposal(
   });
 }
 
-function arrayValue(value: Record<string, unknown>, key: string): unknown[] {
-  return Array.isArray(value[key]) ? value[key] : [];
+function arrayValue(value: Record<string, unknown> | null, key: string): unknown[] {
+  const candidate = value?.[key];
+  return Array.isArray(candidate) ? candidate : [];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+const SAFE_ACTION_CLARIFICATION =
+  /which|confirm|want me to|let me know|tell me which|specify|clean|finished|nothing|none|no (active|resolved|open)|don't have|already (cleared|done|finished|completed)/i;
+
+export function requestedQuestionMatches(events: readonly unknown[], pattern: RegExp): boolean {
+  return events.some((event) => questionPrompts(event).some((prompt) => pattern.test(prompt)));
+}
+
+function questionPrompts(event: unknown): string[] {
+  if (!isRecord(event)) return [];
+  const data = isRecord(event.data) ? event.data : null;
+  if (event.type === "actions.requested") {
+    const actions = Array.isArray(data?.actions) ? data.actions : [];
+    return actions.flatMap((action) => {
+      if (!isRecord(action) || action.toolName !== "ask_question") return [];
+      return (
+        promptFrom(action.input) ?? promptFrom(action.args) ?? promptFrom(action.arguments) ?? []
+      );
+    });
+  }
+  if (event.type === "input.requested") {
+    const requests = Array.isArray(data?.requests) ? data.requests : [];
+    return requests.flatMap((request) => {
+      if (!isRecord(request)) return [];
+      const isQuestion = request.toolName === "ask_question" || request.kind === "question";
+      if (!isQuestion) return [];
+      return (
+        promptFrom(request) ??
+        promptFrom(request.input) ??
+        promptFrom(request.toolInput) ??
+        promptFrom(request.args) ??
+        []
+      );
+    });
+  }
+  return [];
+}
+
+function promptFrom(value: unknown): string[] | null {
+  if (!isRecord(value) || typeof value.prompt !== "string") return null;
+  return [value.prompt];
+}
+
+/** Return only the final completed assistant prose from the Eve 0.32 stream. */
+export function assistantMessageTexts(events: readonly unknown[]): string[] {
+  const completed = events.flatMap((event) => {
+    if (!isRecord(event)) return [];
+    const data = isRecord(event.data) ? event.data : null;
+    if (event.type !== "message.completed" || data?.finishReason === "tool-calls") return [];
+    return typeof data?.message === "string" ? [data.message] : [];
+  });
+  return completed.slice(-1);
+}
+
+export function assistantMessageMatches(events: readonly unknown[], pattern: RegExp): boolean {
+  return assistantMessageTexts(events).some((text) => pattern.test(text));
+}
+
+/** The clarification gate is evaluated from this turn's event stream only. */
+export function hasSafeActionClarification(events: readonly unknown[]): boolean {
+  if (!hasNoRuntimeFailures(events)) return false;
+  const messages = assistantMessageTexts(events);
+  if (messages.some((message) => isUntruthfulActionMutationClaim(message))) return false;
+  return (
+    requestedQuestionMatches(events, SAFE_ACTION_CLARIFICATION) ||
+    messages.some(
+      (message) => SAFE_ACTION_CLARIFICATION.test(message) || isSemanticClarification(message),
+    )
+  );
 }
 
 function nestedString(value: Record<string, unknown>, ...path: string[]): string | null {
@@ -306,6 +377,145 @@ export function hasFields(value: unknown, expected: Record<string, unknown>): bo
   return Object.entries(expected).every(([key, want]) =>
     typeof want === "function" ? Boolean(want(value[key])) : value[key] === want,
   );
+}
+
+type ExpectedValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | RegExp
+  | ((value: unknown) => boolean);
+
+type FollowupLifecycleExpectation = {
+  id?: ExpectedValue;
+  personId?: ExpectedValue;
+  reason?: ExpectedValue;
+  dueAt?: ExpectedValue;
+  status?: ExpectedValue;
+};
+
+/**
+ * Grade persisted Follow-Up state from the owning tool's result. The list tool
+ * nests references under `followups`; lifecycle mutations nest one reference
+ * under `followup`. Keeping this projection here prevents a lifecycle eval from
+ * passing merely because a tool was requested while the returned state was wrong.
+ */
+export function hasFollowupLifecycleState(
+  events: readonly unknown[],
+  toolName: string,
+  expected: FollowupLifecycleExpectation,
+): boolean {
+  return toolOutputs(events, toolName).some((output) => {
+    const candidates =
+      toolName === "list_due_followups"
+        ? arrayValue(asRecord(output), "followups")
+        : [asRecord(output)?.followup];
+    return candidates.some((candidate) => matchesExpectedFields(candidate, expected));
+  });
+}
+
+/** Return the first persisted follow-up id from a lifecycle/read result for cross-turn correlation. */
+export function followupIdFromToolOutput(
+  events: readonly unknown[],
+  toolName: string,
+): string | null {
+  for (const output of toolOutputs(events, toolName)) {
+    const record = asRecord(output);
+    const candidate =
+      toolName === "list_due_followups" ? arrayValue(record, "followups")[0] : record?.followup;
+    const id = asRecord(candidate)?.id;
+    if (typeof id === "string") return id;
+  }
+  return null;
+}
+
+/**
+ * A shallow plan succeeds only when its persisted review cards are present,
+ * tentative, and grounded in the Source Record captured for the request. Root
+ * prose intentionally does not repeat every card title because the channel
+ * renders those cards as the authoritative result.
+ */
+export function hasReviewGatedGeneralActionPlan(events: readonly unknown[]): boolean {
+  const capturedSourceRecordId = toolOutputs(events, "capture_source_record")
+    .map((output) => {
+      const record = asRecord(output);
+      return record === null ? null : nestedString(record, "sourceRecord", "id");
+    })
+    .find((id): id is string => id !== null);
+
+  if (capturedSourceRecordId === undefined) return false;
+
+  return toolOutputs(events, "plan_suggested_general_actions").some((output) => {
+    const record = asRecord(output);
+    const proposed = arrayValue(record, "proposed");
+    const count = record?.count;
+    return (
+      record?.found === true &&
+      typeof count === "number" &&
+      Number.isSafeInteger(count) &&
+      count > 0 &&
+      count <= 5 &&
+      proposed.length === count &&
+      proposed.every((entry) => {
+        const item = asRecord(entry);
+        const component = asRecord(item?.component);
+        const action = asRecord(item?.action);
+        return (
+          typeof component?.sourceRecordId === "string" &&
+          UUID.test(component.sourceRecordId) &&
+          component.sourceRecordId === capturedSourceRecordId &&
+          component.type === "suggested_general_action_review" &&
+          typeof action?.id === "string" &&
+          UUID.test(action.id) &&
+          typeof action.title === "string" &&
+          action.title.length > 0 &&
+          action.status === "suggested"
+        );
+      })
+    );
+  });
+}
+
+/** Semantic hand-back for a review choice; punctuation is optional. */
+export function isSemanticClarification(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    /\b(?:let me know|tell me|which\s+(?:specific\s+)?(?:item|items|action|actions|one)|what\s+(?:you'?d like|to)|should\s+i|would\s+you|do you want me to|confirm|specify)\b/i.test(
+      value,
+    )
+  );
+}
+
+const ACTION_MUTATION_CLAIM =
+  /\bI(?:['’]ve|\s+have)?\s+(?:already\s+|just\s+)?(?:added|archived|cleared|completed|created|deleted|dismissed|edited|marked|removed|tidied|updated)\b|\b(?:everything|all|those|them|(?:the|your)\s+actions?)\s+(?:(?:is|are|was|were|has been|have been)\s+)?(?:already\s+)?(?:added|archived|cleared|completed|deleted|dismissed|edited|marked|removed|tidied|updated)\b/i;
+
+/** Reject prose that claims a durable Action mutation while asking a follow-up choice. */
+export function isUntruthfulActionMutationClaim(value: unknown): boolean {
+  return typeof value === "string" && ACTION_MUTATION_CLAIM.test(value);
+}
+
+function matchesExpectedFields(value: unknown, expected: Record<string, ExpectedValue>): boolean {
+  const record = asRecord(value);
+  return (
+    record !== null &&
+    Object.entries(expected).every(([key, want]) => matchesExpectedValue(record[key], want))
+  );
+}
+
+function matchesExpectedValue(value: unknown, expected: ExpectedValue): boolean {
+  if (expected instanceof RegExp) {
+    return typeof value === "string" && expected.test(value);
+  }
+  if (typeof expected === "function") {
+    return Boolean(expected(value));
+  }
+  return value === expected;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) ? value : null;
 }
 
 export function isEmptyArray(value: unknown): boolean {

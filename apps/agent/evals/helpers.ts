@@ -1,4 +1,5 @@
 import type { AssertionHandle, EveEvalAssertions } from "eve/evals";
+import { calledToolNames } from "./expectations";
 
 type EvalEvent = {
   type?: unknown;
@@ -44,6 +45,31 @@ export function usedSubagent(events: readonly unknown[], subagentName: string): 
   return events.some((event) => subagentNameOf(event) === subagentName);
 }
 
+/**
+ * Pure allowlist predicate for boundary evals whose contract is "no capability or
+ * mutation tool", not "the model must call nothing at all". Framework grounding
+ * (`load_skill`) and owner-scoped read tools are safe to permit explicitly; an
+ * unknown or mutating tool keeps the boundary red.
+ */
+export function usesOnlyAllowedTools(
+  events: readonly unknown[],
+  allowedTools: readonly string[],
+): boolean {
+  const allowed = new Set(allowedTools);
+  return calledToolNames(events).every((toolName) => allowed.has(toolName));
+}
+
+/** Assert a precise tool allowlist while leaving subagent absence explicit to the caller. */
+export function usedOnlyAllowedTools(
+  t: EveEvalAssertions,
+  allowedTools: readonly string[],
+): AssertionHandle {
+  return t.eventsSatisfy(
+    `used only allowlisted tools (${allowedTools.join(", ") || "none"})`,
+    (events) => usesOnlyAllowedTools(events, allowedTools),
+  );
+}
+
 /** Stream position of the first request for a tool, or -1. For ordering claims. */
 export function firstToolRequestIndex(events: readonly unknown[], toolName: string): number {
   return events.findIndex(
@@ -62,9 +88,37 @@ export function firstSubagentIndex(events: readonly unknown[], subagentName: str
 
 export function usedRelationshipStrategyPath(events: readonly unknown[]): boolean {
   return (
-    requestedTool(events, "get_relationship_agenda") ||
-    usedSubagent(events, "relationship_strategist")
+    hasCompletedToolResult(events, "get_relationship_agenda") ||
+    hasCompletedSubagentOutput(events, "relationship_strategist")
   );
+}
+
+/** A direct grounding call only counts once Eve received a successful final result. */
+function hasCompletedToolResult(events: readonly unknown[], toolName: string): boolean {
+  return events.some((event) => {
+    if (!isEvalEvent(event) || event.type !== "action.result" || !isRecord(event.data)) {
+      return false;
+    }
+    const result = event.data.result;
+    return (
+      event.data.status === "completed" &&
+      isRecord(result) &&
+      result.toolName === toolName &&
+      result.isError !== true &&
+      "output" in result
+    );
+  });
+}
+
+/** A delegated grounding path only counts after the named child emitted output. */
+function hasCompletedSubagentOutput(events: readonly unknown[], subagentName: string): boolean {
+  return events.some((event) => {
+    if (!isEvalEvent(event) || event.type !== "subagent.completed" || !isRecord(event.data)) {
+      return false;
+    }
+    const { output, subagentName: completedName } = event.data;
+    return completedName === subagentName && typeof output === "string" && output.trim().length > 0;
+  });
 }
 
 /**

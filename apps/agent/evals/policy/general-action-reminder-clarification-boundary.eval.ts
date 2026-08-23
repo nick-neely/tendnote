@@ -1,9 +1,14 @@
 import { defineEval } from "eve/evals";
-import { includes, satisfies } from "eve/evals/expect";
-import { requestedQuestionMatches } from "../behavior/general-action-mutation-boundary.eval";
-import { hasNoRuntimeFailures, without } from "../expectations";
+import { includes } from "eve/evals/expect";
+import {
+  assistantMessageMatches,
+  hasNoRuntimeFailures,
+  requestedQuestionMatches,
+  without,
+} from "../expectations";
 
-const TIMING_CLARIFICATION = /when|what time|which date|clarif|specific|too vague/i;
+const TIMING_CLARIFICATION =
+  /\b(?:when|what\s+(?:time|day|date)|which\s+(?:date|day|time)|clarif|specific|concrete|too vague)\b/i;
 
 export default defineEval({
   description:
@@ -15,19 +20,13 @@ export default defineEval({
     t.notCalledTool("create_general_action");
     t.notCalledTool("suggest_general_action");
     t.notCalledTool("propose_asset_actions");
-    let parkedSafely = false;
     t.eventsSatisfy("clarified timing without a runtime failure", (events) => {
-      parkedSafely =
-        hasNoRuntimeFailures(events) && requestedQuestionMatches(events, TIMING_CLARIFICATION);
-      return hasNoRuntimeFailures(events);
+      return (
+        hasNoRuntimeFailures(events) &&
+        (requestedQuestionMatches(events, TIMING_CLARIFICATION) ||
+          assistantMessageMatches(events, TIMING_CLARIFICATION))
+      );
     });
-    t.check(
-      t.reply,
-      satisfies(
-        (reply) => parkedSafely || (typeof reply === "string" && TIMING_CLARIFICATION.test(reply)),
-        "asks for concrete timing through prose or a parked question",
-      ),
-    );
     t.check(
       t.reply,
       includes(

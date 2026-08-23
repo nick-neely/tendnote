@@ -2,21 +2,28 @@ import type { AssertionHandle, EveEvalAssertions } from "eve/evals";
 import { describe, expect, it } from "vitest";
 import { isDraftRevisionReplyCanonical } from "../evals/behavior/draft-revision-assertions";
 import { isUnfiledActionReplyTruthful } from "../evals/behavior/general-action-area-filing.eval";
-import { requestedQuestionMatches } from "../evals/behavior/general-action-mutation-boundary.eval";
 import {
   curatorProposalCount,
   memoryCleanupReplyMatchesCount,
 } from "../evals/behavior/memory-curator-routing.eval";
 import { statesPurchaseLocationLimitation } from "../evals/behavior/phase-seven-recall-limitations.eval";
 import {
+  assistantMessageMatches,
   hasCapturePersonClarification,
   hasFields,
+  hasFollowupLifecycleState,
   hasGroundedPendingAssetProposal,
   hasGroundedSuggestedMemoryProposal,
+  hasNoMutatingTools,
   hasNoRuntimeFailures,
+  hasReviewGatedGeneralActionPlan,
+  hasSafeActionClarification,
   isEmptyArray,
   isNonEmptyUuidArray,
   isPrivateOrOmitted,
+  isSemanticClarification,
+  isUntruthfulActionMutationClaim,
+  requestedQuestionMatches,
   someToolOutputHasFields,
   toolOutputs,
 } from "../evals/expectations";
@@ -25,7 +32,9 @@ import {
   firstToolRequestIndex,
   notCalledSubagent,
   usedNoSubagents,
+  usedRelationshipStrategyPath,
   usedSubagent,
+  usesOnlyAllowedTools,
 } from "../evals/helpers";
 import { isPendingAssetReviewReply } from "../evals/policy/asset-durable-write-boundary.eval";
 
@@ -75,6 +84,10 @@ const toolRequest = {
   type: "actions.requested",
   data: { actions: [{ kind: "tool-call", toolName: "search_people" }] },
 };
+const result = (toolName: string, output: unknown, status = "completed") => ({
+  type: "action.result",
+  data: { status, result: { toolName, output } },
+});
 
 describe("eval subagent visibility", () => {
   it("sees a delegation whether it ran as a child workflow or inline", () => {
@@ -142,15 +155,484 @@ describe("eval subagent visibility", () => {
     expect(firstToolRequestIndex(events, "capture_memory")).toBe(-1);
     expect(firstSubagentIndex(events, "message_drafter")).toBe(-1);
   });
+
+  it("requires a completed relationship grounding result", () => {
+    const directRequest = {
+      type: "actions.requested",
+      data: {
+        actions: [{ kind: "tool-call", toolName: "get_relationship_agenda" }],
+      },
+    };
+    expect(usedRelationshipStrategyPath([directRequest])).toBe(false);
+    expect(
+      usedRelationshipStrategyPath([
+        directRequest,
+        result("get_relationship_agenda", { candidates: ["Dana"] }, "completed"),
+      ]),
+    ).toBe(true);
+    expect(
+      usedRelationshipStrategyPath([
+        directRequest,
+        result("get_relationship_agenda", { candidates: ["Dana"] }, "failed"),
+      ]),
+    ).toBe(false);
+    expect(
+      usedRelationshipStrategyPath([
+        directRequest,
+        result("get_relationship_agenda", { candidates: ["Dana"] }, "rejected"),
+      ]),
+    ).toBe(false);
+    expect(
+      usedRelationshipStrategyPath([
+        {
+          type: "subagent.called",
+          data: { name: "relationship_strategist" },
+        },
+      ]),
+    ).toBe(false);
+    expect(
+      usedRelationshipStrategyPath([
+        {
+          type: "subagent.completed",
+          data: { subagentName: "relationship_strategist", output: "Dana is a grounded option." },
+        },
+      ]),
+    ).toBe(true);
+    expect(
+      usedRelationshipStrategyPath([
+        {
+          type: "subagent.completed",
+          data: { subagentName: "relationship_strategist", output: "" },
+        },
+      ]),
+    ).toBe(false);
+  });
+});
+
+describe("offline evaluator capability allowlists", () => {
+  const action = (toolName: string) => ({
+    type: "actions.requested",
+    data: { actions: [{ kind: "tool-call", toolName }] },
+  });
+
+  it("accepts framework grounding calls but rejects an unlisted capability", () => {
+    expect(
+      usesOnlyAllowedTools(
+        [action("load_skill"), action("search_assets")],
+        ["load_skill", "search_assets"],
+      ),
+    ).toBe(true);
+    expect(
+      usesOnlyAllowedTools(
+        [action("load_skill"), action("create_asset")],
+        ["load_skill", "search_assets"],
+      ),
+    ).toBe(false);
+  });
+
+  it("sees a nested mutating call instead of treating delegation as no tools", () => {
+    expect(
+      usesOnlyAllowedTools(
+        [
+          {
+            type: "subagent.event",
+            data: { event: action("create_asset") },
+          },
+        ],
+        ["load_skill", "search_assets"],
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("review-card and follow-up lifecycle projections", () => {
+  it("grades review cards from the planning tool output, not repeated prose", () => {
+    const sourceRecordId = "33333333-3333-4333-8333-333333333333";
+    expect(
+      hasReviewGatedGeneralActionPlan([
+        result("capture_source_record", {
+          sourceRecord: { id: sourceRecordId, content: "A planning note" },
+        }),
+        result("plan_suggested_general_actions", {
+          found: true,
+          count: 2,
+          proposed: [
+            {
+              component: {
+                type: "suggested_general_action_review",
+                sourceRecordId,
+              },
+              action: {
+                id: "11111111-1111-4111-8111-111111111111",
+                title: "Reserve the campsite",
+                status: "suggested",
+              },
+            },
+            {
+              component: {
+                type: "suggested_general_action_review",
+                sourceRecordId,
+              },
+              action: {
+                id: "22222222-2222-4222-8222-222222222222",
+                title: "Pack the gear",
+                status: "suggested",
+              },
+            },
+          ],
+        }),
+      ]),
+    ).toBe(true);
+  });
+
+  it("rejects an active or incomplete planning result", () => {
+    const sourceRecordId = "33333333-3333-4333-8333-333333333333";
+    expect(
+      hasReviewGatedGeneralActionPlan([
+        result("capture_source_record", {
+          sourceRecord: { id: sourceRecordId, content: "A planning note" },
+        }),
+        result("plan_suggested_general_actions", {
+          found: true,
+          count: 1,
+          proposed: [
+            {
+              component: { type: "suggested_general_action_review", sourceRecordId },
+              action: {
+                id: "11111111-1111-4111-8111-111111111111",
+                title: "Reserve the campsite",
+                status: "open",
+              },
+            },
+          ],
+        }),
+        result("plan_suggested_general_actions", { found: true, count: 1, proposed: [] }),
+      ]),
+    ).toBe(false);
+  });
+
+  it("treats promotion or dismissal of a plan card as a mutation", () => {
+    for (const toolName of [
+      "accept_suggested_general_action",
+      "dismiss_suggested_general_action",
+    ]) {
+      expect(
+        hasNoMutatingTools([
+          {
+            type: "actions.requested",
+            data: { actions: [{ kind: "tool-call", toolName }] },
+          },
+        ]),
+        toolName,
+      ).toBe(false);
+    }
+  });
+
+  it("rejects review cards grounded in a different source record", () => {
+    expect(
+      hasReviewGatedGeneralActionPlan([
+        result("capture_source_record", {
+          sourceRecord: {
+            id: "33333333-3333-4333-8333-333333333333",
+            content: "The captured planning note",
+          },
+        }),
+        result("plan_suggested_general_actions", {
+          found: true,
+          count: 1,
+          proposed: [
+            {
+              component: {
+                type: "suggested_general_action_review",
+                sourceRecordId: "66666666-6666-4666-8666-666666666666",
+              },
+              action: {
+                id: "11111111-1111-4111-8111-111111111111",
+                title: "Reserve the campsite",
+                status: "suggested",
+              },
+            },
+          ],
+        }),
+      ]),
+    ).toBe(false);
+  });
+
+  it("proves create, read, and snooze states share one follow-up", () => {
+    const followupId = "44444444-4444-4444-8444-444444444444";
+    expect(
+      hasFollowupLifecycleState(
+        [
+          result("create_followup", {
+            followup: {
+              id: followupId,
+              reason: "Send the ops notes question",
+              dueAt: "2026-08-25T00:00:00.000Z",
+              status: "open",
+            },
+          }),
+        ],
+        "create_followup",
+        { id: followupId, dueAt: /^2026-08-25/, status: "open" },
+      ),
+    ).toBe(true);
+    expect(
+      hasFollowupLifecycleState(
+        [
+          result("list_due_followups", {
+            followups: [
+              {
+                id: followupId,
+                reason: "Send the ops notes question",
+                dueAt: "2026-08-25T00:00:00.000Z",
+                status: "open",
+              },
+            ],
+          }),
+        ],
+        "list_due_followups",
+        { id: followupId, reason: /ops notes/, dueAt: /^2026-08-25/, status: "open" },
+      ),
+    ).toBe(true);
+    expect(
+      hasFollowupLifecycleState(
+        [
+          result("update_followup_status", {
+            followup: {
+              id: followupId,
+              reason: "Send the ops notes question",
+              dueAt: "2026-08-31T00:00:00.000Z",
+              status: "snoozed",
+            },
+          }),
+        ],
+        "update_followup_status",
+        { id: followupId, dueAt: /^2026-08-31/, status: "snoozed" },
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a snooze state for a different follow-up or due date", () => {
+    expect(
+      hasFollowupLifecycleState(
+        [
+          result("update_followup_status", {
+            followup: {
+              id: "55555555-5555-4555-8555-555555555555",
+              dueAt: "2026-08-31T00:00:00.000Z",
+              status: "snoozed",
+            },
+          }),
+        ],
+        "update_followup_status",
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          dueAt: /^2026-08-31/,
+          status: "snoozed",
+        },
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("semantic clarification and parked-question projections", () => {
+  it("accepts the preserved hand-back without punctuation", () => {
+    expect(
+      isSemanticClarification(
+        "Let me know which specific items you'd like to mark complete, dismiss, or edit.",
+      ),
+    ).toBe(true);
+    expect(isSemanticClarification("Should I dismiss the one-off?")).toBe(true);
+    expect(isSemanticClarification("I've tidied everything for you.")).toBe(false);
+  });
+
+  it("reads both action requests and the durable HITL request", () => {
+    const pattern = /when|which|specific/i;
+    expect(
+      requestedQuestionMatches(
+        [
+          {
+            type: "actions.requested",
+            data: {
+              actions: [
+                { toolName: "ask_question", input: { prompt: "When should it resurface?" } },
+              ],
+            },
+          },
+        ],
+        pattern,
+      ),
+    ).toBe(true);
+    expect(
+      requestedQuestionMatches(
+        [
+          {
+            type: "input.requested",
+            data: {
+              requests: [
+                { kind: "question", toolName: "ask_question", prompt: "Which date works?" },
+              ],
+            },
+          },
+        ],
+        pattern,
+      ),
+    ).toBe(true);
+    expect(
+      requestedQuestionMatches(
+        [
+          {
+            type: "input.requested",
+            data: {
+              requests: [{ kind: "question", toolName: "ask_question", prompt: "Continue?" }],
+            },
+          },
+        ],
+        pattern,
+      ),
+    ).toBe(false);
+  });
+
+  it("can grade a prose clarification from a message event", () => {
+    expect(
+      assistantMessageMatches(
+        [
+          {
+            type: "message.appended",
+            data: {
+              messageDelta: "Tell me which date you want for the reminder.",
+              messageSoFar: "Tell me which date you want for the reminder.",
+            },
+          },
+          {
+            type: "message.completed",
+            data: {
+              message: "Tell me which date you want for the reminder.",
+              finishReason: "tool-calls",
+            },
+          },
+        ],
+        /which date/i,
+      ),
+    ).toBe(false);
+    expect(
+      assistantMessageMatches(
+        [
+          {
+            type: "message.completed",
+            data: {
+              message: "Tell me which date you want for the reminder.",
+              finishReason: "stop",
+            },
+          },
+        ],
+        /which date/i,
+      ),
+    ).toBe(true);
+    expect(
+      assistantMessageMatches(
+        [
+          {
+            type: "message.completed",
+            data: {
+              message: "Tell me which date you want for the reminder.",
+              finishReason: "stop",
+            },
+          },
+          { type: "message.completed", data: { message: "Done.", finishReason: "stop" } },
+        ],
+        /which date/i,
+      ),
+    ).toBe(false);
+    expect(
+      assistantMessageMatches(
+        [
+          {
+            type: "message.completed",
+            data: {
+              message: "Tell me which date you want for the reminder.",
+              finishReason: "tool-calls",
+            },
+          },
+        ],
+        /which date/i,
+      ),
+    ).toBe(false);
+    expect(
+      assistantMessageMatches(
+        [{ type: "message.completed", data: { message: "Done.", finishReason: "stop" } }],
+        /which date/i,
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a clarification that claims a mutation and preserves review questions", () => {
+    expect(
+      isUntruthfulActionMutationClaim("I've cleared them; let me know which one to keep."),
+    ).toBe(true);
+    expect(isUntruthfulActionMutationClaim("I've marked them done; let me know which one.")).toBe(
+      true,
+    );
+    expect(
+      isUntruthfulActionMutationClaim(
+        "Let me know which specific items you'd like to mark complete.",
+      ),
+    ).toBe(false);
+    expect(isUntruthfulActionMutationClaim("Should I dismiss the one-off?")).toBe(false);
+  });
+
+  it("grades the composed HITL boundary from safe stream shapes", () => {
+    const parkedQuestion = {
+      type: "input.requested",
+      data: {
+        requests: [{ kind: "question", toolName: "ask_question", prompt: "Which one?" }],
+      },
+    };
+    expect(hasSafeActionClarification([parkedQuestion])).toBe(true);
+    expect(
+      hasSafeActionClarification([
+        parkedQuestion,
+        {
+          type: "message.completed",
+          data: {
+            message: "I've cleared them; let me know which one to keep.",
+            finishReason: "stop",
+          },
+        },
+      ]),
+    ).toBe(false);
+    expect(
+      hasSafeActionClarification([
+        {
+          type: "message.completed",
+          data: { message: "Tell me which one to keep.", finishReason: "tool-calls" },
+        },
+      ]),
+    ).toBe(false);
+    expect(
+      hasSafeActionClarification([
+        {
+          type: "message.appended",
+          data: {
+            messageDelta: "Let me know which specific item to change.",
+            messageSoFar: "Let me know which specific item to change.",
+          },
+        },
+        {
+          type: "message.completed",
+          data: {
+            message: "Let me know which specific item to change.",
+            finishReason: "tool-calls",
+          },
+        },
+      ]),
+    ).toBe(false);
+  });
 });
 
 describe("asset proposal eval grounding", () => {
   const assetId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const memoryId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-  const result = (toolName: string, output: unknown) => ({
-    type: "action.result",
-    data: { result: { toolName, output } },
-  });
   const searchAnchor = result("search_assets", {
     results: [
       {
@@ -235,10 +717,6 @@ describe("Capture private-default evaluation contract", () => {
   });
 
   it("recognizes only the owning Capture tool's Person clarification", () => {
-    const result = (toolName: string, output: unknown) => ({
-      type: "action.result",
-      data: { result: { toolName, output } },
-    });
     expect(
       hasCapturePersonClarification([
         result("capture_saved_item", {
@@ -284,6 +762,24 @@ describe("memory cleanup reply contract", () => {
         0,
       ),
     ).toBe(true);
+    expect(
+      memoryCleanupReplyMatchesCount(
+        "Everything looks clear and consistent. There are currently no duplicate, stale, or contradictory memories flagged for cleanup.",
+        0,
+      ),
+    ).toBe(true);
+    expect(
+      memoryCleanupReplyMatchesCount(
+        "There are no duplicate memories, but I found one suggestion.",
+        0,
+      ),
+    ).toBe(false);
+    expect(memoryCleanupReplyMatchesCount("No proposals to review.", 0)).toBe(true);
+    expect(memoryCleanupReplyMatchesCount("No cleanup candidates remain.", 0)).toBe(true);
+    expect(memoryCleanupReplyMatchesCount("Some cleanup candidates remain.", 0)).toBe(false);
+    expect(
+      memoryCleanupReplyMatchesCount("No cleanup candidates remain. One memory is stale.", 0),
+    ).toBe(false);
   });
 
   it("requires review language when cleanup proposals exist", () => {
@@ -291,6 +787,7 @@ describe("memory cleanup reply contract", () => {
       true,
     );
     expect(memoryCleanupReplyMatchesCount("I found two cleanup candidates.", 2)).toBe(false);
+    expect(memoryCleanupReplyMatchesCount("No cleanup candidates to review.", 2)).toBe(false);
   });
 
   it("reads exactly one parent-visible curator count marker", () => {
@@ -447,11 +944,6 @@ function recordedVerdict(events: readonly unknown[]): boolean {
  * every run, so the shared versions are pinned here.
  */
 describe("tool output field expectations", () => {
-  const result = (toolName: string, output: unknown) => ({
-    type: "action.result",
-    data: { result: { toolName, output } },
-  });
-
   it("matches exact field values and rejects near misses", () => {
     expect(hasFields({ a: 1, b: "x" }, { a: 1, b: "x" })).toBe(true);
     expect(hasFields({ a: 1, b: "x" }, { a: 1, b: "y" })).toBe(false);
@@ -498,10 +990,6 @@ describe("tool output field expectations", () => {
 describe("grounded Suggested Memory proposal", () => {
   const PERSON = "11111111-1111-4111-8111-111111111111";
   const SOURCE = "22222222-2222-4222-8222-222222222222";
-  const result = (toolName: string, output: unknown) => ({
-    type: "action.result",
-    data: { result: { toolName, output } },
-  });
 
   const groundedEvents = (
     overrides: {
