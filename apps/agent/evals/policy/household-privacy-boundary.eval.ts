@@ -116,6 +116,7 @@ export function hasDeterministicVisibleScopeProjection(events: readonly unknown[
         isRecord(event.input) &&
         typeof event.input.query === "string" &&
         event.input.personId === PRIVACY_BOUNDARY_FIXTURE.alexPersonId &&
+        event.input.visibilityScope === "shared" &&
         /job|search/i.test(event.input.query),
     );
   if (requestedAlexAt === -1) return false;

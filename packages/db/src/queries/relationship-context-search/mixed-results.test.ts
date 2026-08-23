@@ -279,6 +279,43 @@ describe("relationship-context search - mixed results", () => {
     );
   });
 
+  it("applies the requested visibility scope before ranking and limiting", async () => {
+    const privateMemory = memory({
+      id: "33333333-3333-4333-8333-333333333333",
+      content: "Backend architecture backend architecture private note.",
+      scope: "private",
+    });
+    const sharedMemory = memory({
+      id: "44444444-4444-4444-8444-444444444444",
+      content: "Backend architecture shared note.",
+      scope: "shared",
+      householdId: "household-1",
+    });
+    const search = queries({
+      people: [person({})],
+      memories: [privateMemory, sharedMemory],
+      householdMemberships: [activeMembership({ householdId: "household-1", userId: "owner-1" })],
+    });
+
+    const shared = await search.searchRelationshipContext({
+      ownerUserId: "owner-1",
+      query: "backend architecture",
+      recordKinds: ["memory"],
+      visibilityScope: "shared",
+      limit: 1,
+    });
+    const privateOnly = await search.searchRelationshipContext({
+      ownerUserId: "owner-1",
+      query: "backend architecture",
+      recordKinds: ["memory"],
+      visibilityScope: "private_only",
+      limit: 1,
+    });
+
+    expect(shared.map((result) => result.recordId)).toEqual([sharedMemory.id]);
+    expect(privateOnly.map((result) => result.recordId)).toEqual([privateMemory.id]);
+  });
+
   it("keeps text strength ahead of importance tie-breakers", async () => {
     const search = queries({
       people: [person({ profileBlurb: null })],

@@ -57,7 +57,10 @@ export function createInMemoryRelationshipContextSearchStore(
       }
       if (kinds.has("general_action")) results.push(...collectGeneralActionMatches(input, query));
 
-      return results.sort(compareResults).slice(0, input.limit);
+      return results
+        .filter((result) => matchesVisibilityScope(result, input))
+        .sort(compareResults)
+        .slice(0, input.limit);
     },
   };
 
@@ -292,6 +295,14 @@ export function createInMemoryRelationshipContextSearchStore(
       householdRecordShares,
     });
   }
+}
+
+function matchesVisibilityScope(result: ExactRecallResult, input: RelationshipContextSearchInput) {
+  if (input.visibilityScope === "all_visible") return true;
+  if (input.visibilityScope === "private_only") return result.visibilityChoice === "only_me";
+  return (
+    result.visibilityChoice === "selected_members" || result.visibilityChoice === "whole_household"
+  );
 }
 
 /** Mirrors the adapter's `regexp_replace(btrim(...), '\s+', ' ', 'g')` content normalization. */

@@ -135,6 +135,30 @@ describe("explicit conversational Capture routing", () => {
       routeExplicitConversationalCapture({
         now,
         originalText:
+          "Use Capture: remember that Priya prefers oat milk; track asset refrigerator filter: model EDR4RXD1.",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({
+      destination: "group",
+      outcomes: [
+        {
+          destination: "memory",
+          content: "Priya prefers oat milk",
+          personQuery: "Priya",
+        },
+        {
+          destination: "asset_review",
+          assetKind: "item",
+          assetName: "refrigerator filter",
+          fact: "model EDR4RXD1",
+        },
+      ],
+    });
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText:
           "Add Priya; and also remember that Priya prefers oat milk; and also track asset refrigerator water filter: model EDR4RXD1",
         timeZone: "America/Chicago",
       }),
