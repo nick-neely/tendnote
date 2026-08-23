@@ -18,6 +18,27 @@ describe("explicit conversational Capture routing", () => {
       sensitivity: "normal",
     });
 
+    for (const directive of ["Use Capture to", "Use Capture for"]) {
+      expect(
+        routeExplicitConversationalCapture({
+          now,
+          originalText: `${directive} add Priya; track asset refrigerator filter: model EDR4RXD1`,
+          timeZone: "America/Chicago",
+        }),
+      ).toEqual({
+        destination: "group",
+        outcomes: [
+          { destination: "person", displayName: "Priya" },
+          {
+            destination: "asset_review",
+            assetKind: "item",
+            assetName: "refrigerator filter",
+            fact: "model EDR4RXD1",
+          },
+        ],
+      });
+    }
+
     expect(
       routeExplicitConversationalCapture({
         now,

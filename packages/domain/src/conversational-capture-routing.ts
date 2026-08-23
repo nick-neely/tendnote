@@ -534,7 +534,7 @@ export function routeExplicitConversationalCapture(input: {
   // destination's natural-language payload. Strip it only for deterministic
   // routing while callers retain the complete originalText as source evidence.
   const routableText = input.originalText.replace(
-    /^\s*(?:use\s+capture|capture(?:\s+this)?)\s*:\s*/i,
+    /^\s*(?:(?:use\s+capture|capture(?:\s+this)?)\s*:\s*|use\s+capture\s+(?:to|for)\s+)/i,
     "",
   );
   const clauses = routableText
