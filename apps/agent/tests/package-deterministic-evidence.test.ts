@@ -139,6 +139,26 @@ describe("deterministic publication evidence classification", () => {
     );
   });
 
+  it("accepts Eve 0.32 runtime events nested under detailed sessions", () => {
+    const original = base.reports[0];
+    if (!original) throw new Error("Expected a base report.");
+    const currentShape = {
+      ...original,
+      evals: original.evals.map((entry) => ({
+        id: entry.id,
+        result: {
+          status: "completed",
+          sessions: [{ events: entry.result.events }],
+        },
+      })),
+    };
+
+    expect(buildEvidenceMetadata({ ...base, reports: [currentShape] })).toMatchObject({
+      clean: true,
+      configuration: { agentModel: "google/gemini-3.7-flash", eveVersion: "0.32.0" },
+    });
+  });
+
   it("blocks JSONL status totals that disagree with the summary", () => {
     const rows = (base.resultRows.at(0) ?? []).map((row, index) =>
       index === 0 ? { ...row, status: "waiting" } : row,

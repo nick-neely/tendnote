@@ -14,6 +14,12 @@ export type EvidenceReport = {
         type?: string;
         data?: { runtime?: { modelId?: string; eveVersion?: string } };
       }>;
+      sessions?: Array<{
+        events?: Array<{
+          type?: string;
+          data?: { runtime?: { modelId?: string; eveVersion?: string } };
+        }>;
+      }>;
     };
   }>;
 };
