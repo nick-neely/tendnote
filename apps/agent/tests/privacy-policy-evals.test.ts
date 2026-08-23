@@ -370,6 +370,7 @@ describe("household privacy evaluator semantics", () => {
                 input: {
                   query: "job search",
                   personId: PRIVACY_BOUNDARY_FIXTURE.alexPersonId,
+                  visibilityScope: "shared",
                 },
               },
             ],
@@ -447,6 +448,7 @@ describe("household privacy evaluator semantics", () => {
                 input: {
                   query: "Alex job search household-visible",
                   personId: PRIVACY_BOUNDARY_FIXTURE.alexPersonId,
+                  visibilityScope: "shared",
                 },
               },
             ],
@@ -480,6 +482,7 @@ describe("household privacy evaluator semantics", () => {
                 input: {
                   query: "Alex job search household-visible",
                   personId: PRIVACY_BOUNDARY_FIXTURE.alexPersonId,
+                  visibilityScope: "shared",
                 },
               },
             ],
@@ -509,6 +512,7 @@ describe("household privacy evaluator semantics", () => {
                 input: {
                   query: "Alex job search household-visible",
                   personId: PRIVACY_BOUNDARY_FIXTURE.alexPersonId,
+                  visibilityScope: "shared",
                 },
               },
             ],
@@ -538,6 +542,7 @@ describe("household privacy evaluator semantics", () => {
                 input: {
                   query: "Alex job search household-visible",
                   personId: PRIVACY_BOUNDARY_FIXTURE.alexPersonId,
+                  visibilityScope: "shared",
                 },
               },
             ],
@@ -577,6 +582,7 @@ describe("household privacy evaluator semantics", () => {
                 input: {
                   query: "Alex job search household-visible",
                   personId: PRIVACY_BOUNDARY_FIXTURE.alexPersonId,
+                  visibilityScope: "shared",
                 },
               },
             ],
@@ -616,6 +622,7 @@ describe("household privacy evaluator semantics", () => {
                 input: {
                   query: "Alex job search household-visible",
                   personId: PRIVACY_BOUNDARY_FIXTURE.alexPersonId,
+                  visibilityScope: "shared",
                 },
               },
             ],
@@ -655,6 +662,7 @@ describe("household privacy evaluator semantics", () => {
                 input: {
                   query: "Alex job search household-visible",
                   personId: PRIVACY_BOUNDARY_FIXTURE.alexPersonId,
+                  visibilityScope: "shared",
                 },
               },
             ],

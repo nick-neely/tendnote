@@ -1,6 +1,6 @@
 import { defineEval } from "eve/evals";
-import { includes, satisfies } from "eve/evals/expect";
-import { hasNoRuntimeFailures, without } from "../expectations";
+import { includes } from "eve/evals/expect";
+import { assistantMessageTexts, hasNoRuntimeFailures, without } from "../expectations";
 
 const CLEANUP_TERMS =
   "cleanup|duplicates?|stale|contradictions?|contradictory(?:\\s+memories?)?|candidates?|proposals?|suggestions?";
@@ -80,13 +80,28 @@ export function curatorProposalCount(events: readonly unknown[]): number | null 
   return counts.length === 1 && Number.isSafeInteger(counts[0]) ? (counts[0] ?? null) : null;
 }
 
+/**
+ * Grade the curator's count and the final root reply from one immutable event
+ * projection. Eve does not guarantee assertion evaluation order, so sharing a
+ * mutable count between `eventsSatisfy` and `t.reply` can turn a correct run into
+ * a false negative.
+ */
+export function memoryCleanupEventsMatchCount(events: readonly unknown[]): boolean {
+  const count = curatorProposalCount(events);
+  const replies = assistantMessageTexts(events);
+  return (
+    hasNoRuntimeFailures(events) &&
+    count !== null &&
+    replies.length === 1 &&
+    memoryCleanupReplyMatchesCount(replies[0] ?? "", count)
+  );
+}
+
 export default defineEval({
   description: "Memory cleanup requests route to the review-only Memory Curator.",
   tags: ["deterministic", "behavior", "memory-cleanup", "subagent"],
   async test(t) {
     await t.send("Find stale, duplicate, or contradictory memories I should clean up.");
-
-    let proposalCount: number | null = null;
 
     t.calledSubagent("memory_curator", {
       output: /PROPOSAL_COUNT:\s*\d+/i,
@@ -97,19 +112,9 @@ export default defineEval({
     t.notCalledTool("capture_source_record");
     t.notCalledTool("create_followup");
     t.notCalledTool("create_message_draft");
-    t.eventsSatisfy("one completed curator reports its proposal count", (events) => {
-      proposalCount = curatorProposalCount(events);
-      return hasNoRuntimeFailures(events) && proposalCount !== null;
-    });
-    t.check(
-      t.reply,
-      satisfies(
-        (reply) =>
-          typeof reply === "string" &&
-          proposalCount !== null &&
-          memoryCleanupReplyMatchesCount(reply, proposalCount),
-        "empty cleanup says none; proposals remain review-gated",
-      ),
+    t.eventsSatisfy(
+      "one completed curator count matches the final review-gated reply",
+      memoryCleanupEventsMatchCount,
     );
     t.check(
       t.reply,

@@ -396,7 +396,7 @@ function routeExplicitAsset(originalText: string): ConversationalCaptureSingleRo
     destination: "asset_review",
     assetName: match[1].trim(),
     assetKind: "item",
-    fact: match[2]?.trim() || null,
+    fact: match[2]?.trim().replace(/[.]$/, "") || null,
   };
 }
 
@@ -530,7 +530,14 @@ export function routeExplicitConversationalCapture(input: {
   now: Date;
   allowSelfContext?: boolean;
 }): ConversationalCaptureRoute {
-  const clauses = input.originalText
+  // A leading UI/agent directive selects Capture; it is not part of the first
+  // destination's natural-language payload. Strip it only for deterministic
+  // routing while callers retain the complete originalText as source evidence.
+  const routableText = input.originalText.replace(
+    /^\s*(?:(?:use\s+capture|capture(?:\s+this)?)\s*:\s*|use\s+capture\s+to\s+|use\s+capture\s+for\s+(?:(?:both|all)\s+explicit\s+clauses\s*:\s*)?)/i,
+    "",
+  );
+  const clauses = routableText
     .split(/\s*;\s*(?:and\s+also\s+)?/i)
     .map((clause) => clause.trim())
     .filter(Boolean);
@@ -555,5 +562,5 @@ export function routeExplicitConversationalCapture(input: {
     }
     return { destination: "saved_item" };
   }
-  return routeSingleExplicitCapture(input);
+  return routeSingleExplicitCapture({ ...input, originalText: routableText });
 }

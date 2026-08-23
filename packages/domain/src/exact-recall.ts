@@ -20,6 +20,8 @@ export const exactRecallTrustLevelSchema = z.enum([
   "action_item",
 ]);
 
+export const exactRecallVisibilityScopeSchema = z.enum(["all_visible", "private_only", "shared"]);
+
 export const searchRelationshipContextSchema = z.object({
   query: z
     .string()
@@ -43,6 +45,11 @@ export const searchRelationshipContextSchema = z.object({
     .max(4)
     .optional()
     .describe("Restrict to particular record kinds. Omit for all of them, which is usually right."),
+  visibilityScope: exactRecallVisibilityScopeSchema
+    .default("all_visible")
+    .describe(
+      "Filter before ranking and limiting: all caller-visible records, Only-me records only, or shared records only (Specific people and Whole household).",
+    ),
   limit: z
     .number()
     .int()

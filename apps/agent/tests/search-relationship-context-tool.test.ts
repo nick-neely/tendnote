@@ -34,7 +34,13 @@ describe("search_relationship_context tool", () => {
     ]);
 
     const result = await tool.execute(
-      { query: "backend", limit: 5, directlyRequested: false, includeArchived: false },
+      {
+        query: "backend",
+        limit: 5,
+        directlyRequested: false,
+        includeArchived: false,
+        visibilityScope: "all_visible",
+      },
       ctx,
     );
 
@@ -44,6 +50,7 @@ describe("search_relationship_context tool", () => {
       limit: 5,
       directlyRequested: false,
       includeArchived: false,
+      visibilityScope: "all_visible",
       // Review context is pinned off by the tool, never model-forwarded.
       includeReviewGated: false,
     });
@@ -100,6 +107,7 @@ describe("search_relationship_context tool", () => {
         limit: 5,
         directlyRequested: false,
         includeArchived: false,
+        visibilityScope: "all_visible",
       },
       ctx,
     );
@@ -150,6 +158,7 @@ describe("search_relationship_context tool", () => {
         limit: 8,
         directlyRequested: false,
         includeArchived: false,
+        visibilityScope: "all_visible",
       },
       ctx,
     );
@@ -161,6 +170,7 @@ describe("search_relationship_context tool", () => {
       limit: 8,
       directlyRequested: false,
       includeArchived: false,
+      visibilityScope: "all_visible",
       includeReviewGated: false,
     });
   });
@@ -197,6 +207,59 @@ describe("search_relationship_context tool", () => {
     });
   });
 
+  it("removes private and identity records before shared results reach the model", async () => {
+    const result = (
+      visibilityChoice: "only_me" | "selected_members" | "whole_household" | null,
+    ) => ({
+      recordKind: visibilityChoice === null ? ("person" as const) : ("memory" as const),
+      recordId: `record-${visibilityChoice ?? "identity"}`,
+      relatedPersonId: "person-1",
+      relatedPersonDisplayName: "Mara Lin",
+      label: "Mara Lin",
+      snippet: `Context marked ${visibilityChoice ?? "identity"}`,
+      matchedFields: ["content"],
+      rank: 1,
+      trustLevel:
+        visibilityChoice === null ? ("identity_reference" as const) : ("confirmed_fact" as const),
+      sensitivity: "normal" as const,
+      visibilityChoice,
+      visibilityLabel:
+        visibilityChoice === "only_me"
+          ? "Only me"
+          : visibilityChoice === "selected_members"
+            ? "Specific people"
+            : visibilityChoice === "whole_household"
+              ? "Whole household"
+              : null,
+    });
+    searchRelationshipContext.mockResolvedValue([
+      result("only_me"),
+      result("selected_members"),
+      result("whole_household"),
+      result(null),
+    ]);
+
+    const output = await tool.execute(
+      {
+        query: "Mara",
+        limit: 8,
+        directlyRequested: false,
+        includeArchived: false,
+        visibilityScope: "shared",
+      },
+      ctx,
+    );
+
+    expect(output.results.map((entry) => entry.visibilityChoice)).toEqual([
+      "selected_members",
+      "whole_household",
+    ]);
+    expect(output.component.resultCount).toBe(2);
+    const modelOutput = JSON.stringify(tool.toModelOutput?.(output));
+    expect(modelOutput).not.toContain("only_me");
+    expect(modelOutput).not.toContain("identity");
+  });
+
   it("forwards direct restricted requests without using search_people", async () => {
     searchRelationshipContext.mockResolvedValue([]);
 
@@ -207,6 +270,7 @@ describe("search_relationship_context tool", () => {
         limit: 3,
         directlyRequested: true,
         includeArchived: false,
+        visibilityScope: "all_visible",
       },
       ctx,
     );
@@ -218,6 +282,7 @@ describe("search_relationship_context tool", () => {
       limit: 3,
       directlyRequested: true,
       includeArchived: false,
+      visibilityScope: "all_visible",
       includeReviewGated: false,
     });
   });

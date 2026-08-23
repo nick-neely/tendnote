@@ -37,6 +37,10 @@ Notes on the two that overlap most:
 For **visibility-scoped recall** - household-visible, shared, visible-to-specific-people,
 or private-only - `search_relationship_context` is the tool, because it returns
 visibility labels. Answer only from records matching the requested visibility.
+Set `visibilityScope: "shared"` for household-visible, shared, or specific-people
+questions, and `visibilityScope: "private_only"` for Only-me/private-only questions.
+Use `visibilityScope: "all_visible"` only when the user did not request a visibility
+boundary. The tool filters disallowed records before they reach your context.
 When that deterministic person-scoped search returns no matching records, stop:
 answer with a plain scoped absence. Do not broaden into `search_semantic_context`,
 `get_person_context`, or identity/profile fields to fill the answer, and do not repeat

@@ -1,28 +1,49 @@
 import { searchRelationshipContext } from "@tendnote/db/queries/relationship-context-search";
 import { exactRecallResultSchema, searchRelationshipContextSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
+import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 export default defineTool({
   description:
-    "Exact Recall search over canonical Tendnote records visible to the caller: their private records plus selected-member shared and whole-household records they can access. Returns compact typed references with snippets, record ids, related person metadata, trust level, sensitivity, and visibility provenance. Use this for literal text search, cross-person exact recall, and any recall question that asks for household-visible, shared, visible-to-specific-people, or private-only context. Phrase visibility carefully: 'Only me' is the caller's private note, 'Specific people' is selected-member shared context, and 'Whole household' is household context. For visibility-scoped named-person questions, first call search_people by itself, wait for its result, and only then call this tool with the exact returned personId; never batch both calls in parallel and never omit personId. Answer only from records matching the requested visibility, and explicitly say private-only records were excluded when the user asks for household-visible or shared context. If the user gives a private detail only to exclude it, never repeat that detail; call it private-only context instead. For ordinary named-person questions like 'what do I know about Alex's job search?' that do not ask for visibility filtering, use search_people then get_person_context instead; do not treat an empty exact search as proof there is no context for a known person. Do not use it as identity disambiguation (`search_people`) or as a full known-person context loader (`get_person_context`). It does not return full profiles or generated context snapshot prose.",
+    "Exact Recall search over canonical Tendnote records visible to the caller. You MUST choose visibilityScope for every call: use 'shared' for household-visible/shared/specific-people questions, 'private_only' for Only-me/private-only questions, and 'all_visible' only when the user did not request a visibility boundary. The tool enforces that scope before results reach you. Returns compact typed references with snippets, record ids, related person metadata, trust level, sensitivity, and visibility provenance. For visibility-scoped named-person questions, first call search_people by itself, wait for its result, and only then call this tool with the exact returned personId; never batch both calls in parallel and never omit personId. Explicitly say private-only records were excluded when the user asks for household-visible or shared context. If the user gives a private detail only to exclude it, never repeat that detail; call it private-only context instead. For ordinary named-person questions like 'what do I know about Alex's job search?' that do not ask for visibility filtering, use search_people then get_person_context instead; do not treat an empty exact search as proof there is no context for a known person. Do not use it as identity disambiguation (`search_people`) or as a full known-person context loader (`get_person_context`). It does not return full profiles or generated context snapshot prose.",
   // The review-gated flag (owner-only access to unaccepted suggested actions) is a
   // deliberate caller decision, not a model-facing toggle, so it is omitted here and
   // defaults to false; the general search never surfaces un-accepted proposals.
-  inputSchema: searchRelationshipContextSchema.omit({ includeReviewGated: true }),
+  inputSchema: searchRelationshipContextSchema.omit({ includeReviewGated: true }).extend({
+    visibilityScope: z
+      .enum(["all_visible", "private_only", "shared"])
+      .describe(
+        "Required result boundary. 'shared' permits only Specific people and Whole household records; 'private_only' permits only Only me records; 'all_visible' is for unscoped exact recall.",
+      ),
+  }),
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    const results = exactRecallResultSchema
+    const { visibilityScope, ...query } = input;
+    const allResults = exactRecallResultSchema
       .array()
       // Pin includeReviewGated to false after spreading input: review context is an
       // owner-only caller decision, never model-forwarded, so a hallucinated flag (or one
       // that survives a future schema refactor) can never surface un-accepted proposals.
       .parse(
         await withModelSafeStoreErrors(() =>
-          searchRelationshipContext({ ...input, includeReviewGated: false, ownerUserId }),
+          searchRelationshipContext({
+            ...query,
+            visibilityScope,
+            includeReviewGated: false,
+            ownerUserId,
+          }),
         ),
       );
+    const results = allResults.filter((result) => {
+      if (visibilityScope === "all_visible") return true;
+      if (visibilityScope === "private_only") return result.visibilityChoice === "only_me";
+      return (
+        result.visibilityChoice === "selected_members" ||
+        result.visibilityChoice === "whole_household"
+      );
+    });
 
     return {
       results,

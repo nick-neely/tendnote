@@ -233,6 +233,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           )
           and ga.search_vector @@ search_query.query
         ) mixed_results
+        where ${visibilityScopeSql(input, "mixed_results")}
         order by rank desc, label asc, record_id asc
         limit ${input.limit}
       `);
@@ -244,6 +245,19 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
 
 function kindFilter(kinds: ExactRecallRecordKind[] | undefined, kind: ExactRecallRecordKind) {
   return !kinds || kinds.includes(kind) ? sql`true` : sql`false`;
+}
+
+function visibilityScopeSql(
+  input: SearchRelationshipContextQueryInput,
+  tableAlias: "mixed_results" | "m",
+) {
+  if (input.visibilityScope === "all_visible") return sql`true`;
+  if (input.visibilityScope === "private_only") {
+    return tableAlias === "m" ? sql`m.scope = 'private'` : sql`mixed_results.scope = 'private'`;
+  }
+  return tableAlias === "m"
+    ? sql`m.scope in ('shared', 'household')`
+    : sql`mixed_results.scope in ('shared', 'household')`;
 }
 
 /**
@@ -274,6 +288,7 @@ function withoutProvenanceDuplicateSql(input: SearchRelationshipContextQueryInpu
         tableAlias: "m",
         recordKind: "memory",
       })}
+      and ${visibilityScopeSql(input, "m")}
       and m.search_vector @@ search_query.query
       and regexp_replace(btrim(m.content), '\\s+', ' ', 'g')
         = regexp_replace(btrim(sr.content), '\\s+', ' ', 'g')

@@ -4,6 +4,7 @@ import { isDraftRevisionReplyCanonical } from "../evals/behavior/draft-revision-
 import { isUnfiledActionReplyTruthful } from "../evals/behavior/general-action-area-filing.eval";
 import {
   curatorProposalCount,
+  memoryCleanupEventsMatchCount,
   memoryCleanupReplyMatchesCount,
 } from "../evals/behavior/memory-curator-routing.eval";
 import { statesPurchaseLocationLimitation } from "../evals/behavior/phase-seven-recall-limitations.eval";
@@ -579,6 +580,18 @@ describe("semantic clarification and parked-question projections", () => {
       ),
     ).toBe(false);
     expect(isUntruthfulActionMutationClaim("Should I dismiss the one-off?")).toBe(false);
+    expect(
+      isUntruthfulActionMutationClaim(
+        "Tell me which actions you finished and I can mark them completed or archive them.",
+      ),
+    ).toBe(false);
+    expect(isUntruthfulActionMutationClaim("Do you want me to mark all completed?")).toBe(false);
+    expect(isUntruthfulActionMutationClaim("Those actions have been completed.")).toBe(true);
+    expect(isUntruthfulActionMutationClaim("All already archived.")).toBe(true);
+    expect(
+      isUntruthfulActionMutationClaim("Accept each review card to add it to your active actions."),
+    ).toBe(false);
+    expect(isUntruthfulActionMutationClaim("I've activated the suggested actions.")).toBe(true);
   });
 
   it("grades the composed HITL boundary from safe stream shapes", () => {
@@ -800,6 +813,44 @@ describe("memory cleanup reply contract", () => {
       ]),
     ).toBe(0);
     expect(curatorProposalCount([])).toBeNull();
+  });
+
+  it("grades the curator count and final root reply from the same event stream", () => {
+    const curator = (output: string) => ({
+      type: "subagent.completed",
+      data: { subagentName: "memory_curator", output },
+    });
+    const reply = (message: string) => ({
+      type: "message.completed",
+      data: { message, finishReason: "stop" },
+    });
+
+    expect(
+      memoryCleanupEventsMatchCount([
+        curator("PROPOSAL_COUNT: 0\nNothing found."),
+        reply("I found no stale, duplicate, or contradictory memories."),
+      ]),
+    ).toBe(true);
+    expect(
+      memoryCleanupEventsMatchCount([
+        curator("PROPOSAL_COUNT: 2\nTwo candidates."),
+        reply("I found two suggestions for your review."),
+      ]),
+    ).toBe(true);
+    expect(
+      memoryCleanupEventsMatchCount([
+        curator("PROPOSAL_COUNT: 0"),
+        reply("I found one cleanup suggestion for review."),
+      ]),
+    ).toBe(false);
+    expect(
+      memoryCleanupEventsMatchCount([
+        curator("PROPOSAL_COUNT: 0"),
+        curator("PROPOSAL_COUNT: 0"),
+        reply("No cleanup candidates remain."),
+      ]),
+    ).toBe(false);
+    expect(memoryCleanupEventsMatchCount([reply("No cleanup candidates remain.")])).toBe(false);
   });
 });
 

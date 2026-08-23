@@ -1,6 +1,6 @@
 import { defineEval } from "eve/evals";
 import { includes, satisfies } from "eve/evals/expect";
-import { hasReviewGatedGeneralActionPlan, without } from "../expectations";
+import { hasReviewGatedGeneralActionPlan, isUntruthfulActionMutationClaim } from "../expectations";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -43,9 +43,7 @@ export default defineEval({
     t.check(
       t.reply,
       satisfies(
-        (reply) =>
-          typeof reply === "string" &&
-          without("I(’|')?ve (added|created|activated)|active (actions|to-?dos)").test(reply),
+        (reply) => typeof reply === "string" && !isUntruthfulActionMutationClaim(reply),
         "planning does not claim review cards are active",
       ),
     );

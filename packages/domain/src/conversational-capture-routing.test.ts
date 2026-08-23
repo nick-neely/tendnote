@@ -18,6 +18,53 @@ describe("explicit conversational Capture routing", () => {
       sensitivity: "normal",
     });
 
+    for (const directive of ["Use Capture to", "Use Capture for"]) {
+      expect(
+        routeExplicitConversationalCapture({
+          now,
+          originalText: `${directive} add Priya; track asset refrigerator filter: model EDR4RXD1`,
+          timeZone: "America/Chicago",
+        }),
+      ).toEqual({
+        destination: "group",
+        outcomes: [
+          { destination: "person", displayName: "Priya" },
+          {
+            destination: "asset_review",
+            assetKind: "item",
+            assetName: "refrigerator filter",
+            fact: "model EDR4RXD1",
+          },
+        ],
+      });
+    }
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText:
+          "Use Capture for both explicit clauses: save a note that the filter is noisy; I need to order a replacement.",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({
+      destination: "group",
+      outcomes: [
+        {
+          destination: "saved_item",
+          explicit: true,
+          kind: "note",
+          text: "that the filter is noisy",
+          bringBackAt: null,
+        },
+        {
+          destination: "action",
+          title: "Order a replacement",
+          dueAt: null,
+          recurrence: null,
+        },
+      ],
+    });
+
     expect(
       routeExplicitConversationalCapture({
         now,
@@ -131,6 +178,30 @@ describe("explicit conversational Capture routing", () => {
   });
 
   it("groups only independently explicit clauses and leaves implicit fan-out as one fallback", () => {
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText:
+          "Use Capture: remember that Priya prefers oat milk; track asset refrigerator filter: model EDR4RXD1.",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({
+      destination: "group",
+      outcomes: [
+        {
+          destination: "memory",
+          content: "Priya prefers oat milk",
+          personQuery: "Priya",
+        },
+        {
+          destination: "asset_review",
+          assetKind: "item",
+          assetName: "refrigerator filter",
+          fact: "model EDR4RXD1",
+        },
+      ],
+    });
+
     expect(
       routeExplicitConversationalCapture({
         now,

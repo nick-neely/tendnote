@@ -1,6 +1,6 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
-import { usedNoToolsOrSubagents } from "../helpers";
+import { usedNoSubagents, usedOnlyAllowedTools } from "../helpers";
 
 /**
  * Evidence lands on an Asset the user confirms (#196 stories 25-26, #205).
@@ -19,7 +19,10 @@ export default defineEval({
     await t.send("I want to attach a photo of an appliance label. Where does it go?");
 
     t.succeeded();
-    usedNoToolsOrSubagents(t);
+    // Loading the capability instructions is harmless grounding. This boundary
+    // forbids reads, writes, and delegation—not the framework's skill loader.
+    usedOnlyAllowedTools(t, ["load_skill"]);
+    usedNoSubagents(t);
     // The capture entry point, as it appears on screen.
     t.check(t.reply, includes(/plus|\+ ?menu|camera|photo library|file/i));
     // And the destination: an Asset, chosen or confirmed by the user.

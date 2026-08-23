@@ -88,4 +88,14 @@ describe("search tool input schemas are described for the model", () => {
       );
     }
   });
+
+  it("requires an explicit visibility boundary for exact relationship recall", () => {
+    const schema = modelFacingSchema(searchRelationshipContextTool) as {
+      required?: string[];
+      properties: Record<string, unknown>;
+    };
+
+    expect(schema.properties).toHaveProperty("visibilityScope");
+    expect(schema.required).toContain("visibilityScope");
+  });
 });

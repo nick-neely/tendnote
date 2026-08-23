@@ -489,7 +489,7 @@ export function isSemanticClarification(value: unknown): boolean {
 }
 
 const ACTION_MUTATION_CLAIM =
-  /\bI(?:['’]ve|\s+have)?\s+(?:already\s+|just\s+)?(?:added|archived|cleared|completed|created|deleted|dismissed|edited|marked|removed|tidied|updated)\b|\b(?:everything|all|those|them|(?:the|your)\s+actions?)\s+(?:(?:is|are|was|were|has been|have been)\s+)?(?:already\s+)?(?:added|archived|cleared|completed|deleted|dismissed|edited|marked|removed|tidied|updated)\b/i;
+  /\bI(?:['’]ve|\s+have)?\s+(?:already\s+|just\s+)?(?:activated|added|archived|cleared|completed|created|deleted|dismissed|edited|marked|removed|tidied|updated)\b|\b(?:everything|all|those(?:\s+actions?)?|them|(?:the|your)\s+actions?)\s+(?:(?:(?:is|are|was|were|has been|have been)\s+(?:already\s+)?)|already\s+)(?:activated|added|archived|cleared|completed|deleted|dismissed|edited|marked|removed|tidied|updated)\b/i;
 
 /** Reject prose that claims a durable Action mutation while asking a follow-up choice. */
 export function isUntruthfulActionMutationClaim(value: unknown): boolean {
