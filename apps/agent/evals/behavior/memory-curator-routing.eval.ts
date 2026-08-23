@@ -13,8 +13,9 @@ export function memoryCleanupReplyMatchesCount(reply: string, count: number) {
     return reportsNoCleanup && !hasPositiveCleanupClaim(reply);
   }
 
-  return /\b(?:review|approv(?:e|al)|sign[ -]?off|go-ahead|consent|proposal|suggest)\b/i.test(
-    reply,
+  return (
+    hasPositiveCleanupClaim(reply) &&
+    /\b(?:review|approv(?:e|al)|sign[ -]?off|go-ahead|consent|proposal|suggest)\b/i.test(reply)
   );
 }
 
@@ -31,10 +32,13 @@ function hasPositiveCleanupClaim(reply: string): boolean {
     `\\bthere\\s+(?:is|are)\\s+(?![\\s\\S]{0,30}\\b(?:no|none|nothing|zero)\\b)[\\s\\S]{0,60}\\b(?:${CLEANUP_TERMS})\\b`,
     "i",
   );
+  const describedMemory =
+    /\b(?:\d+|one|two|three|some|several|a|an)\s+memor(?:y|ies)\s+(?:(?:is|are)\s+)?(?:stale|duplicates?|contradictory)\b/i;
   return (
     quantity.test(reply) ||
     firstPerson.test(reply) ||
     existential.test(reply) ||
+    describedMemory.test(reply) ||
     hasUnnegatedCleanupRemain(reply)
   );
 }

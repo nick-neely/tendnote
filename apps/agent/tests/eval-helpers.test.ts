@@ -3,16 +3,12 @@ import { describe, expect, it } from "vitest";
 import { isDraftRevisionReplyCanonical } from "../evals/behavior/draft-revision-assertions";
 import { isUnfiledActionReplyTruthful } from "../evals/behavior/general-action-area-filing.eval";
 import {
-  assistantMessageMatches,
-  hasSafeActionClarification,
-  requestedQuestionMatches,
-} from "../evals/behavior/general-action-mutation-boundary.eval";
-import {
   curatorProposalCount,
   memoryCleanupReplyMatchesCount,
 } from "../evals/behavior/memory-curator-routing.eval";
 import { statesPurchaseLocationLimitation } from "../evals/behavior/phase-seven-recall-limitations.eval";
 import {
+  assistantMessageMatches,
   hasCapturePersonClarification,
   hasFields,
   hasFollowupLifecycleState,
@@ -21,11 +17,13 @@ import {
   hasNoMutatingTools,
   hasNoRuntimeFailures,
   hasReviewGatedGeneralActionPlan,
+  hasSafeActionClarification,
   isEmptyArray,
   isNonEmptyUuidArray,
   isPrivateOrOmitted,
   isSemanticClarification,
   isUntruthfulActionMutationClaim,
+  requestedQuestionMatches,
   someToolOutputHasFields,
   toolOutputs,
 } from "../evals/expectations";
@@ -538,6 +536,21 @@ describe("semantic clarification and parked-question projections", () => {
             type: "message.completed",
             data: {
               message: "Tell me which date you want for the reminder.",
+              finishReason: "stop",
+            },
+          },
+          { type: "message.completed", data: { message: "Done.", finishReason: "stop" } },
+        ],
+        /which date/i,
+      ),
+    ).toBe(false);
+    expect(
+      assistantMessageMatches(
+        [
+          {
+            type: "message.completed",
+            data: {
+              message: "Tell me which date you want for the reminder.",
               finishReason: "tool-calls",
             },
           },
@@ -764,6 +777,9 @@ describe("memory cleanup reply contract", () => {
     expect(memoryCleanupReplyMatchesCount("No proposals to review.", 0)).toBe(true);
     expect(memoryCleanupReplyMatchesCount("No cleanup candidates remain.", 0)).toBe(true);
     expect(memoryCleanupReplyMatchesCount("Some cleanup candidates remain.", 0)).toBe(false);
+    expect(
+      memoryCleanupReplyMatchesCount("No cleanup candidates remain. One memory is stale.", 0),
+    ).toBe(false);
   });
 
   it("requires review language when cleanup proposals exist", () => {
@@ -771,6 +787,7 @@ describe("memory cleanup reply contract", () => {
       true,
     );
     expect(memoryCleanupReplyMatchesCount("I found two cleanup candidates.", 2)).toBe(false);
+    expect(memoryCleanupReplyMatchesCount("No cleanup candidates to review.", 2)).toBe(false);
   });
 
   it("reads exactly one parent-visible curator count marker", () => {

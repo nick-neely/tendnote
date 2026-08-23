@@ -2,9 +2,10 @@ import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
 import {
   assistantMessageMatches,
+  hasNoRuntimeFailures,
   requestedQuestionMatches,
-} from "../behavior/general-action-mutation-boundary.eval";
-import { hasNoRuntimeFailures, without } from "../expectations";
+  without,
+} from "../expectations";
 
 const TIMING_CLARIFICATION =
   /\b(?:when|what\s+(?:time|day|date)|which\s+(?:date|day|time)|clarif|specific|concrete|too vague)\b/i;

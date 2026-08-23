@@ -273,6 +273,76 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+const SAFE_ACTION_CLARIFICATION =
+  /which|confirm|want me to|let me know|tell me which|specify|clean|finished|nothing|none|no (active|resolved|open)|don't have|already (cleared|done|finished|completed)/i;
+
+export function requestedQuestionMatches(events: readonly unknown[], pattern: RegExp): boolean {
+  return events.some((event) => questionPrompts(event).some((prompt) => pattern.test(prompt)));
+}
+
+function questionPrompts(event: unknown): string[] {
+  if (!isRecord(event)) return [];
+  const data = isRecord(event.data) ? event.data : null;
+  if (event.type === "actions.requested") {
+    const actions = Array.isArray(data?.actions) ? data.actions : [];
+    return actions.flatMap((action) => {
+      if (!isRecord(action) || action.toolName !== "ask_question") return [];
+      return (
+        promptFrom(action.input) ?? promptFrom(action.args) ?? promptFrom(action.arguments) ?? []
+      );
+    });
+  }
+  if (event.type === "input.requested") {
+    const requests = Array.isArray(data?.requests) ? data.requests : [];
+    return requests.flatMap((request) => {
+      if (!isRecord(request)) return [];
+      const isQuestion = request.toolName === "ask_question" || request.kind === "question";
+      if (!isQuestion) return [];
+      return (
+        promptFrom(request) ??
+        promptFrom(request.input) ??
+        promptFrom(request.toolInput) ??
+        promptFrom(request.args) ??
+        []
+      );
+    });
+  }
+  return [];
+}
+
+function promptFrom(value: unknown): string[] | null {
+  if (!isRecord(value) || typeof value.prompt !== "string") return null;
+  return [value.prompt];
+}
+
+/** Return only the final completed assistant prose from the Eve 0.32 stream. */
+export function assistantMessageTexts(events: readonly unknown[]): string[] {
+  const completed = events.flatMap((event) => {
+    if (!isRecord(event)) return [];
+    const data = isRecord(event.data) ? event.data : null;
+    if (event.type !== "message.completed" || data?.finishReason === "tool-calls") return [];
+    return typeof data?.message === "string" ? [data.message] : [];
+  });
+  return completed.slice(-1);
+}
+
+export function assistantMessageMatches(events: readonly unknown[], pattern: RegExp): boolean {
+  return assistantMessageTexts(events).some((text) => pattern.test(text));
+}
+
+/** The clarification gate is evaluated from this turn's event stream only. */
+export function hasSafeActionClarification(events: readonly unknown[]): boolean {
+  if (!hasNoRuntimeFailures(events)) return false;
+  const messages = assistantMessageTexts(events);
+  if (messages.some((message) => isUntruthfulActionMutationClaim(message))) return false;
+  return (
+    requestedQuestionMatches(events, SAFE_ACTION_CLARIFICATION) ||
+    messages.some(
+      (message) => SAFE_ACTION_CLARIFICATION.test(message) || isSemanticClarification(message),
+    )
+  );
+}
+
 function nestedString(value: Record<string, unknown>, ...path: string[]): string | null {
   let current: unknown = value;
   for (const key of path) {
@@ -309,7 +379,14 @@ export function hasFields(value: unknown, expected: Record<string, unknown>): bo
   );
 }
 
-type ExpectedValue = unknown | RegExp | ((value: unknown) => boolean);
+type ExpectedValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | RegExp
+  | ((value: unknown) => boolean);
 
 type FollowupLifecycleExpectation = {
   id?: ExpectedValue;
