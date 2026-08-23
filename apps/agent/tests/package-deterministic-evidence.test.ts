@@ -1,5 +1,11 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildEvidenceMetadata } from "../scripts/package-deterministic-evidence.mjs";
+import {
+  buildEvidenceMetadata,
+  reportWithRuntimeDetails,
+} from "../scripts/package-deterministic-evidence.mjs";
 
 const sourceCommit = "a".repeat(40);
 const base = {
@@ -139,6 +145,26 @@ describe("deterministic publication evidence classification", () => {
     );
   });
 
+  it("accepts Eve 0.32 runtime events nested under detailed sessions", () => {
+    const original = base.reports[0];
+    if (!original) throw new Error("Expected a base report.");
+    const currentShape = {
+      ...original,
+      evals: original.evals.map((entry) => ({
+        id: entry.id,
+        result: {
+          status: "completed",
+          sessions: [{ events: entry.result.events }],
+        },
+      })),
+    };
+
+    expect(buildEvidenceMetadata({ ...base, reports: [currentShape] })).toMatchObject({
+      clean: true,
+      configuration: { agentModel: "google/gemini-3.7-flash", eveVersion: "0.32.0" },
+    });
+  });
+
   it("blocks JSONL status totals that disagree with the summary", () => {
     const rows = (base.resultRows.at(0) ?? []).map((row, index) =>
       index === 0 ? { ...row, status: "waiting" } : row,
@@ -162,5 +188,71 @@ describe("deterministic publication evidence classification", () => {
     expect(
       buildEvidenceMetadata({ ...base, junit: { ...base.junit, ids: missingJUnit } }).clean,
     ).toBe(false);
+  });
+});
+
+describe("Eve runtime detail hydration", () => {
+  it("preserves an already detailed summary entry", () => {
+    const entry = base.reports[0]?.evals[0];
+    if (!entry) throw new Error("Expected a base eval entry.");
+
+    expect(reportWithRuntimeDetails("unused", { evals: [entry] }).evals).toEqual([entry]);
+  });
+
+  it("hydrates a compact summary from its matching Eve detail file", () => {
+    const root = mkdtempSync(join(tmpdir(), "tendnote-eve-details-"));
+    try {
+      mkdirSync(join(root, "evals"));
+      writeFileSync(
+        join(root, "evals", "eval-0.json"),
+        JSON.stringify({
+          id: "eval-0",
+          result: {
+            status: "completed",
+            sessions: [{ events: base.reports[0]?.evals[0]?.result.events }],
+          },
+        }),
+      );
+
+      const hydrated = reportWithRuntimeDetails(root, {
+        evals: [{ id: "eval-0", result: { status: "completed" } }],
+      });
+      expect(hydrated.evals?.[0]?.result).toMatchObject({
+        status: "completed",
+        sessions: expect.any(Array),
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed for unsafe, missing, or mismatched detail records", () => {
+    const root = mkdtempSync(join(tmpdir(), "tendnote-eve-details-invalid-"));
+    try {
+      mkdirSync(join(root, "evals"));
+      expect(() => reportWithRuntimeDetails(root, { evals: [{}] })).toThrow(/no id/i);
+      expect(() =>
+        reportWithRuntimeDetails(root, {
+          evals: [{ id: "../../outside", result: { status: "completed" } }],
+        }),
+      ).toThrow(/escapes/i);
+      expect(() =>
+        reportWithRuntimeDetails(root, {
+          evals: [{ id: "missing", result: { status: "completed" } }],
+        }),
+      ).toThrow(/no detailed runtime report/i);
+
+      writeFileSync(
+        join(root, "evals", "eval-0.json"),
+        JSON.stringify({ id: "another-eval", result: null }),
+      );
+      expect(() =>
+        reportWithRuntimeDetails(root, {
+          evals: [{ id: "eval-0", result: { status: "completed" } }],
+        }),
+      ).toThrow(/invalid detailed runtime report/i);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

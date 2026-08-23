@@ -8,7 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 
 const SHA = /^[0-9a-f]{40}$/;
 
@@ -222,10 +222,19 @@ function sameIdSet(left, right) {
   );
 }
 
+function runtimeEvents(entry) {
+  const direct = Array.isArray(entry?.result?.events) ? entry.result.events : [];
+  const sessions = Array.isArray(entry?.result?.sessions) ? entry.result.sessions : [];
+  return [
+    ...direct,
+    ...sessions.flatMap((session) => (Array.isArray(session?.events) ? session.events : [])),
+  ];
+}
+
 function observedRuntimeIdentity(reports, expectedModel) {
   const identities = reports.flatMap((report) =>
     (report.evals ?? []).flatMap((entry) =>
-      (entry.result?.events ?? [])
+      runtimeEvents(entry)
         .filter((event) => event?.type === "session.started")
         .map((event) => event?.data?.runtime)
         .filter(Boolean),
@@ -305,6 +314,36 @@ function reportRoundDirectories(repoRoot, evalRoot) {
   return explicit ? [resolve(repoRoot, explicit)] : reportDirectories(evalRoot);
 }
 
+/**
+ * Eve 0.32 keeps the summary compact and writes the complete session stream to
+ * `evals/<id>.json`. Hydrate only the runtime-bearing result used for identity
+ * verification; the canonical summary copied into evidence remains untouched.
+ */
+export function reportWithRuntimeDetails(dir, report) {
+  const detailsRoot = resolve(dir, "evals");
+  return {
+    ...report,
+    evals: (report.evals ?? []).map((entry) => {
+      if (runtimeEvents(entry).length > 0) return entry;
+      if (typeof entry?.id !== "string" || entry.id.length === 0) {
+        throw new Error("Summary eval has no id for runtime detail lookup.");
+      }
+      const detailPath = resolve(detailsRoot, `${entry.id}.json`);
+      if (!detailPath.startsWith(`${detailsRoot}${sep}`)) {
+        throw new Error(`Eval id escapes its report directory: ${entry.id}.`);
+      }
+      if (!statSync(detailPath, { throwIfNoEntry: false })) {
+        throw new Error(`Eval ${entry.id} has no detailed runtime report.`);
+      }
+      const detail = json(detailPath);
+      if (detail.id !== entry.id || !detail.result || typeof detail.result !== "object") {
+        throw new Error(`Eval ${entry.id} has an invalid detailed runtime report.`);
+      }
+      return { ...entry, result: detail.result };
+    }),
+  };
+}
+
 function summaryTotal(report) {
   return Number(report.totalEvals ?? report.evals?.length ?? 0);
 }
@@ -347,6 +386,7 @@ function main() {
   const output = optionPath(repoRoot, "--output", `evidence/evals/${sourceCommit}`);
   const dirs = reportRoundDirectories(repoRoot, evalRoot);
   const reports = dirs.map((dir) => json(join(dir, "summary.json")));
+  const runtimeReports = dirs.map((dir, index) => reportWithRuntimeDetails(dir, reports[index]));
   const junitSource = join(evalRoot, "junit.xml");
   const metadata = buildEvidenceMetadata({
     sourceCommit,
@@ -354,7 +394,7 @@ function main() {
     command: required("--command"),
     agentModel: required("--agent-model"),
     exitCode: Number(readFileSync(required("--exit-code-file"), "utf8").trim()),
-    reports,
+    reports: runtimeReports,
     resultRows: dirs.map((dir) => jsonl(join(dir, "results.jsonl"))),
     junit: junitCounts(readFileSync(junitSource, "utf8")),
     packagedAt: new Date().toISOString(),

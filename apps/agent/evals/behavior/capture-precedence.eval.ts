@@ -61,8 +61,12 @@ const cases: readonly CapturePrecedenceCase[] = [
   {
     claim: "Explicit Memory and Asset facts enter their approved and review-gated Capture seams.",
     tags: ["deterministic", "behavior", "capture", "memory", "assets", "phase-seven"],
+    // Keep this person deliberately absent from the committed fixture. Case 0000
+    // adds Priya through Capture, and Eve's serial suite shares one freshly seeded
+    // database across cases; reusing Priya here made this clarification assertion
+    // depend on whether that earlier mutation had already run.
     prompt:
-      "Use Capture: remember that Priya prefers oat milk; track asset refrigerator filter: model EDR4RXD1.",
+      "Use Capture: remember that Talia prefers oat milk; track asset refrigerator filter: model EDR4RXD1.",
     originalText: /remember.*track asset/is,
     captureInput: {
       inferredSuggestions: (value: unknown) => value === undefined,

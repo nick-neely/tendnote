@@ -14,11 +14,19 @@ export type EvidenceReport = {
         type?: string;
         data?: { runtime?: { modelId?: string; eveVersion?: string } };
       }>;
+      sessions?: Array<{
+        events?: Array<{
+          type?: string;
+          data?: { runtime?: { modelId?: string; eveVersion?: string } };
+        }>;
+      }>;
     };
   }>;
 };
 
 export type EvidenceResultRow = { id?: string; verdict?: string; status?: string };
+
+export function reportWithRuntimeDetails(directory: string, report: EvidenceReport): EvidenceReport;
 
 export function buildEvidenceMetadata(input: {
   sourceCommit: string;
