@@ -46,8 +46,10 @@ describe("production model defaults", () => {
       source.match(/AGENT_MODEL: \$\{\{ vars\.TENDNOTE_AGENT_MODEL \|\| '[^']+' \}\}/g),
     ).toEqual([`AGENT_MODEL: \${{ vars.TENDNOTE_AGENT_MODEL || '${GEMINI}' }}`]);
     expect(source).toContain(
-      'TENDNOTE_AGENT_MODEL="$AGENT_MODEL" pnpm --filter @tendnote/agent eval:deterministic',
+      'DATABASE_URL="$TENDNOTE_EVAL_DATABASE_URL" TENDNOTE_AGENT_MODEL="$AGENT_MODEL"',
     );
+    expect(source).toContain("--max-concurrency 1 --junit .eve/evals/junit.xml");
+    expect(source).not.toContain("deterministic-eval-retry");
     expect(source).toContain('--agent-model "$AGENT_MODEL"');
   });
 });

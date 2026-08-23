@@ -41,10 +41,9 @@ jobs:
     # does not bill an interrupted spot instance, and an interruption late in a
     # run discards the model credits it already spent.
     runs-on: runs-on=${{ github.run_id }}-eve-evals/runner=deploy
-    # The deterministic tag runs one eval at a time against a live model, and
-    # resamples every failure twice. This is a manual-dispatch workflow, so the
-    # bound is here to stop a hung run from burning an hour of minutes, not to
-    # pace a healthy one.
+    # The deterministic tag runs one eval at a time against a live model. The
+    # publication gate is first-sample-only: a failure remains a failure and is
+    # never resampled inside this paid workflow.
     timeout-minutes: 90
     services:
       postgres:
@@ -100,20 +99,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Exit 3 means no eval failed outright but at least one only passed on
-      # retry. That fails the step on purpose: a deterministic gate that needs a
-      # second sample is not clean, and the artifacts below say which one. Exit 4
-      # means nothing was graded at all - every eval skipped itself - which is a
-      # green lane over an unproven build, so it fails here too.
+      # Run the qualifying sample directly instead of the diagnostic retry
+      # wrapper. A non-zero strict result remains non-zero, and no paid model
+      # request is repeated by this workflow.
       - name: Run Eve model evaluations
         id: evaluate
         continue-on-error: true
+        working-directory: apps/agent
         run: |
+          node scripts/require-model-credentials.mjs deterministic
+          pnpm eval:prepare
           set +e
-          TENDNOTE_AGENT_MODEL="$AGENT_MODEL" pnpm --filter @tendnote/agent eval:deterministic
+          DATABASE_URL="$TENDNOTE_EVAL_DATABASE_URL" TENDNOTE_AGENT_MODEL="$AGENT_MODEL" \
+            pnpm exec eve eval --tag deterministic --strict --skip-report \
+            --max-concurrency 1 --junit .eve/evals/junit.xml
           status=$?
-          mkdir -p apps/agent/.eve/evals
-          echo "$status" > apps/agent/.eve/evals/exit-code.txt
+          mkdir -p .eve/evals
+          echo "$status" > .eve/evals/exit-code.txt
           exit "$status"
         timeout-minutes: 75
 
@@ -127,7 +129,7 @@ jobs:
           --source-sha "$CANDIDATE_SHA"
           --exit-code-file apps/agent/.eve/evals/exit-code.txt
           --workflow-url "$WORKFLOW_URL"
-          --command "pnpm --filter @tendnote/agent eval:deterministic"
+          --command "pnpm exec eve eval --tag deterministic --strict --skip-report --max-concurrency 1 --junit .eve/evals/junit.xml"
           --agent-model "$AGENT_MODEL"
 
       - name: Upload Eve evaluation artifacts
