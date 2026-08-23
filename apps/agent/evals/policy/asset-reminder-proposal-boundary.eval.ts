@@ -1,6 +1,11 @@
 import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
-import { hasGroundedPendingAssetProposal, NO_RAW_IDS, without } from "../expectations";
+import {
+  hasGroundedPendingAssetProposal,
+  isNonEmptyUuidArray,
+  NO_RAW_IDS,
+  without,
+} from "../expectations";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -26,7 +31,11 @@ export default defineEval({
     t.succeeded();
     t.calledTool("search_assets", { input: { query: /refrigerator|warranty/i }, count: 1 });
     t.calledTool("propose_asset_actions", {
-      input: { assetId: UUID, assetMemoryIds: [UUID] },
+      // The owning tool accepts every reviewed detail being considered. Do not
+      // reject a valid call merely because it carried additional reviewed UUIDs;
+      // the event assertion below proves the resulting pending proposal is tied
+      // to the exact refrigerator warranty detail.
+      input: { assetId: UUID, assetMemoryIds: isNonEmptyUuidArray },
       count: 1,
     });
     t.toolOrder(["search_assets", "propose_asset_actions"]);
