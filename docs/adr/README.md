@@ -66,6 +66,7 @@ the bounded publication evidence path.
 - [0233 — Contributions use an individual CLA and PR-local provenance](0233-contributions-use-an-individual-cla-and-pr-local-provenance.md)
 - [0234 — Reader Evidence Path starts at the README](0234-reader-evidence-path-starts-at-the-readme.md)
 - [0235 — Self-hosted admission uses an explicit email policy](0235-self-hosted-admission-uses-an-explicit-email-policy.md)
+- [0236 - Pull request verification is one full-fidelity path](0236-pull-request-verification-is-one-full-fidelity-path.md)
 
 The catalog intentionally omits the Phase 9a planning workspace. That
 workspace remains useful to maintainers, but it is not a newcomer evidence

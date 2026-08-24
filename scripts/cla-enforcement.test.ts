@@ -440,18 +440,16 @@ describe("external CLA enforcement contract", () => {
       },
     ]);
     expect(config.enforcement.requiresPostUpdateVerification).toBe(true);
-    expect(config.enforcement.existingRequiredStatusContexts).toEqual([
-      "Verify",
-      "Full CI qualification",
-      "Vercel",
-      "license/cla",
-    ]);
-    expect(statusRule?.parameters?.required_status_checks?.map(({ context }) => context)).toEqual([
-      "Verify",
-      "Full CI qualification",
-      "Vercel",
-      "license/cla",
-    ]);
+    // The manifest exists to mirror the tracked ruleset, so the invariant is
+    // that the two agree, not a third copy of the list.
+    // `ci-workflow-optimization.test.ts` is what pins the ruleset itself,
+    // against the verification job names that produce those contexts.
+    const rulesetContexts = statusRule?.parameters?.required_status_checks?.map(
+      ({ context }) => context,
+    );
+
+    expect(rulesetContexts).toContain("license/cla");
+    expect(config.enforcement.existingRequiredStatusContexts).toEqual(rulesetContexts);
     expect(statusRule?.parameters?.required_status_checks).not.toContainEqual({
       context: "CLA Assistant",
     });

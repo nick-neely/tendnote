@@ -3,16 +3,16 @@ name: Reusable verify
 on:
   workflow_call:
     inputs:
-      run_tests:
-        description: Run the unit-test lane
+      run_quality:
+        description: Run lint, typecheck, and the real-browser contracts
         required: false
         type: boolean
         default: true
-      run_fast_packages:
-        description: Add affected package tests to the fast workflow-contract lane
+      run_tests:
+        description: Run the coverage-backed unit-test and Fallow lane
         required: false
         type: boolean
-        default: false
+        default: true
       run_browser:
         description: Run the focused real-browser component contracts
         required: false
@@ -28,11 +28,6 @@ on:
         required: false
         type: boolean
         default: true
-      run_full:
-        description: Replace fast tests with coverage-backed Fallow and browser qualification
-        required: false
-        type: boolean
-        default: false
       full_browser_matrix:
         description: >-
           Run the full upgrade-and-promotion browser matrix (adds reduced Firefox
@@ -118,6 +113,7 @@ jobs:
 
   quality:
     name: Quality
+    if: inputs.run_quality
     runs-on: >-
       ${{
         github.event_name == 'pull_request' &&
@@ -125,7 +121,7 @@ jobs:
         'ubuntu-latest' ||
         format('runs-on={0}-quality/runner=default', github.run_id)
       }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Set up RunsOn
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
@@ -154,63 +150,48 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-  fast_tests:
-    name: Fast affected tests
-    if: ${{ inputs.run_tests && !inputs.run_full }}
-    runs-on: >-
-      ${{
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.fork &&
-        'ubuntu-latest' ||
-        format('runs-on={0}-fast-tests/runner=big', github.run_id)
-      }}
-    timeout-minutes: 20
-    steps:
-      - name: Set up RunsOn
-        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        uses: runs-on/action@v2
+      # A four-contract Chromium suite closes the layout-engine gap that jsdom cannot:
+      # phone-width reflow/overflow, lifecycle hit areas, and real scroll/focus/pulse.
+      # It rides here rather than in Test and Fallow because that job is the
+      # critical path and this one has minutes of slack.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        if: ${{ inputs.run_browser }}
+        uses: actions/cache@v5
         with:
-          show_costs: summary
+          path: ~/.cache/ms-playwright
+          # `runner.os` is `Linux` on both x64 and arm64, so the architecture has
+          # to be in the key: restoring x64 browser binaries onto a Graviton
+          # runner fails at launch rather than at restore.
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('pnpm-lock.yaml') }}
 
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
+      - name: Install Chromium and system dependencies
+        if: ${{ inputs.run_browser && steps.playwright-cache.outputs.cache-hit != 'true' }}
+        run: pnpm --filter @tendnote/web exec playwright install --with-deps chromium
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: ${{ env.PNPM_VERSION }}
+      # No `install-deps` on a cache hit. `ubuntu24-full-x64` derives from the
+      # GitHub runner image, which already ships Chromium's shared libraries, so
+      # the apt pass cost 20-27s per job and installed nothing. The cache-miss
+      # path above keeps `--with-deps` as the safety net.
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run workflow contracts
-        run: pnpm exec vitest run scripts/*.test.ts
-
-      - name: Run affected package tests
-        if: ${{ inputs.run_fast_packages }}
-        # Turbo's documented SCM override keeps --affected on the fetched
-        # default-branch range instead of falling back to an unavailable `main` ref.
-        env:
-          TURBO_SCM_BASE: origin/main
-        run: pnpm turbo test --affected
+      - name: Run real-browser contracts
+        if: ${{ inputs.run_browser }}
+        run: pnpm test:browser
 
   test_fallow:
     name: Test and Fallow
-    if: ${{ (inputs.run_tests || inputs.run_browser) && inputs.run_full }}
+    if: inputs.run_tests
+    # Pinned to 16 vCPU rather than left to the `big` preset's 8-16 range. The
+    # collector's `--maxWorkers=50%` then gives `apps/web`, the long pole of the
+    # run, eight workers instead of four. RunsOn bills by vCPU-minute, so
+    # doubling the per-hour rate while roughly halving the wall time leaves the
+    # cost of the job unchanged.
     runs-on: >-
       ${{
         github.event_name == 'pull_request' &&
         github.event.pull_request.head.repo.fork &&
         'ubuntu-latest' ||
-        format('runs-on={0}-test-fallow/runner=big', github.run_id)
+        format('runs-on={0}-test-fallow/runner=big/cpu=16', github.run_id)
       }}
     timeout-minutes: 30
     steps:
@@ -239,41 +220,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        if: ${{ inputs.run_browser }}
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          # `runner.os` is `Linux` on both x64 and arm64, so the architecture has
-          # to be in the key: restoring x64 browser binaries onto a Graviton
-          # runner fails at launch rather than at restore.
-          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('pnpm-lock.yaml') }}
-
-      - name: Install Chromium and system dependencies
-        if: ${{ inputs.run_browser && steps.playwright-cache.outputs.cache-hit != 'true' }}
-        run: pnpm --filter @tendnote/web exec playwright install --with-deps chromium
-
-      - name: Install Chromium system dependencies
-        if: ${{ inputs.run_browser && steps.playwright-cache.outputs.cache-hit == 'true' }}
-        run: pnpm --filter @tendnote/web exec playwright install-deps chromium
-
       # This is the canonical CI test pass. Fallow uses the merged V8 map for
       # exact per-function CRAP scores, so running a second non-coverage test
       # job would repeat the same suites without adding another behavior gate.
       # `collect-test-coverage.mjs` holds itself to two concurrent workspaces
       # whatever the runner, because concurrent Vitest processes have
-      # destabilized async DOM tests under coverage before. The `big` preset most
-      # reliably buys faster install and build; it also takes each workspace's
-      # `--maxWorkers=50%` from roughly one worker to four or eight, which is the
-      # same hazard one level down and is not yet proven here. If new flakes show
-      # up under coverage on `big`, turn `--maxWorkers` down before anything else.
+      # destabilized async DOM tests under coverage before. Widening the runner
+      # rather than that limit is what shortens this lane: each workspace's
+      # `--maxWorkers=50%` scales with the pinned vCPU count instead. That is the
+      # same hazard one level down, so if new flakes appear under coverage, turn
+      # `--maxWorkers` down before anything else.
       - name: Run tests with coverage
-        if: ${{ inputs.run_tests }}
         run: pnpm coverage:ci
 
       - name: Confirm exact CRAP scoring
-        if: ${{ inputs.run_tests }}
         run: pnpm fallow:coverage:check
 
       # Without an explicit base Fallow resolves one from the branch's own
@@ -281,24 +241,17 @@ jobs:
       # reports almost nothing and the gate passes while blind. `fetch-depth: 0`
       # above is what makes `origin/main` resolvable here.
       - name: Run Fallow audit
-        if: ${{ inputs.run_tests }}
         env:
           FALLOW_AUDIT_BASE: origin/main
         run: pnpm fallow:ci
 
-      # A four-contract Chromium suite closes the layout-engine gap that jsdom cannot:
-      # phone-width reflow/overflow, lifecycle hit areas, and real scroll/focus/pulse.
-      - name: Run real-browser contracts
-        if: ${{ inputs.run_browser }}
-        run: pnpm test:browser
-
   # The Instant Interaction contract (#310, ADR 0210). A separate job rather than
-  # more steps in Test and Fallow: it must run *alongside* the existing critical
-  # path so protecting navigation does not lengthen every pull request, and the
-  # aggregate full-qualification wall time has to stay under nine minutes.
+  # more steps in Test and Fallow: it must run *alongside* that critical path so
+  # protecting navigation does not lengthen every pull request, and the aggregate
+  # pull-request verification wall time has to stay under nine minutes.
   instant_matrix:
     name: Instant matrix
-    if: ${{ inputs.run_full && inputs.run_instant }}
+    if: inputs.run_instant
     # Pinned rather than left to the preset's 2-4 CPU range across four instance
     # families. Every number this job records is a navigation timing margin, so a
     # runner shape that varies run to run turns the recorded trend into a reading
@@ -320,8 +273,8 @@ jobs:
     # The rollout criterion is a wall-time one. Without this a hung `next start`
     # would sit on GitHub's six-hour default instead of failing the gate.
     #
-    # The full tier gets longer because its first run is a guaranteed cache miss
-    # (its Playwright cache key is `all`, not `chromium`) that installs three
+    # The promotion tier gets longer because its first run is a guaranteed
+    # cache miss (its key is `all`, not `chromium`) that installs three
     # engines with system dependencies before it builds — and that first run is
     # the mandatory WebKit evidence, so it must not be the run that times out.
     #
@@ -402,11 +355,11 @@ jobs:
           (inputs.full_browser_matrix && steps.playwright-cache-all.outputs.cache-hit != 'true')
         run: pnpm --filter @tendnote/web exec playwright install --with-deps ${{ inputs.full_browser_matrix && 'chromium firefox webkit' || 'chromium' }}
 
+      # Only the full matrix needs an apt pass on a cache hit: Firefox and WebKit
+      # want libraries the runner image does not carry, Chromium does not.
       - name: Install browser system dependencies
-        if: >-
-          (!inputs.full_browser_matrix && steps.playwright-cache-chromium.outputs.cache-hit == 'true') ||
-          (inputs.full_browser_matrix && steps.playwright-cache-all.outputs.cache-hit == 'true')
-        run: pnpm --filter @tendnote/web exec playwright install-deps ${{ inputs.full_browser_matrix && 'chromium firefox webkit' || 'chromium' }}
+        if: ${{ inputs.full_browser_matrix && steps.playwright-cache-all.outputs.cache-hit == 'true' }}
+        run: pnpm --filter @tendnote/web exec playwright install-deps chromium firefox webkit
 
       - name: Run the routine Chromium matrix
         if: ${{ !inputs.full_browser_matrix }}

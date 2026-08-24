@@ -4,19 +4,19 @@ This page is the small contributor-facing companion to
 [`docs/local-development.md`](local-development.md). The contribution guide
 links here without copying the workflow details.
 
-## Verification labels
+## One verification path
 
-Code pull requests need the `full-ci` label before they can satisfy the
-required **Full CI qualification** check. Applying the label runs the
-coverage-backed Test and Fallow, browser, Instant, and database lanes for the
-exact pull-request commit. The check remains **Qualification pending** until
-that label event succeeds.
+Every push to a code pull request runs the whole verification set: **Quality**
+(lint, typecheck, and the real-browser contracts), **Test and Fallow**
+(coverage-backed tests, the CRAP check, and the Fallow audit), **Instant
+matrix**, and **Database**. There is no label to apply and no tier to request,
+so the result you see is always the result for the commit that would merge.
+[ADR 0236](adr/0236-pull-request-verification-is-one-full-fidelity-path.md)
+records why.
 
-Apply `full-ci` only after the final code commit is pushed. A later commit
-keeps the ordinary `Verify` check current but invalidates the exact-SHA full
-qualification, so remove and reapply `full-ci` on the final commit. A
-documentation-only change is qualified automatically and does not run the
-expensive verification lanes.
+Each lane is required, and each is skipped when the change does not touch its
+paths. A documentation-only pull request runs no verification lane at all and
+still merges: GitHub reports a skipped job as a successful required check.
 
 ## Fork pull requests
 
@@ -41,6 +41,8 @@ publication. Every trusted job starts with `runs-on/action@v2` to activate the
 Magic Cache sidecar. Fork jobs deliberately take the `ubuntu-latest` fallback
 instead.
 
-The three deliberately expensive jobs keep `show_costs: summary`: `fast_tests`,
-`test_fallow`, and `instant_matrix`. This gives maintainers a visible cost
-summary without turning routine job output into a cost trace.
+`test_fallow` and `instant_matrix` keep `show_costs: summary`, because they are
+the jobs whose runner shape is worth watching. This gives maintainers a visible
+cost summary without turning routine job output into a cost trace. `quality`
+also installs Chromium now, for the real-browser contracts, but it stays on the
+`default` preset and carries no cost summary.

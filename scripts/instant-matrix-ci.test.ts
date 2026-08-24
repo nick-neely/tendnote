@@ -50,12 +50,17 @@ describe("Instant Interaction matrix CI contract", () => {
       workflow.indexOf("- name: Run the routine Chromium matrix"),
       workflow.indexOf("- name: Summarise recorded diagnostics"),
     );
-    const pullRequest = read(".github/workflows/pr-verify.yml");
+    const ruleset = JSON.parse(read(".github/rulesets/protect-main.json"));
+    const requiredContexts = ruleset.rules
+      .find((rule: { type: string }) => rule.type === "required_status_checks")
+      .parameters.required_status_checks.map(({ context }: { context: string }) => context);
     const promotion = read(".github/workflows/promotion-verify.yml");
 
     expect(matrixGate).not.toContain("continue-on-error: true");
-    expect(pullRequest).toContain('needs.verify.result }}" != "success"');
-    expect(promotion).toContain('needs.verify.result }}" != "success"');
+    // On a pull request the job is itself a required check (ADR 0236); the
+    // promotion tier still aggregates through its own gate job.
+    expect(requiredContexts).toContain("verify / Instant matrix");
+    expect(promotion).toContain('needs.promotion.result }}" != "success"');
   });
 
   it("gives the matrix the database and cache its fixture needs, and a wall clock", () => {
@@ -148,11 +153,11 @@ describe("Full promotion browser matrix trigger", () => {
 
   it("fails the promotion gate rather than reporting a skipped matrix as passing", () => {
     const gate = promotion.slice(promotion.indexOf("  gate:"));
-    // `needs.verify` is skipped whenever the wrong label was applied. The gate
-    // must skip with it rather than run and report success against a matrix
-    // that never executed — and must exit non-zero for any other non-success.
-    expect(gate).toContain("needs.verify.result != 'skipped'");
-    expect(gate).toMatch(/needs\.verify\.result }}" != "success"[\s\S]*?exit 1/);
+    // `needs.promotion` is skipped whenever the wrong label was applied. The
+    // gate must skip with it rather than run and report success against a matrix
+    // that never executed, and must exit non-zero for any other non-success.
+    expect(gate).toContain("needs.promotion.result != 'skipped'");
+    expect(gate).toMatch(/needs\.promotion\.result }}" != "success"[\s\S]*?exit 1/);
   });
 
   it("requests the full tier from the same reusable verification", () => {

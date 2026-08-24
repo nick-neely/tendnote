@@ -34,11 +34,23 @@
         "do_not_enforce_on_create": false,
         "required_status_checks": [
           {
-            "context": "Verify",
+            "context": "Detect changes",
             "integration_id": 15368
           },
           {
-            "context": "Full CI qualification",
+            "context": "verify / Quality",
+            "integration_id": 15368
+          },
+          {
+            "context": "verify / Test and Fallow",
+            "integration_id": 15368
+          },
+          {
+            "context": "verify / Instant matrix",
+            "integration_id": 15368
+          },
+          {
+            "context": "verify / Database",
             "integration_id": 15368
           },
           {

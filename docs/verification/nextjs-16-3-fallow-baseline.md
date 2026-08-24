@@ -188,7 +188,7 @@ is appended.
 - Reproduce the CI verdict with `FALLOW_AUDIT_BASE=origin/main pnpm fallow:ci`.
   Without the variable the base resolves to the branch's own upstream, so a pushed
   branch reports almost nothing. #311 set that variable on the CI step itself
-  (`reusable-verify.yml`, `Run Fallow audit`), so a green `Full CI qualification`
+  (`reusable-verify.yml`, `Run Fallow audit`), so a green `Test and Fallow`
   now means the same thing the local run does; before that change CI was auditing
   a base that was effectively the branch itself.
 - The run prints `duplication baseline has N entries but matched 0 current clone
