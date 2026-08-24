@@ -8,7 +8,7 @@
 ## Learned Workspace Preferences
 
 - Run builds and build-bearing scripts such as `pnpm verify` with elevated permissions; sandboxed runs can hang or time out instead of reporting the real result.
-- Treat pull-request CI as confirmation, not first discovery: use `pnpm test:affected` while iterating, then run every lane implicated by the diff locally before opening the PR. This means `pnpm verify` at minimum, plus `pnpm db:check` for database changes, `pnpm test:browser` for browser contracts, `pnpm test:instant` for Instant-backed behavior, and `pnpm coverage:ci && FALLOW_AUDIT_BASE=origin/main pnpm fallow:ci` when requesting `full-ci`.
+- Treat pull-request CI as confirmation, not first discovery: use `pnpm test:affected` while iterating, then run every lane implicated by the diff locally before opening the PR. This means `pnpm verify` at minimum, plus `pnpm db:check` for database changes, `pnpm test:browser` for browser contracts, `pnpm test:instant` for Instant-backed behavior, and `pnpm coverage:ci && FALLOW_AUDIT_BASE=origin/main pnpm fallow:ci` for the Fallow gate, which every code pull request now runs.
 - Eve authored channel route paths are absolute; channel filenames do not mount or prefix routes.
 
 ## Agent skills

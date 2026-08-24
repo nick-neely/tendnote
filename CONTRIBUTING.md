@@ -8,7 +8,7 @@ without asking contributors to disclose private material.
 
 Start with the [README](README.md), then follow [local development](docs/local-development.md)
 for prerequisites, setup, and commands. Read [the CI contribution notes](docs/ci-contributing.md)
-for the verification tiers.
+for what pull-request verification runs.
 
 Open an Issue before starting material behavior, architecture, or privacy work.
 Small documentation corrections and clearly self-contained test fixes may go
@@ -23,7 +23,7 @@ exploit details in a public Issue or pull request.
 Use the [pull-request template](.github/pull_request_template.md). Keep the
 change focused, link the related Issue when one exists, describe user-visible
 and privacy-boundary impact, and list the checks you personally ran. See the
-[verification labels](docs/ci-contributing.md#verification-labels), [CI
+[one verification path](docs/ci-contributing.md#one-verification-path), [CI
 workflow requirements](docs/local-development.md#ci-workflows), and tracked
 [default-branch ruleset](.github/rulesets/protect-main.json) for the exact
 review and check expectations. The repository-owned [CLA Assistant desired-state manifest](.github/cla-assistant-desired-state.json),

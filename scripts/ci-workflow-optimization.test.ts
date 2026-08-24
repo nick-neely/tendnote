@@ -8,8 +8,52 @@ function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), "utf8");
 }
 
+/** Everything under `jobs:`, so `on:` keys cannot be mistaken for job ids. */
+function jobsSection(workflow: string): string {
+  const start = workflow.indexOf("\njobs:\n");
+
+  return start === -1 ? "" : workflow.slice(start + "\njobs:".length);
+}
+
+/** The text of one top-level job, from its id to the next job id. */
+function jobBlock(workflow: string, jobId: string): string {
+  const block = new RegExp(`\\n {2}${jobId}:\\n[\\s\\S]*?(?=\\n {2}[a-z_]+:\\n|$)`).exec(
+    jobsSection(workflow),
+  );
+
+  return block?.[0] ?? "";
+}
+
+/** Top-level job ids, in declaration order. */
+function jobIds(workflow: string): string[] {
+  return [...jobsSection(workflow).matchAll(/^ {2}([a-z_]+):$/gm)].map(([, id]) => id);
+}
+
+/** Job-level `name:` values, which are what GitHub publishes as check runs. */
+function jobNames(workflow: string): string[] {
+  return [...jobsSection(workflow).matchAll(/^ {4}name: (.+)$/gm)].map(([, name]) => name);
+}
+
+// The required checks are the verification jobs themselves (ADR 0236), and a
+// job that skips itself reports success. So the ruleset is derivable from the
+// workflows rather than a literal someone has to keep in step with them: a
+// reusable workflow's jobs publish as `<caller job id> / <job name>`.
+const CALLER_JOB_ID = "verify";
+
+function derivedRequiredContexts(): string[] {
+  return [
+    ...jobNames(read(".github/workflows/pr-verify.yml")),
+    ...jobNames(read(".github/workflows/reusable-verify.yml")).map(
+      (name) => `${CALLER_JOB_ID} / ${name}`,
+    ),
+    // Not Actions jobs, so these two cannot be derived.
+    "Vercel",
+    "license/cla",
+  ];
+}
+
 describe("CI workflow optimization contract", () => {
-  it("protects main behind the stable PR and Vercel checks", () => {
+  it("protects main behind the verification jobs, Vercel, and the CLA", () => {
     const ruleset = JSON.parse(read(".github/rulesets/protect-main.json"));
     const rules = new Map(ruleset.rules.map((rule: { type: string }) => [rule.type, rule]));
     const pullRequest = rules.get("pull_request") as {
@@ -18,7 +62,7 @@ describe("CI workflow optimization contract", () => {
     const statusChecks = rules.get("required_status_checks") as {
       parameters: {
         strict_required_status_checks_policy: boolean;
-        required_status_checks: Array<{ context: string }>;
+        required_status_checks: Array<{ context: string; integration_id?: number }>;
       };
     };
 
@@ -31,12 +75,18 @@ describe("CI workflow optimization contract", () => {
     expect(pullRequest.parameters.required_review_thread_resolution).toBe(true);
     expect(pullRequest.parameters.allowed_merge_methods).toEqual(["squash", "rebase"]);
     expect(statusChecks.parameters.strict_required_status_checks_policy).toBe(true);
-    expect(statusChecks.parameters.required_status_checks.map(({ context }) => context)).toEqual([
-      "Verify",
-      "Full CI qualification",
-      "Vercel",
-      "license/cla",
-    ]);
+    // Sorted, because the ruleset's order is presentation and the derivation's
+    // is declaration order. What matters is that the sets are identical: no
+    // required check without a job, no verification job without a required check.
+    expect(
+      statusChecks.parameters.required_status_checks.map(({ context }) => context).sort(),
+    ).toEqual(derivedRequiredContexts().sort());
+    // Actions checks must be pinned to the Actions app; an unpinned context can
+    // be satisfied by any commit status with a matching name.
+    for (const check of statusChecks.parameters.required_status_checks) {
+      if (check.context === "Vercel") continue;
+      expect(check.integration_id).toBe(check.context === "license/cla" ? 128106 : 15368);
+    }
     expect(ruleset.bypass_actors).toEqual([
       {
         actor_id: 5,
@@ -46,90 +96,146 @@ describe("CI workflow optimization contract", () => {
     ]);
   });
 
-  it("keeps one stable PR gate and does not verify documentation-only changes", () => {
-    const workflow = read(".github/workflows/pr-verify.yml");
+  it("names the caller job the required contexts are derived from", () => {
+    const pullRequest = read(".github/workflows/pr-verify.yml");
 
-    expect(workflow).toMatch(/verify_gate:\n\s+name: \$\{\{[^}]*'Verify'[^}]*\}\}/);
-    expect(workflow).toMatch(
-      /qualification_gate:\n\s+name: \$\{\{[^}]*'Full CI qualification'[^}]*'Qualification pending'[^}]*\}\}/,
+    // Renaming this job renames every `verify / *` required check with it.
+    expect(jobIds(pullRequest)).toEqual(["changes", CALLER_JOB_ID]);
+    expect(jobNames(pullRequest)).toEqual(["Detect changes"]);
+    expect(jobBlock(pullRequest, CALLER_JOB_ID)).toContain(
+      "uses: ./.github/workflows/reusable-verify.yml",
     );
-    expect(workflow).not.toContain("docs_qualification:");
-    expect(workflow).not.toContain(
-      "github.event.action != 'labeled' && needs.changes.outputs.verify != 'true' && 'Full CI qualification' || 'Qualification required'",
-    );
-    expect(workflow).toContain("uses: ./.github/workflows/reusable-verify.yml");
-    expect(workflow).toContain("- 'scripts/**'");
-    expect(workflow).not.toContain("- 'docs/**'");
-    expect(workflow).not.toContain("- 'README.md'");
   });
 
-  it("runs only workflow contracts for CI-only draft changes", () => {
+  it("runs one full-fidelity verification path on every code push", () => {
     const pullRequest = read(".github/workflows/pr-verify.yml");
     const reusable = read(".github/workflows/reusable-verify.yml");
-    const fastPackageFilter = pullRequest.match(/fast_packages:\n([\s\S]*?)\n {12}browser:/)?.[1];
-    const modeScript = pullRequest.match(
-      /- name: Select verification tier[\s\S]*?echo "full_requested=.*?\n/,
-    )?.[0];
+    const triggerTypes = [
+      ...(pullRequest.match(/types:\n((?:\s*-\s*\w+\n)+)/)?.[1] ?? "").matchAll(/-\s*(\w+)/g),
+    ].map(([, type]) => type);
 
-    expect(fastPackageFilter).toBeDefined();
-    expect(modeScript).toBeDefined();
-    expect(fastPackageFilter).not.toContain(".github/workflows");
-    expect(fastPackageFilter).not.toContain("scripts/");
-    expect(pullRequest).toContain("fast_packages: $" + "{{ steps.mode.outputs.fast_packages }}");
-    expect(pullRequest).toContain("database: $" + "{{ steps.mode.outputs.database }}");
-    expect(pullRequest).toContain("github.event.before");
-    expect(modeScript).toContain("'tsconfig*.json'");
-    expect(pullRequest).toContain(
-      "Workflow-only pushes intentionally skip Database; full-ci evaluates the complete PR.",
-    );
-    expect(pullRequest).toMatch(
-      /name: Checkout pushed commit range\s+if: github\.event\.action == 'synchronize'/,
-    );
-    expect(reusable).toContain("run_fast_packages:");
-    expect(reusable).toContain("pnpm exec vitest run scripts/*.test.ts");
-    expect(reusable).toMatch(
-      /name: Run affected package tests\s+if: \$\{\{ inputs\.run_fast_packages \}\}/,
-    );
+    // `labeled` is the one that mattered: it is what the removed tier hung on.
+    expect(triggerTypes).toEqual(["opened", "synchronize", "reopened"]);
+    expect(pullRequest).toContain("group: pr-verify-$" + "{{ github.event.pull_request.number }}");
+    expect(pullRequest).toContain("cancel-in-progress: true");
+
+    // Identifiers that can only reappear if the tiering itself comes back.
+    for (const removed of [
+      "full-ci",
+      "run_full",
+      "fast_tests",
+      "verify_gate",
+      "qualification_gate",
+      "TURBO_SCM_BASE",
+    ]) {
+      expect(pullRequest).not.toContain(removed);
+      expect(reusable).not.toContain(removed);
+    }
   });
 
-  it("anchors affected package tests to the fetched origin/main baseline", () => {
+  it("always calls the reusable workflow so its checks can never hang", () => {
+    const pullRequest = read(".github/workflows/pr-verify.yml");
+    const caller = jobBlock(pullRequest, "verify");
+
+    // A skipped caller job creates no nested check runs at all, so the required
+    // checks would sit on "Expected" forever on a documentation-only pull
+    // request. The lanes are gated one level down instead.
+    expect(caller).not.toMatch(/^ {4}if:/m);
+    expect(caller).toContain("needs: changes");
+    expect(caller).toContain("run_quality: $" + "{{ needs.changes.outputs.verify == 'true' }}");
+    expect(caller).toContain("run_tests: $" + "{{ needs.changes.outputs.tests == 'true' }}");
+    expect(caller).toContain("run_browser: $" + "{{ needs.changes.outputs.browser == 'true' }}");
+    expect(caller).toContain("run_instant: $" + "{{ needs.changes.outputs.instant == 'true' }}");
+    expect(caller).toContain("run_database: $" + "{{ needs.changes.outputs.database == 'true' }}");
+  });
+
+  it("gates every verification job on its own input", () => {
     const reusable = read(".github/workflows/reusable-verify.yml");
-    const affectedStep = reusable.match(
-      /- name: Run affected package tests[\s\S]*?run: pnpm turbo test --affected/,
-    )?.[0];
+    const gates = {
+      database: "inputs.run_database",
+      quality: "inputs.run_quality",
+      test_fallow: "inputs.run_tests",
+      instant_matrix: "inputs.run_instant",
+    };
 
-    expect(affectedStep).toBeDefined();
-    expect(affectedStep).toContain("TURBO_SCM_BASE: origin/main");
-    expect(reusable).toMatch(/fast_tests:[\s\S]*?fetch-depth: 0/);
+    expect(jobIds(reusable).slice().sort()).toEqual(Object.keys(gates).slice().sort());
+
+    for (const [jobId, gate] of Object.entries(gates)) {
+      const block = jobBlock(reusable, jobId);
+
+      expect(block).toContain(`\n    if: ${gate}\n`);
+      expect(reusable).toContain(`      ${gate.replace("inputs.", "")}:\n`);
+    }
   });
 
-  it("uses the database dependency closure instead of installing the whole workspace", () => {
-    const reusable = read(".github/workflows/reusable-verify.yml");
-    const databaseJob = reusable.match(/ {2}database:\n([\s\S]*?)\n {2}quality:/)?.[1];
+  it("keeps documentation-only changes out of the verification lanes", () => {
+    const pullRequest = read(".github/workflows/pr-verify.yml");
 
-    expect(databaseJob).toBeDefined();
-    expect(databaseJob).toContain("run: pnpm install --frozen-lockfile --filter @tendnote/db...");
-    expect(databaseJob).not.toMatch(/run: pnpm install --frozen-lockfile\s*$/m);
+    expect(pullRequest).toContain("uses: dorny/paths-filter@v4");
+    expect(pullRequest).toContain("- 'scripts/**'");
+    expect(pullRequest).toContain("- '.github/rulesets/**'");
+    expect(pullRequest).not.toContain("- 'docs/**'");
+    expect(pullRequest).not.toContain("- 'README.md'");
   });
 
-  it("keeps full-ci qualification in a separate concurrency group", () => {
-    const workflow = read(".github/workflows/pr-verify.yml");
-
-    expect(workflow).toContain("format('pr-full-ci-{0}', github.event.pull_request.number)");
-    expect(workflow).toContain("format('pr-verify-{0}', github.event.pull_request.number)");
-    expect(workflow).toContain("format('pr-verify-{0}-ignored-{1}'");
-    expect(workflow).toContain("cancel-in-progress: true");
-    expect(workflow).not.toContain(
-      "format('pr-verify-{0}-{1}', github.event.pull_request.number, github.event.pull_request.head.sha)",
-    );
-    expect(workflow).not.toContain("cancel-in-progress: $" + "{");
-  });
-
-  it("does not rerun PR verification when an already-qualified draft becomes ready", () => {
+  it("does not rerun PR verification when a draft becomes ready", () => {
     const workflow = read(".github/workflows/pr-verify.yml");
 
     expect(workflow).not.toContain("- ready_for_review");
     expect(workflow).not.toContain("- converted_to_draft");
+  });
+
+  it("anchors the Fallow audit to the fetched origin/main baseline", () => {
+    const reusable = read(".github/workflows/reusable-verify.yml");
+    const testFallow = jobBlock(reusable, "test_fallow");
+
+    // Without an explicit base Fallow resolves the branch's own upstream and
+    // audits almost nothing; `fetch-depth: 0` is what makes the base resolvable.
+    expect(testFallow).toContain("fetch-depth: 0");
+    expect(testFallow).toMatch(
+      /- name: Run Fallow audit\n\s+env:\n\s+FALLOW_AUDIT_BASE: origin\/main\n\s+run: pnpm fallow:ci/,
+    );
+    expect(testFallow).toContain("run: pnpm coverage:ci");
+    expect(testFallow).toContain("run: pnpm fallow:coverage:check");
+  });
+
+  it("keeps the root contracts in a CI lane through the coverage collector", () => {
+    // These suites are what holds CI wiring to its contract, and no workflow
+    // step runs them directly. `coverage:ci` runs them ahead of the workspaces.
+    expect(read("scripts/collect-test-coverage.mjs")).toContain(
+      'runPnpm(["exec", "vitest", "run", "scripts"]',
+    );
+  });
+
+  it("runs the coverage lane on a pinned sixteen-vCPU runner", () => {
+    const reusable = read(".github/workflows/reusable-verify.yml");
+
+    // The collector's `--maxWorkers=50%` scales with the runner, and cost is
+    // proportional to vCPU-minutes, so a wider box is the same spend.
+    expect(jobBlock(reusable, "test_fallow")).toContain(
+      "format('runs-on={0}-test-fallow/runner=big/cpu=16', github.run_id)",
+    );
+  });
+
+  it("runs the real-browser contracts alongside quality, off the critical path", () => {
+    const reusable = read(".github/workflows/reusable-verify.yml");
+    const quality = jobBlock(reusable, "quality");
+
+    expect(quality).toContain("format('runs-on={0}-quality/runner=default', github.run_id)");
+    expect(quality).toMatch(
+      /- name: Run real-browser contracts\n\s+if: \$\{\{ inputs\.run_browser \}\}\n\s+run: pnpm test:browser/,
+    );
+    expect(quality).toContain("playwright install --with-deps chromium");
+    expect(quality).toContain("playwright install-deps chromium");
+    expect(jobBlock(reusable, "test_fallow")).not.toContain("pnpm test:browser");
+  });
+
+  it("uses the database dependency closure instead of installing the whole workspace", () => {
+    const reusable = read(".github/workflows/reusable-verify.yml");
+    const databaseJob = jobBlock(reusable, "database");
+
+    expect(databaseJob).toContain("run: pnpm install --frozen-lockfile --filter @tendnote/db...");
+    expect(databaseJob).not.toMatch(/run: pnpm install --frozen-lockfile\s*$/m);
   });
 
   it("routes fork pull requests to GitHub-hosted runners", () => {
@@ -148,54 +254,30 @@ describe("CI workflow optimization contract", () => {
         /name: Set up RunsOn\s*\n\s+if: \$\{\{ github\.event_name != 'pull_request' \|\| !github\.event\.pull_request\.head\.repo\.fork \}\}\s*\n\s+uses: runs-on\/action@v2/g,
       ) ?? [];
 
-    expect(runnerDeclarations).toHaveLength(9);
+    // Untrusted fork code must never reach the private runner network or its
+    // cache sidecar, so every runner declaration needs both halves of the guard.
     expect(forkFallbacks).toHaveLength(runnerDeclarations.length);
     expect(guardedRunsOnSetupSteps).toHaveLength(runnerDeclarations.length);
   });
 
-  it("auto-qualifies documentation-only commits without running full CI", () => {
-    const workflow = read(".github/workflows/pr-verify.yml");
+  it("keeps the promotion tier on the same verification definition", () => {
+    const promotion = read(".github/workflows/promotion-verify.yml");
 
-    expect(workflow).toMatch(
-      /qualification_gate:[\s\S]*needs\.changes\.outputs\.verify != 'true'[\s\S]*'Full CI qualification'/,
-    );
-    expect(workflow).toMatch(
-      /qualification_gate:[\s\S]*github\.event\.action != 'labeled'[\s\S]*needs\.changes\.result == 'success'/,
-    );
-  });
-
-  it("qualifies only the exact commit where full-ci is newly applied", () => {
-    const pullRequest = read(".github/workflows/pr-verify.yml");
-    const reusable = read(".github/workflows/reusable-verify.yml");
-
-    expect(pullRequest).not.toMatch(/name: >-\s+\$\{\{/);
-    expect(pullRequest).toContain("full-ci");
-    expect(pullRequest).toContain("- labeled");
-    expect(pullRequest).not.toContain("- unlabeled");
-    expect(pullRequest).toContain("'Full CI qualification'");
-    expect(pullRequest).toMatch(/verify_gate:[\s\S]*github\.event\.label\.name == 'full-ci'/);
-    expect(pullRequest).toContain(
-      "github.event.action == 'labeled' && github.event.label.name == 'full-ci'",
-    );
-    expect(pullRequest).not.toContain(
-      "contains(github.event.pull_request.labels.*.name, 'full-ci')",
-    );
-    expect(pullRequest).toContain("run_full:");
-    expect(pullRequest).toContain("github.run_id");
-    expect(pullRequest).toContain("format('pr-verify-{0}-ignored-{1}'");
-
-    expect(reusable).toContain("run_full:");
-    expect(reusable).toMatch(/fast_tests:[\s\S]*if: \$\{\{[^}]*!inputs\.run_full/);
-    expect(reusable).toMatch(
-      /test_fallow:[\s\S]*if: \$\{\{[^}]*(inputs\.run_tests \|\| inputs\.run_browser)[^}]*inputs\.run_full/,
-    );
-    expect(reusable).toMatch(/name: Run tests with coverage\s+if: \$\{\{ inputs\.run_tests \}\}/);
-    expect(reusable).toMatch(
-      /name: Run real-browser contracts\s+if: \$\{\{ inputs\.run_browser \}\}/,
-    );
-    expect(reusable).toMatch(
-      /instant_matrix:[\s\S]*if: \$\{\{[^}]*inputs\.run_full[^}]*inputs\.run_instant/,
-    );
+    // Its caller job id must differ from `pr-verify`'s. Nested jobs publish as
+    // `<caller job id> / <job name>`, so a shared id would let this workflow
+    // post the pull request's own required contexts from a different trigger.
+    expect(jobIds(promotion)).not.toContain(CALLER_JOB_ID);
+    expect(promotion).toContain("uses: ./.github/workflows/reusable-verify.yml");
+    expect(promotion).toContain("full_browser_matrix: true");
+    for (const input of [
+      "run_quality",
+      "run_tests",
+      "run_browser",
+      "run_instant",
+      "run_database",
+    ]) {
+      expect(promotion).toContain(`${input}: true`);
+    }
   });
 
   it("shares one Chromium cache and primes it from the trusted default branch", () => {

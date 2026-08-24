@@ -8,7 +8,7 @@ node_modules
 .workflow-data
 .turbo
 .impeccable
-.scratch/implement-program/
+.scratch/
 .next
 dist
 coverage

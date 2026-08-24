@@ -1647,7 +1647,7 @@ Performance and verification contract:
 - Routine application pull requests run Chromium. The full matrix and reduced
   Firefox and WebKit Today, person-detail, and Action-reconciliation smoke are
   mandatory for the framework upgrade and production promotion. The parallel
-  browser job must keep aggregate `Full CI qualification` below nine minutes
+  browser job must keep aggregate pull-request verification below nine minutes
   across three cache-warm runs; a clean run reaching ten minutes fails the
   rollout criterion.
 - Fixtures use one bounded synthetic primary owner plus a second synthetic owner

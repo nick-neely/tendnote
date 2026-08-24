@@ -338,7 +338,7 @@ describe("fresh-clone publication gate", () => {
     );
     expect(guide).toMatch(/Issues are open with no\s+service-level\s+agreement/i);
     expect(guide).toMatch(/self-hosting support is community-only/i);
-    expect(guide).toContain("docs/ci-contributing.md#verification-labels");
+    expect(guide).toContain("docs/ci-contributing.md#one-verification-path");
     expect(guide).toContain(".github/rulesets/protect-main.json");
     expect(guide).toMatch(
       /CLA Assistant (?:desired-state )?manifest[\s\S]*redacted proof schema[\s\S]*operator runbook/i,

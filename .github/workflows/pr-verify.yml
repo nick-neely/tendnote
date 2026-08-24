@@ -1,5 +1,11 @@
 name: PR verify
 
+# One verification path (ADR 0236). Every push to a pull request runs every lane
+# its changed paths implicate, at full fidelity: quality, coverage-backed tests
+# plus Fallow, the real-browser contracts, the Instant matrix, and the database
+# replay. Path filtering still decides which lanes apply; no lane is ever
+# deferred to a label or to a later run.
+
 on:
   pull_request:
     branches:
@@ -8,30 +14,23 @@ on:
       - opened
       - synchronize
       - reopened
-      - labeled
 
 permissions:
   contents: read
   pull-requests: read
 
 concurrency:
-  group: >-
-    ${{
-      (github.event.action == 'labeled' &&
-      github.event.label.name == 'full-ci') &&
-      format('pr-full-ci-{0}', github.event.pull_request.number) ||
-      github.event.action == 'labeled' &&
-      format('pr-verify-{0}-ignored-{1}', github.event.pull_request.number, github.run_id) ||
-      format('pr-verify-{0}', github.event.pull_request.number)
-    }}
+  group: pr-verify-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
+  # Path filtering happens in a job, not in a workflow-level `paths:` filter. A
+  # workflow-level filter would stop the workflow from starting at all on a
+  # documentation-only pull request, and the required checks below would sit on
+  # "Expected" forever. Here the workflow always runs and each lane is skipped
+  # individually, which GitHub reports as a successful required check.
   changes:
     name: Detect changes
-    if: >-
-      github.event.action != 'labeled' ||
-      github.event.label.name == 'full-ci'
     runs-on: >-
       ${{
         github.event.pull_request.head.repo.fork &&
@@ -42,11 +41,9 @@ jobs:
     outputs:
       verify: ${{ steps.filter.outputs.verify }}
       tests: ${{ steps.filter.outputs.tests }}
-      fast_packages: ${{ steps.mode.outputs.fast_packages }}
       browser: ${{ steps.filter.outputs.browser }}
       instant: ${{ steps.filter.outputs.instant }}
-      database: ${{ steps.mode.outputs.database }}
-      full_requested: ${{ steps.mode.outputs.full_requested }}
+      database: ${{ steps.filter.outputs.database }}
     steps:
       - name: Set up RunsOn
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
@@ -59,6 +56,7 @@ jobs:
           filters: |
             verify:
               - '.github/workflows/**'
+              - '.github/rulesets/**'
               - '.fallowrc*'
               - 'apps/**'
               - 'packages/**'
@@ -74,23 +72,13 @@ jobs:
               - 'tsconfig*.json'
             tests:
               - '.github/workflows/**'
+              - '.github/rulesets/**'
               - '.fallowrc*'
               - 'apps/**/*.{ts,tsx,js,mjs,cjs}'
               - 'apps/*/package.json'
               - 'packages/**/*.{ts,tsx,js,mjs,cjs}'
               - 'packages/*/package.json'
               - 'scripts/**/*.{ts,tsx,js,mjs,cjs}'
-              - 'biome.json'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-              - 'turbo.json'
-              - 'tsconfig*.json'
-            fast_packages:
-              - 'apps/**/*.{ts,tsx,js,mjs,cjs}'
-              - 'apps/*/package.json'
-              - 'packages/**/*.{ts,tsx,js,mjs,cjs}'
-              - 'packages/*/package.json'
               - 'biome.json'
               - 'package.json'
               - 'pnpm-lock.yaml'
@@ -131,141 +119,17 @@ jobs:
               - 'package.json'
               - 'pnpm-lock.yaml'
 
-      - name: Checkout pushed commit range
-        if: github.event.action == 'synchronize'
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
-
-      - name: Select verification tier
-        id: mode
-        env:
-          AFTER_SHA: ${{ github.event.pull_request.head.sha }}
-          BEFORE_SHA: ${{ github.event.before }}
-          EVENT_ACTION: ${{ github.event.action }}
-          FILTER_DATABASE: ${{ steps.filter.outputs.database }}
-          FILTER_FAST_PACKAGES: ${{ steps.filter.outputs.fast_packages }}
-          FULL_CI_EVENT: ${{ github.event.action == 'labeled' && github.event.label.name == 'full-ci' }}
-        run: |
-          fast_packages="${FILTER_FAST_PACKAGES}"
-          database="${FILTER_DATABASE}"
-
-          if [[ "${EVENT_ACTION}" == "synchronize" ]]; then
-            fast_packages=false
-            # Workflow-only pushes intentionally skip Database; full-ci evaluates the complete PR.
-            database=false
-
-            if ! git diff --quiet "${BEFORE_SHA}" "${AFTER_SHA}" -- \
-              apps packages biome.json package.json pnpm-lock.yaml \
-              pnpm-workspace.yaml turbo.json 'tsconfig*.json'
-            then
-              fast_packages=true
-            fi
-
-            if ! git diff --quiet "${BEFORE_SHA}" "${AFTER_SHA}" -- \
-              packages/db/src/schema packages/db/migrations \
-              packages/db/drizzle.config.ts packages/db/package.json \
-              package.json pnpm-lock.yaml
-            then
-              database=true
-            fi
-          fi
-
-          echo "fast_packages=${fast_packages}" >>"${GITHUB_OUTPUT}"
-          echo "database=${database}" >>"${GITHUB_OUTPUT}"
-          echo "full_requested=${FULL_CI_EVENT}" >>"${GITHUB_OUTPUT}"
-
+  # Deliberately unconditional. The required checks are the reusable workflow's
+  # own jobs, and a skipped caller job never creates them, so the pull request
+  # would then wait on checks that can never arrive. Calling it always and
+  # passing the filters through as inputs means a documentation-only pull
+  # request still produces one skipped, and therefore successful, check per lane.
   verify:
     needs: changes
-    if: needs.changes.outputs.verify == 'true'
     uses: ./.github/workflows/reusable-verify.yml
     with:
+      run_quality: ${{ needs.changes.outputs.verify == 'true' }}
       run_tests: ${{ needs.changes.outputs.tests == 'true' }}
-      run_fast_packages: ${{ needs.changes.outputs.fast_packages == 'true' }}
       run_browser: ${{ needs.changes.outputs.browser == 'true' }}
       run_instant: ${{ needs.changes.outputs.instant == 'true' }}
       run_database: ${{ needs.changes.outputs.database == 'true' }}
-      run_full: ${{ needs.changes.outputs.full_requested == 'true' }}
-
-  verify_gate:
-    name: ${{ github.event.action == 'labeled' && github.event.label.name != 'full-ci' && 'Ignore unrelated label' || 'Verify' }}
-    needs:
-      - changes
-      - verify
-    if: >-
-      always() &&
-      !cancelled() &&
-      (github.event.action != 'labeled' ||
-      github.event.label.name == 'full-ci')
-    runs-on: >-
-      ${{
-        github.event.pull_request.head.repo.fork &&
-        'ubuntu-latest' ||
-        format('runs-on={0}-verify-gate/runner=light', github.run_id)
-      }}
-    timeout-minutes: 5
-    steps:
-      - name: Set up RunsOn
-        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        uses: runs-on/action@v2
-
-      - name: Check PR verification
-        run: |
-          if [[ "${{ needs.changes.result }}" != "success" ]]; then
-            echo "Change detection failed."
-            exit 1
-          fi
-
-          if [[ "${{ needs.changes.outputs.verify }}" == "true" && "${{ needs.verify.result }}" != "success" ]]; then
-            echo "Verification was required but did not succeed. Result: ${{ needs.verify.result }}"
-            exit 1
-          fi
-
-          if [[ "${{ needs.changes.outputs.verify }}" != "true" ]]; then
-            echo "No application, package, workflow, or CI script paths changed."
-          fi
-
-          echo "PR verification gate passed."
-
-  qualification_gate:
-    name: ${{ github.event.action == 'labeled' && github.event.label.name == 'full-ci' && 'Full CI qualification' || github.event.action != 'labeled' && needs.changes.outputs.verify != 'true' && 'Full CI qualification' || 'Qualification pending' }}
-    needs:
-      - changes
-      - verify
-    if: >-
-      always() &&
-      !cancelled() &&
-      needs.changes.result == 'success' &&
-      (github.event.action != 'labeled' ||
-      github.event.label.name == 'full-ci')
-    runs-on: >-
-      ${{
-        github.event.pull_request.head.repo.fork &&
-        'ubuntu-latest' ||
-        format('runs-on={0}-qualification-gate/runner=light', github.run_id)
-      }}
-    timeout-minutes: 5
-    steps:
-      - name: Set up RunsOn
-        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        uses: runs-on/action@v2
-
-      - name: Check full CI qualification
-        run: |
-          if [[ "${{ needs.changes.outputs.full_requested }}" == "true" ]]; then
-            if [[ "${{ needs.changes.outputs.verify }}" == "true" && "${{ needs.verify.result }}" != "success" ]]; then
-              echo "Full CI was requested but did not succeed. Result: ${{ needs.verify.result }}"
-              exit 1
-            fi
-
-            echo "Full CI qualification passed."
-            exit 0
-          fi
-
-          if [[ "${{ needs.changes.outputs.verify }}" != "true" ]]; then
-            echo "Documentation-only changes do not require full CI."
-            exit 0
-          fi
-
-          echo "Full CI qualification has not been requested for this commit."

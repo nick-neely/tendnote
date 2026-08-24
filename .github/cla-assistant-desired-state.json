@@ -32,7 +32,15 @@
     },
     "rulesetId": 19995472,
     "trackedRulesetPath": ".github/rulesets/protect-main.json",
-    "existingRequiredStatusContexts": ["Verify", "Full CI qualification", "Vercel", "license/cla"],
+    "existingRequiredStatusContexts": [
+      "Detect changes",
+      "verify / Quality",
+      "verify / Test and Fallow",
+      "verify / Instant matrix",
+      "verify / Database",
+      "Vercel",
+      "license/cla"
+    ],
     "preserveExistingChecks": true,
     "removeExistingBypassActors": false,
     "desiredBypassActors": [

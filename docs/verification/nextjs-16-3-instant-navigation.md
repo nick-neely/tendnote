@@ -306,8 +306,8 @@ drift:
   framework upgrade and production promotion.
 
 The browser job (`instant_matrix`) runs in parallel with `Quality` and
-`Test and Fallow` rather than extending either, and `Full CI qualification` fails
-when it fails.
+`Test and Fallow` rather than extending either. It is a required check in its
+own right, so a pull request cannot merge when it fails.
 
 ### One Playwright worker on CI
 
@@ -646,7 +646,7 @@ branches. The previous `segment-prefetch-routing.test.ts`, which grepped
 - **Aggregate CI wall time under nine minutes across three cache-warm runs.** The
   matrix itself is fast — 19 tests in **19 s** locally after a 23 s build, with
   four workers — and it runs in parallel with the existing critical path, so it
-  should not extend `Verify`. But the criterion is about *CI* wall time across
+  should not extend the pull-request verification critical path. But the criterion is about *CI* wall time across
   three cache-warm runs, which cannot be observed from a workstation. It must be
   read off the first three green runs of this branch before the rollout criterion
   is credited, and ADR 0210's contraction order (reuse browsers, share

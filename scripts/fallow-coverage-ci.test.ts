@@ -63,15 +63,19 @@ describe("Fallow CI coverage contract (#193)", () => {
     expect(rootPackage.scripts["fallow:coverage:check"]).toBe(
       "node scripts/assert-fallow-coverage.mjs",
     );
-    // The invariant is the order — coverage, then the CRAP-scoring proof, then
+    // The invariant is the order - coverage, then the CRAP-scoring proof, then
     // the audit that consumes both. Comment lines may sit between the steps;
-    // another step may not.
+    // another step may not. The lane is gated once at the job level, so the
+    // steps themselves carry no condition.
     const commentsOrBlanks = String.raw`(?:\s*#[^\n]*)*\s*`;
+    expect(workflow).toMatch(
+      /\n {2}test_fallow:\n {4}name: Test and Fallow\n {4}if: inputs\.run_tests\n/,
+    );
     expect(workflow).toMatch(
       new RegExp(
         [
-          String.raw`- name: Run tests with coverage\s+if: \$\{\{ inputs\.run_tests \}\}\s+run: pnpm coverage:ci`,
-          String.raw`- name: Confirm exact CRAP scoring\s+if: \$\{\{ inputs\.run_tests \}\}\s+run: pnpm fallow:coverage:check`,
+          String.raw`- name: Run tests with coverage\s+run: pnpm coverage:ci`,
+          String.raw`- name: Confirm exact CRAP scoring\s+run: pnpm fallow:coverage:check`,
           // No escapes in this one, so no `String.raw` - it is the same source.
           `- name: Run Fallow audit`,
         ].join(commentsOrBlanks),

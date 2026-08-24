@@ -42,19 +42,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  # Not `verify`. A reusable workflow's jobs publish as `<caller job id> / <job
+  # name>`, and `verify / Quality` and its siblings are the required checks on
+  # `pr-verify`. Sharing the id would let this workflow satisfy, or fail, the
+  # pull-request gates from a different trigger entirely.
+  promotion:
     # A dispatch has no label; a labeled event must carry the right one.
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'full-browser-matrix'
     uses: ./.github/workflows/reusable-verify.yml
     with:
+      run_quality: true
+      run_tests: true
+      run_browser: true
+      run_instant: true
       run_database: true
-      run_full: true
       full_browser_matrix: true
 
   gate:
     name: Promotion verify
-    needs: verify
-    if: always() && needs.verify.result != 'skipped'
+    needs: promotion
+    if: always() && needs.promotion.result != 'skipped'
     runs-on: >-
       ${{
         github.event_name == 'pull_request' &&
@@ -70,8 +77,8 @@ jobs:
 
       - name: Check promotion verification
         run: |
-          if [[ "${{ needs.verify.result }}" != "success" ]]; then
-            echo "Full-matrix verification did not succeed. Result: ${{ needs.verify.result }}"
+          if [[ "${{ needs.promotion.result }}" != "success" ]]; then
+            echo "Full-matrix verification did not succeed. Result: ${{ needs.promotion.result }}"
             exit 1
           fi
 
