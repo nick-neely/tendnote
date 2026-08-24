@@ -226,7 +226,8 @@ describe("CI workflow optimization contract", () => {
       /- name: Run real-browser contracts\n\s+if: \$\{\{ inputs\.run_browser \}\}\n\s+run: pnpm test:browser/,
     );
     expect(quality).toContain("playwright install --with-deps chromium");
-    expect(quality).toContain("playwright install-deps chromium");
+    // The runner image already carries Chromium's libraries; a cache hit must not pay for apt.
+    expect(quality).not.toContain("playwright install-deps chromium");
     expect(jobBlock(reusable, "test_fallow")).not.toContain("pnpm test:browser");
   });
 

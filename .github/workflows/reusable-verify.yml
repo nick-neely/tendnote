@@ -169,9 +169,10 @@ jobs:
         if: ${{ inputs.run_browser && steps.playwright-cache.outputs.cache-hit != 'true' }}
         run: pnpm --filter @tendnote/web exec playwright install --with-deps chromium
 
-      - name: Install Chromium system dependencies
-        if: ${{ inputs.run_browser && steps.playwright-cache.outputs.cache-hit == 'true' }}
-        run: pnpm --filter @tendnote/web exec playwright install-deps chromium
+      # No `install-deps` on a cache hit. `ubuntu24-full-x64` derives from the
+      # GitHub runner image, which already ships Chromium's shared libraries, so
+      # the apt pass cost 20-27s per job and installed nothing. The cache-miss
+      # path above keeps `--with-deps` as the safety net.
 
       - name: Run real-browser contracts
         if: ${{ inputs.run_browser }}
@@ -354,11 +355,11 @@ jobs:
           (inputs.full_browser_matrix && steps.playwright-cache-all.outputs.cache-hit != 'true')
         run: pnpm --filter @tendnote/web exec playwright install --with-deps ${{ inputs.full_browser_matrix && 'chromium firefox webkit' || 'chromium' }}
 
+      # Only the full matrix needs an apt pass on a cache hit: Firefox and WebKit
+      # want libraries the runner image does not carry, Chromium does not.
       - name: Install browser system dependencies
-        if: >-
-          (!inputs.full_browser_matrix && steps.playwright-cache-chromium.outputs.cache-hit == 'true') ||
-          (inputs.full_browser_matrix && steps.playwright-cache-all.outputs.cache-hit == 'true')
-        run: pnpm --filter @tendnote/web exec playwright install-deps ${{ inputs.full_browser_matrix && 'chromium firefox webkit' || 'chromium' }}
+        if: ${{ inputs.full_browser_matrix && steps.playwright-cache-all.outputs.cache-hit == 'true' }}
+        run: pnpm --filter @tendnote/web exec playwright install-deps chromium firefox webkit
 
       - name: Run the routine Chromium matrix
         if: ${{ !inputs.full_browser_matrix }}
