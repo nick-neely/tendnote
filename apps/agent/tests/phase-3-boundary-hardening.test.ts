@@ -31,6 +31,7 @@ const PHASE_3_IMPLEMENTATION_FILES = [
   "packages/db/src/queries/morning-agenda.ts",
   "packages/db/src/queries/post-meeting-aftercare.ts",
   "packages/db/src/queries/scheduled-workflow-deliveries.ts",
+  "packages/db/src/queries/scheduled-workflow-deliveries/default-service.ts",
   "packages/db/src/queries/scheduled-workflow-deliveries/drizzle-store.ts",
   "packages/db/src/queries/scheduled-workflow-deliveries/index.ts",
   "packages/db/src/queries/scheduled-workflow-deliveries/service.ts",
