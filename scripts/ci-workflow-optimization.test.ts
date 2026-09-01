@@ -171,9 +171,10 @@ describe("CI workflow optimization contract", () => {
   it("keeps documentation-only changes out of the verification lanes", () => {
     const pullRequest = read(".github/workflows/pr-verify.yml");
 
-    // Version-agnostic: the ref is pinned to a commit SHA (with a `# vX`
-    // comment), so match the action path rather than a mutable tag.
-    expect(pullRequest).toContain("uses: dorny/paths-filter@");
+    // Pinned to a full commit SHA (with a `# vX` comment). Assert the SHA shape,
+    // not the specific version: version-agnostic yet still fails if the pin is
+    // ever reverted to a mutable tag (@v4, @main), which is the point of the pin.
+    expect(pullRequest).toMatch(/uses: dorny\/paths-filter@[0-9a-f]{40}\b/);
     expect(pullRequest).toContain("- 'scripts/**'");
     expect(pullRequest).toContain("- '.github/rulesets/**'");
     expect(pullRequest).not.toContain("- 'docs/**'");
@@ -254,9 +255,9 @@ describe("CI workflow optimization contract", () => {
       ) ?? [];
     const guardedRunsOnSetupSteps =
       workflows.match(
-        // `runs-on/action` is pinned to a commit SHA, so match the action path
-        // rather than a mutable `@v2` tag.
-        /name: Set up RunsOn\s*\n\s+if: \$\{\{ github\.event_name != 'pull_request' \|\| !github\.event\.pull_request\.head\.repo\.fork \}\}\s*\n\s+uses: runs-on\/action@\S+/g,
+        // `runs-on/action` is pinned to a full commit SHA; assert the SHA shape so
+        // a revert to a mutable `@v2` tag still fails this contract.
+        /name: Set up RunsOn\s*\n\s+if: \$\{\{ github\.event_name != 'pull_request' \|\| !github\.event\.pull_request\.head\.repo\.fork \}\}\s*\n\s+uses: runs-on\/action@[0-9a-f]{40}\b/g,
       ) ?? [];
 
     // Untrusted fork code must never reach the private runner network or its
@@ -315,9 +316,10 @@ describe("CI workflow optimization contract", () => {
     expect(workflow).toContain("- vercel.deployment.ready");
     expect(workflow).toContain("actions: read");
     expect(workflow).toContain("statuses: write");
-    // Pinned to a commit SHA (with a `# v1` comment); match the action path.
-    expect(workflow).toContain("vercel/repository-dispatch/actions/status@");
-    expect(workflow).toContain("vercel/repository-dispatch/actions/checkout@");
+    // Pinned to a full commit SHA (with a `# v1` comment); assert the SHA shape so
+    // a revert to a mutable `@v1` tag still fails this contract.
+    expect(workflow).toMatch(/vercel\/repository-dispatch\/actions\/status@[0-9a-f]{40}\b/);
+    expect(workflow).toMatch(/vercel\/repository-dispatch\/actions\/checkout@[0-9a-f]{40}\b/);
     expect(workflow).toContain("github.event.client_payload.environment == 'production'");
     expect(workflow).toContain("github.event.client_payload.project.id == vars.VERCEL_PROJECT_ID");
     expect(workflow).not.toMatch(/github\.event\.client_payload\.project\.id\s*==\s*'prj_/);
