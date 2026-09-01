@@ -19,7 +19,8 @@
       "!!**/playwright-report",
       "!!**/test-results",
       "!!**/evidence/**/raw",
-      "!!**/packages/db/migrations"
+      "!!**/packages/db/migrations",
+      "!!**/.deepsec"
     ]
   },
   "formatter": {

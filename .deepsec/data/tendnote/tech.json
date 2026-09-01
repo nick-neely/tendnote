@@ -1,0 +1,11 @@
+{
+  "tags": [
+    "github-actions",
+    "node"
+  ],
+  "sentinels": [
+    "package.json"
+  ],
+  "detectedAt": "2026-08-30T23:22:34.931Z",
+  "rootPath": "/home/neely/dev/tendnote"
+}

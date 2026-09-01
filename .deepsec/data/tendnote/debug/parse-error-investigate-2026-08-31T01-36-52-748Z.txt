@@ -1,0 +1,13 @@
+# deepsec parse-failure debug dump
+# phase: investigate
+# agentType: codex
+# timestamp: 2026-08-31T01:36:52.748Z
+# error: Error: Agent produced output that wasn't a parseable JSON findings array: Unexpected token 'T', "The skill’"... is not valid JSON. Tolerant jsonrepair failed: Unexpected character "’" at position 9. First 400 chars: The skill’s guidance applies to both TypeScript generally and the Next.js server/runtime boundary here. I’m loading the matching local references, then I’ll inspect the five files and only the imports/call sites needed to establish exploitability or mitigation.
+# batch (5 files):
+  - apps/web/src/lib/background-jobs/queue-runtime.ts
+  - apps/web/src/lib/background-jobs/web-push.ts
+  - apps/web/src/lib/background-jobs/embedding-queue.ts
+  - apps/web/src/lib/background-jobs/extraction-queue.ts
+  - apps/web/src/lib/background-jobs/failure-observability.ts
+# --- raw agent output begins on next line ---
+The skill’s guidance applies to both TypeScript generally and the Next.js server/runtime boundary here. I’m loading the matching local references, then I’ll inspect the five files and only the imports/call sites needed to establish exploitability or mitigation.
