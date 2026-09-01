@@ -8,14 +8,15 @@ import { AssistantProviderMark } from "./assistant-provider-marks";
 describe("AssistantProviderMark", () => {
   // The provider catalog is the source of truth. Adding a fourth assistant there
   // without drawing its mark would otherwise ship an invisible button.
-  it.each(
-    contextFactImportProviders.map((provider) => provider.id),
-  )("draws a mark for %s", (providerId) => {
-    const { container } = render(<AssistantProviderMark provider={providerId} />);
+  it.each(contextFactImportProviders.map((provider) => provider.id))(
+    "draws a mark for %s",
+    (providerId) => {
+      const { container } = render(<AssistantProviderMark provider={providerId} />);
 
-    const path = container.querySelector("svg > path");
-    expect(path?.getAttribute("d")).toMatch(/^[Mm]/);
-  });
+      const path = container.querySelector("svg > path");
+      expect(path?.getAttribute("d")).toMatch(/^[Mm]/);
+    },
+  );
 
   it("stays decorative, because the provider name is always beside it", () => {
     const { container } = render(<AssistantProviderMark provider="chatgpt" />);

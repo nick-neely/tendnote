@@ -12,6 +12,7 @@ import {
 import { getPerson, searchPeople } from "@tendnote/db/queries/people";
 import { isProviderCapabilityConnected } from "@tendnote/db/queries/provider-connections";
 import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
+import { findLinkedAccountRowId } from "@/lib/integrations/linked-accounts";
 
 /**
  * Owner-scoped Contacts import preview data for Phase 2E #130. This is
@@ -61,10 +62,11 @@ export async function createOwnerContactImportAdapter(
 
   return createGoogleContactsAdapter({
     getAccessToken: async () => {
-      const token = await getAuth().api.getAccessToken({
-        body: { providerId: "google" },
-        headers: requestHeaders,
-      });
+      const auth = getAuth();
+      const accountId = await findLinkedAccountRowId(auth, requestHeaders, "google");
+      const token = accountId
+        ? await auth.api.getAccessToken({ body: { accountId }, headers: requestHeaders })
+        : null;
       const accessToken = (token as { accessToken?: string } | null)?.accessToken;
       if (!accessToken) {
         throw new Error("No Google access token available.");

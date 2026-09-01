@@ -91,13 +91,14 @@ describe("gift-plan privacy evaluator semantics", () => {
     expect(GIFT_PLAN_SAFE_REPLY.test(reply)).toBe(false);
   });
 
-  it.each(
-    PRIVACY_BOUNDARY_FIXTURE.protectedGiftMarkers,
-  )("rejects a protected fixture marker even in bypass wording: %s", (marker) => {
-    expect(
-      GIFT_PLAN_SAFE_REPLY.test(`No gift plans are visible; I will not mention ${marker}.`),
-    ).toBe(false);
-  });
+  it.each(PRIVACY_BOUNDARY_FIXTURE.protectedGiftMarkers)(
+    "rejects a protected fixture marker even in bypass wording: %s",
+    (marker) => {
+      expect(
+        GIFT_PLAN_SAFE_REPLY.test(`No gift plans are visible; I will not mention ${marker}.`),
+      ).toBe(false);
+    },
+  );
 
   it("requires an empty caller-visible Gift Plan projection", () => {
     expect(

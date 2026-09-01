@@ -42,6 +42,10 @@
     "apps/agent/agent/schedules/**/*.ts",
     "apps/agent/agent/sandbox/**/*.ts",
     "apps/agent/agent/subagents/**/agent.ts",
+    // Eve resolves the default tool harness per agent node, so a subagent's
+    // `tools/` files (its own authored tools and its `disableTool()` opt-outs)
+    // are loaded by path exactly like the root's, with no import edge either.
+    "apps/agent/agent/subagents/**/tools/**/*.ts",
     "apps/agent/agent/tools/**/*.ts",
     // Eve eval suites are discovered and executed by `eve eval` (see apps/agent
     //   package.json `eval:*` scripts) via a filesystem glob over `*.eval.ts`,

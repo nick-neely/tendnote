@@ -105,42 +105,38 @@ beforeEach(() => {
 });
 
 describe("generic Reminder server adapters", () => {
-  it.each([
-    "general_action",
-    "follow_up",
-    "routine",
-    "saved_item",
-  ] as const)("derives the authenticated owner and saves a %s schedule", async (recordKind) => {
-    const result = await saveReminderAction({
-      recordKind,
-      recordId: RECORD_ID,
-      clientInstallationId: "browser-installation-1",
-      timeZone: "America/Chicago",
-      schedule: { kind: "relative", leadMinutes: 0 },
-    });
+  it.each(["general_action", "follow_up", "routine", "saved_item"] as const)(
+    "derives the authenticated owner and saves a %s schedule",
+    async (recordKind) => {
+      const result = await saveReminderAction({
+        recordKind,
+        recordId: RECORD_ID,
+        clientInstallationId: "browser-installation-1",
+        timeZone: "America/Chicago",
+        schedule: { kind: "relative", leadMinutes: 0 },
+      });
 
-    expect(saveReminder).toHaveBeenCalledWith(
-      expect.objectContaining({ ownerUserId: "owner-1", recordKind, recordId: RECORD_ID }),
-    );
-    expect(result).toMatchObject({ ok: true, view: { occurrenceIntentCreated: false } });
-    if (recordKind === "general_action" || recordKind === "routine") {
+      expect(saveReminder).toHaveBeenCalledWith(
+        expect.objectContaining({ ownerUserId: "owner-1", recordKind, recordId: RECORD_ID }),
+      );
+      expect(result).toMatchObject({ ok: true, view: { occurrenceIntentCreated: false } });
+      if (recordKind === "general_action" || recordKind === "routine") {
+        expect(revalidatePathSpy).toHaveBeenCalledWith("/account");
+      }
       expect(revalidatePathSpy).toHaveBeenCalledWith("/account");
-    }
-    expect(revalidatePathSpy).toHaveBeenCalledWith("/account");
-  });
+    },
+  );
 
-  it.each([
-    "general_action",
-    "follow_up",
-    "routine",
-    "saved_item",
-  ] as const)("owner-scopes clearing a %s schedule", async (recordKind) => {
-    await clearReminderAction({ recordKind, recordId: RECORD_ID });
+  it.each(["general_action", "follow_up", "routine", "saved_item"] as const)(
+    "owner-scopes clearing a %s schedule",
+    async (recordKind) => {
+      await clearReminderAction({ recordKind, recordId: RECORD_ID });
 
-    expect(clearReminder).toHaveBeenCalledWith(
-      expect.objectContaining({ ownerUserId: "owner-1", recordKind, recordId: RECORD_ID }),
-    );
-  });
+      expect(clearReminder).toHaveBeenCalledWith(
+        expect.objectContaining({ ownerUserId: "owner-1", recordKind, recordId: RECORD_ID }),
+      );
+    },
+  );
 
   it("rejects unsupported Reminder record families before persistence", async () => {
     await expect(

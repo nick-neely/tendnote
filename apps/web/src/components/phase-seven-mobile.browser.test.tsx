@@ -699,32 +699,32 @@ describe("Phase Seven phone browser proof", () => {
       .toBeGreaterThan(gutter);
   });
 
-  it.each([
-    "actions",
-    "people",
-  ] as const)("keeps the %s destination content inside the phone gutter", async (destination) => {
-    await page.viewport(390, 844);
-    const container = await mount(
-      <AppShell ownerUserId="owner-1">
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-6" data-testid="route-surface">
-          <header>
-            <h1>{destination === "actions" ? "Actions" : "People"}</h1>
-          </header>
-          {destination === "actions" ? (
-            <ActionsSurface active={[]} areas={[]} />
-          ) : (
-            <PeopleList people={[]} />
-          )}
-        </div>
-      </AppShell>,
-    );
+  it.each(["actions", "people"] as const)(
+    "keeps the %s destination content inside the phone gutter",
+    async (destination) => {
+      await page.viewport(390, 844);
+      const container = await mount(
+        <AppShell ownerUserId="owner-1">
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-6" data-testid="route-surface">
+            <header>
+              <h1>{destination === "actions" ? "Actions" : "People"}</h1>
+            </header>
+            {destination === "actions" ? (
+              <ActionsSurface active={[]} areas={[]} />
+            ) : (
+              <PeopleList people={[]} />
+            )}
+          </div>
+        </AppShell>,
+      );
 
-    const surface = container.querySelector('[data-testid="route-surface"]') as HTMLElement;
-    const surfaceBox = surface.getBoundingClientRect();
-    expect(surfaceBox.left).toBeGreaterThan(0);
-    expect(surfaceBox.right).toBeLessThan(window.innerWidth);
-    expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth);
-  });
+      const surface = container.querySelector('[data-testid="route-surface"]') as HTMLElement;
+      const surfaceBox = surface.getBoundingClientRect();
+      expect(surfaceBox.left).toBeGreaterThan(0);
+      expect(surfaceBox.right).toBeLessThan(window.innerWidth);
+      expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth);
+    },
+  );
 
   it("shows iOS installation guidance without exposing platform permission early", async () => {
     await page.viewport(390, 844);

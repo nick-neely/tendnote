@@ -58,12 +58,12 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "zod": "^4.1.13"
+    "zod": "^4.5.2"
   },
   "devDependencies": {
     "@tendnote/config": "workspace:*",
     "@types/node": "^26.4.0",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.16"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
   }
 }

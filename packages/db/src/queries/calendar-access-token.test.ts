@@ -6,13 +6,14 @@ import {
 import { CalendarAuthorizationError } from "./calendar/errors";
 
 const REF = { ownerUserId: "owner-1", providerKey: "google", capabilityKey: "calendar" };
+const findAccountId = async () => "account-1";
 
 describe("createBetterAuthGoogleCalendarAccessTokenProvider", () => {
   it("returns the owner-linked Better Auth Google access token", async () => {
     const authGetAccessToken = vi.fn(
-      async (input: { body: { providerId: string; userId: string } }) => {
+      async (input: { body: { accountId: string; userId: string } }) => {
         expect(input).toEqual({
-          body: { providerId: "google", userId: "owner-1" },
+          body: { accountId: "account-1", userId: "owner-1" },
         });
         return {
           accessToken: "access-token",
@@ -21,6 +22,7 @@ describe("createBetterAuthGoogleCalendarAccessTokenProvider", () => {
       },
     );
     const getAccessToken = createBetterAuthGoogleCalendarAccessTokenProvider({
+      findAccountId,
       getAccessToken: authGetAccessToken,
     });
 
@@ -29,6 +31,7 @@ describe("createBetterAuthGoogleCalendarAccessTokenProvider", () => {
 
   it("fails closed when Better Auth cannot return a usable token", async () => {
     const getAccessToken = createBetterAuthGoogleCalendarAccessTokenProvider({
+      findAccountId,
       getAccessToken: async () => ({
         accessToken: null,
         accessTokenExpiresAt: null,
@@ -44,6 +47,7 @@ describe("createBetterAuthGoogleCalendarAccessTokenProvider", () => {
 
   it("only serves the Google Calendar capability", async () => {
     const getAccessToken = createBetterAuthGoogleCalendarAccessTokenProvider({
+      findAccountId,
       getAccessToken: async () => ({ accessToken: "token", accessTokenExpiresAt: null }),
     });
 
@@ -54,6 +58,7 @@ describe("createBetterAuthGoogleCalendarAccessTokenProvider", () => {
 
   it("keeps missing runtime provider configuration transient", async () => {
     const getAccessToken = createBetterAuthGoogleCalendarAccessTokenProvider({
+      findAccountId,
       getAccessToken: async () => {
         throw { body: { code: "PROVIDER_NOT_SUPPORTED" } };
       },
@@ -61,6 +66,21 @@ describe("createBetterAuthGoogleCalendarAccessTokenProvider", () => {
 
     await expect(getAccessToken(REF)).rejects.toMatchObject({
       body: { code: "PROVIDER_NOT_SUPPORTED" },
+    });
+  });
+
+  it("asks the owner to reconnect when no Google account is linked", async () => {
+    const getAccessToken = createBetterAuthGoogleCalendarAccessTokenProvider({
+      findAccountId: async () => null,
+      getAccessToken: async () => {
+        throw new Error("must not ask Better Auth without an account id");
+      },
+    });
+
+    const error = await getAccessToken(REF).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(CalendarAuthorizationError);
+    expect(error).toMatchObject({
+      cause: expect.any(GoogleCalendarAccessTokenUnavailableError),
     });
   });
 });

@@ -13,7 +13,9 @@ describe("createGoogleContactsAdapter", () => {
       expect(url).toContain("sources=READ_SOURCE_TYPE_CONTACT");
       expect(url).not.toContain("READ_SOURCE_TYPE_PROFILE");
       expect(url).not.toContain("organizations");
-      expect((init?.headers as Record<string, string>).authorization).toBe("Bearer token-abc");
+      expect((init?.headers as Record<string, string> | undefined)?.authorization).toBe(
+        "Bearer token-abc",
+      );
       expect(url).not.toContain("token-abc");
       return jsonResponse({
         connections: [

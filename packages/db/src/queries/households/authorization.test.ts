@@ -174,26 +174,29 @@ describe("Household Authorization Proof policy matrix", () => {
     fixture = await createFixture();
   });
 
-  it.each(POLICY_CASES)("$scope scope, $callerLabel: view=$view write=$write", async ({
-    scope,
-    caller,
-    view,
-    write,
-  }) => {
-    const record = fixture.records[scope];
+  it.each(POLICY_CASES)(
+    "$scope scope, $callerLabel: view=$view write=$write",
+    async ({ scope, caller, view, write }) => {
+      const record = fixture.records[scope];
 
-    expect(
-      (await fixture.prover.proveRecordAccess({ callerUserId: caller, operation: "view", record }))
-        .authorized,
-    ).toBe(view);
-
-    for (const operation of WRITE_OPERATIONS) {
       expect(
-        (await fixture.prover.proveRecordAccess({ callerUserId: caller, operation, record }))
-          .authorized,
-      ).toBe(write);
-    }
-  });
+        (
+          await fixture.prover.proveRecordAccess({
+            callerUserId: caller,
+            operation: "view",
+            record,
+          })
+        ).authorized,
+      ).toBe(view);
+
+      for (const operation of WRITE_OPERATIONS) {
+        expect(
+          (await fixture.prover.proveRecordAccess({ callerUserId: caller, operation, record }))
+            .authorized,
+        ).toBe(write);
+      }
+    },
+  );
 
   it("composes a mixed list from the same matrix, leaving nothing behind for the rest", async () => {
     const all = [fixture.records.private, fixture.records.household, fixture.records.shared];

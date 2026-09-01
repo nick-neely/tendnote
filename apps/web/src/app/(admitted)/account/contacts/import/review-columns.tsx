@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { primaryContact, reviewStateOrder, STALE_NOTE } from "./review-model";
+import type { ReviewTableFeatures } from "./review-table-features";
 
 type Candidate = ContactImportPreviewCandidate;
 
@@ -35,7 +36,7 @@ export function reviewColumns({
   busy,
   staleIds,
   onConfirmSafe,
-}: ReviewColumnContext): ColumnDef<Candidate>[] {
+}: ReviewColumnContext): ColumnDef<ReviewTableFeatures, Candidate>[] {
   return [
     {
       id: "select",
@@ -69,7 +70,7 @@ export function reviewColumns({
       id: "person",
       accessorKey: "displayName",
       enableGlobalFilter: true,
-      sortingFn: "text",
+      sortFn: "text",
       header: ({ column }) => <SortHeader column={column} label="Person" />,
       cell: ({ row }) => (
         <PersonCell candidate={row.original} stale={staleIds.has(row.original.id)} />
@@ -86,7 +87,7 @@ export function reviewColumns({
       id: "state",
       accessorFn: (candidate) => candidate.reviewState,
       enableGlobalFilter: false,
-      sortingFn: (left, right) =>
+      sortFn: (left, right) =>
         reviewStateOrder(left.original.reviewState) - reviewStateOrder(right.original.reviewState),
       header: ({ column }) => <SortHeader column={column} label="State" />,
       cell: ({ row }) => <ReviewStateBadge state={row.original.reviewState} />,
@@ -185,7 +186,13 @@ function MatchCell({ candidate }: { candidate: Candidate }) {
   return <span className="text-muted-foreground">No match</span>;
 }
 
-function SortHeader({ column, label }: { column: Column<Candidate, unknown>; label: string }) {
+function SortHeader({
+  column,
+  label,
+}: {
+  column: Column<ReviewTableFeatures, Candidate, unknown>;
+  label: string;
+}) {
   const sorted = column.getIsSorted();
   const Icon =
     sorted === "asc" ? ChevronUpIcon : sorted === "desc" ? ChevronDownIcon : ChevronsUpDownIcon;

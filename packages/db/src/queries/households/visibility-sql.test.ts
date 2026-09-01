@@ -50,27 +50,26 @@ const TRUTH_TABLE = [
  * Neither half can be updated to match the other without seeing both.
  */
 describe("household visibility pre-filter and proof agree", () => {
-  it.each(TRUTH_TABLE)("engine: $scope scope for $caller is $visible", ({
-    scope,
-    caller,
-    visible,
-  }) => {
-    expect(
-      evaluateHouseholdAuthorization({
-        callerUserId: caller,
-        operation: "view",
-        subject: {
-          kind: "general_action",
-          id: "record-1",
-          ownerUserId: OWNER,
-          scope,
-          householdId: scope === "private" ? null : HOUSEHOLD,
-          audienceUserIds: scope === "shared" ? [SELECTED] : undefined,
-        },
-        callerActiveMemberships: ACTIVE.filter((membership) => membership.userId === caller),
-      }).authorized,
-    ).toBe(visible);
-  });
+  it.each(TRUTH_TABLE)(
+    "engine: $scope scope for $caller is $visible",
+    ({ scope, caller, visible }) => {
+      expect(
+        evaluateHouseholdAuthorization({
+          callerUserId: caller,
+          operation: "view",
+          subject: {
+            kind: "general_action",
+            id: "record-1",
+            ownerUserId: OWNER,
+            scope,
+            householdId: scope === "private" ? null : HOUSEHOLD,
+            audienceUserIds: scope === "shared" ? [SELECTED] : undefined,
+          },
+          callerActiveMemberships: ACTIVE.filter((membership) => membership.userId === caller),
+        }).authorized,
+      ).toBe(visible);
+    },
+  );
 
   it("SQL: admits exactly the three scopes the policy defines and no fourth branch", () => {
     expect(source).toContain("scope = 'private'");
@@ -114,42 +113,41 @@ describe("household visibility pre-filter and proof agree", () => {
    * requires - symmetric authority for every active member, nothing for anyone
    * else (ADR 0214).
    */
-  describe.each([
-    "view",
-    "update",
-    "archive",
-  ] as const)("engine: workspace-owned records under %s", (operation) => {
-    const subject = {
-      kind: "saved_item",
-      id: "record-2",
-      ownerUserId: null,
-      scope: "household",
-      householdId: HOUSEHOLD,
-      ownership: "household_native",
-    } as const;
+  describe.each(["view", "update", "archive"] as const)(
+    "engine: workspace-owned records under %s",
+    (operation) => {
+      const subject = {
+        kind: "saved_item",
+        id: "record-2",
+        ownerUserId: null,
+        scope: "household",
+        householdId: HOUSEHOLD,
+        ownership: "household_native",
+      } as const;
 
-    it.each([OWNER, SELECTED, UNSELECTED])("admits active member %s", (caller) => {
-      expect(
-        evaluateHouseholdAuthorization({
-          callerUserId: caller,
-          operation,
-          subject,
-          callerActiveMemberships: ACTIVE.filter((membership) => membership.userId === caller),
-        }),
-      ).toMatchObject({ authorized: true, via: "household_authority" });
-    });
+      it.each([OWNER, SELECTED, UNSELECTED])("admits active member %s", (caller) => {
+        expect(
+          evaluateHouseholdAuthorization({
+            callerUserId: caller,
+            operation,
+            subject,
+            callerActiveMemberships: ACTIVE.filter((membership) => membership.userId === caller),
+          }),
+        ).toMatchObject({ authorized: true, via: "household_authority" });
+      });
 
-    it("refuses someone who is no longer active", () => {
-      expect(
-        evaluateHouseholdAuthorization({
-          callerUserId: DEPARTED,
-          operation,
-          subject,
-          callerActiveMemberships: [],
-        }).authorized,
-      ).toBe(false);
-    });
-  });
+      it("refuses someone who is no longer active", () => {
+        expect(
+          evaluateHouseholdAuthorization({
+            callerUserId: DEPARTED,
+            operation,
+            subject,
+            callerActiveMemberships: [],
+          }).authorized,
+        ).toBe(false);
+      });
+    },
+  );
 
   it("engine: never reads a null owner as an owner, even on a private row", () => {
     // The fail-closed direction: if a workspace-owned record ever ended up

@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  getCoreRowModel,
-  getExpandedRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  type SortingState,
-  type Table,
-  useReactTable,
-} from "@tanstack/react-table";
+import { type ReactTable, type SortingState, useTable } from "@tanstack/react-table";
 import type { ContactImportPreviewCandidate } from "@tendnote/db/queries/contacts-import-preview";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -20,6 +11,7 @@ import {
 import type { ResolutionChoice } from "./resolution-zone";
 import { reviewColumns } from "./review-columns";
 import { bulkConfirmPlan, matchesQuery, singleConfirmPlan } from "./review-model";
+import { type ReviewTableFeatures, reviewTableFeatures } from "./review-table-features";
 import { presentToast } from "./review-toasts";
 import { useConfirmRunner } from "./use-confirm-runner";
 import { useReducedMotion } from "./use-reduced-motion";
@@ -56,7 +48,7 @@ async function confirmSafeCandidates(
 export type ContactImportReview = {
   /** The session working set: what the table is actually showing. */
   data: Candidate[];
-  table: Table<Candidate>;
+  table: ReactTable<ReviewTableFeatures, Candidate>;
   /** Rows mid-exit; they fade before leaving the DOM. */
   removingIds: ReadonlySet<string>;
   /** A confirm is in flight. */
@@ -121,7 +113,8 @@ export function useContactImportReview(candidates: Candidate[]): ContactImportRe
     [busy, confirmOne, staleIds],
   );
 
-  const table = useReactTable({
+  const table = useTable({
+    features: reviewTableFeatures,
     data,
     columns,
     getRowId: (candidate) => candidate.id,
@@ -133,13 +126,8 @@ export function useContactImportReview(candidates: Candidate[]): ContactImportRe
     getRowCanExpand: (row) => !row.original.safeBulkEligible,
     initialState: {
       columnVisibility: { bucket: false },
-      pagination: { pageSize: 10 },
+      pagination: { pageIndex: 0, pageSize: 10 },
     },
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getExpandedRowModel: getExpandedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
   });
 
   // An explicit selection wins; with none, the button acts on every safe row.

@@ -334,31 +334,34 @@ describe("removal and departure", () => {
   it.each([
     ["removal", (f: Fixture) => f.governance.removeMember({ actorUserId: ANA, memberUserId: BEN })],
     ["voluntary departure", (f: Fixture) => f.governance.leaveHousehold({ userId: BEN })],
-  ] as const)("sends every family of the departing person's own records home on %s", async (_label, end) => {
-    // The sweep is deliberately id-returning and store-shaped, so what this
-    // asserts is that governance *asks* for each family. One household record
-    // family silently missing from a departure is the failure mode worth
-    // catching, and it has happened twice: Assets (#386) were the moment it
-    // could, and Saved Items were the moment it did.
-    const recording = createFixture(recordingScheduledWork());
-    await seedHouseholdWithMembers(recording.store.households, {
-      ownerUserId: ANA,
-      members: [
-        [ANA, "owner"],
-        [BEN, "member"],
-      ],
-    });
+  ] as const)(
+    "sends every family of the departing person's own records home on %s",
+    async (_label, end) => {
+      // The sweep is deliberately id-returning and store-shaped, so what this
+      // asserts is that governance *asks* for each family. One household record
+      // family silently missing from a departure is the failure mode worth
+      // catching, and it has happened twice: Assets (#386) were the moment it
+      // could, and Saved Items were the moment it did.
+      const recording = createFixture(recordingScheduledWork());
+      await seedHouseholdWithMembers(recording.store.households, {
+        ownerUserId: ANA,
+        members: [
+          [ANA, "owner"],
+          [BEN, "member"],
+        ],
+      });
 
-    await end(recording);
+      await end(recording);
 
-    expect(sweptFamilies(recording)).toEqual([
-      { family: "actions", userId: BEN },
-      { family: "assets", userId: BEN },
-      { family: "saved-items", userId: BEN },
-      { family: "relationship-records", userId: BEN },
-      { family: "responsibilities", userId: BEN },
-    ]);
-  });
+      expect(sweptFamilies(recording)).toEqual([
+        { family: "actions", userId: BEN },
+        { family: "assets", userId: BEN },
+        { family: "saved-items", userId: BEN },
+        { family: "relationship-records", userId: BEN },
+        { family: "responsibilities", userId: BEN },
+      ]);
+    },
+  );
 
   it("sends every family home for every member when the household is dissolved", async () => {
     // Dissolution is every member departing at once, so it owes each of them the
@@ -812,34 +815,37 @@ describe("post-commit hooks", () => {
   it.each([
     ["the whole-household hook", "onHouseholdAccessEnded"],
     ["the per-member hook", "onAccessEnded"],
-  ] as const)("finishes the departure and the other hook when %s throws", async (_label, failing) => {
-    const ran: string[] = [];
-    const harness = fixtureWithHooks({
-      onHouseholdAccessEnded: async () => {
-        if (failing === "onHouseholdAccessEnded") throw new Error("gift plan sweep is down");
-        ran.push("household");
-      },
-      onAccessEnded: async () => {
-        if (failing === "onAccessEnded") throw new Error("reminder revocation is down");
-        ran.push("member");
-      },
-    });
-    await seedHouseholdWithMembers(harness.store.households, {
-      ownerUserId: ANA,
-      members: [
-        [ANA, "owner"],
-        [BEN, "member"],
-      ],
-    });
+  ] as const)(
+    "finishes the departure and the other hook when %s throws",
+    async (_label, failing) => {
+      const ran: string[] = [];
+      const harness = fixtureWithHooks({
+        onHouseholdAccessEnded: async () => {
+          if (failing === "onHouseholdAccessEnded") throw new Error("gift plan sweep is down");
+          ran.push("household");
+        },
+        onAccessEnded: async () => {
+          if (failing === "onAccessEnded") throw new Error("reminder revocation is down");
+          ran.push("member");
+        },
+      });
+      await seedHouseholdWithMembers(harness.store.households, {
+        ownerUserId: ANA,
+        members: [
+          [ANA, "owner"],
+          [BEN, "member"],
+        ],
+      });
 
-    // The departure itself resolves - the rows have moved, and reporting an
-    // error would invite a retry of something that cannot be done twice.
-    await expect(harness.governance.leaveHousehold({ userId: BEN })).resolves.toMatchObject({
-      status: "removed",
-    });
-    // And the hook that did not fail still ran.
-    expect(ran).toEqual([failing === "onHouseholdAccessEnded" ? "member" : "household"]);
-  });
+      // The departure itself resolves - the rows have moved, and reporting an
+      // error would invite a retry of something that cannot be done twice.
+      await expect(harness.governance.leaveHousehold({ userId: BEN })).resolves.toMatchObject({
+        status: "removed",
+      });
+      // And the hook that did not fail still ran.
+      expect(ran).toEqual([failing === "onHouseholdAccessEnded" ? "member" : "household"]);
+    },
+  );
 
   it("tells the whole-household hook that a dissolution was not a departure", async () => {
     const calls: Array<{ userId?: string }> = [];

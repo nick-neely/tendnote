@@ -43,25 +43,25 @@ describe("resolveHouseholdJoinView", () => {
    * would show a second invitation as ready and let the one-household rule
    * refuse it a press later.
    */
-  it.each([
-    "admitted",
-    "pending",
-  ] as const)("tells the lifecycle how many households a %s viewer already has", async (state) => {
-    getCurrentAccess.mockResolvedValue({
-      state,
-      user: { id: "sam-1", email: "sam@example.com" },
-    });
-    db.listActiveHouseholdMembershipsForUser.mockResolvedValue([{ householdId: "other" }]);
-    db.viewHouseholdInvitation.mockResolvedValue({ state: "workspace-conflict" });
+  it.each(["admitted", "pending"] as const)(
+    "tells the lifecycle how many households a %s viewer already has",
+    async (state) => {
+      getCurrentAccess.mockResolvedValue({
+        state,
+        user: { id: "sam-1", email: "sam@example.com" },
+      });
+      db.listActiveHouseholdMembershipsForUser.mockResolvedValue([{ householdId: "other" }]);
+      db.viewHouseholdInvitation.mockResolvedValue({ state: "workspace-conflict" });
 
-    await expect(resolveHouseholdJoinView("secret")).resolves.toEqual({
-      state: "workspace-conflict",
-    });
-    expect(db.viewHouseholdInvitation).toHaveBeenCalledWith({
-      secret: "secret",
-      viewer: { userId: "sam-1", email: "sam@example.com", activeHouseholds: 1 },
-    });
-  });
+      await expect(resolveHouseholdJoinView("secret")).resolves.toEqual({
+        state: "workspace-conflict",
+      });
+      expect(db.viewHouseholdInvitation).toHaveBeenCalledWith({
+        secret: "secret",
+        viewer: { userId: "sam-1", email: "sam@example.com", activeHouseholds: 1 },
+      });
+    },
+  );
 
   it("says nothing about access on a decision that proved nothing", async () => {
     getCurrentAccess.mockResolvedValue({

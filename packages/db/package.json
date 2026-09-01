@@ -17,6 +17,7 @@
     "./queries/assets": "./src/queries/assets.ts",
     "./queries/auth-users": "./src/queries/auth-users.ts",
     "./queries/background-job-deliveries": "./src/queries/background-job-deliveries.ts",
+    "./queries/better-auth-accounts": "./src/queries/better-auth-accounts.ts",
     "./queries/background-jobs": "./src/queries/background-jobs.ts",
     "./queries/birthday-gift-planning": "./src/queries/birthday-gift-planning.ts",
     "./queries/brief-schedules": "./src/queries/brief-schedules.ts",
@@ -86,17 +87,17 @@
   },
   "dependencies": {
     "@tendnote/domain": "workspace:*",
-    "ai": "7.0.59",
+    "ai": "7.0.84",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.7",
-    "zod": "^4.1.13"
+    "zod": "^4.5.2"
   },
   "devDependencies": {
     "@tendnote/config": "workspace:*",
     "@types/node": "^26.4.0",
     "drizzle-kit": "^0.31.8",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.16"
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
   }
 }

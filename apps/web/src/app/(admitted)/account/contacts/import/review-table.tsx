@@ -1,6 +1,6 @@
 "use client";
 
-import { flexRender, type Row, type Table as TableInstance } from "@tanstack/react-table";
+import { flexRender, type ReactTable, type Row } from "@tanstack/react-table";
 import type { ContactImportPreviewCandidate } from "@tendnote/db/queries/contacts-import-preview";
 import {
   Table,
@@ -11,11 +11,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { type ResolutionChoice, ResolutionZone } from "./resolution-zone";
+import type { ReviewTableFeatures } from "./review-table-features";
 
 type Candidate = ContactImportPreviewCandidate;
 
 type ReviewTableProps = {
-  table: TableInstance<Candidate>;
+  table: ReactTable<ReviewTableFeatures, Candidate>;
   busy: boolean;
   removingIds: ReadonlySet<string>;
   onApply: (candidate: Candidate, resolution: ResolutionChoice) => void;
@@ -78,7 +79,7 @@ function CandidateRows({
   onApply,
   onSkip,
 }: {
-  row: Row<Candidate>;
+  row: Row<ReviewTableFeatures, Candidate>;
   busy: boolean;
   removing: boolean;
   onApply: (candidate: Candidate, resolution: ResolutionChoice) => void;

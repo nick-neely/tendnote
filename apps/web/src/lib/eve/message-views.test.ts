@@ -324,6 +324,7 @@ describe("messageActiveToolViews (in-flight tool calls → working lines)", () =
           toolName: "search_semantic_context",
           state: "input-streaming",
           input: {},
+          inputText: "",
         },
       ],
     };

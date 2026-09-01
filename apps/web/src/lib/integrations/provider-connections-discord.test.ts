@@ -13,6 +13,7 @@ const {
   recordProviderConnectionError,
   getAccessToken,
   admittedOwnerOrNull,
+  listUserAccounts,
   reconcileAffectedScopes,
 } = vi.hoisted(() => ({
   getDiscordIdentity: vi.fn(),
@@ -22,6 +23,7 @@ const {
   connectProviderConnection: vi.fn(),
   recordProviderConnectionError: vi.fn(),
   getAccessToken: vi.fn(),
+  listUserAccounts: vi.fn(),
   admittedOwnerOrNull: vi.fn(),
   reconcileAffectedScopes: vi.fn(),
 }));
@@ -52,7 +54,7 @@ vi.mock("@/lib/cache/reconcile-affected-scopes", () => ({ reconcileAffectedScope
 // account row the hook receives only carries an encrypted token, so the reconcile
 // fetches a fresh one the same way the page path does.
 vi.mock("@/lib/auth/server", () => ({
-  getAuth: () => ({ api: { getAccessToken } }),
+  getAuth: () => ({ api: { getAccessToken, listUserAccounts } }),
 }));
 vi.mock("next/headers", () => ({
   headers: async () => new Headers(),
@@ -74,6 +76,8 @@ function discordAccount(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const DISCORD_ACCOUNT_ROW_ID = "account-discord-1";
+
 /** Stub the Discord `/users/@me` username fetch to resolve `global_name`. */
 function mockUsername(name: string | null) {
   getAccessToken.mockResolvedValue({ accessToken: "discord-access-token" });
@@ -88,6 +92,11 @@ function mockUsername(name: string | null) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Better Auth 1.7 selects an account by row id, so every token read first
+  // resolves the owner's linked account for the provider.
+  listUserAccounts.mockResolvedValue([
+    { id: DISCORD_ACCOUNT_ROW_ID, providerId: "discord", accountId: DISCORD_USER },
+  ]);
   // The linking session resolves to this admitted owner by default; individual
   // admission-gate tests override it.
   admittedOwnerOrNull.mockResolvedValue(OWNER);

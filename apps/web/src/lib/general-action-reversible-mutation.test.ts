@@ -73,17 +73,20 @@ describe("General Action reversible mutation adapters", () => {
   it.each([
     ["completed", completeGeneralActionAction],
     ["dismissed", dismissGeneralActionAction],
-  ] as const)("uses the prior %s state as the authoritative inverse of reopen", async (status, inverse) => {
-    const prior = generalActionViewFixture({ status });
-    vi.mocked(inverse).mockResolvedValue({ ok: true, view: prior });
+  ] as const)(
+    "uses the prior %s state as the authoritative inverse of reopen",
+    async (status, inverse) => {
+      const prior = generalActionViewFixture({ status });
+      vi.mocked(inverse).mockResolvedValue({ ok: true, view: prior });
 
-    await generalActionLifecycleAdapter("reopen").inverse(
-      prior,
-      generalActionViewFixture({ status: "open" }),
-    );
+      await generalActionLifecycleAdapter("reopen").inverse(
+        prior,
+        generalActionViewFixture({ status: "open" }),
+      );
 
-    expect(inverse).toHaveBeenCalledWith({ generalActionId: prior.id });
-  });
+      expect(inverse).toHaveBeenCalledWith({ generalActionId: prior.id });
+    },
+  );
 
   it("restores an archived action through the server lifecycle", async () => {
     const prior = generalActionViewFixture({ status: "paused" });

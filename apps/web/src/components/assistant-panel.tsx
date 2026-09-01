@@ -1,6 +1,7 @@
 "use client";
 
 import type { PromptNudge } from "@tendnote/domain";
+import type { ChatStatus } from "ai";
 import { type EveMessage, useEveAgent } from "eve/react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -443,6 +444,15 @@ function composerPlaceholder(
     : "Remember something from a conversation today…";
 }
 
+/**
+ * Eve's turn status narrowed to what the submit button renders. Its `resuming`
+ * state (reattaching to a turn already running server-side) has no button of its
+ * own and is live work, so it shows the same spinner as a freshly sent turn.
+ */
+function submitStatus(status: AgentStatus): ChatStatus {
+  return status === "resuming" ? "submitted" : status;
+}
+
 function AssistantComposerForm({
   context,
   ownerUserId,
@@ -481,7 +491,7 @@ function AssistantComposerForm({
               disabled descendant, and the textarea stays usable during a turn,
               so a dimmed composer would misread as "you can't type here". A send
               Eve can't take is refused by handleSubmit, which restores the text. */}
-          <PromptInputSubmit status={status} />
+          <PromptInputSubmit status={submitStatus(status)} />
         </PromptInputFooter>
       </PromptInput>
     </AssistantComposerShell>

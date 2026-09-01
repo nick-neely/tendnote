@@ -7,15 +7,29 @@ import { describe, expect, it } from "vitest";
 const agentRoot = join(import.meta.dirname, "../agent");
 
 /**
+ * The shape this test reads out of eve's own framework source registry: each
+ * registration contributes modules at logical paths, and every `tools/<slug>.ts`
+ * path is one framework default tool.
+ */
+type FrameworkSourceRegistry = {
+  registrations: ReadonlyArray<{
+    source: { modules: ReadonlyArray<{ logicalPath: string }> };
+  }>;
+};
+
+/**
  * Framework defaults no agent node may have. Eve enables its whole default
  * harness unless a file at the tool's own slug exports `disableTool()`, so every
  * one of these was live while `base.md` promised the user the opposite: the
  * agent asserts it never reads file contents and answers only from returned
- * records, and `bash`, `read_file`, `write_file`, `glob`, and `grep` each
- * contradict that in a different direction. Public web research is deliberately
- * the one framework network capability the root keeps, behind the Eve mode gate.
+ * records, and `bash`, `read_file`, and `write_file` each contradict that in a
+ * different direction. `connection_search` is the same shape one layer out: it
+ * resolves connection-backed tools into the model's toolset at step start, so an
+ * installed connection would become callable beside Tendnote's own owner-scoped,
+ * approval-gated external tools. Public web research is deliberately the one
+ * framework network capability the root keeps, behind the Eve mode gate.
  */
-const DISABLED_FRAMEWORK_TOOLS = ["bash", "glob", "grep", "read_file", "write_file"];
+const DISABLED_FRAMEWORK_TOOLS = ["bash", "connection_search", "read_file", "write_file"];
 
 const SUBAGENT_DISABLED_FRAMEWORK_TOOLS = [
   ...DISABLED_FRAMEWORK_TOOLS,
@@ -26,9 +40,17 @@ const SUBAGENT_DISABLED_FRAMEWORK_TOOLS = [
 /**
  * Plus, at the root only, the built-in self-copy: `agent` spawns the root agent
  * with the root instructions and every root tool, which is every narrowing the
- * four declared subagents exist to impose, undone in one call.
+ * four declared subagents exist to impose, undone in one call. `task_update` and
+ * `task_cancel` are the delegated-task lifecycle that self-copy would create;
+ * with `agent` off there are no background tasks, and they stay off so the pair
+ * cannot become live as a side effect of turning delegation back on.
  */
-const ROOT_DISABLED_FRAMEWORK_TOOLS = [...DISABLED_FRAMEWORK_TOOLS, "agent"].sort();
+const ROOT_DISABLED_FRAMEWORK_TOOLS = [
+  ...DISABLED_FRAMEWORK_TOOLS,
+  "agent",
+  "task_cancel",
+  "task_update",
+].sort();
 
 /**
  * The framework defaults Tendnote keeps. `ask_question` is the clarification
@@ -45,11 +67,18 @@ const KEPT_FRAMEWORK_TOOLS = ["ask_question", "load_skill", "todo", "web_fetch",
  */
 async function frameworkToolNames(): Promise<string[]> {
   const eveRoot = dirname(createRequire(import.meta.url).resolve("eve/package.json"));
-  const registryPath = join(eveRoot, "dist/src/runtime/framework-tools/index.js");
-  const registry: { getAllFrameworkToolNames(): Set<string> } = await import(
+  const registryPath = join(eveRoot, "dist/src/framework/sources/registry.js");
+  const {
+    frameworkAgentSourceRegistry,
+  }: { frameworkAgentSourceRegistry: FrameworkSourceRegistry } = await import(
     pathToFileURL(registryPath).href
   );
-  return [...registry.getAllFrameworkToolNames()].sort();
+  const names = frameworkAgentSourceRegistry.registrations.flatMap((registration) =>
+    registration.source.modules
+      .map((module) => /^tools\/(.+)\.ts$/.exec(module.logicalPath)?.[1])
+      .filter((name): name is string => name !== undefined),
+  );
+  return [...new Set(names)].sort();
 }
 
 /** Whether an `agent/**\/tools/` file turns off a framework default instead of authoring a tool. */

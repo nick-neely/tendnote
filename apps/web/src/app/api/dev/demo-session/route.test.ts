@@ -64,12 +64,15 @@ describe("POST /api/dev/demo-session", () => {
 
     expect(response.status).toBe(204);
     expect(findUserById).toHaveBeenCalledWith("demo-user");
-    expect(createUser).toHaveBeenCalledWith({
-      id: "demo-user",
-      email: "demo-user@local.tendnote.dev",
-      name: "Local development",
-      emailVerified: true,
-    });
+    expect(createUser).toHaveBeenCalledWith(
+      {
+        id: "demo-user",
+        email: "demo-user@local.tendnote.dev",
+        name: "Local development",
+        emailVerified: true,
+      },
+      { method: "local-development" },
+    );
     expect(ensureLocalDevelopmentAccessProfile).toHaveBeenCalledWith({ userId: "demo-user" });
     expect(createSession).toHaveBeenCalledWith("demo-user");
     expect(serializeSignedCookie).toHaveBeenCalledWith(
@@ -99,12 +102,15 @@ describe("POST /api/dev/demo-session", () => {
     const response = await POST();
 
     expect(response.status).toBe(204);
-    expect(createUser).toHaveBeenCalledWith({
-      id: "demo-user",
-      email: "person@example.com",
-      name: "Local development",
-      emailVerified: true,
-    });
+    expect(createUser).toHaveBeenCalledWith(
+      {
+        id: "demo-user",
+        email: "person@example.com",
+        name: "Local development",
+        emailVerified: true,
+      },
+      { method: "local-development" },
+    );
   });
 
   it("reuses an existing local fallback auth user", async () => {

@@ -1,4 +1,5 @@
 import { PROVIDER_GOOGLE } from "@tendnote/domain";
+import type { BetterAuthAccountIdResolver } from "../better-auth-accounts";
 import { CalendarAuthorizationError } from "./errors";
 import type { CalendarConnectionRef } from "./types";
 
@@ -23,9 +24,14 @@ export type GoogleCalendarAccessTokenProvider = (ref: CalendarConnectionRef) => 
  * caller supplies the configured auth instance, so this package never reads or
  * decrypts account token columns itself. Better Auth owns OAuth token custody,
  * decryption, refresh, and persistence (ADR-0071).
+ *
+ * Better Auth 1.7 selects the account by its row id rather than by provider, so
+ * the caller must resolve the owner's linked Google account first. The owner id
+ * still travels with the call: Better Auth rejects a row that does not belong
+ * to it, which keeps the explicit owner scope this boundary depends on.
  */
 export type BetterAuthGoogleAccessTokenApi = (input: {
-  body: { providerId: typeof PROVIDER_GOOGLE; userId: string };
+  body: { accountId: string; userId: string };
 }) => Promise<BetterAuthGoogleAccessTokenResult | null>;
 
 /**
@@ -78,6 +84,7 @@ function isKnownReauthorizationFailure(error: unknown): boolean {
 export { isKnownReauthorizationFailure as isGoogleCalendarReauthorizationFailure };
 
 export function createBetterAuthGoogleCalendarAccessTokenProvider(deps: {
+  findAccountId: BetterAuthAccountIdResolver;
   getAccessToken: BetterAuthGoogleAccessTokenApi;
 }): GoogleCalendarAccessTokenProvider {
   return async (ref) => {
@@ -85,11 +92,23 @@ export function createBetterAuthGoogleCalendarAccessTokenProvider(deps: {
       throw new GoogleCalendarAccessTokenUnavailableError();
     }
 
+    // An owner with no linked Google account can only be fixed by reconnecting,
+    // which is the same outcome Better Auth's own ACCOUNT_NOT_FOUND produces.
+    const accountId = await deps.findAccountId({
+      ownerUserId: ref.ownerUserId,
+      providerId: PROVIDER_GOOGLE,
+    });
+    if (!accountId) {
+      throw new CalendarAuthorizationError("token", {
+        cause: new GoogleCalendarAccessTokenUnavailableError(),
+      });
+    }
+
     let token: BetterAuthGoogleAccessTokenResult | null;
     try {
       token = await deps.getAccessToken({
         body: {
-          providerId: PROVIDER_GOOGLE,
+          accountId,
           userId: ref.ownerUserId,
         },
       });

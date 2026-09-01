@@ -27,6 +27,7 @@ import {
   isGoogleConfigured,
 } from "@/lib/auth/social";
 import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
+import { findLinkedAccountRowId } from "@/lib/integrations/linked-accounts";
 import {
   type CapabilityReconcileContext,
   type LinkedProviderAccount,
@@ -74,8 +75,12 @@ async function listOwnerLinkedAccounts() {
  */
 async function getProviderAccessToken(providerId: string): Promise<string | null> {
   const { auth, requestHeaders } = await loadAuthContext();
+  const accountId = await findLinkedAccountRowId(auth, requestHeaders, providerId);
+  if (!accountId) {
+    return null;
+  }
   const token = await auth.api.getAccessToken({
-    body: { providerId },
+    body: { accountId },
     headers: requestHeaders,
   });
   return (token as { accessToken?: string } | null)?.accessToken ?? null;
@@ -351,8 +356,12 @@ export async function disconnectOwnerGoogleCalendar(input: {
       // Authoritative: remove the account link (and its token custody). Throws on
       // failure, failing the whole disconnect rather than reporting a false success.
       const { auth, requestHeaders } = await loadAuthContext();
+      const accountId = await findLinkedAccountRowId(auth, requestHeaders, "google");
+      if (!accountId) {
+        throw new Error("No linked Google account to unlink.");
+      }
       await auth.api.unlinkAccount({
-        body: { providerId: "google" },
+        body: { accountId },
         headers: requestHeaders,
       });
 
@@ -410,14 +419,20 @@ export async function disconnectOwnerDiscord(input: {
         getAccessToken: () => getProviderAccessToken("discord"),
       }),
     unlinkAccount: async () => {
-      const { auth, requestHeaders } = await loadAuthContext();
       // Authoritative: remove the account link (and its token custody). Throws on
       // failure, failing the whole disconnect rather than reporting a false success.
+      const { auth, requestHeaders } = await loadAuthContext();
+      const accountId = await findLinkedAccountRowId(
+        auth,
+        requestHeaders,
+        "discord",
+        linkedDiscord?.discordUserId,
+      );
+      if (!accountId) {
+        throw new Error("No linked Discord account to unlink.");
+      }
       await auth.api.unlinkAccount({
-        body: {
-          providerId: "discord",
-          ...(linkedDiscord ? { accountId: linkedDiscord.discordUserId } : {}),
-        },
+        body: { accountId },
         headers: requestHeaders,
       });
     },

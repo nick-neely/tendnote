@@ -100,20 +100,19 @@ describe("Phase 9a publication qualification report", () => {
     expect(report.result.blockers.some((entry) => entry.gateId === "live-governance")).toBe(true);
   });
 
-  it.each([
-    "skipped",
-    "recovered",
-    "stale",
-    "not-run",
-    "failed",
-  ] as const)("blocks a %s result even when every other gate passes", (status) => {
-    const input = passingInput();
-    input.gates = { ...input.gates, "repository-verification": { status, evidence: evidence() } };
-    const report = composeQualificationReport(input);
+  it.each(["skipped", "recovered", "stale", "not-run", "failed"] as const)(
+    "blocks a %s result even when every other gate passes",
+    (status) => {
+      const input = passingInput();
+      input.gates = { ...input.gates, "repository-verification": { status, evidence: evidence() } };
+      const report = composeQualificationReport(input);
 
-    expect(report.result.status).toBe("blocked");
-    expect(report.gates.find((gate) => gate.id === "repository-verification")?.status).toBe(status);
-  });
+      expect(report.result.status).toBe("blocked");
+      expect(report.gates.find((gate) => gate.id === "repository-verification")?.status).toBe(
+        status,
+      );
+    },
+  );
 
   it("blocks a passing gate that omits one of its listed fresh-reader criteria", () => {
     const input = passingInput();
