@@ -45,7 +45,7 @@
     "fallow": "^2.102.0",
     "istanbul-lib-coverage": "^3.2.2",
     "turbo": "^2.6.3",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.9"
   },
   "volta": {
