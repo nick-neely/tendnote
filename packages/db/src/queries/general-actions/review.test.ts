@@ -327,6 +327,42 @@ describe("edit, dismiss, and ignore a suggested general action", () => {
     expect(resolved.map((a) => a.id)).toEqual([result.action.id]);
   });
 
+  it("keeps a dismissed household proposal owner-only — rejection never publishes it to the household", async () => {
+    // Proposal visibility begins only at acceptance. A household-scoped proposal that is
+    // *rejected* (dismissed straight from suggested, never accepted) must not become
+    // readable by the whole household: `dismissed` is a scope-visible terminal, so the
+    // record is dropped back to private on rejection. A member can neither fetch it by id
+    // nor see it in their visible list; the owner keeps it in their own resolved trail.
+    const { store, review, lifecycle, seedSuggested } = await setup();
+    const household = await seedHouseholdWithMembers(store, {
+      ownerUserId: OWNER,
+      name: "Home",
+      members: [
+        [OWNER, "owner"],
+        [MEMBER, "member"],
+      ],
+    });
+    const { result } = await seedSuggested({ scope: "household", householdId: household.id });
+
+    const dismissed = await review.dismissSuggestedGeneralAction({
+      actorUserId: OWNER,
+      generalActionId: result.action.id,
+    });
+    expect(dismissed).toMatchObject({ status: "dismissed", scope: "private", householdId: null });
+
+    // A household member can neither fetch the rejected proposal by id nor list it.
+    await expect(
+      store.getVisibleGeneralAction({ callerUserId: MEMBER, generalActionId: result.action.id }),
+    ).resolves.toBeNull();
+    await expect(
+      store.listVisibleGeneralActionsForCaller({ callerUserId: MEMBER }),
+    ).resolves.toEqual([]);
+
+    // The owner still holds it in their own resolved trail.
+    const resolved = await lifecycle.listResolvedGeneralActions({ ownerUserId: OWNER });
+    expect(resolved.map((a) => a.id)).toEqual([result.action.id]);
+  });
+
   it("restores a just-dismissed proposal to review for authoritative Undo", async () => {
     const { review, seedSuggested, historyKinds } = await setup();
     const { result } = await seedSuggested();

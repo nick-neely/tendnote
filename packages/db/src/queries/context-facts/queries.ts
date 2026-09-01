@@ -820,22 +820,25 @@ export function createContextFactQueries(
       /**
        * The evidence gate, answered from the source record's own stored scope.
        *
-       * Household-visible means exactly that: the record is scoped to *this*
-       * household, either to the whole workspace or by an explicit selection.
-       * A private record fails, a record in a different household fails, and a
-       * record that no longer exists fails — all closed, all the same answer.
+       * Household-visible means exactly that: the record is scoped to the whole
+       * *household* (`scope === "household"`) and to *this* household. A private
+       * record fails, a record in a different household fails, and a record that
+       * no longer exists fails — all closed, all the same answer.
        *
-       * `shared` counts because a selected audience is still an audience the
-       * proposer chose deliberately; the suggestion's own readers are then the
-       * household, and Review shows each of them the excerpt only after the
-       * proof admits the fact itself.
+       * `shared` does NOT count: a `shared` record is scoped to a *selected*
+       * member audience via `household_record_shares`, not the whole household.
+       * Citing its evidence into a household-wide suggestion — shown to every
+       * member — would widen the source owner's ACL past the audience they chose.
+       * So a household-wide suggestion may only be grounded in household-scoped
+       * evidence; selected-audience evidence is refused here (the caller gets the
+       * family's one opaque "unavailable" sentence).
        */
       evidenceVisibleToHousehold: async ({ householdId, sourceRecordId }) => {
         // No reader wired means no household suggestion can be grounded, so none
         // may be made. Fail closed rather than assume.
         const record = await dependencies.sourceRecords?.getSourceRecordById(sourceRecordId);
         if (!record) return false;
-        return record.householdId === householdId && record.scope !== "private";
+        return record.householdId === householdId && record.scope === "household";
       },
       activeMemberUserIds: activeHouseholdMemberUserIds,
     },
