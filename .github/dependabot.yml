@@ -1,0 +1,37 @@
+# Dependabot keeps the SHA-pinned GitHub Actions and the workspace's npm
+# dependencies current. Actions are pinned to immutable commit SHAs (see the
+# workflows); Dependabot understands SHA pins and bumps both the SHA and its
+# trailing `# vX` comment when a new release ships, so pinning does not mean
+# going stale.
+version: 2
+updates:
+  # GitHub Actions used across .github/workflows (and any composite actions).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "ci"
+    groups:
+      # One PR per week for all action bumps; they are low-risk and SHA-pinned.
+      github-actions:
+        patterns:
+          - "*"
+
+  # Workspace npm dependencies. pnpm resolves the whole workspace from the single
+  # root lockfile, so one root entry covers apps/* and packages/*.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Batch the low-risk updates; majors still open on their own so a breaking
+      # bump is reviewed in isolation.
+      npm-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
