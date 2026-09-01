@@ -10,6 +10,7 @@ import { createReminderDeliveryPlanner } from "./delivery-planning";
 import { createReminderDispatcher } from "./dispatch";
 import { createReminderInstallationService } from "./installation-service";
 import { isEligibleReminderRecord, reminderOccurrenceKey, reminderSubscriber } from "./policy";
+import type { PushEndpointCheck } from "./push-endpoint";
 import type { ReminderGeneralAction, ReminderRecord, ReminderStore } from "./types";
 
 const HOUR_MS = 60 * 60 * 1_000;
@@ -48,6 +49,11 @@ export function createReminderService(input: {
     subscriberUserId: string;
     record: ReminderRecord;
   }) => Promise<boolean>;
+  /**
+   * Judges a push endpoint as a destination, at registration and again at
+   * dispatch. Defaults to the resolving check; see `./push-endpoint`.
+   */
+  checkPushEndpoint?: PushEndpointCheck;
 }) {
   const authorizeSubscription =
     input.authorizeSubscription ??
@@ -221,10 +227,12 @@ export function createReminderService(input: {
     loadReminderRecord: loadRecord,
     scheduleDelivery: input.scheduleDelivery,
     authorizeSubscription,
+    checkPushEndpoint: input.checkPushEndpoint,
   });
   const installationService = createReminderInstallationService({
     store: input.store,
     createInstallationJobs,
+    checkPushEndpoint: input.checkPushEndpoint,
   });
 
   async function reconcileReminderRecord(values: {

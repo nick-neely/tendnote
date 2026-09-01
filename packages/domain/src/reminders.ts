@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { formatLocalDate, zonedWallTimeToUtc, zonedWallTimeToUtcStrict } from "./brief-schedules";
+import { isAcceptablePushEndpointShape, PUSH_ENDPOINT_MAX_LENGTH } from "./push-endpoint";
 
 export const reminderRecordKindSchema = z.enum([
   "general_action",
@@ -157,7 +158,15 @@ export type ReminderOptInState = {
 };
 
 export const reminderPushSubscriptionSchema = z.object({
-  endpoint: z.url(),
+  /**
+   * Not merely a URL: the server POSTs here later, unattended, so the endpoint
+   * carries the whole shape of `classifyPushEndpointUrl` before it is stored.
+   * The resolving half of that rule runs in the installation service, which can
+   * await DNS; this half runs wherever the subscription is parsed.
+   */
+  endpoint: z.string().max(PUSH_ENDPOINT_MAX_LENGTH).refine(isAcceptablePushEndpointShape, {
+    message: "That push endpoint is not an address Tendnote can deliver to.",
+  }),
   expirationTime: z.number().nullable(),
   keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
 });

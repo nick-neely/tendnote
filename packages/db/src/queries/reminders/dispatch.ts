@@ -5,6 +5,7 @@ import type {
   ReminderSchedule,
 } from "@tendnote/domain/reminders";
 import { isEligibleReminderRecord, reminderOccurrenceKey, reminderSubscriber } from "./policy";
+import { checkPushEndpointDestination, type PushEndpointCheck } from "./push-endpoint";
 import type { ReminderRecord, ReminderStore } from "./types";
 
 export type ReminderPushSender = (input: {
@@ -48,6 +49,17 @@ type ReminderDispatcherDependencies = {
     subscriberUserId: string;
     record: ReminderRecord;
   }) => Promise<boolean>;
+  /**
+   * Re-decides, immediately before sending, whether the stored endpoint is
+   * still somewhere this server may connect to.
+   *
+   * A stored endpoint is untrusted for as long as it is stored: it was written
+   * by whoever called the registration action, and the name it carries can be
+   * repointed at a private address at any time after it was accepted. So the
+   * destination is judged again here rather than taken on the strength of the
+   * check that let it in.
+   */
+  checkPushEndpoint?: PushEndpointCheck;
 };
 
 type DispatchValues = {
@@ -324,6 +336,17 @@ export function createReminderDispatcher(input: ReminderDispatcherDependencies) 
       !context.installation.auth
     ) {
       throw new Error("Reminder record, schedule, or installation missing after policy check.");
+    }
+
+    // A destination we can prove is off limits is permanently off limits, so it
+    // retires the installation rather than queueing another attempt at it. A
+    // destination we merely could not resolve falls through to the sender,
+    // which resolves it again and fails transiently if it still cannot.
+    const destination = await (input.checkPushEndpoint ?? checkPushEndpointDestination)(
+      context.installation.endpoint,
+    );
+    if (destination.status === "blocked") {
+      return revokeTerminalInstallation(input.store, claimed, context.installation, values.now);
     }
 
     let result: Awaited<ReturnType<ReminderPushSender>>;
