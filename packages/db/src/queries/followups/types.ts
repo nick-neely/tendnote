@@ -132,9 +132,10 @@ export type CreateActiveFollowupInput = {
 };
 
 export type FollowupActionInput = {
-  /** The acting user, not necessarily the owner. For a private follow-up this is the
-   * owner; for a shared/household one it may be any member who can see it. Owner keying
-   * happens internally off the loaded record — this field only names who is acting. */
+  /** The acting user. Reads resolve owner-scoped first, then fall back to any record
+   * the caller may see. Mutations resolve owner-scoped only: shared/household Follow-Ups
+   * are read-only to non-owners, so only the record owner may change lifecycle, timing,
+   * content, or archive state. A non-owner mutation gets the opaque "not found". */
   actorUserId: string;
   followupId: string;
 };

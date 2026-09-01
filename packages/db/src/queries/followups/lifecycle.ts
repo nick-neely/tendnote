@@ -41,8 +41,13 @@ type SearchFollowupsInput = {
  * advances the same record to its next year so no hidden sibling is generated.
  */
 export function createFollowupLifecycle(store: FollowupLifecycleStore) {
-  /** Loads an owner-scoped follow-up or throws so callers cannot touch another owner's. */
-  async function requireFollowup(input: FollowupActionInput) {
+  /**
+   * READ resolution: an owner-scoped follow-up, falling back to any follow-up the
+   * caller may *see* (a shared/household record). Visibility is enough to read, so
+   * this backs the read-only `getFollowup`. It must never back a mutation — a
+   * non-owner who can see a shared Follow-Up must not be able to change it.
+   */
+  async function requireVisibleFollowup(input: FollowupActionInput) {
     const followup =
       (await store.getFollowup({
         ownerUserId: input.actorUserId,
@@ -52,6 +57,26 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
         callerUserId: input.actorUserId,
         followupId: input.followupId,
       }));
+
+    if (!followup) {
+      throw new Error("Follow-up not found.");
+    }
+
+    return followup;
+  }
+
+  /**
+   * MUTATION resolution: only the record owner may change a Follow-Up's lifecycle,
+   * timing, content, or archive state. Shared Follow-Ups are read-only to non-owners
+   * (household policy), so every mutation resolves owner-scoped. A missing record and
+   * one the caller can see but does not own return the *same* opaque "not found" — a
+   * non-owner learns nothing about a record they may not touch.
+   */
+  async function requireOwnedFollowup(input: FollowupActionInput) {
+    const followup = await store.getFollowup({
+      ownerUserId: input.actorUserId,
+      followupId: input.followupId,
+    });
 
     if (!followup) {
       throw new Error("Follow-up not found.");
@@ -124,7 +149,7 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
   }
 
   async function transition(input: FollowupActionInput, action: FollowupLifecycleAction) {
-    const followup = await requireFollowup(input);
+    const followup = await requireOwnedFollowup(input);
     const status = resolveFollowupTransition(followup.status, action);
 
     const updated = await store.updateFollowup({
@@ -262,12 +287,12 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
     },
 
     async getFollowup(input: FollowupActionInput) {
-      return requireFollowup(input);
+      return requireVisibleFollowup(input);
     },
 
     /** Edits a follow-up's reason and/or due date in place (no status change). */
     async editFollowup(input: EditFollowupInput) {
-      const followup = await requireFollowup(input);
+      const followup = await requireOwnedFollowup(input);
 
       assertFollowupEditable(followup.status);
       const edit = followupEditSchema.parse(input.edit);
@@ -309,7 +334,7 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
     },
 
     async completeFollowup(input: FollowupActionInput) {
-      const followup = await requireFollowup(input);
+      const followup = await requireOwnedFollowup(input);
       resolveFollowupTransition(followup.status, "complete");
       if (followup.cadence !== birthdayAnnualFollowupCadence) {
         return transition(input, "complete");
@@ -350,7 +375,7 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
 
     /** Restores the exact pre-archive lifecycle state for the bounded Undo path. */
     async restoreArchivedFollowup(input: FollowupActionInput) {
-      const followup = await requireFollowup(input);
+      const followup = await requireOwnedFollowup(input);
       if (followup.status !== "archived") {
         throw new Error("Only archived follow-ups can be restored.");
       }
@@ -390,7 +415,7 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
     /** Snoozes an active follow-up to a new concrete due date. */
     async snoozeFollowup(input: SnoozeFollowupInput) {
       const dueAt = assertConcreteDueAt(input.dueAt);
-      const followup = await requireFollowup(input);
+      const followup = await requireOwnedFollowup(input);
       const status = resolveFollowupTransition(followup.status, "snooze");
 
       const updated = await store.updateFollowup({

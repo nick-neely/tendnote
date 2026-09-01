@@ -91,6 +91,11 @@ export function ActiveFollowupRow({
   const archiveMutation = useReversibleMutation(followup.id, "archive");
   const updateMutation = useReversibleMutation(followup.id, "edit");
   const activeMutation = useActiveReversibleMutation(followup.id, FOLLOWUP_MUTATION_INTENTS);
+  // Shared/household Follow-Ups are read-only to non-owners: only the record owner may
+  // change lifecycle, timing, or content. The server-side owner check is the real
+  // enforcement (a non-owner mutation gets the opaque "not found"); hiding the controls
+  // here keeps a viewer from being offered an action that can only fail.
+  const canMutate = followup.owned;
   const pending = Boolean(activeMutation?.state.pending);
   const leaving = Boolean(activeMutation?.state.leaving);
   const error = activeMutation?.state.error ?? null;
@@ -346,16 +351,18 @@ export function ActiveFollowupRow({
             {activeMutation.state.undoRequested ? "Undoing…" : activeMutation.state.labels.undo}
           </Button>
         ) : null}
-        <Button
-          disabled={pending}
-          onClick={(event) => runLifecycle("complete", event.currentTarget)}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          <CheckIcon />
-          Complete
-        </Button>
+        {canMutate ? (
+          <Button
+            disabled={pending}
+            onClick={(event) => runLifecycle("complete", event.currentTarget)}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <CheckIcon />
+            Complete
+          </Button>
+        ) : null}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -382,24 +389,28 @@ export function ActiveFollowupRow({
               <PenLineIcon />
               Draft a message
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setMode("snooze")}>
-              <AlarmClockIcon />
-              Snooze
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setMode("edit")}>
-              <PencilIcon />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => runLifecycle("dismiss", overflowRef.current)}>
-              <XIcon />
-              Dismiss
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => runLifecycle("archive", overflowRef.current)}>
-              <ArchiveIcon />
-              Archive
-            </DropdownMenuItem>
+            {canMutate ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setMode("snooze")}>
+                  <AlarmClockIcon />
+                  Snooze
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setMode("edit")}>
+                  <PencilIcon />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => runLifecycle("dismiss", overflowRef.current)}>
+                  <XIcon />
+                  Dismiss
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => runLifecycle("archive", overflowRef.current)}>
+                  <ArchiveIcon />
+                  Archive
+                </DropdownMenuItem>
+              </>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

@@ -14,6 +14,8 @@ const verifiedCallerFor = (userId: string) => async () => userId;
 /** A source record that is visible to the whole household, and one that is not. */
 const HOUSEHOLD_EVIDENCE = "source-household";
 const PRIVATE_EVIDENCE = "source-private";
+/** Scoped to a *selected* member audience (household_record_shares), not the whole household. */
+const SHARED_EVIDENCE = "source-shared";
 
 /**
  * Two active members of one household, one member of a different household, and
@@ -45,6 +47,7 @@ async function householdFixture() {
   >([
     [HOUSEHOLD_EVIDENCE, { scope: "household", householdId: household.id }],
     [PRIVATE_EVIDENCE, { scope: "private", householdId: null }],
+    [SHARED_EVIDENCE, { scope: "shared", householdId: household.id }],
   ]);
   const queriesFor = (userId: string) =>
     createContextFactQueries(store, {
@@ -597,6 +600,32 @@ describe("Household Context shared Review", () => {
 
     // And nothing landed: the other member's queue is untouched, so a refused
     // proposal leaves no trace for anyone to notice either.
+    const benQueue = await fixture.queriesFor(BEN).listSuggestedContextFactReviews({
+      callerUserId: BEN,
+    });
+    expect(benQueue).toEqual([]);
+  });
+
+  it("refuses a household suggestion grounded in selected-audience (shared) evidence", async () => {
+    /**
+     * `shared` evidence is scoped to a *selected* member audience via
+     * household_record_shares, not the whole household. Citing its excerpt into a
+     * household-wide suggestion — published to every active member — would widen the
+     * source owner's ACL past the audience they chose. Only whole-household
+     * (`scope === "household"`) evidence may ground a household-wide suggestion, so
+     * this is refused with the family's one opaque sentence, and nothing lands.
+     */
+    await expect(
+      fixture.queriesFor(ANA).createSuggestedContextFact({
+        callerUserId: ANA,
+        subject: { kind: "household", householdId: fixture.household.id },
+        category: "other",
+        content: "The household is going away in July.",
+        provenance: { channel: "ambient", origin: "ambient", sourceRecordId: SHARED_EVIDENCE },
+        suggestionEvidence: "Something only a few of us were shown.",
+      }),
+    ).rejects.toThrow(HOUSEHOLD_RECORD_UNAVAILABLE_MESSAGE);
+
     const benQueue = await fixture.queriesFor(BEN).listSuggestedContextFactReviews({
       callerUserId: BEN,
     });

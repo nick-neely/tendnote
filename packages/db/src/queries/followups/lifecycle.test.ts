@@ -625,7 +625,12 @@ describe("household-scoped follow-ups", () => {
     await expect(lifecycle.listActiveFollowups({ ownerUserId: OUTSIDER })).resolves.toEqual([]);
   });
 
-  it("allows visible members to lifecycle-change shared reminders and records the actor", async () => {
+  it("keeps a shared reminder read-only to a selected member — the record stays owned by the creator", async () => {
+    // A selected member can *see* this reminder (it is in their active list), but a
+    // shared Follow-Up is read-only to non-owners: only the record owner may change
+    // its lifecycle, timing, content, or archive state (household policy). A visible
+    // non-owner gets the same opaque "not found" a stranger would, so seeing a record
+    // never becomes an oracle for mutating it.
     const { lifecycle, household, memberPerson } = await setupHousehold();
     const selected = await lifecycle.createFollowup({
       ownerUserId: MEMBER,
@@ -637,17 +642,73 @@ describe("household-scoped follow-ups", () => {
       selectedUserIds: [OWNER],
     });
 
+    // OWNER is the selected audience and can read it...
+    await expect(
+      lifecycle.getFollowup({ actorUserId: OWNER, followupId: selected.id }),
+    ).resolves.toMatchObject({ id: selected.id });
+
+    // ...but every mutation as the non-owning selected member is refused, opaquely.
+    await expect(
+      lifecycle.completeFollowup({ actorUserId: OWNER, followupId: selected.id }),
+    ).rejects.toThrow(/Follow-up not found/);
+    await expect(
+      lifecycle.dismissFollowup({ actorUserId: OWNER, followupId: selected.id }),
+    ).rejects.toThrow(/Follow-up not found/);
+    await expect(
+      lifecycle.snoozeFollowup({
+        actorUserId: OWNER,
+        followupId: selected.id,
+        dueAt: new Date("2026-08-01T00:00:00Z"),
+      }),
+    ).rejects.toThrow(/Follow-up not found/);
+    await expect(
+      lifecycle.editFollowup({
+        actorUserId: OWNER,
+        followupId: selected.id,
+        edit: { reason: "Hijacked." },
+      }),
+    ).rejects.toThrow(/Follow-up not found/);
+    await expect(
+      lifecycle.archiveFollowup({ actorUserId: OWNER, followupId: selected.id }),
+    ).rejects.toThrow(/Follow-up not found/);
+
+    // The record is untouched, and its owner can still act on it.
     const completed = await lifecycle.completeFollowup({
-      actorUserId: OWNER,
+      actorUserId: MEMBER,
       followupId: selected.id,
     });
-
     expect(completed).toMatchObject({
       ownerUserId: MEMBER,
       status: "completed",
       createdByUserId: MEMBER,
-      lastActorUserId: OWNER,
+      lastActorUserId: MEMBER,
     });
+  });
+
+  it("keeps a household reminder read-only to other household members", async () => {
+    // Household scope makes the reminder visible to every active member, but only the
+    // owner may mutate it. A different member's lifecycle change is refused opaquely.
+    const { lifecycle, household, memberPerson } = await setupHousehold();
+    const shared = await lifecycle.createFollowup({
+      ownerUserId: MEMBER,
+      personId: memberPerson.id,
+      reason: "Household-wide check-in.",
+      dueAt: new Date("2026-07-05T00:00:00Z"),
+      scope: "household",
+      householdId: household.id,
+    });
+
+    await expect(
+      lifecycle.completeFollowup({ actorUserId: OTHER_MEMBER, followupId: shared.id }),
+    ).rejects.toThrow(/Follow-up not found/);
+    await expect(
+      lifecycle.completeFollowup({ actorUserId: OWNER, followupId: shared.id }),
+    ).rejects.toThrow(/Follow-up not found/);
+
+    // The owner still succeeds.
+    await expect(
+      lifecycle.completeFollowup({ actorUserId: MEMBER, followupId: shared.id }),
+    ).resolves.toMatchObject({ ownerUserId: MEMBER, status: "completed", lastActorUserId: MEMBER });
   });
 
   it("blocks unauthorized lifecycle changes for reminders the actor cannot see", async () => {

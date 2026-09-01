@@ -340,10 +340,21 @@ export function createSuggestedGeneralActionReview(
      */
     async dismissSuggestedGeneralAction(input: GeneralActionActionInput): Promise<GeneralAction> {
       const action = await requireSuggested(input);
+      // A rejected proposal was never accepted, and proposal visibility begins only at
+      // acceptance (ADRs 0151–0153). `dismissed` is a scope-visible terminal, so a
+      // proposal carrying household scope would otherwise become readable by the whole
+      // household the moment it is rejected. Drop it back to private on rejection so the
+      // never-accepted proposal stays owner-only; a household audience is (re-)chosen only
+      // at acceptance, including on the late-acceptance reopen path.
       const updated = await store.updateGeneralAction({
         ownerUserId: action.ownerUserId,
         generalActionId: action.id,
-        patch: { status: "dismissed", lastActorUserId: input.actorUserId },
+        patch: {
+          status: "dismissed",
+          scope: "private",
+          householdId: null,
+          lastActorUserId: input.actorUserId,
+        },
       });
       await store.createGeneralActionEvent({
         generalActionId: updated.id,
