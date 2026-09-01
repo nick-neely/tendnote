@@ -1,6 +1,8 @@
 import { memoryReviewEditSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { saveSuggestedMemoryWithEmbeddingDelivery } from "../lib/background-jobs/embedding-schedulers";
 import { resolveOwnerUserId } from "../lib/owner";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -20,8 +22,9 @@ const inputSchema = z.object({
  * 0056). Only act on explicit user approval — never approve on the user's behalf.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Approve a suggested memory, promoting it to a durable confirmed fact. Only call this when the user has explicitly approved the suggestion. Optionally apply edits first. Returns the persisted memory id and new status for the review component.",
+    "Approve a suggested memory, promoting it to a durable confirmed fact. Only call this when the user has explicitly approved the suggestion. Optionally apply edits first. Returns the persisted memory id and new status for the review component. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

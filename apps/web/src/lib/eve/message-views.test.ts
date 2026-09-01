@@ -1,14 +1,15 @@
-import type { EveMessage } from "eve/react";
+import type { EveMessage, EveMessagePart } from "eve/react";
 import { describe, expect, it } from "vitest";
 import type { AssistantToolEntry } from "./message-views";
 import {
-  type AssistantTurnUnit,
+  type AssistantToolUnit,
   groupTurnToolEntries,
   isTurnInFlight,
   messageActiveToolViews,
   messageText,
   messageTextSegments,
   messageToolViews,
+  messageTurnUnits,
 } from "./message-views";
 import type { AssistantToolView } from "./tool-result-view";
 
@@ -197,7 +198,7 @@ describe("groupTurnToolEntries (folding same-kind durable saves into groups)", (
     });
   }
 
-  function kinds(units: AssistantTurnUnit[]): string[] {
+  function kinds(units: AssistantToolUnit[]): string[] {
     return units.map((unit) =>
       unit.type === "group" ? `group:${unit.kind}` : unit.entry.view.kind,
     );
@@ -384,5 +385,211 @@ describe("messageActiveToolViews (in-flight tool calls → working lines)", () =
 
     expect(messageActiveToolViews(completed, true)).toEqual([]);
     expect(messageActiveToolViews(onUser, true)).toEqual([]);
+  });
+});
+
+describe("messageTurnUnits (a turn's tool activity, in the order it happened)", () => {
+  /** eve's own approval request for one gated call: fixed prompt, approve / cancel. */
+  const saveRequest = {
+    kind: "tool-approval" as const,
+    requestId: "req-1",
+    prompt: "Approve tool call: capture_memory",
+    display: "confirmation" as const,
+    allowFreeform: false,
+    options: [
+      { id: "approve", label: "Approve" },
+      { id: "cancel", label: "Cancel" },
+    ],
+  };
+
+  function types(units: ReturnType<typeof messageTurnUnits>): string[] {
+    return units.map((unit) => unit.type);
+  }
+
+  /**
+   * The ordering contract. A parked approval belongs where its tool call sits, not
+   * at the bottom of the turn: the owner is deciding about the call Eve just made,
+   * and a card that floated below every result would be asking about the wrong one.
+   */
+  it("keeps a parked approval in the slot its tool call occupies", () => {
+    const message: EveMessage = {
+      id: "turn_0:assistant",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "Adding Mara.", state: "done" },
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-1",
+          toolName: "create_person",
+          state: "output-available",
+          input: {},
+          output: { person: { id: "person-1", displayName: "Mara" } },
+        },
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-2",
+          toolName: "capture_memory",
+          state: "approval-requested",
+          approval: { id: "req-1" },
+          input: { content: "Allergic to shellfish.", personId: "person-1" },
+          toolMetadata: {
+            eve: { kind: "tool-call", name: "capture_memory", inputRequest: saveRequest },
+          },
+        },
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-3",
+          toolName: "search_people",
+          state: "input-available",
+          input: {},
+        },
+      ],
+    };
+
+    expect(types(messageTurnUnits(message, true))).toEqual(["single", "request", "active"]);
+  });
+
+  /**
+   * A gated call is one part in successive states, so it can never be both a working
+   * line and a card. This pins that: the same call id in `approval-requested` yields
+   * the card and nothing else, with the shimmer gone.
+   */
+  it("never renders a shimmer and an approval card for the same call", () => {
+    const message: EveMessage = {
+      id: "turn_0:assistant",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-1",
+          toolName: "capture_memory",
+          state: "approval-requested",
+          approval: { id: "req-1" },
+          input: { content: "Allergic to shellfish.", personId: "person-1" },
+          toolMetadata: {
+            eve: { kind: "tool-call", name: "capture_memory", inputRequest: saveRequest },
+          },
+        },
+      ],
+    };
+
+    const units = messageTurnUnits(message, true);
+    expect(types(units)).toEqual(["request"]);
+    expect(units[0]?.type === "request" && units[0].request.toolCallId).toBe("call-1");
+  });
+
+  /**
+   * A parked turn is durably waiting on a person, not working, so its stream has
+   * already ended and `turnInFlight` is false. The card has to outlive that or the
+   * decision would vanish the moment it was asked for.
+   */
+  it("keeps the approval card after the stream settles, unlike a working line", () => {
+    const message: EveMessage = {
+      id: "turn_0:assistant",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-1",
+          toolName: "capture_memory",
+          state: "approval-requested",
+          approval: { id: "req-1" },
+          input: { content: "Allergic to shellfish.", personId: "person-1" },
+          toolMetadata: {
+            eve: { kind: "tool-call", name: "capture_memory", inputRequest: saveRequest },
+          },
+        },
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-2",
+          toolName: "search_people",
+          state: "input-available",
+          input: {},
+        },
+      ],
+    };
+
+    expect(types(messageTurnUnits(message, false))).toEqual(["request"]);
+  });
+
+  it("renders a settled approval as its own unit where the card stood", () => {
+    const message: EveMessage = {
+      id: "turn_0:assistant",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-1",
+          toolName: "capture_memory",
+          state: "output-denied",
+          approval: { id: "req-1", approved: false, reason: "Tool execution was cancelled." },
+          input: {},
+          toolMetadata: {
+            eve: { kind: "tool-call", name: "capture_memory", inputRequest: saveRequest },
+          },
+        },
+      ],
+    };
+
+    const units = messageTurnUnits(message, false);
+    expect(types(units)).toEqual(["resolution"]);
+    expect(units[0]?.type === "resolution" && units[0].resolution.outcome).toBe("declined");
+  });
+
+  it("still folds same-kind saves into one group, held at the first one's slot", () => {
+    function memoryPart(id: string, content: string): EveMessagePart {
+      return {
+        type: "dynamic-tool",
+        toolCallId: id,
+        toolName: "capture_memory",
+        state: "output-available",
+        input: {},
+        output: {
+          memory: { id, content, sourceRecordId: null },
+          person: { id: "person-1", displayName: "Mara" },
+        },
+      };
+    }
+
+    const message: EveMessage = {
+      id: "turn_0:assistant",
+      role: "assistant",
+      parts: [
+        memoryPart("m1", "Allergic to shellfish."),
+        memoryPart("m2", "Plays weekend soccer."),
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-9",
+          toolName: "search_people",
+          state: "input-available",
+          input: {},
+        },
+      ],
+    };
+
+    const units = messageTurnUnits(message, true);
+    expect(types(units)).toEqual(["group", "active"]);
+  });
+
+  it("ignores tool parts on a user message", () => {
+    const message: EveMessage = {
+      id: "turn_0:user",
+      role: "user",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-1",
+          toolName: "capture_memory",
+          state: "approval-requested",
+          approval: { id: "req-1" },
+          input: { content: "Allergic to shellfish.", personId: "person-1" },
+          toolMetadata: {
+            eve: { kind: "tool-call", name: "capture_memory", inputRequest: saveRequest },
+          },
+        },
+      ],
+    };
+
+    expect(messageTurnUnits(message, true)).toEqual([]);
   });
 });

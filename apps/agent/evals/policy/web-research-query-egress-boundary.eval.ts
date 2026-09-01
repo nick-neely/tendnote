@@ -1,5 +1,5 @@
-import { defineEval } from "eve/evals";
 import { equals, satisfies } from "eve/evals/expect";
+import { defineEval } from "../define-eval";
 import {
   ACTIVE_QUERY,
   hasSafeWebResearchQuery,

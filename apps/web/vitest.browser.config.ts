@@ -50,7 +50,7 @@ export default defineConfig({
         replacement: fileURLToPath(new URL("./src/test/browser-actions.ts", import.meta.url)),
       },
       {
-        find: /^@\/app\/actions\/(asset-evidence|asset-review|memory-review)$/,
+        find: /^@\/app\/actions\/(approval-subjects|asset-evidence|asset-review|memory-review)$/,
         replacement: fileURLToPath(new URL("./src/test/browser-actions.ts", import.meta.url)),
       },
       {

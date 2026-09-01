@@ -2,6 +2,8 @@ import { editGiftIdea } from "@tendnote/db/queries/gift-plans";
 import { GiftPlanValidationError } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -23,8 +25,9 @@ import { withModelSafeStoreErrors } from "../lib/store-errors";
  * here belongs to somebody else.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Change an idea the caller themselves put on a Gift Plan, when they explicitly say so in this turn ('make that the cashmere one, not wool', 'add the link I just sent'). Requires a giftIdeaId you already have from adding it in this conversation - never guess one, and never resolve an idea by matching its title. You may only change your own contribution: someone else's idea is theirs, and the attempt is refused. Pass only the fields that change (title, note, url). Do NOT use this to tidy up wording on your own initiative, to re-price or re-source an idea from something you found, to claim or unclaim one, or to edit the plan itself. If the user is talking about an idea you have not seen in this conversation, say so and point them at the plan in the app rather than guessing.",
+    "Change an idea the caller themselves put on a Gift Plan, when they explicitly say so in this turn ('make that the cashmere one, not wool', 'add the link I just sent'). Requires a giftIdeaId you already have from adding it in this conversation - never guess one, and never resolve an idea by matching its title. You may only change your own contribution: someone else's idea is theirs, and the attempt is refused. Pass only the fields that change (title, note, url). Do NOT use this to tidy up wording on your own initiative, to re-price or re-source an idea from something you found, to claim or unclaim one, or to edit the plan itself. If the user is talking about an idea you have not seen in this conversation, say so and point them at the plan in the app rather than guessing. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema: z.object({
     giftIdeaId: z
       .uuid()

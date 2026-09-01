@@ -1,12 +1,15 @@
 import { searchSemanticContext } from "@tendnote/db/queries/semantic-retrieval";
 import { searchSemanticContextSchema, semanticRetrievalResultSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
+import { requireRestrictedRevealApproval } from "../lib/approval";
 import { resolveOwnerUserId } from "../lib/owner";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 export default defineTool({
+  // Same unlock, same answer: the flag asks the owner, it does not speak for them.
+  approval: requireRestrictedRevealApproval(),
   description:
-    "Semantic relationship-context search over approved memories, eligible logged source records, and General Actions and Routines (durable to-dos) visible to the caller: their private records plus selected-member shared and whole-household records they can access. Use this for fuzzy stored-context questions like gift ideas, career updates, preferences, stressful life events, and 'what do I need to do about X' when the user may not remember the exact wording. Returns compact typed references with snippets, related person metadata, similarity, trust level, sensitivity, and visibility provenance; General Action references also carry whether the item is a Routine or Suggested. Phrase visibility carefully: 'Only me' is the caller's private note, 'Specific people' is selected-member shared context, and 'Whole household' is household context. Do not use this for exact text lookup (`search_relationship_context`), identity lookup (`search_people`), full known-person context loading (`get_person_context`), proactive agenda ranking, or generated answers.",
+    "Semantic relationship-context search over approved memories, eligible logged source records, and General Actions and Routines (durable to-dos) visible to the caller: their private records plus selected-member shared and whole-household records they can access. Use this for fuzzy stored-context questions like gift ideas, career updates, preferences, stressful life events, and 'what do I need to do about X' when the user may not remember the exact wording. Returns compact typed references with snippets, related person metadata, similarity, trust level, sensitivity, and visibility provenance; General Action references also carry whether the item is a Routine or Suggested. Phrase visibility carefully: 'Only me' is the caller's private note, 'Specific people' is selected-member shared context, and 'Whole household' is household context. Do not use this for exact text lookup (`search_relationship_context`), identity lookup (`search_people`), full known-person context loading (`get_person_context`), proactive agenda ranking, or generated answers. Setting directlyRequested pauses the call for the user to approve revealing restricted records; if they decline, answer from the ordinary ones instead of asking again.",
   // The review-gated flag (owner-only access to unaccepted suggested actions) is a
   // deliberate caller decision, not a model-facing toggle, so it is omitted here and
   // defaults to false; the general search never surfaces un-accepted proposals.

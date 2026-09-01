@@ -2,7 +2,9 @@ import {
   getRelationshipAgenda,
   type RelationshipAgendaKind,
 } from "@tendnote/db/queries/relationship-agenda";
+import { RESTRICTED_REVEAL_REQUEST_DESCRIPTION } from "@tendnote/domain";
 import { z } from "zod";
+import { requireRestrictedRevealApproval } from "../approval";
 import { type OwnerScopedContext, resolveOwnerUserId } from "../owner";
 import { withModelSafeStoreErrors } from "../store-errors";
 
@@ -15,7 +17,7 @@ const agendaKindSchema = z.enum([
   "suggested_followup",
 ]);
 
-const inputSchema = z.object({
+const withoutRestrictedUnlock = z.object({
   windowStart: z
     .string()
     .describe("Inclusive agenda window start as an ISO 8601 string. Resolve relative dates first."),
@@ -33,11 +35,19 @@ const inputSchema = z.object({
     .describe(
       "Optional candidate kind filter for follow-ups, birthdays, review, recent, or semantic context.",
     ),
+});
+
+const withRestrictedUnlock = withoutRestrictedUnlock.extend({
   directlyRequested: z
     .boolean()
     .optional()
-    .describe("True only when the user directly asks for sensitive/restricted context."),
+    .describe(
+      "Ask to rank restricted-sensitivity candidates, which an ordinary agenda withholds. " +
+        RESTRICTED_REVEAL_REQUEST_DESCRIPTION,
+    ),
 });
+
+type AgendaInput = z.infer<typeof withRestrictedUnlock>;
 
 /**
  * The shared relationship agenda read model (PRD #51/#52), owner-scoped from the
@@ -46,7 +56,7 @@ const inputSchema = z.object({
  * records.
  */
 const agendaRead = {
-  async execute(input: z.infer<typeof inputSchema>, ctx: OwnerScopedContext) {
+  async execute(input: AgendaInput, ctx: OwnerScopedContext) {
     const ownerUserId = resolveOwnerUserId(ctx);
     const candidates = await withModelSafeStoreErrors(() =>
       getRelationshipAgenda({
@@ -93,6 +103,17 @@ type AgendaOutput = Awaited<ReturnType<typeof agendaRead.execute>>;
 export type RelationshipAgendaToolOptions = {
   description: string;
   /**
+   * Whether this registration may ask for restricted-sensitivity candidates at all.
+   *
+   * `"owner-approval"` keeps `directlyRequested` on the model-facing schema and
+   * turns it into a request: setting it parks the call until the owner answers it
+   * themselves. `"unavailable"` removes the field entirely and pins the read to
+   * ordinary candidates, which is the only honest answer for a subagent turn - it
+   * runs on a delegated task with nobody to ask, so a flag there could only ever
+   * be the model vouching for a request it never heard (ADR 0058).
+   */
+  restrictedContext: "owner-approval" | "unavailable";
+  /**
    * Whether the model view carries the ids the caller's own next tool call needs.
    *
    * False for the root agent, which reaches a person through `search_people` and a
@@ -120,9 +141,21 @@ const ROOT_GUIDANCE =
   "or two; these are candidates to consider, not work anyone is behind on.";
 
 export function relationshipAgendaTool(options: RelationshipAgendaToolOptions) {
+  const ownerMayBeAsked = options.restrictedContext === "owner-approval";
   return {
+    ...(ownerMayBeAsked
+      ? {
+          approval: requireRestrictedRevealApproval<AgendaInput>(),
+        }
+      : {}),
     description: options.description,
-    inputSchema,
+    // One declared shape, two at runtime. The flagless schema parses to the same
+    // object minus one optional field, so declaring the wider type keeps eve's
+    // inference on a single object instead of a union it cannot resolve - while
+    // the schema eve actually renders for the model is the one built above.
+    inputSchema: (ownerMayBeAsked
+      ? withRestrictedUnlock
+      : withoutRestrictedUnlock) as typeof withRestrictedUnlock,
     execute: agendaRead.execute,
     // The model needs names, kinds, reasons, dates, and trust to write its reply.
     // Rank and the render scaffolding are for the chat component, so they stop here;

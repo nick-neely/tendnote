@@ -1,6 +1,8 @@
 import { dismissSuggestedMemory } from "@tendnote/db/queries/memories";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -15,8 +17,9 @@ const inputSchema = z.object({
  * suggestions are not reintroduced. Only dismiss on explicit user instruction.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Dismiss a suggested memory the user does not want kept. It leaves review and is excluded from future context. Only call this when the user has explicitly rejected the suggestion. Returns the persisted memory id and new status.",
+    "Dismiss a suggested memory the user does not want kept. It leaves review and is excluded from future context. Only call this when the user has explicitly rejected the suggestion. Returns the persisted memory id and new status. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

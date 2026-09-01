@@ -689,7 +689,7 @@ describe("propose_asset_memories tool", () => {
     ).toBe(false);
   });
 
-  it("tells the model, in the result itself, that nothing was saved", async () => {
+  it("tells the model, in the result itself, that no fact was saved", async () => {
     suggestAssetMemories.mockResolvedValue({ result: groupResult(), affectedScopes: [] });
 
     const output = await proposeAssetMemoriesTool.execute(
@@ -708,8 +708,13 @@ describe("propose_asset_memories tool", () => {
     // The exact failure this tool exists to prevent: "Got it — I've logged the filter."
     expect(modelView.value.saved).toBe(false);
     expect(modelView.value.proposed).toBe(true);
-    expect(modelView.value.guidance).toMatch(/nothing was saved/i);
+    expect(modelView.value.guidance).toMatch(/no fact was saved/i);
     expect(modelView.value.guidance).toMatch(/waiting for their review/i);
+    // And the correction to that sentence: the tool DOES write one thing - the
+    // user's own words, as the note the review cards are grounded in - so the
+    // guidance may not say "nothing was saved" while a Source Record exists.
+    expect(modelView.value.guidance).not.toMatch(/nothing was saved/i);
+    expect(modelView.value.guidance).toMatch(/their own sentence was kept/i);
     // The part number survives the round trip exactly — it is the whole point.
     expect(modelView.value.details[0]?.value).toBe("EDR1RXD1");
   });

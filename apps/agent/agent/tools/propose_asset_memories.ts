@@ -11,6 +11,7 @@ import {
 } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -149,7 +150,25 @@ const proposeAssetMemoriesInputSchema = inputSchema.superRefine((input, ctx) => 
  * check that catches a misheard part number, and is worth more than the shortcut.
  */
 export default defineTool({
-  description: `Propose asset facts for the user to review outside Global Capture — a filter or model number, a serial, a purchase/warranty/renewal date, a maintenance cadence, a price — when they TELL you something about a thing they own ("the filter in my kitchen fridge is EDR1RXD1", "I bought the dishwasher in March 2024", "the car warranty runs out next year"). Do not use this for "Use Capture", "capture this", or a turn with another supported explicit clause even if the word Capture is absent; \`capture_saved_item\` owns that path and creates a review-gated Asset outcome. Otherwise call \`search_assets\` first: pass the \`assetId\` it returned so the facts anchor to the asset they already have, or pass \`newAsset\` when the search found nothing. At most ${MAX_ASSET_MEMORY_PROPOSALS} facts per call, copied from the user's own words — never invented, corrected, or reformatted. This SAVES NOTHING: every fact becomes a review card the user accepts, edits, or dismisses. Say it is waiting for review; NEVER say you logged, saved, recorded, or noted it, and never repeat it back later as a stored fact. Use \`create_general_action\` for a reminder they explicitly asked for, and \`propose_asset_actions\` to turn a dated fact into a proposed reminder.`,
+  /**
+   * The one proposal producer that is also a durable write.
+   *
+   * Everything this tool proposes is review-gated, which is why it sat with the
+   * ungated `propose_*` family - but the grounding it writes first is not a
+   * proposal. `captureSourceRecord` persists an ACTIVE Source Record holding
+   * `saidByUser`, model-authored text that recall can return, from a tool the
+   * model may call on its own reading of the conversation. Its parked sibling
+   * `capture_source_record` writes the same record through the same entry point,
+   * so leaving this one open would have left the gate a detour rather than a
+   * boundary (DESIGN rule 1: an injection reaches for the unguarded sibling).
+   *
+   * No registry describer: what the owner is authorising is the text on the
+   * frozen input - the sentence being kept and the facts proposed from it - not
+   * an id. The optional `assetId` anchor names a record, but it decides only
+   * which review group the suggestions land in, and a suggestion is not durable.
+   */
+  approval: requireOwnerApproval(),
+  description: `Propose asset facts for the user to review outside Global Capture — a filter or model number, a serial, a purchase/warranty/renewal date, a maintenance cadence, a price — when they TELL you something about a thing they own ("the filter in my kitchen fridge is EDR1RXD1", "I bought the dishwasher in March 2024", "the car warranty runs out next year"). Do not use this for "Use Capture", "capture this", or a turn with another supported explicit clause even if the word Capture is absent; \`capture_saved_item\` owns that path and creates a review-gated Asset outcome. Otherwise call \`search_assets\` first: pass the \`assetId\` it returned so the facts anchor to the asset they already have, or pass \`newAsset\` when the search found nothing. At most ${MAX_ASSET_MEMORY_PROPOSALS} facts per call, copied from the user's own words — never invented, corrected, or reformatted. This saves no FACT: every detail becomes a review card the user accepts, edits, or dismisses. What the user said is kept as the note each card is grounded in, so say the facts are waiting for review; NEVER say you logged, saved, recorded, or noted a fact, and never repeat one back later as a stored fact. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it. Use \`create_general_action\` for a reminder they explicitly asked for, and \`propose_asset_actions\` to turn a dated fact into a proposed reminder.`,
   inputSchema: proposeAssetMemoriesInputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
@@ -283,11 +302,12 @@ export default defineTool({
         })),
         rendered: "Each proposed detail is shown to the user as its own review card.",
         guidance:
-          "NOTHING WAS SAVED. These are review cards the user must accept before any of " +
-          "it becomes a fact. Say it is waiting for their review (e.g. “I've put that " +
+          "NO FACT WAS SAVED. These are review cards the user must accept before any of " +
+          "it becomes a fact; only their own sentence was kept, as the note the cards are " +
+          "grounded in. Say the details are waiting for their review (e.g. “I've put that " +
           "up for review”) — never that you logged, saved, recorded, noted, or now " +
-          "remember it, and do not restate it as a stored fact in a later turn. The card " +
-          "already shows the details; don't reprint them." +
+          "remember the fact, and do not restate it as a stored fact in a later turn. The " +
+          "card already shows the details; don't reprint them." +
           (output.asset.pending
             ? " This asset is new, so it is proposed too — say you have not seen it before."
             : ""),

@@ -432,16 +432,27 @@ export function createGiftPlanLifecycle(
       callerUserId: string;
       giftPlanId: string;
     }): Promise<GiftPlanWithContext | null> {
-      const plan = await store.plans.getGiftPlanById({ giftPlanId: input.giftPlanId });
-      if (!plan) return null;
-      const proof = await prover.proveRecordAccess({
-        callerUserId: input.callerUserId,
-        operation: "view",
-        record: giftPlanFacts(plan),
-      });
-      if (!proof.authorized) return null;
-      const [hydrated] = await hydrate([plan], input.callerUserId);
-      return hydrated ?? null;
+      return provedPlan(input.callerUserId, input.giftPlanId);
+    },
+
+    /**
+     * One idea and the plan it sits on, or `null`.
+     *
+     * Ideas carry no scope of their own — their audience is the plan's — so the
+     * proof is the plan's, read now, with the Surprise Subject refused at the
+     * same gate a read is. It exists for the approval card: `edit_gift_idea` and
+     * `remove_gift_idea` name an idea by id and nothing else, and an owner
+     * cannot decide about "8f2a…". `null` covers every reason the caller may not
+     * see it, undistinguished, exactly as `getGiftPlan` does.
+     */
+    async getGiftIdea(input: {
+      callerUserId: string;
+      giftIdeaId: string;
+    }): Promise<{ idea: GiftIdea; plan: GiftPlanWithContext } | null> {
+      const idea = await store.plans.getGiftIdeaById({ giftIdeaId: input.giftIdeaId });
+      if (!idea) return null;
+      const plan = await provedPlan(input.callerUserId, idea.giftPlanId);
+      return plan ? { idea, plan } : null;
     },
 
     /**
@@ -887,6 +898,28 @@ export function createGiftPlanLifecycle(
       audienceUserIds: await currentAudience(plan),
       surpriseSubjectUserIds: [plan.surpriseSubjectUserId],
     });
+  }
+
+  /**
+   * One plan the caller may see, proved from memberships and shares read now.
+   *
+   * The single implementation of "may this caller see this plan?", so the two
+   * reads that answer with a plan cannot come to different answers about it.
+   */
+  async function provedPlan(
+    callerUserId: string,
+    giftPlanId: string,
+  ): Promise<GiftPlanWithContext | null> {
+    const plan = await store.plans.getGiftPlanById({ giftPlanId });
+    if (!plan) return null;
+    const proof = await prover.proveRecordAccess({
+      callerUserId,
+      operation: "view",
+      record: giftPlanFacts(plan),
+    });
+    if (!proof.authorized) return null;
+    const [hydrated] = await hydrate([plan], callerUserId);
+    return hydrated ?? null;
   }
 
   /** An idea inside a plan the caller may see, with the plan still open. */

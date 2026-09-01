@@ -1,7 +1,12 @@
 import { suggestGeneralAction } from "@tendnote/db/queries/general-actions";
-import { generalActionLinkSchema, generalActionRecurrenceSchema } from "@tendnote/domain";
+import {
+  generalActionLinkSchema,
+  generalActionRecurrenceSchema,
+  RESTRICTED_REVEAL_REQUEST_DESCRIPTION,
+} from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireRestrictedRevealApproval } from "../lib/approval";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
@@ -49,9 +54,12 @@ const inputSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Set true ONLY when the user directly asked about this delicate context. Restricted source records are excluded from proactive suggestion by default.",
+      "Ask to ground this on a restricted-sensitivity source record, which proactive " +
+        `suggestion excludes by default. ${RESTRICTED_REVEAL_REQUEST_DESCRIPTION}`,
     ),
 });
+
+type SuggestGeneralActionInput = z.infer<typeof inputSchema>;
 
 /**
  * Thin wrapper over the shared review-gated suggestion path (ADRs 0144, 0151, 0159).
@@ -63,8 +71,12 @@ const inputSchema = z.object({
  * action (use `create_general_action` for that, only on an explicit ask).
  */
 export default defineTool({
+  // Restricted grounding is a reveal even inside a review card, so the flag asks
+  // the owner instead of asserting they already asked. An ordinary suggestion
+  // (the flag unset) is untouched for every caller (ADR 0058).
+  approval: requireRestrictedRevealApproval<SuggestGeneralActionInput>(),
   description:
-    "Propose a SUGGESTED General Action for the user to review — never an active one. Use this only in an explicit flow: just logged a note, reviewing a source record, or the user asked 'what should I do about X?' / 'suggest an action'. Requires the sourceRecordId it is grounded in. Do NOT scan the user's data and invent actions, and do NOT create active actions this way — the result is tentative until the user accepts it. To break a request into a few proposed steps at once, use plan_suggested_general_actions. Returns the persisted suggestion reference and a review component; refer to it by title, never the raw id.",
+    "Propose a SUGGESTED General Action for the user to review — never an active one. Use this only in an explicit flow: just logged a note, reviewing a source record, or the user asked 'what should I do about X?' / 'suggest an action'. Requires the sourceRecordId it is grounded in. Do NOT scan the user's data and invent actions, and do NOT create active actions this way — the result is tentative until the user accepts it. To break a request into a few proposed steps at once, use plan_suggested_general_actions. Returns the persisted suggestion reference and a review component; refer to it by title, never the raw id. Setting directlyRequested pauses the call for the user to approve restricted grounding; if they decline, do not propose it another way.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

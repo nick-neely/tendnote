@@ -6,6 +6,7 @@ import {
 } from "@tendnote/domain/conversational-capture";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -43,18 +44,43 @@ const inputSchema = z.object({
   requestedScope: conversationalCaptureRequestedScopeSchema
     .optional()
     .describe(
-      "Set to 'household' ONLY when the user has deliberately said this capture is for the " +
-        "household in this same turn — 'save this for our household', 'this one is shared'. " +
-        "Never set it because they said 'we', named a housemate, mentioned something domestic, " +
-        "or shared something earlier in the conversation. If save intent is clear but the " +
-        "subject is genuinely ambiguous, ask whether it is about them or the household rather " +
-        "than choosing. Omitting it keeps the capture private, which is the correct default.",
+      "Ask to widen this capture beyond the user's own records. Setting it to 'household' " +
+        "REQUESTS that audience rather than choosing it: every capture pauses for the user, " +
+        "and this is the field that tells them they are being asked to share it. The user " +
+        "approves or declines that sharing themselves, and nothing is written until they " +
+        "answer. Set 'household' ONLY when the user has deliberately said this capture is " +
+        "for the household in this same turn — 'save this for our household', 'this one is " +
+        "shared'. Never set it because they said 'we', named a housemate, mentioned " +
+        "something domestic, or shared something earlier in the conversation. If save " +
+        "intent is clear but the subject is genuinely ambiguous, ask whether it is about " +
+        "them or the household rather than choosing. Omitting it keeps the capture private, " +
+        "which is the correct default. If they decline the wider audience, capture it " +
+        "privately rather than asking again.",
     ),
 });
 
+type CaptureSavedItemInput = z.infer<typeof inputSchema>;
+
 export default defineTool({
+  /**
+   * Capture is a durable write, so it asks every time - not only when it widens.
+   *
+   * This gate first covered `requestedScope` alone, on the reasoning that a
+   * private capture discloses nothing to anybody else. That is true of the
+   * audience and false of the write: a private Capture still persists Saved
+   * Items, Actions, Follow-Ups, People, approved Memories, Asset Reviews, and
+   * Self Context facts from text the model transcribed, and DESIGN rule 1 does
+   * not have a private-writes exemption. Gating only the widening would also
+   * leave the cheapest route open - the same sentence, captured privately, by an
+   * injection that never mentions the household at all.
+   *
+   * `requestedScope` keeps its own meaning inside the parked call: it is what the
+   * owner sees on the frozen input, and the household it names is still resolved
+   * from the caller's own memberships inside the seam (ADRs 0153, 0219).
+   */
+  approval: requireOwnerApproval<CaptureSavedItemInput>(),
   description:
-    "GLOBAL CAPTURE PRECEDENCE: when the user explicitly says 'Use Capture' or 'capture this', call this tool exactly once with their meaningful original wording. If the user's message contains two or more supported explicit clauses, call capture_saved_item exactly once before any destination-specific tool, even when the word Capture never appears. Do not ask which destination to use before calling capture_saved_item; the shared router owns grouping and can return a focused clarification. Do not fan that request out to create_person, capture_memory, search_assets, or propose_asset_memories. Route it into supported Saved Item, Action, Routine, Follow-Up, Person, approved Memory, Asset Review, or private Self Context outcomes. Capture is private by default. Pass requestedScope: 'household' only when the user deliberately says this one is for the household in the same turn — never from 'we', a housemate's name, a domestic topic, or something they shared earlier. Otherwise preserve an explicit 'share with household/member' suffix verbatim for server-side audience resolution. Multiple clauses are grouped only when the user explicitly requests each one. Keep every explicit requested clause only in originalText; never copy it into inferredSuggestions, even after resolving its Person or Asset, because that changes an authorized clause into review-only inference and can cause a false clarification. Any genuinely inferred Memory carried alongside Capture must use an exact known Person id; never invent or pass an unresolved sentinel. Reuse the interaction id and original text when answering its focused clarification. Never call this for ordinary questions or inferred outcomes.",
+    "GLOBAL CAPTURE PRECEDENCE: when the user explicitly says 'Use Capture' or 'capture this', call this tool exactly once with their meaningful original wording. If the user's message contains two or more supported explicit clauses, call capture_saved_item exactly once before any destination-specific tool, even when the word Capture never appears. Do not ask which destination to use before calling capture_saved_item; the shared router owns grouping and can return a focused clarification. Do not fan that request out to create_person, capture_memory, search_assets, or propose_asset_memories. Route it into supported Saved Item, Action, Routine, Follow-Up, Person, approved Memory, Asset Review, or private Self Context outcomes. Capture is private by default. Pass requestedScope: 'household' only when the user deliberately says this one is for the household in the same turn — never from 'we', a housemate's name, a domestic topic, or something they shared earlier — and expect that sharing to be part of what they are shown. This call pauses for the user's approval whatever its audience; if they cancel, say the capture did not happen and do not retry it or route around it. A 'share with household/member' phrase inside originalText does NOT widen the audience on this surface: requestedScope is the only way to ask, so if the user wants a wider audience, ask them and set it. Multiple clauses are grouped only when the user explicitly requests each one. Keep every explicit requested clause only in originalText; never copy it into inferredSuggestions, even after resolving its Person or Asset, because that changes an authorized clause into review-only inference and can cause a false clarification. Any genuinely inferred Memory carried alongside Capture must use an exact known Person id; never invent or pass an unresolved sentinel. Reuse the interaction id and original text when answering its focused clarification. Never call this for ordinary questions or inferred outcomes.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

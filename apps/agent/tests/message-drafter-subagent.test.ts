@@ -52,8 +52,14 @@ describe("Message Drafter subagent", () => {
       /Hope this finds you well/,
       /tone request verbatim as `toneInstruction`/i,
       /Do not invent a tone the owner\s+did not ask for/i,
-      /includeRestricted/,
     ]);
+
+    // Restricted context is not a switch this subagent can flip, and the prompt has
+    // to say so rather than describing an argument that no longer exists: a
+    // delegated turn has nobody to ask, so only the root agent can put that
+    // question to the owner.
+    expect(instructions()).toMatch(/Restricted context is not available here/i);
+    expect(instructions()).not.toMatch(/includeRestricted/);
 
     // The tool writes the wording; a body edited on the way past is wording nobody
     // reviewed, because the parent persists what the owner accepted.

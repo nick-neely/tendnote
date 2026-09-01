@@ -1,5 +1,5 @@
-import { defineEval } from "eve/evals";
 import { satisfies } from "eve/evals/expect";
+import { defineEval } from "../define-eval";
 import { isEmptyArray, someToolOutputHasFields } from "../expectations";
 
 const EXPLICIT_COMPLETION = /(?:^|[.!]\s*)(?:done|complete(?:d)?|success(?:fully)?)\b/i;

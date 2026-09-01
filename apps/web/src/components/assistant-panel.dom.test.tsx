@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { EveMessage } from "eve/react";
 import { beforeEach, expect, it, vi } from "vitest";
+import type { AssistantTurnCardUnit } from "@/lib/eve/message-views";
 import { act, render, screen, userEvent, waitFor } from "@/test/dom";
 
 /**
@@ -42,6 +43,7 @@ const { eve } = vi.hoisted(() => {
 
   const listeners = new Set<() => void>();
   const sent: string[] = [];
+  const responded: unknown[][] = [];
   let snapshot: Snapshot = initial;
   let onError: ((error: Error) => void) | undefined;
   let settleTurn: ((failure?: Error) => void) | null = null;
@@ -56,6 +58,7 @@ const { eve } = vi.hoisted(() => {
   return {
     eve: {
       sent,
+      responded,
       getSnapshot: (): Snapshot => snapshot,
       subscribe: (listener: () => void): (() => void) => {
         listeners.add(listener);
@@ -82,6 +85,15 @@ const { eve } = vi.hoisted(() => {
           };
         });
       },
+      /**
+       * Answers a parked HITL request. eve accepts one only while nothing is in
+       * flight - a parked turn leaves the session idle - so this mirrors `send`
+       * only in recording the call, not in taking the session.
+       */
+      respond: (responses: readonly unknown[]): Promise<void> => {
+        responded.push([...responses]);
+        return Promise.resolve();
+      },
       /** Settle the in-flight turn the way eve does: never by rejecting. */
       settle: (failure?: Error): void => {
         settleTurn?.(failure);
@@ -91,6 +103,7 @@ const { eve } = vi.hoisted(() => {
       },
       reset: (): void => {
         sent.length = 0;
+        responded.length = 0;
         settleTurn = null;
         snapshot = initial;
       },
@@ -105,18 +118,45 @@ vi.mock("eve/react", async () => {
       // The real hook re-registers its callbacks on every render.
       eve.registerOnError(options?.onError);
       const snapshot = useSyncExternalStore(eve.subscribe, eve.getSnapshot, eve.getSnapshot);
-      return { ...snapshot, reset: () => {}, send: eve.send, stop: () => {} };
+      return {
+        ...snapshot,
+        reset: () => {},
+        respond: eve.respond,
+        send: eve.send,
+        stop: () => {},
+      };
     },
   };
 });
 
 // A turn's result cards pull the whole server-action surface into the module
-// graph. These tests are about the composer and the working lines, so the cards
-// stand aside - their own suites cover them.
-vi.mock("@/components/assistant-turn-unit", () => ({
-  AssistantTurnUnitView: () => null,
-  turnUnitKey: (messageId: string, unit: { type: string }) => `${messageId}:${unit.type}`,
-}));
+// graph. These tests are about the composer, the working lines, and the wiring that
+// reaches the cards, so the cards stand aside - their own suites cover them. The one
+// thing the stand-in keeps is the approval card's lifeline: an approval resumes the
+// live turn through the panel's own session, and only the panel can hand that down
+// (chat-approval-card.dom.test.tsx covers the card itself). The keys the panel puts
+// on these units are the real `turnUnitKey` — it is plain TypeScript over the unit
+// union, so there is nothing to stand aside from.
+vi.mock("@/components/assistant-turn-unit", async () => {
+  const { useAssistantRespond } = await import("@/components/assistant-respond-context");
+  return {
+    AssistantTurnUnitView: ({ unit }: { unit: AssistantTurnCardUnit }) => {
+      const { ready, respond } = useAssistantRespond();
+      if (unit.type !== "request") {
+        return null;
+      }
+      return (
+        <button
+          disabled={!ready}
+          onClick={() => void respond([{ requestId: unit.request.requestId, optionId: "approve" }])}
+          type="button"
+        >
+          {unit.request.toolName}
+        </button>
+      );
+    },
+  };
+});
 vi.mock("@/app/actions/asset-evidence", () => ({
   addAssetEvidenceAction: vi.fn(),
   addAssetEvidenceToNewAssetAction: vi.fn(),
@@ -283,4 +323,72 @@ it("shows a working line only while the turn that owns it is running", async () 
 
   expect(screen.queryAllByText("Searching people…")).toEqual([]);
   expect(screen.getByText("Jordan Rivera works at a bakery.")).toBeDefined();
+});
+
+/**
+ * A turn eve parked on the owner: `capture_memory` is held at `approval-requested`
+ * with the policy's prompt on the part, and the stream has ended (`ready`) because a
+ * parked turn is durably waiting on a person rather than working.
+ */
+const turnAwaitingApproval: readonly EveMessage[] = [
+  {
+    id: "turn_0:assistant",
+    role: "assistant",
+    parts: [
+      { type: "text", text: "One thing before I save that.", state: "done" },
+      {
+        type: "dynamic-tool",
+        toolCallId: "call-1",
+        toolName: "capture_memory",
+        state: "approval-requested",
+        approval: { id: "req-1" },
+        input: { content: "Allergic to shellfish.", personId: "person-1" },
+        toolMetadata: {
+          eve: {
+            kind: "tool-call",
+            name: "capture_memory",
+            inputRequest: {
+              kind: "tool-approval",
+              requestId: "req-1",
+              // eve authors this itself; the substance is the frozen input above.
+              prompt: "Approve tool call: capture_memory",
+              display: "confirmation",
+              allowFreeform: false,
+              options: [
+                { id: "approve", label: "Approve" },
+                { id: "cancel", label: "Cancel" },
+              ],
+            },
+          },
+        },
+      },
+    ],
+  },
+];
+
+it("hands the live session down so a parked approval can answer its own turn", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await act(async () => {
+    eve.showTurn(turnAwaitingApproval, "ready");
+  });
+
+  // The card is reachable at all, which is the projection; and the click reaches
+  // eve's `respond`, which is the wiring only the panel can provide.
+  await userEvent.click(screen.getByRole("button", { name: "capture_memory" }));
+
+  await waitFor(() =>
+    expect(eve.responded).toEqual([[{ requestId: "req-1", optionId: "approve" }]]),
+  );
+});
+
+it("will not let a decision go out while eve is busy with another turn", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await act(async () => {
+    eve.showTurn(turnAwaitingApproval, "streaming");
+  });
+
+  const decide = screen.getByRole("button", { name: "capture_memory" }) as HTMLButtonElement;
+  expect(decide.disabled).toBe(true);
 });

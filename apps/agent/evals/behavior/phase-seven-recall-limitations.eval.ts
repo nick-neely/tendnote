@@ -1,5 +1,5 @@
-import { defineEval } from "eve/evals";
 import { includes, satisfies } from "eve/evals/expect";
+import { defineEval } from "../define-eval";
 import { NO_RAW_IDS, toolOutputs, without } from "../expectations";
 
 export function statesPurchaseLocationLimitation(reply: string) {

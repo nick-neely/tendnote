@@ -6,6 +6,7 @@ import type {
 } from "@/components/assistant-results/registry";
 import { AssistantToolGroup } from "@/components/assistant-tool-group";
 import { AssistantToolResult } from "@/components/assistant-tool-result";
+import { ChatApprovalCard, ChatApprovalStatus } from "@/components/chat-approval-card";
 import { ChatAssetReviewCard } from "@/components/chat-asset-review-card";
 import { ChatDraftCard } from "@/components/chat-draft-card";
 import {
@@ -18,33 +19,9 @@ import {
 } from "@/components/chat-general-action-review-card";
 import { ChatLoggedNoteCard } from "@/components/chat-logged-note-card";
 import { ChatReviewCard, ChatReviewList } from "@/components/chat-review-card";
-import type { AssistantTurnUnit } from "@/lib/eve/message-views";
+import type { AssistantToolEntry, AssistantTurnCardUnit } from "@/lib/eve/message-views";
 import type { AssistantToolView } from "@/lib/eve/tool-result-view";
 
-/**
- * Stable React key for a turn render unit. A group keys off its kind and first
- * member so it stays distinct from a lone result of the same kind; a single keys
- * off its own per-call id. Kept alongside the renderer so the key shape and the
- * dispatch never drift apart.
- */
-export function turnUnitKey(messageId: string, unit: AssistantTurnUnit): string {
-  if (unit.type === "group") {
-    return `${messageId}:group:${unit.kind}:${unit.entries[0].toolCallId}`;
-  }
-
-  return `${messageId}:${unit.entry.toolCallId}`;
-}
-
-/**
- * Renders one tool-activity unit for an assistant turn. Same-kind durable saves
- * arrive pre-folded into a collapsed group (see groupTurnToolEntries); a single
- * unit routes to the interactive card the user can act on inline
- * (approve/dismiss, edit a draft, promote a logged note) when the result is
- * actionable, and otherwise to the read-only record of what Eve did.
- *
- * This is the assistant panel's one place that maps tool-result kinds to cards,
- * so new actionable result kinds are added here rather than in the panel shell.
- */
 /**
  * The interactive-card adapter for the {@link InteractiveResultKind} set: the client
  * cards that carry an inline action affordance and import `server-only` review
@@ -79,18 +56,50 @@ const singleUnitRenderers: {
     ) : null,
 };
 
-export function AssistantTurnUnitView({ unit }: { unit: AssistantTurnUnit }) {
-  if (unit.type === "group") {
-    return (
-      <AssistantToolGroup
-        isNew
-        kind={unit.kind}
-        views={unit.entries.map((entry) => entry.view as GroupableToolView)}
-      />
-    );
+/**
+ * Renders one tool-activity unit for an assistant turn. Same-kind durable saves
+ * arrive pre-folded into a collapsed group (see groupTurnToolEntries); a single
+ * unit routes to the interactive card the user can act on inline
+ * (approve/dismiss, edit a draft, promote a logged note) when the result is
+ * actionable, and otherwise to the read-only record of what Eve did. A call parked
+ * on the owner's approval, and the status it settles into, are cards too.
+ *
+ * This is the assistant panel's one place that maps tool-result kinds to cards,
+ * so new actionable result kinds are added here rather than in the panel shell. The
+ * one unit it does *not* own is the transient working line: that is panel chrome
+ * shared with the composer's own "Thinking…" shimmer, so `AssistantTurnCardUnit`
+ * excludes it and the panel renders it directly.
+ */
+export function AssistantTurnUnitView({ unit }: { unit: AssistantTurnCardUnit }) {
+  switch (unit.type) {
+    case "group":
+      return (
+        <AssistantToolGroup
+          isNew
+          kind={unit.kind}
+          views={unit.entries.map((entry) => entry.view as GroupableToolView)}
+        />
+      );
+    // A tool call Eve parked on the owner. This is the one card whose action resumes
+    // the live turn instead of mutating independent domain state, so it reads
+    // `respond` from the panel's session through context, not a server action.
+    case "request":
+      return <ChatApprovalCard isNew request={unit.request} />;
+    case "resolution":
+      return <ChatApprovalStatus isNew resolution={unit.resolution} />;
+    default:
+      return <AssistantSingleUnitView entry={unit.entry} />;
   }
+}
 
-  const { view } = unit.entry;
+/**
+ * One standalone tool result: the interactive card for the kinds that carry an inline
+ * action, and the read-only record of what Eve did for everything else. Split from the
+ * dispatch above so the unit switch stays a statement about unit *kinds* and this stays
+ * the one place a result kind is turned into a card.
+ */
+function AssistantSingleUnitView({ entry }: { entry: AssistantToolEntry }) {
+  const { view } = entry;
   const renderers = singleUnitRenderers as Partial<
     Record<AssistantToolView["kind"], (view: AssistantToolView) => React.ReactNode>
   >;

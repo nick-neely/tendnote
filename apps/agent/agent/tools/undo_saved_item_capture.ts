@@ -5,6 +5,8 @@ import {
 } from "@tendnote/domain/conversational-capture";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -33,8 +35,9 @@ const UNDO_GUIDANCE = {
 } as const;
 
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Safely Undo a just-completed capture_saved_item operation when the user explicitly asks. Applies the returned authoritative inverse (archiving a new record or restoring the prior Context Fact value) while preserving source evidence. Use the exact undoTarget returned by Capture. It reports whether the inverse ran now, was already undone, or did not happen at all — never claim an Undo the result does not report.",
+    "Safely Undo a just-completed capture_saved_item operation when the user explicitly asks. Applies the returned authoritative inverse (archiving a new record or restoring the prior Context Fact value) while preserving source evidence. Use the exact undoTarget returned by Capture. It reports whether the inverse ran now, was already undone, or did not happen at all — never claim an Undo the result does not report. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema: z.object({
     target: conversationalCaptureUndoTargetSchema.describe(
       "The exact undoTarget returned by capture_saved_item.",

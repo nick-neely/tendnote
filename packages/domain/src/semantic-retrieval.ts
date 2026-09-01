@@ -11,7 +11,12 @@ import {
 } from "./general-actions";
 import { JOB_CREATE_OMIT, jobQueueMechanicsShape } from "./job-queue";
 import type { memoryStatusSchema } from "./memories";
-import { sensitivitySchema, type sourceSchema, visibilityChoiceSchema } from "./privacy";
+import {
+  RESTRICTED_REVEAL_REQUEST_DESCRIPTION,
+  sensitivitySchema,
+  type sourceSchema,
+  visibilityChoiceSchema,
+} from "./privacy";
 import type { SavedItem } from "./saved-items";
 import type { sourceRecordRetentionPolicySchema, sourceRecordStatusSchema } from "./source-records";
 
@@ -113,9 +118,8 @@ export const searchSemanticContextSchema = z.object({
     .boolean()
     .default(false)
     .describe(
-      "Reveal restricted-sensitivity records, which every ordinary search withholds. Set " +
-        "true ONLY when the user explicitly asked about that delicate context in this turn " +
-        "and the query names it - never speculatively, and never to widen a thin result.",
+      "Reveal restricted-sensitivity records, which every ordinary search withholds. " +
+        `${RESTRICTED_REVEAL_REQUEST_DESCRIPTION} The query itself must name the target.`,
     ),
   includeArchived: z
     .boolean()

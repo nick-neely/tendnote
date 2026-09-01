@@ -9,7 +9,7 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
+import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
   PromptInput,
   PromptInputBody,
@@ -24,6 +24,7 @@ import {
 import { AssistantCaptureMenu } from "@/components/assistant-capture-menu";
 import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
 import { AssistantEvidenceCapture } from "@/components/assistant-evidence-capture";
+import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { sendNudgeToAgent } from "@/components/assistant-nudge";
 import {
   AssistantComposerShell,
@@ -35,22 +36,22 @@ import {
   assistantSubtitleFor,
 } from "@/components/assistant-panel-chrome";
 import { AssistantPromptNudges } from "@/components/assistant-prompt-nudges";
-import { AssistantTurnUnitView, turnUnitKey } from "@/components/assistant-turn-unit";
+import { AssistantRespondProvider } from "@/components/assistant-respond-context";
+import { AssistantTurnUnitView } from "@/components/assistant-turn-unit";
 import { BugIcon } from "@/components/icons";
 import { Shimmer } from "@/components/ui/shimmer";
 import { Toggle } from "@/components/ui/toggle";
 import {
-  groupTurnToolEntries,
   isTurnInFlight,
-  messageActiveToolViews,
   messageText,
   messageTextSegments,
-  messageToolViews,
+  messageTurnUnits,
 } from "@/lib/eve/message-views";
 import {
   type SelectedPersonContext,
   selectedPersonClientContext,
 } from "@/lib/eve/selected-person-context";
+import { turnUnitKey } from "@/lib/eve/turn-unit-key";
 import {
   consumeLocalEveDraftSubmission,
   loadLocalComposerDraft,
@@ -155,12 +156,21 @@ export function AssistantPanel({
           conversation to the bottom; it collapses once messages overflow so the
           transcript scrolls normally. Do NOT use `justify-end` here — with
           overflow it traps the top of the transcript out of scroll range. */}
-      <Conversation className="min-h-0 flex-1">
-        <ConversationContent className="min-h-full gap-4 p-4 sm:p-5">
-          <AssistantConversation messages={messages} status={agent.status} />
-        </ConversationContent>
-        <ConversationScrollButton />
-      </Conversation>
+      {/* A turn that parks on an approval is resumed by `respond`, which only this
+          session can do - there is exactly one `useEveAgent` in the app. The cards
+          read it from here rather than opening a session of their own, which would
+          answer a turn nobody is waiting on. `ready` is false while any turn is in
+          flight, which is also what serializes the cards: eve refuses a response
+          then, so answering one pending request disables every other one until it
+          settles. */}
+      <AssistantRespondProvider ready={agent.status === "ready"} respond={agent.respond}>
+        <Conversation className="min-h-0 flex-1">
+          <ConversationContent className="min-h-full gap-4 p-4 sm:p-5">
+            <AssistantConversation messages={messages} status={agent.status} />
+          </ConversationContent>
+          <ConversationScrollButton />
+        </Conversation>
+      </AssistantRespondProvider>
 
       {/* Eve turn trace; toggled from the header. */}
       {showDebug ? (
@@ -305,11 +315,12 @@ function MessageTurn({ live, message }: { live: boolean; message: EveMessage }) 
   // tools says several separate things. Render them as separate blocks - running
   // them into one string is what produced "…about Jordan Rivera.Found them!".
   const segments = messageTextSegments(message);
-  // Fold runs of same-kind durable saves into one collapsed group so a busy
-  // capture turn ("added a person, then saved six things about them") reads as a
-  // short summary by default; interactive review cards and lookups stay in place.
-  const units = groupTurnToolEntries(messageToolViews(message));
-  const active = messageActiveToolViews(message, live);
+  // Everything the turn did with tools, in the order it happened: results, calls
+  // parked on the owner's approval, settled approvals, and working lines all sit in
+  // the slot their tool call occupies. Runs of same-kind durable saves still fold
+  // into one collapsed group so a busy capture turn ("added a person, then saved six
+  // things about them") reads as a short summary by default.
+  const units = messageTurnUnits(message, live);
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -319,17 +330,20 @@ function MessageTurn({ live, message }: { live: boolean; message: EveMessage }) 
               answer and several short ones breathe the same way. */}
           <MessageContent className="gap-3">
             {segments.map((segment) => (
-              <MessageResponse key={segment.key}>{segment.text}</MessageResponse>
+              <AssistantMarkdown key={segment.key}>{segment.text}</AssistantMarkdown>
             ))}
           </MessageContent>
         </Message>
       ) : null}
-      {units.map((unit) => (
-        <AssistantTurnUnitView key={turnUnitKey(message.id, unit)} unit={unit} />
-      ))}
-      {active.map((tool) => (
-        <WorkingLine key={`${message.id}:${tool.toolCallId}`} label={tool.label} />
-      ))}
+      {units.map((unit) =>
+        // The working line is the one unit the card registry does not own: it is the
+        // same transient chrome the composer's own "Thinking…" shimmer uses.
+        unit.type === "active" ? (
+          <WorkingLine key={turnUnitKey(message.id, unit)} label={unit.active.label} />
+        ) : (
+          <AssistantTurnUnitView key={turnUnitKey(message.id, unit)} unit={unit} />
+        ),
+      )}
     </div>
   );
 }

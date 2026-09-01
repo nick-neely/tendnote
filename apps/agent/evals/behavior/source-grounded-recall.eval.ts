@@ -1,5 +1,5 @@
-import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
+import { defineEval } from "../define-eval";
 
 export default defineEval({
   description: "Recall answers are grounded in stored relationship records.",

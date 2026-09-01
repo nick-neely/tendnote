@@ -1,5 +1,5 @@
-import { defineEval } from "eve/evals";
 import { includes, satisfies } from "eve/evals/expect";
+import { defineEval } from "../define-eval";
 import { isSemanticClarification, isUntruthfulActionMutationClaim, without } from "../expectations";
 
 /**

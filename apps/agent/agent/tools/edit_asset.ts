@@ -2,6 +2,8 @@ import { editAsset } from "@tendnote/db/queries/assets";
 import { AssetValidationError, assetKindSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { toAssetModelRef, toAssetRef } from "../lib/asset-view";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
@@ -46,8 +48,9 @@ const inputSchema = z.object({
  * deliberate replace it is here.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Rename an Asset, or correct the kind it was filed under, on the user's explicit instruction in the current turn ('call it the garage fridge instead', 'that's a subscription, not a service'). Requires an assetId you resolved deterministically with `search_assets` or `get_asset_context` - ask which thing they mean rather than guessing. Pass only what changes. This edits what the thing IS CALLED and nothing else: a fact about it (a model number, a filter size, a warranty date, a price) is an Asset Memory and goes through `propose_asset_memories` for review, and you must not use a rename to smuggle one in. Do NOT use this to tidy up names on your own initiative, to batch-rename several things, or to change who can see it - visibility, archiving, and deleting all happen in the app. Returns the updated asset reference; name it by its name, never the raw id.",
+    "Rename an Asset, or correct the kind it was filed under, on the user's explicit instruction in the current turn ('call it the garage fridge instead', 'that's a subscription, not a service'). Requires an assetId you resolved deterministically with `search_assets` or `get_asset_context` - ask which thing they mean rather than guessing. Pass only what changes. This edits what the thing IS CALLED and nothing else: a fact about it (a model number, a filter size, a warranty date, a price) is an Asset Memory and goes through `propose_asset_memories` for review, and you must not use a rename to smuggle one in. Do NOT use this to tidy up names on your own initiative, to batch-rename several things, or to change who can see it - visibility, archiving, and deleting all happen in the app. Returns the updated asset reference; name it by its name, never the raw id. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

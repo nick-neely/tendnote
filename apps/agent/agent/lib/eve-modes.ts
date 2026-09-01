@@ -209,7 +209,9 @@ const SCHEDULED_WORKFLOW_READS = [
 const SCHEDULED_WORKFLOW_PROPOSALS = [
   "plan_suggested_general_actions",
   "propose_asset_actions",
-  "propose_asset_memories",
+  // `propose_asset_memories` belongs here by shape and cannot be here in fact:
+  // it also writes a durable grounding Source Record, so it carries an
+  // unconditional owner approval that denies outside `web_chat` (ADR-0237).
   "propose_followup",
   "propose_suggested_memory",
   "suggest_general_action",
@@ -236,10 +238,15 @@ const modeDefinitions = {
   // own auth. ADR-0140 makes Discord a capture surface and nothing else, and
   // today its route is a deterministic handler that writes one Source Record
   // for review without starting a model session at all
-  // (`lib/discord-capture.ts`), so this names the one capability it exercises.
+  // (`lib/discord-capture.ts`) - so no tool here is ever reached. It used to
+  // name `capture_source_record`, which now carries an unconditional owner
+  // approval that denies outside `web_chat` (ADR-0237): advertising a tool this
+  // surface could only ever be refused is a lie the table should not tell. If a
+  // Discord model session is ever introduced, the answer is a channel that can
+  // render and answer an approval, not an entry here.
   discord_capture: {
     mode: "discord_capture",
-    tools: ["capture_source_record"],
+    tools: [],
     skills: ["capturing-and-review"],
   },
   // Selected by: Eve's own app principal (`principalType` is `"runtime"`),

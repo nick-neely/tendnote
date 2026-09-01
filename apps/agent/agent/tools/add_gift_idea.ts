@@ -1,6 +1,8 @@
 import { addGiftIdea } from "@tendnote/db/queries/gift-plans";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -29,8 +31,9 @@ import { withModelSafeStoreErrors } from "../lib/store-errors";
  * different title and is a different key.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Add one gift idea to a Gift Plan the caller is already a co-planner on, when they explicitly ask you to ('add a wool scarf to Ana's birthday plan'). Requires a giftPlanId from `search_gift_plans` — never guess one. The idea is attributed to the caller. Do NOT use this to record something you inferred from conversation, to create a plan, to claim an idea for someone, to add an idea on another person's behalf, or to save a suggestion the user has not asked you to save; an idea you thought of belongs in your reply, not in their plan.",
+    "Add one gift idea to a Gift Plan the caller is already a co-planner on, when they explicitly ask you to ('add a wool scarf to Ana's birthday plan'). Requires a giftPlanId from `search_gift_plans` — never guess one. The idea is attributed to the caller. Do NOT use this to record something you inferred from conversation, to create a plan, to claim an idea for someone, to add an idea on another person's behalf, or to save a suggestion the user has not asked you to save; an idea you thought of belongs in your reply, not in their plan. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema: z.object({
     giftPlanId: z
       .uuid()

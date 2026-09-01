@@ -264,6 +264,10 @@ _Avoid_: Calendar sync, automatic meeting notes, auto follow-up
 A bounded assistant capability profile that narrows Eve's tools, skills, and behavior for a specific private workflow, such as Discord capture, selected-person work, drafting, scheduled workflows, or cleanup previews. An Eve mode is not a separate assistant persona or workspace.
 _Avoid_: Persona, workspace, unrestricted mode
 
+**Owner Approval**:
+A single-use permission a Tendnote user gives, in the turn it applies to, for one exact assistant tool call that would write a durable record, reach outside Tendnote, widen an audience, or reveal restricted content. Eve pauses that call and shows the user its frozen arguments; their answer never passes through the model, so an owner approval is bound to that owner, turn, record, and action and expires with it. A tool argument the model set, an instruction in the system prompt, a control being visible, and an earlier approval of the same tool are none of them an owner approval.
+_Avoid_: Consent flag, permission, confirmation prompt, approved tool, standing authorization
+
 **Household Workspace**:
 A small, durable shared operating layer for one private household or trusted circle of adult Tendnote users. A user has at most one active Household Workspace; it supports active members, invitations, co-owners, and visibility controls without becoming an organization, team workspace, CRM account, or admin console.
 _Avoid_: Organization, team, account, CRM workspace

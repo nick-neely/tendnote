@@ -1,5 +1,5 @@
-import { defineEval } from "eve/evals";
 import { satisfies } from "eve/evals/expect";
+import { defineEval } from "../define-eval";
 import { NO_RAW_IDS, someToolOutputHasFields, toolOutputs } from "../expectations";
 import { isDraftRevisionReplyCanonical } from "./draft-revision-assertions";
 

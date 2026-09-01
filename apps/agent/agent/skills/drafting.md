@@ -27,9 +27,11 @@ external draft, or contact anyone.
   unsaved.
 - **Persist only after explicit owner intent.** Use `create_message_draft` directly
   only when the owner asks to save/persist a Tendnote draft, or accepts a specific
-  Draft Proposal. When accepting a proposal, pass the accepted body and source refs
-  as `acceptedProposal` so the saved draft matches what the owner accepted instead
-  of regenerating new wording.
+  Draft Proposal. When accepting a proposal, pass the accepted body, its `digest`,
+  and the source refs as `acceptedProposal`, copied exactly, so the saved draft
+  matches what the owner accepted instead of regenerating new wording; an altered
+  body no longer matches its digest and is refused. That call pauses for the owner
+  to approve the exact wording before it becomes a durable record.
 - **Compose-plus-Gmail asks still start as proposals.** If the owner asks in one
   turn to draft something and save/export it to Gmail, first return ephemeral Draft
   Proposals and explain that Gmail saving requires choosing a proposal, saving it
@@ -45,7 +47,9 @@ external draft, or contact anyone.
   tentative - at most allude to them softly, never assert them. Do not invent
   personal facts, events, or feelings.
 - **Restricted context stays out by default.** Only set `includeRestricted` when the
-  user directly asked to write about that delicate topic.
+  user directly asked to write about that delicate topic in this turn. Setting it
+  pauses the call so they approve the reveal themselves; if they decline, draft
+  without it rather than asking again.
 - **If the tool declines** (`created: false`), there wasn't enough grounded context
   or the person couldn't be resolved. Don't write a hollow or fake-sentimental
   message anyway - tell the user plainly and offer to capture a note or ask a

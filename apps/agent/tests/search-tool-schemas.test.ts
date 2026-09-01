@@ -1,3 +1,4 @@
+import { RESTRICTED_REVEAL_REQUEST_DESCRIPTION } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import searchAssetsTool from "../agent/tools/search_assets";
@@ -65,10 +66,23 @@ describe("search tool input schemas are described for the model", () => {
 
     // The restricted unlock. Named for a caller-side policy question, it reads like a
     // provenance flag - "the user asked for this" - which is exactly the sentence a
-    // model would set to true on any direct question.
+    // model would set to true on any direct question. It is now a request the owner
+    // answers (`approval-trust-flags.test.ts`), and the text has to say so: a
+    // description that still reads as permission invites the same guess.
     expect(description).toMatch(/restricted/i);
-    expect(description).toMatch(/only when the user explicitly asked/i);
-    expect(description).toMatch(/never speculatively/i);
+    // The request half is one shared sentence (`RESTRICTED_REVEAL_REQUEST_DESCRIPTION`),
+    // because five schemas used to say it in five slightly different ways: it names
+    // what setting the flag actually does (park the call), when it may be set at all,
+    // and - the one instruction a model reaching for a workaround needs to have read -
+    // that a decline ends the attempt.
+    expect(description).toContain(RESTRICTED_REVEAL_REQUEST_DESCRIPTION);
+    expect(RESTRICTED_REVEAL_REQUEST_DESCRIPTION).toMatch(
+      /REQUESTS that reveal rather than authorising it/,
+    );
+    expect(RESTRICTED_REVEAL_REQUEST_DESCRIPTION).toMatch(/nothing happens until they answer/i);
+    expect(RESTRICTED_REVEAL_REQUEST_DESCRIPTION).toMatch(/only when the user explicitly asked/i);
+    expect(RESTRICTED_REVEAL_REQUEST_DESCRIPTION).toMatch(/never speculatively/i);
+    expect(RESTRICTED_REVEAL_REQUEST_DESCRIPTION).toMatch(/if they decline/i);
   });
 
   it("search_semantic_context warns that a similarity floor manufactures an empty answer", () => {

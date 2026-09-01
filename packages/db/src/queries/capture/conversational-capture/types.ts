@@ -305,5 +305,12 @@ export type ConversationalCaptureDeps = {
     originalText: string;
     contextVisibility?: ConversationalCaptureInput["contextVisibility"];
     requestedScope?: ConversationalCaptureInput["requestedScope"];
+    /**
+     * Who wrote `originalText`. On `global_capture` it is the sentence the owner
+     * typed into the Capture box, so an audience phrase in it is their own
+     * instruction; on `eve` it is a model's transcription of a turn, which is not.
+     * The resolver reads audience out of the text only in the first case.
+     */
+    surface?: ConversationalCaptureInput["surface"];
   }) => Promise<CaptureVisibility>;
 };

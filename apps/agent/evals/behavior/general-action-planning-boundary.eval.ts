@@ -1,5 +1,5 @@
-import { defineEval } from "eve/evals";
 import { includes, satisfies } from "eve/evals/expect";
+import { defineEval } from "../define-eval";
 import { hasReviewGatedGeneralActionPlan, isUntruthfulActionMutationClaim } from "../expectations";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

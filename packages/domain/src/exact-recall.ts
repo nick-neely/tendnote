@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { generalActionRetrievalMetaSchema } from "./general-actions";
-import { sensitivitySchema, visibilityChoiceSchema } from "./privacy";
+import {
+  RESTRICTED_REVEAL_REQUEST_DESCRIPTION,
+  sensitivitySchema,
+  visibilityChoiceSchema,
+} from "./privacy";
 
 // General Actions join people, memories, and source records as an exact-recall record
 // kind, found by explicit text over their title and notes (ADR 0150; Phase 5 #184).
@@ -61,9 +65,8 @@ export const searchRelationshipContextSchema = z.object({
     .boolean()
     .default(false)
     .describe(
-      "Reveal restricted-sensitivity records, which every ordinary search withholds. Set " +
-        "true ONLY when the user explicitly asked about that delicate context in this turn " +
-        "and the query names it - never speculatively, and never to widen a thin result.",
+      "Reveal restricted-sensitivity records, which every ordinary search withholds. " +
+        `${RESTRICTED_REVEAL_REQUEST_DESCRIPTION} The query itself must name the target.`,
     ),
   includeArchived: z
     .boolean()

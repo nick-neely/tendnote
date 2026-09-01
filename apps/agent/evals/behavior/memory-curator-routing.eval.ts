@@ -1,5 +1,5 @@
-import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
+import { defineEval } from "../define-eval";
 import { assistantMessageTexts, hasNoRuntimeFailures, without } from "../expectations";
 
 const CLEANUP_TERMS =

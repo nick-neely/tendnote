@@ -1,6 +1,8 @@
 import { removeGiftIdea } from "@tendnote/db/queries/gift-plans";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -20,8 +22,9 @@ import { withModelSafeStoreErrors } from "../lib/store-errors";
  * people are building".
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Remove an idea the caller themselves put on a Gift Plan, when they explicitly ask you to in this turn ('actually take the wool scarf back off'). Requires a giftIdeaId you already have from adding it in this conversation - never guess one, and never resolve an idea by matching its title. You may only remove your own contribution, and removal is permanent: there is no undo and no archive. Do NOT use this to tidy a plan, to clear out ideas you think are duplicates or bad ones, to remove several at once, or to remove anything on your own initiative. If the user means an idea you have not seen in this conversation, say so and point them at the plan in the app.",
+    "Remove an idea the caller themselves put on a Gift Plan, when they explicitly ask you to in this turn ('actually take the wool scarf back off'). Requires a giftIdeaId you already have from adding it in this conversation - never guess one, and never resolve an idea by matching its title. You may only remove your own contribution, and removal is permanent: there is no undo and no archive. Do NOT use this to tidy a plan, to clear out ideas you think are duplicates or bad ones, to remove several at once, or to remove anything on your own initiative. If the user means an idea you have not seen in this conversation, say so and point them at the plan in the app. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema: z.object({
     giftIdeaId: z
       .uuid()

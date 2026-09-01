@@ -58,6 +58,15 @@ export const addAssetEvidenceToNewAssetAction = unusedAction;
 export const listAssetEvidenceDestinationsAction = async () => [];
 export const removeAssetEvidenceAction = unusedAction;
 
+// The approval card's owner-scoped subject lookup. It answers `unknown-tool` here
+// rather than `undefined`: that is the registry's own "no describer registered"
+// answer, so a browser contract renders the card's generic fallback instead of
+// exercising a failure path it did not set up.
+export const describeApprovalSubjectAction = async () => ({
+  ok: true as const,
+  view: { kind: "unknown-tool" as const },
+});
+
 export const archiveSuggestedMemoryAction = unusedAction;
 export const dismissSuggestedMemoryAction = unusedAction;
 export const editSuggestedMemoryAction = unusedAction;
