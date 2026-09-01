@@ -188,6 +188,93 @@ describe("draft editing", () => {
   });
 });
 
+describe("atomic approval revocation on body edit (store seam)", () => {
+  // The store — not the lifecycle layer — decides the reversion from the row's
+  // CURRENT status, in the same UPDATE as the body. These assert that conditional
+  // directly, including that only `approved` is touched.
+  it("reverts an approved draft to draft in the same update", async () => {
+    const draft = await ctx.store.createDraft(draftInput(ctx.person, { status: "approved" }));
+
+    const updated = await ctx.store.updateDraft({
+      ownerUserId: OWNER,
+      draftId: draft.id,
+      patch: { body: "A revised body." },
+      revertApprovalToDraft: true,
+    });
+
+    expect(updated.status).toBe("draft");
+    expect(updated.body).toBe("A revised body.");
+  });
+
+  it("keeps a draft-status draft in draft", async () => {
+    const draft = await ctx.store.createDraft(draftInput(ctx.person, { status: "draft" }));
+
+    const updated = await ctx.store.updateDraft({
+      ownerUserId: OWNER,
+      draftId: draft.id,
+      patch: { body: "A revised body." },
+      revertApprovalToDraft: true,
+    });
+
+    expect(updated.status).toBe("draft");
+  });
+
+  it("preserves a dismissed draft's status on a body change", async () => {
+    const draft = await ctx.store.createDraft(draftInput(ctx.person, { status: "dismissed" }));
+
+    const updated = await ctx.store.updateDraft({
+      ownerUserId: OWNER,
+      draftId: draft.id,
+      patch: { body: "A revised body." },
+      revertApprovalToDraft: true,
+    });
+
+    expect(updated.status).toBe("dismissed");
+  });
+
+  it("preserves a sent_manually draft's status on a body change", async () => {
+    const draft = await ctx.store.createDraft(draftInput(ctx.person, { status: "sent_manually" }));
+
+    const updated = await ctx.store.updateDraft({
+      ownerUserId: OWNER,
+      draftId: draft.id,
+      patch: { body: "A revised body." },
+      revertApprovalToDraft: true,
+    });
+
+    expect(updated.status).toBe("sent_manually");
+  });
+
+  it("reverts even when the lifecycle's pre-read observed a stale non-approved status (TOCTOU)", async () => {
+    const draft = await ctx.store.createDraft(draftInput(ctx.person));
+    await ctx.lifecycle.approveDraft({ ownerUserId: OWNER, draftId: draft.id });
+
+    // Simulate an approval that commits AFTER editDraftBody's pre-read: getDraft
+    // hands back a stale `draft` snapshot while the persisted row is `approved`.
+    // If the revert were authorized from that read, the approval would survive.
+    const racyStore: InMemoryDraftLifecycleStore = {
+      ...ctx.store,
+      async getDraft(input) {
+        const current = await ctx.store.getDraft(input);
+        return current ? { ...current, status: "draft" } : current;
+      },
+    };
+    const racyLifecycle = createDraftLifecycle(racyStore);
+
+    const edited = await racyLifecycle.editDraftBody({
+      ownerUserId: OWNER,
+      draftId: draft.id,
+      body: "A revision written while an approval raced in.",
+    });
+
+    // The store reverted from the CURRENT row, not the stale read.
+    expect(edited.status).toBe("draft");
+    expect((await ctx.store.getDraft({ ownerUserId: OWNER, draftId: draft.id }))?.status).toBe(
+      "draft",
+    );
+  });
+});
+
 describe("draft lifecycle owner scoping", () => {
   it("does not let another owner act on a draft", async () => {
     const draft = await ctx.store.createDraft(draftInput(ctx.person));

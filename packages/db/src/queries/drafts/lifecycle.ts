@@ -112,19 +112,27 @@ export function createDraftLifecycle(store: DraftLifecycleStore) {
         throw new MessageDraftValidationError("A draft edit must change the body.");
       }
 
-      const revokesApproval = draft.status === "approved";
+      // The reversion is decided ATOMICALLY by the store from the row's current
+      // status (`revertApprovalToDraft`), not from `draft.status` above: that read
+      // is stale, so authorizing off it would let an approval committed concurrently
+      // between the read and this write survive the edit and export unreviewed text.
       const updated = await store.updateDraft({
         ownerUserId: input.ownerUserId,
         draftId: draft.id,
-        patch: revokesApproval ? { body, status: "draft" } : { body },
+        patch: { body },
+        revertApprovalToDraft: true,
       });
+
+      // Audit only — not an authorization decision. The store already reverted (or
+      // not); we record the transition when the RETURNED status shows it happened.
+      const revokedApproval = draft.status === "approved" && updated.status === "draft";
 
       await store.createAuditLogEntry({
         ownerUserId: input.ownerUserId,
         action: "message_draft.edit",
         entityType: "message_draft",
         entityId: updated.id,
-        metadataJson: revokesApproval
+        metadataJson: revokedApproval
           ? {
               personId: updated.personId,
               previousStatus: draft.status,

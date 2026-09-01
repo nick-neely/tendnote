@@ -1,5 +1,5 @@
 import { createMessageDraftSchema, type MessageDraft, messageDraftSchema } from "@tendnote/domain";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import { messageDrafts } from "../../schema";
 import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
@@ -99,7 +99,18 @@ export function createDrizzleDraftStore(): DraftStore {
     async updateDraft(input) {
       const [draft] = await getDb()
         .update(messageDrafts)
-        .set({ ...input.patch, updatedAt: new Date() })
+        .set({
+          ...input.patch,
+          // Atomic stale-approval revocation: decided from the row's CURRENT status
+          // in the same UPDATE, so no concurrent approval can survive a body edit
+          // (security). Only `approved -> draft`; every other status is preserved.
+          ...(input.revertApprovalToDraft
+            ? {
+                status: sql`CASE WHEN ${messageDrafts.status} = 'approved' THEN 'draft' ELSE ${messageDrafts.status} END`,
+              }
+            : {}),
+          updatedAt: new Date(),
+        })
         .where(
           and(
             eq(messageDrafts.id, input.draftId),

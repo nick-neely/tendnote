@@ -61,9 +61,15 @@ export function createInMemoryDraftStore(): DraftStore {
         throw new Error("Message draft not found.");
       }
 
+      // Mirror the drizzle CASE atomically: within this single update operation,
+      // force `status = draft` iff the row is CURRENTLY `approved`. Decided from
+      // the stored status, never a caller-supplied read, so the store — not the
+      // lifecycle layer — owns the stale-approval revocation (security).
+      const revertsApproval = input.revertApprovalToDraft === true && draft.status === "approved";
       const updated = messageDraftSchema.parse({
         ...draft,
         ...input.patch,
+        ...(revertsApproval ? { status: "draft" } : {}),
         updatedAt: new Date(),
       });
       drafts.set(updated.id, updated);

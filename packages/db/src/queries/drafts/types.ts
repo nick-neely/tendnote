@@ -36,10 +36,19 @@ export type DraftStore = {
   }) => Promise<MessageDraft[]>;
   // Applies a bounded body/status patch. The persisted source-reference grounding
   // contract is never mutated here (PRD: editing body preserves grounding).
+  //
+  // `revertApprovalToDraft` closes a TOCTOU on the stale-approval fix (security):
+  // when set, the store atomically forces `status = draft` iff the row is CURRENTLY
+  // `approved`, in the SAME statement as the patch — never from a prior read — so a
+  // concurrent approval cannot survive a body edit and carry unreviewed text out to
+  // Gmail. Only `approved -> draft`; `dismissed`/`sent_manually`/`draft` are left as
+  // they are. The returned draft reflects the persisted status, so callers derive
+  // whether a reversion happened from it.
   updateDraft: (input: {
     ownerUserId: string;
     draftId: string;
     patch: MessageDraftPatch;
+    revertApprovalToDraft?: boolean;
   }) => Promise<MessageDraft>;
 };
 
