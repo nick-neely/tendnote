@@ -16,12 +16,38 @@ type DeliverDiscordScheduledArtifactInput = {
   sender: DiscordProactiveDeliverySender;
 };
 
+/**
+ * The owner's CURRENT, authoritative Discord install consent, resolved fresh at
+ * send time (never a stored copy). `targetChannelId` is the channel the owner's
+ * enabled + configured install points at right now; `null` from the resolver means
+ * the install is paused, unconfigured, or ambiguous — deliver nothing.
+ */
+export type DiscordInstallConsent = { targetChannelId: string };
+export type DiscordInstallConsentResolver = (input: {
+  ownerUserId: string;
+}) => Promise<DiscordInstallConsent | null>;
+
+export type ScheduledWorkflowDeliveryServiceDeps = {
+  /**
+   * Send-time consent check (finding C). When provided, the owner's LIVE install
+   * state (enabled + channel) is authoritative over the per-workflow delivery
+   * setting's possibly-stale `enabled`/`targetId`: pausing the install fails closed
+   * for every linked workflow, and changing its channel takes effect immediately
+   * with no active old target. Production entry points MUST wire this to the real
+   * install seam; only the pure policy-matrix unit tests omit it.
+   */
+  resolveInstallConsent?: DiscordInstallConsentResolver;
+};
+
 export type DiscordScheduledArtifactDeliveryResult =
   | { type: "sent"; attempt: ScheduledWorkflowDeliveryAttempt }
   | { type: "skipped"; reason: string; attempt: ScheduledWorkflowDeliveryAttempt }
   | { type: "failed"; error: string; attempt: ScheduledWorkflowDeliveryAttempt };
 
-export function createScheduledWorkflowDeliveryService(store: ScheduledWorkflowDeliveryStore) {
+export function createScheduledWorkflowDeliveryService(
+  store: ScheduledWorkflowDeliveryStore,
+  deps: ScheduledWorkflowDeliveryServiceDeps = {},
+) {
   return {
     configureDiscordWorkflowDelivery(
       input: Omit<UpsertScheduledWorkflowDeliverySettingInput, "channel">,
@@ -57,6 +83,29 @@ export function createScheduledWorkflowDeliveryService(store: ScheduledWorkflowD
         channel: "discord",
       });
 
+      // Send-time consent (finding C): re-check the owner's LIVE install before any
+      // send. When a resolver is wired, its result is authoritative over the
+      // setting's stored `enabled`/`targetId`. A null consent (paused, unconfigured,
+      // or ambiguous install) fails closed for every workflow linked to it.
+      const consent = deps.resolveInstallConsent
+        ? await deps.resolveInstallConsent({ ownerUserId: input.artifact.ownerUserId })
+        : null;
+      if (deps.resolveInstallConsent && !consent) {
+        const attempt = await store.createScheduledWorkflowDeliveryAttempt({
+          ownerUserId: input.artifact.ownerUserId,
+          workflow: input.artifact.workflow,
+          channel: "discord",
+          artifactKind: input.artifact.artifactKind,
+          artifactId: input.artifact.artifactId,
+          targetId: setting?.targetId ?? null,
+          status: "skipped",
+          reason: "discord_install_unavailable",
+          error: null,
+        });
+
+        return { type: "skipped", reason: "discord_install_unavailable", attempt };
+      }
+
       const skippedReason = discordDeliverySkipReason(setting, input.artifact);
       if (skippedReason) {
         const attempt = await store.createScheduledWorkflowDeliveryAttempt({
@@ -78,9 +127,14 @@ export function createScheduledWorkflowDeliveryService(store: ScheduledWorkflowD
         throw new Error("Discord delivery setting unexpectedly missing after policy check.");
       }
 
+      // Authoritative destination: the live install channel when consent bound one,
+      // never the possibly-stale setting target — so a channel change lands here and
+      // no send ever reaches a former target.
+      const targetId = consent?.targetChannelId ?? setting.targetId;
+
       try {
         await input.sender({
-          targetId: setting.targetId,
+          targetId,
           content: renderDiscordArtifactNudge(input.artifact),
         });
       } catch (error) {
@@ -91,7 +145,7 @@ export function createScheduledWorkflowDeliveryService(store: ScheduledWorkflowD
           channel: "discord",
           artifactKind: input.artifact.artifactKind,
           artifactId: input.artifact.artifactId,
-          targetId: setting.targetId,
+          targetId,
           status: "failed",
           reason: "discord_send_failed",
           error: message,
@@ -106,7 +160,7 @@ export function createScheduledWorkflowDeliveryService(store: ScheduledWorkflowD
         channel: "discord",
         artifactKind: input.artifact.artifactKind,
         artifactId: input.artifact.artifactId,
-        targetId: setting.targetId,
+        targetId,
         status: "sent",
         reason: null,
         error: null,

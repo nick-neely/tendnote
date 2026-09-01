@@ -96,22 +96,23 @@ describe("evaluateDiscordInstallCallback (fail-closed)", () => {
     return { payload, state: signDiscordInstallState(payload, SECRET) };
   }
 
-  it("records the install for a signed-in owner with a matching state and guild", () => {
+  it("authorizes a signed-in owner with a matching state and a returned code", () => {
     const { state } = okState();
     const result = evaluateDiscordInstallCallback({
       sessionOwnerUserId: "owner-1",
-      params: { state, guildId: "guild-1", permissions: "19456" },
+      // A forged guild_id/permissions on the query string is irrelevant now: the
+      // evaluator never reads them, so it cannot leak into the authorization.
+      params: { state, code: "auth-code-123" },
       cookieNonce: "nonce-abc",
       secret: SECRET,
       now: NOW,
     });
 
     expect(result).toEqual({
-      status: "ok",
+      status: "authorized",
       ownerUserId: "owner-1",
-      guildId: "guild-1",
-      permissions: "19456",
-      scopes: [...DISCORD_BOT_INSTALL_SCOPES],
+      code: "auth-code-123",
+      nonce: "nonce-abc",
     });
   });
 
@@ -120,7 +121,7 @@ describe("evaluateDiscordInstallCallback (fail-closed)", () => {
     expect(
       evaluateDiscordInstallCallback({
         sessionOwnerUserId: "owner-1",
-        params: { state, guildId: "guild-1", error: "access_denied" },
+        params: { state, code: "auth-code-123", error: "access_denied" },
         cookieNonce: "nonce-abc",
         secret: SECRET,
         now: NOW,
@@ -133,7 +134,7 @@ describe("evaluateDiscordInstallCallback (fail-closed)", () => {
     expect(
       evaluateDiscordInstallCallback({
         sessionOwnerUserId: null,
-        params: { state, guildId: "guild-1" },
+        params: { state, code: "auth-code-123" },
         cookieNonce: "nonce-abc",
         secret: SECRET,
         now: NOW,
@@ -146,7 +147,7 @@ describe("evaluateDiscordInstallCallback (fail-closed)", () => {
     expect(
       evaluateDiscordInstallCallback({
         sessionOwnerUserId: "owner-1",
-        params: { state, guildId: "guild-1" },
+        params: { state, code: "auth-code-123" },
         cookieNonce: "different-nonce",
         secret: SECRET,
         now: NOW,
@@ -159,7 +160,7 @@ describe("evaluateDiscordInstallCallback (fail-closed)", () => {
     expect(
       evaluateDiscordInstallCallback({
         sessionOwnerUserId: "owner-1",
-        params: { state, guildId: "guild-1" },
+        params: { state, code: "auth-code-123" },
         cookieNonce: "nonce-abc",
         secret: SECRET,
         now: NOW,
@@ -174,7 +175,7 @@ describe("evaluateDiscordInstallCallback (fail-closed)", () => {
     expect(
       evaluateDiscordInstallCallback({
         sessionOwnerUserId: "owner-2",
-        params: { state, guildId: "guild-1" },
+        params: { state, code: "auth-code-123" },
         cookieNonce: "nonce-abc",
         secret: SECRET,
         now: NOW,
@@ -182,17 +183,17 @@ describe("evaluateDiscordInstallCallback (fail-closed)", () => {
     ).toEqual({ status: "reject", reason: "owner_mismatch" });
   });
 
-  it("fails closed when Discord returned no guild id", () => {
+  it("fails closed when Discord returned no authorization code", () => {
     const { state } = okState();
     expect(
       evaluateDiscordInstallCallback({
         sessionOwnerUserId: "owner-1",
-        params: { state, guildId: null },
+        params: { state, code: null },
         cookieNonce: "nonce-abc",
         secret: SECRET,
         now: NOW,
       }),
-    ).toEqual({ status: "reject", reason: "missing_guild" });
+    ).toEqual({ status: "reject", reason: "missing_code" });
   });
 });
 
@@ -200,43 +201,49 @@ describe("wired install → configure → derive (end-to-end)", () => {
   it("records a validated callback and derives the configured delivery target", async () => {
     const queries = createDiscordInstallQueries(createInMemoryDiscordInstallStore());
 
-    // 1. A validated install callback yields the record input.
+    // 1. A validated install callback authorizes the returning owner + code.
     const payload = statePayload();
     const decision = evaluateDiscordInstallCallback({
       sessionOwnerUserId: "owner-1",
       params: {
         state: signDiscordInstallState(payload, SECRET),
-        guildId: "guild-1",
-        permissions: "19456",
+        code: "auth-code-123",
       },
       cookieNonce: "nonce-abc",
       secret: SECRET,
       now: NOW,
     });
-    if (decision.status !== "ok") {
-      throw new Error(`expected ok decision, got ${decision.reason}`);
+    if (decision.status !== "authorized") {
+      throw new Error(`expected authorized decision, got ${decision.reason}`);
     }
 
-    // 2. The install callback persists it (discord user id from the linked identity).
+    // 2. The callback exchanges `decision.code` server-to-server for the
+    //    provider-authoritative guild, then persists it (discord user id from the
+    //    linked identity). Here the exchanged guild id stands in for that step.
+    const exchangedGuildId = "123456789012345678";
     await queries.recordDiscordInstall({
       ownerUserId: decision.ownerUserId,
-      guildId: decision.guildId,
+      guildId: exchangedGuildId,
       discordUserId: "discord-1",
-      scopes: decision.scopes,
-      permissions: decision.permissions,
+      scopes: [...DISCORD_BOT_INSTALL_SCOPES],
+      permissions: null,
     });
 
     // 3. The owner configures + enables a delivery target through the seams.
     await queries.configureDiscordTarget({
       ownerUserId: "owner-1",
-      guildId: "guild-1",
+      guildId: exchangedGuildId,
       targetKind: "channel",
       targetChannelId: "channel-99",
     });
 
     // 4. deriveDeliveryTarget resolves the real installed target end-to-end.
     await expect(
-      queries.deriveDeliveryTarget({ ownerUserId: "owner-1", guildId: "guild-1" }),
-    ).resolves.toEqual({ guildId: "guild-1", targetKind: "channel", targetId: "channel-99" });
+      queries.deriveDeliveryTarget({ ownerUserId: "owner-1", guildId: exchangedGuildId }),
+    ).resolves.toEqual({
+      guildId: exchangedGuildId,
+      targetKind: "channel",
+      targetId: "channel-99",
+    });
   });
 });

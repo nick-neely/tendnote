@@ -7,8 +7,7 @@ import { aggregateArtifactScope } from "@tendnote/domain";
 import { generateBrief } from "./briefs";
 import type { CalendarReaderForOwner } from "./calendar";
 import {
-  createDrizzleScheduledWorkflowDeliveryStore,
-  createScheduledWorkflowDeliveryService,
+  createDefaultScheduledWorkflowDeliveryService,
   type DiscordProactiveDeliverySender,
   type DiscordScheduledArtifactDeliveryResult,
 } from "./scheduled-workflow-deliveries";
@@ -102,9 +101,7 @@ function morningAgendaFallbackSummary(itemCount: number): string {
   return `${itemCount} relationship prompts are ready.`;
 }
 
-const defaultDeliveryService = createScheduledWorkflowDeliveryService(
-  createDrizzleScheduledWorkflowDeliveryStore(),
-);
+const defaultDeliveryService = createDefaultScheduledWorkflowDeliveryService();
 
 const defaultMorningAgendaWorkflow = createMorningAgendaWorkflow({
   generateBrief: (input) => generateBrief(input),

@@ -16,18 +16,28 @@ import { getOwnerDiscordInstalls } from "@/lib/integrations/discord-install-serv
 
 const INSTALL_START_PATH = "/api/integrations/discord/install";
 
+/** Callback outcomes the route emits beyond the pure evaluator's reject reasons. */
+type DiscordInstallCallbackOutcomeKey =
+  | DiscordInstallRejectReason
+  | "missing_identity"
+  | "install_unconfirmed"
+  | "not_configured";
+
 /**
  * Human-facing outcome for a returning install callback. Typed exhaustively over
- * every reject reason plus `missing_identity` (the boundary's own fail-closed
- * outcome), so adding a new reason is a compile error until copy exists for it.
+ * every reject reason plus the boundary's own fail-closed outcomes, so adding a new
+ * reason is a compile error until copy exists for it.
  */
-const CALLBACK_ERRORS: Record<DiscordInstallRejectReason | "missing_identity", string> = {
+const CALLBACK_ERRORS: Record<DiscordInstallCallbackOutcomeKey, string> = {
   discord_error: "Discord didn't complete the install. Nothing changed, so you can try again.",
   unauthenticated: "Your session expired before the install finished. Sign in and try again.",
   invalid_state: "That install link expired or didn't match. Start the install again.",
   owner_mismatch:
     "That install was started from a different account. Start it again while signed in here.",
-  missing_guild: "Discord didn't return a server. Pick a server when authorizing, then try again.",
+  missing_code: "Discord didn't finish authorizing the install. Start the install again.",
+  install_unconfirmed:
+    "Tendnote couldn't confirm the install with Discord. Nothing changed, so you can try again.",
+  not_configured: "Discord installs aren't available right now. Please try again later.",
   missing_identity:
     "Connect your Discord identity on Account first, then add Tendnote to a server.",
 };
@@ -39,7 +49,7 @@ const CALLBACK_WARNINGS = {
 
 function callbackErrorMessage(error: string): string {
   return Object.hasOwn(CALLBACK_ERRORS, error)
-    ? CALLBACK_ERRORS[error as DiscordInstallRejectReason | "missing_identity"]
+    ? CALLBACK_ERRORS[error as DiscordInstallCallbackOutcomeKey]
     : "That install didn't complete. Nothing changed.";
 }
 

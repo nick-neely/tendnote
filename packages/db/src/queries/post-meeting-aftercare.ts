@@ -9,8 +9,7 @@ import {
   runCalendarSuggestionWorkflow,
 } from "./calendar-followups";
 import {
-  createDrizzleScheduledWorkflowDeliveryStore,
-  createScheduledWorkflowDeliveryService,
+  createDefaultScheduledWorkflowDeliveryService,
   type DiscordProactiveDeliverySender,
   type DiscordScheduledArtifactDeliveryResult,
 } from "./scheduled-workflow-deliveries";
@@ -153,9 +152,7 @@ function scrubAftercareError(error: string): string {
   return error.replace(/\s+/g, " ").trim().slice(0, 500);
 }
 
-const defaultDeliveryService = createScheduledWorkflowDeliveryService(
-  createDrizzleScheduledWorkflowDeliveryStore(),
-);
+const defaultDeliveryService = createDefaultScheduledWorkflowDeliveryService();
 
 const defaultPostMeetingAftercareWorkflow = createPostMeetingAftercareWorkflow({
   runCalendarSuggestionWorkflow: (input) => runCalendarSuggestionWorkflow(input),
