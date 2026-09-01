@@ -47,11 +47,11 @@ jobs:
     steps:
       - name: Set up RunsOn
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        uses: runs-on/action@v2
+        uses: runs-on/action@46910bf61b41721b0579f237e186afb35477007a # v2.3.0
 
       - name: Check paths
         id: filter
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
           filters: |
             verify:

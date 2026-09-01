@@ -47,7 +47,7 @@ jobs:
     timeout-minutes: 90
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
           POSTGRES_DB: tendnote
           POSTGRES_USER: tendnote
@@ -60,7 +60,7 @@ jobs:
           --health-timeout 5s
           --health-retries 12
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
         ports:
           - 6379:6379
         options: >-
@@ -73,10 +73,10 @@ jobs:
       TENDNOTE_EVAL_DATABASE_URL: postgresql://tendnote:tendnote@localhost:5432/tendnote_eval
     steps:
       - name: Set up RunsOn
-        uses: runs-on/action@v2
+        uses: runs-on/action@46910bf61b41721b0579f237e186afb35477007a # v2.3.0
 
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ inputs.candidate_sha }}
 
@@ -86,12 +86,12 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: ${{ env.PNPM_VERSION }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -134,7 +134,7 @@ jobs:
 
       - name: Upload Eve evaluation artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: eve-model-evaluations-${{ inputs.candidate_sha }}
           path: |
