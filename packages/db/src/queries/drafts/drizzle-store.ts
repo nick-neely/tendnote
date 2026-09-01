@@ -1,9 +1,9 @@
 import { createMessageDraftSchema, type MessageDraft, messageDraftSchema } from "@tendnote/domain";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import { messageDrafts } from "../../schema";
 import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
-import type { DraftLifecycleStore, DraftStore } from "./types";
+import type { DraftLifecycleStore, DraftStore, UpdateDraftInput } from "./types";
 
 type MessageDraftRow = typeof messageDrafts.$inferSelect;
 
@@ -25,12 +25,78 @@ function rowToDraft(row: MessageDraftRow): MessageDraft {
 }
 
 /**
+ * Builds the `set` clause for an update, folding in the atomic stale-approval
+ * revocation (edit side): the `approved -> draft` transition is decided from the
+ * row's CURRENT status in the same UPDATE, so no concurrent approval can survive a
+ * body edit (security). Only `approved -> draft`; every other status is preserved.
+ */
+function buildDraftUpdateSet(input: UpdateDraftInput) {
+  return {
+    ...input.patch,
+    ...(input.revertApprovalToDraft
+      ? {
+          status: sql`CASE WHEN ${messageDrafts.status} = 'approved' THEN 'draft' ELSE ${messageDrafts.status} END`,
+        }
+      : {}),
+    updatedAt: new Date(),
+  };
+}
+
+/**
+ * Builds the WHERE predicate for an update. Always owner- and id-scoped; the
+ * optional optimistic-concurrency guard (approve side) additionally constrains the
+ * UPDATE to a row whose body still equals what the caller read, IN the same
+ * statement. If a concurrent edit changed the body, no row matches and the caller
+ * returns null, so an approval can never land on unreviewed text (security).
+ */
+function buildDraftUpdateWhere(input: UpdateDraftInput) {
+  return and(
+    eq(messageDrafts.id, input.draftId),
+    eq(messageDrafts.ownerUserId, input.ownerUserId),
+    ...(input.expectedBody !== undefined ? [eq(messageDrafts.body, input.expectedBody)] : []),
+  );
+}
+
+/**
+ * Maps a no-row update result to the correct absence. WITH the guard, a missing row
+ * means the body moved since it was read (a real, owner-owned draft the caller must
+ * be told to re-review), so return null. WITHOUT the guard, it is a genuinely absent
+ * record and behaviour is unchanged: throw the not-found sentinel.
+ */
+function missingDraftResult(input: UpdateDraftInput): null {
+  if (input.expectedBody !== undefined) {
+    return null;
+  }
+  throw new Error("Message draft not found.");
+}
+
+/**
  * Drizzle-backed draft persistence store. Carries only draft methods so it can be
  * spread into the composed lifecycle store without shadowing person/source/audit
  * methods (mirrors the brief store, PRD #65). Source references are stored on the
  * draft row, so they are owner-scoped by construction.
  */
 export function createDrizzleDraftStore(): DraftStore {
+  // Overloaded so an `expectedBody`-guarded call is typed as possibly-null (guard
+  // failed = body changed) while every unguarded caller keeps a non-null draft.
+  async function updateDraft(
+    input: UpdateDraftInput & { expectedBody: string },
+  ): Promise<MessageDraft | null>;
+  async function updateDraft(input: UpdateDraftInput): Promise<MessageDraft>;
+  async function updateDraft(input: UpdateDraftInput): Promise<MessageDraft | null> {
+    const [draft] = await getDb()
+      .update(messageDrafts)
+      .set(buildDraftUpdateSet(input))
+      .where(buildDraftUpdateWhere(input))
+      .returning();
+
+    if (!draft) {
+      return missingDraftResult(input);
+    }
+
+    return rowToDraft(draft);
+  }
+
   return {
     async createDraft(input) {
       const parsed = createMessageDraftSchema.parse(input);
@@ -96,24 +162,7 @@ export function createDrizzleDraftStore(): DraftStore {
 
       return rows.map(rowToDraft);
     },
-    async updateDraft(input) {
-      const [draft] = await getDb()
-        .update(messageDrafts)
-        .set({ ...input.patch, updatedAt: new Date() })
-        .where(
-          and(
-            eq(messageDrafts.id, input.draftId),
-            eq(messageDrafts.ownerUserId, input.ownerUserId),
-          ),
-        )
-        .returning();
-
-      if (!draft) {
-        throw new Error("Message draft not found.");
-      }
-
-      return rowToDraft(draft);
-    },
+    updateDraft,
   };
 }
 

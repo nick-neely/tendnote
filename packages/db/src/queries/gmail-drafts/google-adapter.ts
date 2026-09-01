@@ -1,4 +1,4 @@
-import { GMAIL_CAPABILITY_KEY, GMAIL_PROVIDER_KEY } from "@tendnote/domain";
+import { GMAIL_CAPABILITY_KEY, GMAIL_PROVIDER_KEY, isMimeHeaderSafe } from "@tendnote/domain";
 import type { GoogleGmailAccessTokenProvider } from "./access-token";
 import type {
   GmailDraftAdapter,
@@ -27,19 +27,73 @@ export type GoogleGmailAdapterOptions = {
 };
 
 /**
+ * Reject a header value that carries a CR, LF, NUL, or other control character
+ * before it is interpolated into a raw MIME header. This is the adapter-boundary
+ * half of the header-injection defense (`isMimeHeaderSafe` in the shared schema is
+ * the other): even a caller that reaches this builder without passing the schema
+ * cannot smuggle an injected `Bcc:`/`Reply-To:` line into the draft.
+ */
+function assertMimeHeaderSafe(field: string, value: string): void {
+  if (!isMimeHeaderSafe(value)) {
+    throw new Error(`Gmail draft ${field} contains an illegal control character.`);
+  }
+}
+
+// An RFC 2047 "B" encoded-word may be at most 75 characters including the
+// `=?UTF-8?B?…?=` wrapper (12 chars), so its base64 payload is capped and rounded
+// down to a multiple of 4; the raw bytes that fit are the base64 cap × 3/4.
+const RFC2047_WORD_PREFIX = "=?UTF-8?B?";
+const RFC2047_WORD_SUFFIX = "?=";
+const RFC2047_MAX_BASE64 =
+  Math.floor((75 - RFC2047_WORD_PREFIX.length - RFC2047_WORD_SUFFIX.length) / 4) * 4;
+const RFC2047_MAX_BYTES = (RFC2047_MAX_BASE64 / 4) * 3;
+
+/** Wrap a run of raw UTF-8 bytes as one RFC 2047 base64 encoded-word. */
+function encodedWord(bytes: number[]): string {
+  return `${RFC2047_WORD_PREFIX}${Buffer.from(bytes).toString("base64")}${RFC2047_WORD_SUFFIX}`;
+}
+
+/**
  * Encode a header value with RFC 2047 when it contains non-ASCII, so subjects with
  * accents/emoji survive as a valid MIME header; plain ASCII is passed through.
+ *
+ * A non-ASCII value is split into as many encoded-words as needed to keep each
+ * within the RFC 2047 75-character limit, cutting only on whole UTF-8 code points so
+ * a multi-byte character is never severed, and folding the words with CRLF + SPACE
+ * (a header continuation). A single unfoldable ~1300-char encoded-word — what a long
+ * accented subject previously produced — is not RFC-conformant and some receivers
+ * reject it; this keeps every word legal.
  */
 function encodeHeaderValue(value: string): string {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: ASCII range check.
   if (/^[\x00-\x7F]*$/.test(value)) {
     return value;
   }
-  return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
+
+  const words: string[] = [];
+  let chunk: number[] = [];
+  for (const codePoint of value) {
+    const bytes = [...Buffer.from(codePoint, "utf8")];
+    if (chunk.length > 0 && chunk.length + bytes.length > RFC2047_MAX_BYTES) {
+      words.push(encodedWord(chunk));
+      chunk = [];
+    }
+    chunk.push(...bytes);
+  }
+  if (chunk.length > 0 || words.length === 0) {
+    words.push(encodedWord(chunk));
+  }
+  // Adjacent encoded-words are recombined by the reader, with the folding
+  // whitespace between them discarded (RFC 2047 §6.2).
+  return words.join("\r\n ");
 }
 
 /** Build the minimized RFC 2822 message (to, subject, plain-text body) as base64url. */
 function buildRawMessage(input: { to: string; subject: string; body: string }): string {
+  // The shared schema already rejects control characters in the subject and the
+  // recipient; re-check at this boundary so the raw header can never be forged.
+  assertMimeHeaderSafe("recipient", input.to);
+  assertMimeHeaderSafe("subject", input.subject);
   const headers = [
     `To: ${input.to}`,
     `Subject: ${encodeHeaderValue(input.subject)}`,

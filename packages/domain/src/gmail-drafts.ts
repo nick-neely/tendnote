@@ -94,10 +94,33 @@ export const gmailDraftRecipientSchema = z
 export type GmailDraftRecipient = z.infer<typeof gmailDraftRecipientSchema>;
 
 /**
- * An approved Gmail subject (ADR-0087). Required and non-empty: Gmail drafts are
- * intentional and inspectable. Capped below the RFC 2822 unfolded header limit.
+ * Control characters that must never appear in a value interpolated into a raw MIME
+ * header. A CR or LF in a subject would terminate the `Subject:` line and let a
+ * crafted value inject further headers (Bcc, Reply-To, …) into the Gmail draft —
+ * header injection (RFC 5322 §2.2: a header field body may not contain CR or LF).
+ * NUL and the other C0 controls plus DEL are likewise illegal in an unstructured
+ * header. Enforced here at the shared schema so every Gmail draft path (web and Eve)
+ * is covered, and again at the adapter boundary (`google-adapter.ts`) as defense in
+ * depth for any caller that reaches the raw-message builder directly.
  */
-export const gmailDraftSubjectSchema = z.string().trim().min(1).max(988);
+// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional control-char guard.
+const PROHIBITED_HEADER_CONTROL_CHARS = /[\x00-\x1F\x7F]/;
+
+/** True when `value` is safe to interpolate into a raw MIME header (no CR/LF/controls). */
+export function isMimeHeaderSafe(value: string): boolean {
+  return !PROHIBITED_HEADER_CONTROL_CHARS.test(value);
+}
+
+/**
+ * An approved Gmail subject (ADR-0087). Required and non-empty: Gmail drafts are
+ * intentional and inspectable. Capped below the RFC 2822 unfolded header limit, and
+ * rejected outright if it carries a line break or other control character, which
+ * would otherwise inject additional MIME headers into the draft (see
+ * `isMimeHeaderSafe`).
+ */
+export const gmailDraftSubjectSchema = z.string().trim().min(1).max(988).refine(isMimeHeaderSafe, {
+  message: "A subject cannot contain line breaks or other control characters.",
+});
 
 /**
  * Full persisted Gmail draft action record. Every field is minimized non-secret

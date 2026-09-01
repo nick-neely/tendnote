@@ -50,11 +50,42 @@ export function createDraftLifecycle(store: DraftLifecycleStore) {
     const draft = await requireDraft(input);
     const status = resolveMessageDraftTransition(draft.status, action);
 
-    const updated = await store.updateDraft({
-      ownerUserId: input.ownerUserId,
-      draftId: draft.id,
-      patch: { status },
-    });
+    // Only `approve` authorizes an external Gmail export, so only it needs the
+    // optimistic-concurrency guard: the write flips to `approved` ONLY IF the
+    // persisted body still equals the body this transition just read. If a
+    // concurrent `editDraftBody` changed the body between that read and this write,
+    // approving unconditionally would stamp authorization onto text the user never
+    // reviewed (the shared Gmail gate authorizes on `status === "approved"` and the
+    // service reads the CURRENT body). The guard is applied atomically INSIDE the
+    // store's single UPDATE (`expectedBody`); on a body mismatch the store matches no
+    // row and returns null, and we refuse below without writing an audit entry.
+    //
+    // `dismiss`/`mark_sent_manually` authorize nothing external, so they write
+    // unconditionally exactly as before and can never return null here.
+    const updated =
+      action === "approve"
+        ? await store.updateDraft({
+            ownerUserId: input.ownerUserId,
+            draftId: draft.id,
+            patch: { status },
+            expectedBody: draft.body,
+          })
+        : await store.updateDraft({
+            ownerUserId: input.ownerUserId,
+            draftId: draft.id,
+            patch: { status },
+          });
+
+    if (!updated) {
+      // Reachable only on the guarded `approve` path: the row exists (requireDraft
+      // passed) but its body changed since we read it. A state refusal, not a
+      // not-found — the record is fine, it simply moved on and must be re-reviewed
+      // before approval can authorize an export. Rendered to the model as itself
+      // (a curated domain failure), unlike the opaque not-found sentinel.
+      throw new MessageDraftValidationError(
+        "This draft changed since it was read and cannot be approved. Review the current wording and approve it again.",
+      );
+    }
 
     await store.createAuditLogEntry({
       ownerUserId: input.ownerUserId,
@@ -90,6 +121,15 @@ export function createDraftLifecycle(store: DraftLifecycleStore) {
     /**
      * Edits the draft body in place. The persisted source-reference grounding is
      * never touched, so the draft stays explainable after the user rewrites it.
+     *
+     * Editing an APPROVED draft revokes the approval atomically: the same write that
+     * replaces the body also returns the status to `draft`. Approval is readiness for
+     * the exact text the user reviewed, and the shared Gmail gate authorizes an
+     * external write purely on `status === "approved"` while the Gmail service reads
+     * the CURRENT persisted body — so without this revert, a revised (unapproved) body
+     * could be exported to Gmail on the strength of the prior approval (a stale
+     * authorization a prompt injection could exploit). Reverting forces the user to
+     * re-approve the new wording before it can leave Tendnote.
      */
     async editDraftBody(input: EditDraftBodyInput): Promise<MessageDraft> {
       const draft = await requireDraft(input);
@@ -103,18 +143,33 @@ export function createDraftLifecycle(store: DraftLifecycleStore) {
         throw new MessageDraftValidationError("A draft edit must change the body.");
       }
 
+      // The reversion is decided ATOMICALLY by the store from the row's current
+      // status (`revertApprovalToDraft`), not from `draft.status` above: that read
+      // is stale, so authorizing off it would let an approval committed concurrently
+      // between the read and this write survive the edit and export unreviewed text.
       const updated = await store.updateDraft({
         ownerUserId: input.ownerUserId,
         draftId: draft.id,
         patch: { body },
+        revertApprovalToDraft: true,
       });
+
+      // Audit only — not an authorization decision. The store already reverted (or
+      // not); we record the transition when the RETURNED status shows it happened.
+      const revokedApproval = draft.status === "approved" && updated.status === "draft";
 
       await store.createAuditLogEntry({
         ownerUserId: input.ownerUserId,
         action: "message_draft.edit",
         entityType: "message_draft",
         entityId: updated.id,
-        metadataJson: { personId: updated.personId },
+        metadataJson: revokedApproval
+          ? {
+              personId: updated.personId,
+              previousStatus: draft.status,
+              status: updated.status,
+            }
+          : { personId: updated.personId },
       });
 
       return updated;
