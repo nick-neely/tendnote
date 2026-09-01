@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { type BackgroundJobKind, topicForBackgroundJob } from "./topics";
 import type { BackgroundJobDelivery, BackgroundJobDeliveryStore } from "./types";
 
@@ -16,6 +17,108 @@ export type BackgroundJobQueuePayload = {
   jobKind: BackgroundJobKind;
   jobId: string;
 };
+
+/**
+ * A queue payload carrying its authenticity tag. `@vercel/queue` 0.3.1 performs no
+ * inbound signature verification on callbacks: it parses the caller-controlled
+ * CloudEvent and invokes the consumer directly (in binary mode, before acknowledging
+ * the receipt). A forged POST to a consumer route can therefore claim paid work or
+ * reach delivery lookups. We close that hole ourselves by HMAC-signing the payload at
+ * publish (the one channel guaranteed to round-trip, since the payload *is* the
+ * message) and verifying it at the consumer boundary before any DB access.
+ */
+export type SignedBackgroundJobQueuePayload = BackgroundJobQueuePayload & {
+  /** HMAC-SHA256 (hex) over the (deliveryId, jobKind, jobId) tuple. */
+  sig: string;
+};
+
+/** Bumped only if the signed content layout below ever changes. */
+const BACKGROUND_JOB_QUEUE_SIGNATURE_VERSION = "v1";
+
+function computeBackgroundJobQueueSignature(
+  fields: { deliveryId: string; jobKind: string; jobId: string },
+  secret: string,
+): string {
+  // The delivery id is a unique, unguessable identifier and the delivery-row state
+  // machine (published → processed, plus idempotency and abandoned checks) already
+  // rejects replays of a genuine message, so the tuple alone is sufficient signed
+  // content: an attacker cannot mint a valid tag for any tuple without the secret, and
+  // cannot lift a real tag off the wire (callbacks arrive over TLS). No timestamp is
+  // signed because legitimate messages can be delayed or retried arbitrarily far out.
+  return createHmac("sha256", secret)
+    .update(
+      `${BACKGROUND_JOB_QUEUE_SIGNATURE_VERSION}.${fields.deliveryId}.${fields.jobKind}.${fields.jobId}`,
+    )
+    .digest("hex");
+}
+
+/** Signature the consumer must see for this payload, given the shared secret. */
+export function signBackgroundJobQueuePayload(
+  payload: BackgroundJobQueuePayload,
+  secret: string,
+): string {
+  return computeBackgroundJobQueueSignature(payload, secret);
+}
+
+/** Attach the authenticity tag so the transport publishes a self-verifying envelope. */
+export function attachBackgroundJobQueueSignature(
+  payload: BackgroundJobQueuePayload,
+  secret: string,
+): SignedBackgroundJobQueuePayload {
+  return { ...payload, sig: signBackgroundJobQueuePayload(payload, secret) };
+}
+
+/**
+ * Whether an inbound queue callback carries a valid signature for its own fields.
+ * Returns false for any non-object, any payload missing the routing fields or the tag,
+ * and any tag that does not match. The compare is constant-time.
+ */
+export function verifyBackgroundJobQueueSignature(message: unknown, secret: string): boolean {
+  if (!message || typeof message !== "object") return false;
+  const candidate = message as Partial<SignedBackgroundJobQueuePayload>;
+  if (
+    typeof candidate.deliveryId !== "string" ||
+    typeof candidate.jobId !== "string" ||
+    typeof candidate.jobKind !== "string" ||
+    typeof candidate.sig !== "string"
+  ) {
+    return false;
+  }
+  const expected = computeBackgroundJobQueueSignature(
+    {
+      deliveryId: candidate.deliveryId,
+      jobKind: candidate.jobKind,
+      jobId: candidate.jobId,
+    },
+    secret,
+  );
+  let providedBytes: Buffer;
+  let expectedBytes: Buffer;
+  try {
+    providedBytes = Buffer.from(candidate.sig, "hex");
+    expectedBytes = Buffer.from(expected, "hex");
+  } catch {
+    return false;
+  }
+  return (
+    providedBytes.length === expectedBytes.length && timingSafeEqual(providedBytes, expectedBytes)
+  );
+}
+
+/**
+ * Resolve the shared secret used to sign and verify background-job queue callbacks
+ * from an environment. A dedicated `BACKGROUND_JOB_QUEUE_SECRET` is preferred; it falls
+ * back to `BETTER_AUTH_SECRET` (already required and shared identically across the web
+ * and agent deployments) so hardening needs no new operator action by default. Returns
+ * `undefined` when neither is set, which callers treat as fail-closed outside local dev.
+ * Whichever value is used MUST be identical in every deployment that publishes to or
+ * consumes these queues, or genuine messages will fail verification.
+ */
+export function resolveBackgroundJobQueueSecret(
+  env: Record<string, string | undefined>,
+): string | undefined {
+  return env.BACKGROUND_JOB_QUEUE_SECRET?.trim() || env.BETTER_AUTH_SECRET?.trim() || undefined;
+}
 
 export type BackgroundJobQueueSendInput = {
   topic: string;

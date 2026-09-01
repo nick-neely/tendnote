@@ -1,38 +1,19 @@
-import { handleCallback } from "@vercel/queue";
 import { consumeEmbeddingQueueMessage } from "@/lib/background-jobs/embedding-queue";
-import { BACKGROUND_JOB_QUEUE_CONFIG } from "@/lib/background-jobs/queue-runtime";
-import { getProductRateLimiter } from "@/lib/rate-limit";
+import {
+  BACKGROUND_JOB_QUEUE_CONFIG,
+  createBackgroundJobQueueCallback,
+} from "@/lib/background-jobs/queue-runtime";
 
 // Route segment config must remain a statically analyzable literal for Next.js.
 export const maxDuration = 300;
 
-const handleEmbeddingQueueCallback = handleCallback(
-  async (message, metadata) => {
-    const result = await consumeEmbeddingQueueMessage({
-      payload: message,
-      metadata: {
-        topicName: metadata.topicName,
-        messageId: metadata.messageId,
-        deliveryCount: metadata.deliveryCount,
-        consumerGroup: metadata.consumerGroup,
-      },
-      logger: console,
-      rateLimiter: getProductRateLimiter(),
-    });
-
-    // A rate-limited message is deferred, not failed: throwing asks the queue to
-    // redeliver it later (afterSeconds below), leaving delivery/job status intact.
-    if (result.status === "deferred") {
-      throw new Error(`Embedding delivery deferred: ${result.reason}`);
-    }
-  },
-  {
-    visibilityTimeoutSeconds: BACKGROUND_JOB_QUEUE_CONFIG.embedding.visibilityTimeoutSeconds,
-    retry() {
-      return { afterSeconds: BACKGROUND_JOB_QUEUE_CONFIG.embedding.retryAfterSeconds };
-    },
-  },
-);
+// The shared callback authenticates the message (HMAC signature) before any consumer
+// logic or DB access runs, then defers rate-limited messages back to the queue.
+const handleEmbeddingQueueCallback = createBackgroundJobQueueCallback({
+  config: BACKGROUND_JOB_QUEUE_CONFIG.embedding,
+  consume: consumeEmbeddingQueueMessage,
+  deferredMessage: (reason) => `Embedding delivery deferred: ${reason}`,
+});
 
 export function POST(request: Request) {
   return handleEmbeddingQueueCallback(request);

@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { createInMemoryBackgroundJobDeliveryStore } from "./in-memory-store";
-import { type BackgroundJobQueueSendAdapter, publishBackgroundJobDelivery } from "./queue-publish";
+import {
+  attachBackgroundJobQueueSignature,
+  type BackgroundJobQueuePayload,
+  type BackgroundJobQueueSendAdapter,
+  publishBackgroundJobDelivery,
+  resolveBackgroundJobQueueSecret,
+  signBackgroundJobQueuePayload,
+  verifyBackgroundJobQueueSignature,
+} from "./queue-publish";
 
 const OWNER = "owner-1";
 
@@ -73,5 +81,72 @@ describe("publishBackgroundJobDelivery", () => {
         deliveryId: "missing",
       }),
     ).rejects.toThrow("Background job delivery not found.");
+  });
+});
+
+describe("background job queue callback signatures", () => {
+  const secret = "queue-signing-secret";
+  const payload: BackgroundJobQueuePayload = {
+    deliveryId: "delivery-1",
+    jobKind: "extraction",
+    jobId: "job-1",
+  };
+
+  it("verifies a payload signed with the same secret", () => {
+    const signed = attachBackgroundJobQueueSignature(payload, secret);
+    expect(signed).toMatchObject(payload);
+    expect(typeof signed.sig).toBe("string");
+    expect(verifyBackgroundJobQueueSignature(signed, secret)).toBe(true);
+  });
+
+  it("rejects a payload signed with a different secret", () => {
+    const signed = attachBackgroundJobQueueSignature(payload, "other-secret");
+    expect(verifyBackgroundJobQueueSignature(signed, secret)).toBe(false);
+  });
+
+  it("rejects a tampered field even with the original signature", () => {
+    const signed = attachBackgroundJobQueueSignature(payload, secret);
+    expect(verifyBackgroundJobQueueSignature({ ...signed, jobId: "job-2" }, secret)).toBe(false);
+    expect(verifyBackgroundJobQueueSignature({ ...signed, jobKind: "embedding" }, secret)).toBe(
+      false,
+    );
+  });
+
+  it("rejects an unsigned payload, a missing tag, and non-objects", () => {
+    expect(verifyBackgroundJobQueueSignature(payload, secret)).toBe(false);
+    expect(verifyBackgroundJobQueueSignature({ ...payload, sig: "not-hex" }, secret)).toBe(false);
+    expect(verifyBackgroundJobQueueSignature(null, secret)).toBe(false);
+    expect(verifyBackgroundJobQueueSignature("string", secret)).toBe(false);
+  });
+
+  it("signs deterministically for the same tuple and secret", () => {
+    expect(signBackgroundJobQueuePayload(payload, secret)).toBe(
+      signBackgroundJobQueuePayload(payload, secret),
+    );
+  });
+});
+
+describe("resolveBackgroundJobQueueSecret", () => {
+  it("prefers the dedicated secret and falls back to BETTER_AUTH_SECRET", () => {
+    expect(
+      resolveBackgroundJobQueueSecret({
+        BACKGROUND_JOB_QUEUE_SECRET: "dedicated",
+        BETTER_AUTH_SECRET: "auth",
+      }),
+    ).toBe("dedicated");
+    expect(resolveBackgroundJobQueueSecret({ BETTER_AUTH_SECRET: "auth" })).toBe("auth");
+  });
+
+  it("trims whitespace and returns undefined when neither is set", () => {
+    expect(resolveBackgroundJobQueueSecret({ BACKGROUND_JOB_QUEUE_SECRET: "  padded  " })).toBe(
+      "padded",
+    );
+    expect(
+      resolveBackgroundJobQueueSecret({
+        BACKGROUND_JOB_QUEUE_SECRET: "   ",
+        BETTER_AUTH_SECRET: "",
+      }),
+    ).toBeUndefined();
+    expect(resolveBackgroundJobQueueSecret({})).toBeUndefined();
   });
 });
