@@ -21,6 +21,7 @@ export * from "./app/discord-identities";
 export * from "./app/discord-installs";
 export * from "./app/engagement";
 export * from "./app/enums";
+export * from "./app/eve-session-owners";
 export * from "./app/general-action-areas";
 export * from "./app/general-action-assets";
 export * from "./app/general-actions";

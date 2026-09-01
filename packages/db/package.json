@@ -35,6 +35,7 @@
     "./queries/discord-installs": "./src/queries/discord-installs.ts",
     "./queries/draft-proposals": "./src/queries/draft-proposals.ts",
     "./queries/drafts": "./src/queries/drafts.ts",
+    "./queries/eve-session-owners": "./src/queries/eve-session-owners.ts",
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",
     "./queries/followups": "./src/queries/followups.ts",
     "./queries/general-action-areas": "./src/queries/general-action-areas.ts",
