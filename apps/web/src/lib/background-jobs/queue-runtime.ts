@@ -1,4 +1,5 @@
 import {
+  attachBackgroundJobQueueSignature,
   BACKGROUND_JOB_TOPICS,
   type BackgroundJobDelivery,
   type BackgroundJobDeliveryStore,
@@ -6,7 +7,9 @@ import {
   type BackgroundJobQueueLogger,
   type BackgroundJobQueuePayload,
   type BackgroundJobQueueSendAdapter,
+  resolveBackgroundJobQueueSecret,
   topicForBackgroundJob,
+  verifyBackgroundJobQueueSignature,
 } from "@tendnote/db/queries/background-job-deliveries";
 import type {
   BackgroundJobProcessorJobState,
@@ -36,8 +39,51 @@ export type {
 } from "@tendnote/db/queries/background-jobs";
 
 /**
+ * Whether this process runs as a production or preview deployment. `NODE_ENV` is
+ * `"production"` for both Vercel production and preview builds and only differs for
+ * local development, which is exactly the boundary we want for the fail-closed rule.
+ */
+function isProductionLikeDeployment(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+/**
+ * The shared secret used to sign and verify background-job queue callbacks, or
+ * `undefined` when none is configured. See {@link resolveBackgroundJobQueueSecret}.
+ */
+function queueCallbackSecret(): string | undefined {
+  return resolveBackgroundJobQueueSecret(process.env);
+}
+
+/**
+ * Reject a queue callback whose payload is not authentically signed, before any
+ * consumer logic or DB access runs. `@vercel/queue` authenticates nothing on the way
+ * in, so this is the application-level gate that stops forged callbacks from claiming
+ * paid extraction/embedding work or probing delivery lookups.
+ *
+ * Fail-closed: with no secret configured we refuse in production and preview. Only
+ * local development (where messages are delivered in-process by the dev consumer, not
+ * over the network) is allowed to run unsigned, so a developer without the secret set
+ * is not blocked.
+ */
+function assertAuthenticQueueCallback(message: unknown): void {
+  const secret = queueCallbackSecret();
+  if (!secret) {
+    if (isProductionLikeDeployment()) {
+      throw new Error(
+        "Background job queue signing secret is not configured; refusing unauthenticated callback.",
+      );
+    }
+    return;
+  }
+  if (!verifyBackgroundJobQueueSignature(message, secret)) {
+    throw new Error("Background job queue callback failed signature verification.");
+  }
+}
+
+/**
  * Every background-job queue route is the same callback with a different
- * consumer: hand the Vercel Queue message to that family's consumer with the
+ * consumer: authenticate the message, hand it to that family's consumer with the
  * shared logger and product rate limiter, and turn a deferred result into a
  * throw so the platform redelivers it. One copy means a change to that
  * contract cannot land in one route and be silently forgotten in another.
@@ -54,6 +100,8 @@ export function createBackgroundJobQueueCallback(input: {
 }) {
   return handleCallback(
     async (message, metadata) => {
+      // Authenticate before touching the consumer or the database.
+      assertAuthenticQueueCallback(message);
       const result = await input.consume({
         payload: message,
         metadata: {
@@ -173,10 +221,31 @@ export const EMBEDDING_JOB_LEASE_DURATION_MS =
 export function createVercelBackgroundJobQueueAdapter(): BackgroundJobQueueSendAdapter {
   return {
     async send(input) {
-      return sendVercelQueueMessage(input.topic, input.payload, {
-        idempotencyKey: input.idempotencyKey,
-        headers: input.headers,
-      });
+      const secret = queueCallbackSecret();
+      if (!secret) {
+        // Fail closed: a production/preview deploy without the secret cannot publish a
+        // message the consumer would accept, so surface it as a publish failure (the
+        // outbox retries) rather than enqueuing work that will be rejected on delivery.
+        if (isProductionLikeDeployment()) {
+          throw new Error(
+            "Background job queue signing secret is not configured; cannot publish signed delivery.",
+          );
+        }
+        // Local development: publish unsigned; the consumer's dev allowance skips
+        // verification symmetrically.
+        return sendVercelQueueMessage(input.topic, input.payload, {
+          idempotencyKey: input.idempotencyKey,
+          headers: input.headers,
+        });
+      }
+      return sendVercelQueueMessage(
+        input.topic,
+        attachBackgroundJobQueueSignature(input.payload, secret),
+        {
+          idempotencyKey: input.idempotencyKey,
+          headers: input.headers,
+        },
+      );
     },
   };
 }
