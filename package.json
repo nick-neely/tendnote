@@ -42,7 +42,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
     "@vitest/coverage-v8": "4.1.9",
-    "fallow": "^2.102.0",
+    "fallow": "^3.20.0",
     "istanbul-lib-coverage": "^3.2.2",
     "turbo": "^2.6.3",
     "typescript": "^5.9.3",
