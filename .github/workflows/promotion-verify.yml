@@ -73,7 +73,7 @@ jobs:
     steps:
       - name: Set up RunsOn
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        uses: runs-on/action@v2
+        uses: runs-on/action@46910bf61b41721b0579f237e186afb35477007a # v2.3.0
 
       - name: Check promotion verification
         run: |
