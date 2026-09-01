@@ -4,6 +4,44 @@ import { createInMemorySourceRecordStore } from "../source-records/in-memory-sto
 import type { DraftStore, InMemoryDraftLifecycleStore, UpdateDraftInput } from "./types";
 
 /**
+ * Maps a missing/owner-mismatched draft to the correct absence, mirroring the
+ * guarded drizzle WHERE: a guarded call that matches no row returns null (the caller
+ * re-reviews) rather than the not-found sentinel.
+ */
+function missingDraftResult(input: UpdateDraftInput): null {
+  if (input.expectedBody !== undefined) {
+    return null;
+  }
+  throw new Error("Message draft not found.");
+}
+
+/**
+ * Optimistic-concurrency guard (approve side): true when the stored body no longer
+ * equals what the caller read. Mirrors the drizzle `eq(body, expectedBody)` WHERE —
+ * the same single operation checks and writes, so a concurrent edit that changed the
+ * body refuses the approve.
+ */
+function bodyGuardExcludes(draft: MessageDraft, input: UpdateDraftInput): boolean {
+  return input.expectedBody !== undefined && draft.body !== input.expectedBody;
+}
+
+/**
+ * Applies the bounded patch to a draft, mirroring the drizzle CASE atomically:
+ * within this single update, force `status = draft` iff the row is CURRENTLY
+ * `approved`. Decided from the stored status, never a caller-supplied read, so the
+ * store — not the lifecycle layer — owns the stale-approval revocation (security).
+ */
+function applyDraftPatch(draft: MessageDraft, input: UpdateDraftInput): MessageDraft {
+  const revertsApproval = input.revertApprovalToDraft === true && draft.status === "approved";
+  return messageDraftSchema.parse({
+    ...draft,
+    ...input.patch,
+    ...(revertsApproval ? { status: "draft" } : {}),
+    updatedAt: new Date(),
+  });
+}
+
+/**
  * Minimal draft persistence over one map. Source references travel with the draft
  * so owner scoping and grounding are exercised in tests without a database. It
  * carries only draft methods so it can be spread into the composed lifecycle
@@ -23,33 +61,14 @@ export function createInMemoryDraftStore(): DraftStore {
     const draft = drafts.get(input.draftId);
 
     if (!draft || draft.ownerUserId !== input.ownerUserId) {
-      // Mirror the guarded drizzle WHERE: a guarded call that matches no row returns
-      // null (the caller re-reviews) rather than the not-found sentinel.
-      if (input.expectedBody !== undefined) {
-        return null;
-      }
-      throw new Error("Message draft not found.");
+      return missingDraftResult(input);
     }
 
-    // Optimistic-concurrency guard (approve side): only apply the patch if the
-    // stored body still equals what the caller read. Mirrors the drizzle
-    // `eq(body, expectedBody)` WHERE atomically — the same single operation checks
-    // and writes, so a concurrent edit that changed the body refuses the approve.
-    if (input.expectedBody !== undefined && draft.body !== input.expectedBody) {
+    if (bodyGuardExcludes(draft, input)) {
       return null;
     }
 
-    // Mirror the drizzle CASE atomically: within this single update operation,
-    // force `status = draft` iff the row is CURRENTLY `approved`. Decided from the
-    // stored status, never a caller-supplied read, so the store — not the lifecycle
-    // layer — owns the stale-approval revocation (security).
-    const revertsApproval = input.revertApprovalToDraft === true && draft.status === "approved";
-    const updated = messageDraftSchema.parse({
-      ...draft,
-      ...input.patch,
-      ...(revertsApproval ? { status: "draft" } : {}),
-      updatedAt: new Date(),
-    });
+    const updated = applyDraftPatch(draft, input);
     drafts.set(updated.id, updated);
 
     return updated;

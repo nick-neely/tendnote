@@ -25,6 +25,52 @@ function rowToDraft(row: MessageDraftRow): MessageDraft {
 }
 
 /**
+ * Builds the `set` clause for an update, folding in the atomic stale-approval
+ * revocation (edit side): the `approved -> draft` transition is decided from the
+ * row's CURRENT status in the same UPDATE, so no concurrent approval can survive a
+ * body edit (security). Only `approved -> draft`; every other status is preserved.
+ */
+function buildDraftUpdateSet(input: UpdateDraftInput) {
+  return {
+    ...input.patch,
+    ...(input.revertApprovalToDraft
+      ? {
+          status: sql`CASE WHEN ${messageDrafts.status} = 'approved' THEN 'draft' ELSE ${messageDrafts.status} END`,
+        }
+      : {}),
+    updatedAt: new Date(),
+  };
+}
+
+/**
+ * Builds the WHERE predicate for an update. Always owner- and id-scoped; the
+ * optional optimistic-concurrency guard (approve side) additionally constrains the
+ * UPDATE to a row whose body still equals what the caller read, IN the same
+ * statement. If a concurrent edit changed the body, no row matches and the caller
+ * returns null, so an approval can never land on unreviewed text (security).
+ */
+function buildDraftUpdateWhere(input: UpdateDraftInput) {
+  return and(
+    eq(messageDrafts.id, input.draftId),
+    eq(messageDrafts.ownerUserId, input.ownerUserId),
+    ...(input.expectedBody !== undefined ? [eq(messageDrafts.body, input.expectedBody)] : []),
+  );
+}
+
+/**
+ * Maps a no-row update result to the correct absence. WITH the guard, a missing row
+ * means the body moved since it was read (a real, owner-owned draft the caller must
+ * be told to re-review), so return null. WITHOUT the guard, it is a genuinely absent
+ * record and behaviour is unchanged: throw the not-found sentinel.
+ */
+function missingDraftResult(input: UpdateDraftInput): null {
+  if (input.expectedBody !== undefined) {
+    return null;
+  }
+  throw new Error("Message draft not found.");
+}
+
+/**
  * Drizzle-backed draft persistence store. Carries only draft methods so it can be
  * spread into the composed lifecycle store without shadowing person/source/audit
  * methods (mirrors the brief store, PRD #65). Source references are stored on the
@@ -40,41 +86,12 @@ export function createDrizzleDraftStore(): DraftStore {
   async function updateDraft(input: UpdateDraftInput): Promise<MessageDraft | null> {
     const [draft] = await getDb()
       .update(messageDrafts)
-      .set({
-        ...input.patch,
-        // Atomic stale-approval revocation (edit side): decided from the row's
-        // CURRENT status in the same UPDATE, so no concurrent approval can survive a
-        // body edit (security). Only `approved -> draft`; every other status is
-        // preserved.
-        ...(input.revertApprovalToDraft
-          ? {
-              status: sql`CASE WHEN ${messageDrafts.status} = 'approved' THEN 'draft' ELSE ${messageDrafts.status} END`,
-            }
-          : {}),
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(messageDrafts.id, input.draftId),
-          eq(messageDrafts.ownerUserId, input.ownerUserId),
-          // Optimistic-concurrency guard (approve side): constrain the UPDATE to a
-          // row whose body still equals what the caller read, IN the same statement.
-          // If a concurrent edit changed the body, no row matches and we return null
-          // below, so an approval can never land on unreviewed text (security).
-          ...(input.expectedBody !== undefined ? [eq(messageDrafts.body, input.expectedBody)] : []),
-        ),
-      )
+      .set(buildDraftUpdateSet(input))
+      .where(buildDraftUpdateWhere(input))
       .returning();
 
     if (!draft) {
-      // With the guard, a missing row means the body moved since it was read (a
-      // real, owner-owned draft the caller must be told to re-review), NOT an absent
-      // record — return null so the caller distinguishes it from the not-found
-      // sentinel. Without the guard, behaviour is unchanged.
-      if (input.expectedBody !== undefined) {
-        return null;
-      }
-      throw new Error("Message draft not found.");
+      return missingDraftResult(input);
     }
 
     return rowToDraft(draft);
