@@ -3,7 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { AccessState, SessionUser } from "./access-state";
 import { accessSourceLabel, resolveAccountView } from "./account-summary";
 
-const USER: SessionUser = { id: "user-1", email: "ada@example.com", name: "Ada", image: null };
+const USER: SessionUser = {
+  id: "user-1",
+  email: "ada@example.com",
+  emailVerified: true,
+  name: "Ada",
+  image: null,
+};
 
 function admittedState(sourceLabelSource: "bootstrap" | "beta_flag"): AccessState {
   const decision: AccessDecision = {

@@ -5,11 +5,14 @@ import {
 import { type AuthFn, ForbiddenError, localDev, UnauthenticatedError } from "eve/channels/auth";
 
 export type SessionAuthDependencies = {
-  getSession: (headers: Headers) => Promise<{ user: { id: string; email?: string | null } } | null>;
+  getSession: (headers: Headers) => Promise<{
+    user: { id: string; email?: string | null; emailVerified?: boolean };
+  } | null>;
   /** Shared Web/Eve admission resolver; checkAccess is retained for narrow callers/tests. */
   resolveAccess?: (entity: {
     userId: string;
     email?: string | null;
+    emailVerified?: boolean;
   }) => Promise<{ admitted: boolean }>;
   checkAccess?: (userId: string) => Promise<{ admitted: boolean }>;
   checkIngressBudget: (userId: string) => Promise<{ allowed: boolean }>;
@@ -43,7 +46,11 @@ export function createTendnoteSessionAuth(deps: SessionAuthDependencies): AuthFn
 
     const userId = session.user.id;
     const access = deps.resolveAccess
-      ? await deps.resolveAccess({ userId, email: session.user.email })
+      ? await deps.resolveAccess({
+          userId,
+          email: session.user.email,
+          emailVerified: session.user.emailVerified,
+        })
       : deps.checkAccess
         ? await deps.checkAccess(userId)
         : { admitted: false };

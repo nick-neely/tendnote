@@ -130,6 +130,7 @@ describe("private beta access resolver", () => {
     const decision = await resolver.resolveAccess({
       userId: "owner-user",
       email: " Owner@Example.com ",
+      emailVerified: true,
     });
 
     expect(decision).toMatchObject({

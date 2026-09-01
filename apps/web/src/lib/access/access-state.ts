@@ -4,6 +4,12 @@ import type { AccessDecision } from "@tendnote/domain";
 export type SessionUser = {
   id: string;
   email: string;
+  /**
+   * Whether the session has proven ownership of {@link email}. Threaded from the
+   * trusted Better Auth session into admission so the self-hosted bootstrap owner
+   * role cannot be claimed by an unverified public credential signup.
+   */
+  emailVerified: boolean;
   name: string;
   image?: string | null;
 };
@@ -25,13 +31,21 @@ export type AccessState =
  */
 export async function resolveAccessState(
   user: SessionUser | null,
-  resolveAccess: (entity: { userId: string; email?: string | null }) => Promise<AccessDecision>,
+  resolveAccess: (entity: {
+    userId: string;
+    email?: string | null;
+    emailVerified?: boolean;
+  }) => Promise<AccessDecision>,
 ): Promise<AccessState> {
   if (!user) {
     return { state: "unauthenticated" };
   }
 
-  const decision = await resolveAccess({ userId: user.id, email: user.email });
+  const decision = await resolveAccess({
+    userId: user.id,
+    email: user.email,
+    emailVerified: user.emailVerified,
+  });
 
   return decision.admitted
     ? { state: "admitted", user, ownerUserId: user.id, decision }

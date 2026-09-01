@@ -15,7 +15,10 @@ import { createPrivateBetaAccessResolver } from "./resolve-access";
 
 export type Admission = Parameters<typeof createPrivateBetaAccessResolver>[0];
 
-export function createAdmissionPair(admission: Admission, user: { id: string; email: string }) {
+export function createAdmissionPair(
+  admission: Admission,
+  user: { id: string; email: string; emailVerified?: boolean },
+) {
   return {
     web: createPrivateBetaAccessResolver(admission),
     eve: createTendnoteAdmissionAuth({
@@ -30,7 +33,7 @@ export function createAdmissionPair(admission: Admission, user: { id: string; em
 export function createAdmissionHarness(input: {
   policy: Admission["policy"];
   evaluateFlag: Admission["evaluateFlag"];
-  user: { id: string; email: string };
+  user: { id: string; email: string; emailVerified?: boolean };
   queries?: ReturnType<typeof createAccessProfileQueries>;
 }) {
   const queries = input.queries ?? createAccessProfileQueries(createInMemoryAccessProfileStore());

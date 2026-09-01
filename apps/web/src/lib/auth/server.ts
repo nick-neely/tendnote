@@ -109,6 +109,19 @@ function createAuth() {
         console.info(`[tendnote] Password reset link for ${user.email}: ${url}`);
       },
     },
+    emailVerification: {
+      // Public credential signup issues an unverified session, and admission now
+      // withholds the self-hosted owner role until the email is verified. Without
+      // a mailer configured, the verification link is surfaced in the server log
+      // for the operator to open — the same out-of-band console delivery used for
+      // password reset — so a legitimate first-run owner (who reads the log) can
+      // complete bootstrap while a remote attacker who merely guessed the owner
+      // email cannot. A transactional email provider plugs in here later.
+      sendOnSignUp: true,
+      sendVerificationEmail: async ({ user, url }) => {
+        console.info(`[tendnote] Email verification link for ${user.email}: ${url}`);
+      },
+    },
     // GitHub (sign-in), Google (Phase 2C Calendar linking), and Discord (identity
     // linking) — each wired only when its credentials are configured.
     ...(Object.keys(socialProviders).length > 0 ? { socialProviders } : {}),

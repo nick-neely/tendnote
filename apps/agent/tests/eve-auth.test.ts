@@ -11,16 +11,19 @@ describe("hosted Eve session authentication", () => {
     const resolveAccess = vi.fn().mockResolvedValue({ admitted: true });
     const auth = createTendnoteSessionAuth({
       getSession: vi.fn().mockResolvedValue({
-        user: { id: "user-123", email: "owner@example.com" },
+        user: { id: "user-123", email: "owner@example.com", emailVerified: true },
       }),
       resolveAccess,
       checkIngressBudget: vi.fn().mockResolvedValue({ allowed: true }),
     });
 
     await expect(auth(request)).resolves.toMatchObject({ principalId: "user-123" });
+    // The verified-ownership flag is threaded into admission so the self-hosted
+    // owner grant sees the same trusted signal at the Eve boundary as on Web.
     expect(resolveAccess).toHaveBeenCalledWith({
       userId: "user-123",
       email: "owner@example.com",
+      emailVerified: true,
     });
   });
 

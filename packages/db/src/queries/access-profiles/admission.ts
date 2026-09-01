@@ -9,8 +9,12 @@ import {
   parseAdmissionPolicy,
 } from "@tendnote/domain";
 
-/** The trusted Better Auth entity passed to admission evaluation. */
-export type AdmissionEntity = { userId: string; email?: string | null };
+/**
+ * The trusted Better Auth entity passed to admission evaluation. `emailVerified`
+ * reflects the session user's verified-ownership flag; the self-hosted bootstrap
+ * grant requires it to be `true`, so a value of `undefined`/`false` fails closed.
+ */
+export type AdmissionEntity = { userId: string; email?: string | null; emailVerified?: boolean };
 
 /** Hosted Flags evaluation. Self-hosted policy never calls this function. */
 export type HostedFlagEvaluator = (entity: AdmissionEntity) => Promise<boolean>;
@@ -102,6 +106,15 @@ export function createAdmissionResolver(deps: AdmissionResolverDependencies) {
           normalizeInvitationEmail(entity.email ?? "") !==
           normalizeInvitationEmail(policy.bootstrapOwnerEmail)
         ) {
+          return pendingDecision(persisted);
+        }
+
+        // Verified email ownership is required before the durable owner role is
+        // granted. Public credential signup issues a session with an unverified
+        // email, so an attacker who registers the configured owner address first
+        // (without controlling the mailbox) matches on email here but must not
+        // receive the owner role. Fail closed until the owner proves ownership.
+        if (entity.emailVerified !== true) {
           return pendingDecision(persisted);
         }
 

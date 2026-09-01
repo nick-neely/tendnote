@@ -9,7 +9,13 @@ import {
   type SessionUser,
 } from "./access-state";
 
-const USER: SessionUser = { id: "user-1", email: "a@b.com", name: "Ada", image: null };
+const USER: SessionUser = {
+  id: "user-1",
+  email: "a@b.com",
+  emailVerified: true,
+  name: "Ada",
+  image: null,
+};
 
 const admittedDecision: AccessDecision = {
   admitted: true,
@@ -77,7 +83,11 @@ describe("resolveAccessState", () => {
     const state = await resolveAccessState(USER, resolveAccess);
 
     expect(state).toMatchObject({ state: "admitted", ownerUserId: "user-1" });
-    expect(resolveAccess).toHaveBeenCalledWith({ userId: "user-1", email: "a@b.com" });
+    expect(resolveAccess).toHaveBeenCalledWith({
+      userId: "user-1",
+      email: "a@b.com",
+      emailVerified: true,
+    });
   });
 
   it("leaves a signed-in but unadmitted user pending with identity but no owner id", async () => {
