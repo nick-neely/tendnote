@@ -171,7 +171,9 @@ describe("CI workflow optimization contract", () => {
   it("keeps documentation-only changes out of the verification lanes", () => {
     const pullRequest = read(".github/workflows/pr-verify.yml");
 
-    expect(pullRequest).toContain("uses: dorny/paths-filter@v4");
+    // Version-agnostic: the ref is pinned to a commit SHA (with a `# vX`
+    // comment), so match the action path rather than a mutable tag.
+    expect(pullRequest).toContain("uses: dorny/paths-filter@");
     expect(pullRequest).toContain("- 'scripts/**'");
     expect(pullRequest).toContain("- '.github/rulesets/**'");
     expect(pullRequest).not.toContain("- 'docs/**'");
@@ -252,7 +254,9 @@ describe("CI workflow optimization contract", () => {
       ) ?? [];
     const guardedRunsOnSetupSteps =
       workflows.match(
-        /name: Set up RunsOn\s*\n\s+if: \$\{\{ github\.event_name != 'pull_request' \|\| !github\.event\.pull_request\.head\.repo\.fork \}\}\s*\n\s+uses: runs-on\/action@v2/g,
+        // `runs-on/action` is pinned to a commit SHA, so match the action path
+        // rather than a mutable `@v2` tag.
+        /name: Set up RunsOn\s*\n\s+if: \$\{\{ github\.event_name != 'pull_request' \|\| !github\.event\.pull_request\.head\.repo\.fork \}\}\s*\n\s+uses: runs-on\/action@\S+/g,
       ) ?? [];
 
     // Untrusted fork code must never reach the private runner network or its
@@ -311,8 +315,9 @@ describe("CI workflow optimization contract", () => {
     expect(workflow).toContain("- vercel.deployment.ready");
     expect(workflow).toContain("actions: read");
     expect(workflow).toContain("statuses: write");
-    expect(workflow).toContain("vercel/repository-dispatch/actions/status@v1");
-    expect(workflow).toContain("vercel/repository-dispatch/actions/checkout@v1");
+    // Pinned to a commit SHA (with a `# v1` comment); match the action path.
+    expect(workflow).toContain("vercel/repository-dispatch/actions/status@");
+    expect(workflow).toContain("vercel/repository-dispatch/actions/checkout@");
     expect(workflow).toContain("github.event.client_payload.environment == 'production'");
     expect(workflow).toContain("github.event.client_payload.project.id == vars.VERCEL_PROJECT_ID");
     expect(workflow).not.toMatch(/github\.event\.client_payload\.project\.id\s*==\s*'prj_/);
