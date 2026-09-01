@@ -1,9 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { createInMemoryScheduledWorkflowDeliveryStore } from "./in-memory-store";
-import { createScheduledWorkflowDeliveryService } from "./service";
+import {
+  createScheduledWorkflowDeliveryService,
+  type DiscordInstallConsentResolver,
+} from "./service";
 
 function service() {
   return createScheduledWorkflowDeliveryService(createInMemoryScheduledWorkflowDeliveryStore());
+}
+
+function serviceWithConsent(resolveInstallConsent: DiscordInstallConsentResolver) {
+  return createScheduledWorkflowDeliveryService(createInMemoryScheduledWorkflowDeliveryStore(), {
+    resolveInstallConsent,
+  });
 }
 
 function artifact(input: {
@@ -469,5 +478,93 @@ describe("scheduled workflow Discord delivery Phase 4 scope policy", () => {
     ).resolves.toMatchObject([
       { status: "skipped", reason: "private_content_filtered", targetId: "discord-target" },
     ]);
+  });
+});
+
+describe("scheduled workflow Discord delivery send-time install consent (finding C)", () => {
+  it("does not post after the install is paused (consent fails closed)", async () => {
+    // The per-workflow setting still records an enabled target, but the owner has
+    // paused the install: the send-time consent resolver returns null, so the send
+    // must fail closed even though the stale setting still looks deliverable.
+    const consent = vi.fn<DiscordInstallConsentResolver>(async () => null);
+    const workflowDelivery = serviceWithConsent(consent);
+    const sender = vi.fn(async () => undefined);
+    await workflowDelivery.configureDiscordWorkflowDelivery({
+      ownerUserId: "owner-1",
+      workflow: "morning_agenda",
+      enabled: true,
+      targetId: "discord-channel-old",
+      allowSensitive: false,
+    });
+
+    await expect(
+      workflowDelivery.deliverDiscordScheduledArtifact({
+        artifact: artifact({ artifactId: "paused-install" }),
+        sender,
+      }),
+    ).resolves.toMatchObject({
+      type: "skipped",
+      reason: "discord_install_unavailable",
+      attempt: { status: "skipped", reason: "discord_install_unavailable" },
+    });
+    expect(sender).not.toHaveBeenCalled();
+    expect(consent).toHaveBeenCalledWith({ ownerUserId: "owner-1" });
+  });
+
+  it("delivers only to the install's current channel after the target changes", async () => {
+    // The stored setting still points at the old channel; the live install now
+    // points at a new one. The send must land on the new channel and never the old.
+    const consent = vi.fn<DiscordInstallConsentResolver>(async () => ({
+      targetChannelId: "discord-channel-new",
+    }));
+    const workflowDelivery = serviceWithConsent(consent);
+    const sender = vi.fn(async () => undefined);
+    await workflowDelivery.configureDiscordWorkflowDelivery({
+      ownerUserId: "owner-1",
+      workflow: "morning_agenda",
+      enabled: true,
+      targetId: "discord-channel-old",
+      allowSensitive: false,
+    });
+
+    await expect(
+      workflowDelivery.deliverDiscordScheduledArtifact({
+        artifact: artifact({ artifactId: "channel-changed" }),
+        sender,
+      }),
+    ).resolves.toMatchObject({
+      type: "sent",
+      attempt: { status: "sent", targetId: "discord-channel-new" },
+    });
+    expect(sender).toHaveBeenCalledOnce();
+    expect(sender).toHaveBeenCalledWith({
+      targetId: "discord-channel-new",
+      content: "Tendnote morning agenda is ready for review: Three relationship prompts are ready.",
+    });
+  });
+
+  it("still enforces the setting's disclosure policy on top of a live install channel", async () => {
+    // A live install channel does not bypass sensitivity gating: a sensitive
+    // artifact on a non-allowSensitive target is still filtered.
+    const consent = vi.fn<DiscordInstallConsentResolver>(async () => ({
+      targetChannelId: "discord-channel-new",
+    }));
+    const workflowDelivery = serviceWithConsent(consent);
+    const sender = vi.fn(async () => undefined);
+    await workflowDelivery.configureDiscordWorkflowDelivery({
+      ownerUserId: "owner-1",
+      workflow: "morning_agenda",
+      enabled: true,
+      targetId: "discord-channel-old",
+      allowSensitive: false,
+    });
+
+    await expect(
+      workflowDelivery.deliverDiscordScheduledArtifact({
+        artifact: artifact({ artifactId: "sensitive-live", sensitivity: "sensitive" }),
+        sender,
+      }),
+    ).resolves.toMatchObject({ type: "skipped", reason: "sensitive_content_filtered" });
+    expect(sender).not.toHaveBeenCalled();
   });
 });

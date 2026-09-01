@@ -16,8 +16,7 @@ import type { CalendarReaderForOwner } from "./calendar";
 import { createDrizzleDraftStore } from "./drafts";
 import { getMemoryCuratorProposals } from "./memory-curator";
 import {
-  createDrizzleScheduledWorkflowDeliveryStore,
-  createScheduledWorkflowDeliveryService,
+  createDefaultScheduledWorkflowDeliveryService,
   type DiscordProactiveDeliverySender,
   type DiscordScheduledArtifactDeliveryResult,
 } from "./scheduled-workflow-deliveries";
@@ -259,9 +258,7 @@ function briefItemSnapshot(item: BriefItem) {
   };
 }
 
-const defaultDeliveryService = createScheduledWorkflowDeliveryService(
-  createDrizzleScheduledWorkflowDeliveryStore(),
-);
+const defaultDeliveryService = createDefaultScheduledWorkflowDeliveryService();
 const defaultDraftStore = createDrizzleDraftStore();
 const defaultWeeklyRelationshipReviewWorkflow = createWeeklyRelationshipReviewWorkflow({
   generateBrief: (input) => generateBrief(input),

@@ -20,8 +20,7 @@ import { proposeDraft } from "./draft-proposals";
 import type { RelationshipAgendaCandidate } from "./relationship-agenda";
 import { getRelationshipAgenda } from "./relationship-agenda";
 import {
-  createDrizzleScheduledWorkflowDeliveryStore,
-  createScheduledWorkflowDeliveryService,
+  createDefaultScheduledWorkflowDeliveryService,
   type DiscordProactiveDeliverySender,
   type DiscordScheduledArtifactDeliveryResult,
 } from "./scheduled-workflow-deliveries";
@@ -503,9 +502,7 @@ export function createDrizzleBirthdayGiftPlanningStore(): BirthdayGiftPlanningSt
   };
 }
 
-const defaultDeliveryService = createScheduledWorkflowDeliveryService(
-  createDrizzleScheduledWorkflowDeliveryStore(),
-);
+const defaultDeliveryService = createDefaultScheduledWorkflowDeliveryService();
 const defaultBirthdayGiftPlanningWorkflow = createBirthdayGiftPlanningWorkflow({
   getRelationshipAgenda: (input) => getRelationshipAgenda(input),
   proposeDraft: (input) => proposeDraft(input),

@@ -7,6 +7,7 @@ import {
   buildDiscordInstallAuthorizeUrl,
   DISCORD_INSTALL_STATE_COOKIE,
   DISCORD_INSTALL_STATE_MAX_AGE_MS,
+  resolveDiscordInstallRedirectUri,
   signDiscordInstallState,
 } from "@/lib/integrations/discord-install";
 
@@ -35,10 +36,10 @@ export async function GET(request: Request): Promise<Response> {
     getBetterAuthSecret(),
   );
 
-  // Redirect_uri must match a URL registered in the Discord Developer Portal. Use
-  // the canonical public base (BETTER_AUTH_URL) so it is stable behind proxies.
-  const baseUrl = process.env.BETTER_AUTH_URL ?? new URL(request.url).origin;
-  const redirectUri = new URL("/api/integrations/discord/install/callback", baseUrl).toString();
+  // Redirect_uri must match a URL registered in the Discord Developer Portal AND be
+  // byte-identical to the one the callback presents at token exchange, so both use
+  // the same canonical helper.
+  const redirectUri = resolveDiscordInstallRedirectUri(request.url);
 
   const response = NextResponse.redirect(
     buildDiscordInstallAuthorizeUrl({ clientId, redirectUri, state }),

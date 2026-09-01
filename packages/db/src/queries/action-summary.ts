@@ -12,8 +12,7 @@ import {
 } from "@tendnote/domain";
 import { createDrizzleGeneralActionLifecycleStore } from "./general-actions/drizzle-store";
 import {
-  createDrizzleScheduledWorkflowDeliveryStore,
-  createScheduledWorkflowDeliveryService,
+  createDefaultScheduledWorkflowDeliveryService,
   type DiscordProactiveDeliverySender,
   type DiscordScheduledArtifactDeliveryResult,
 } from "./scheduled-workflow-deliveries";
@@ -190,9 +189,7 @@ export function createActionSummaryWorkflow(deps: ActionSummaryWorkflowDeps) {
   };
 }
 
-const defaultDeliveryService = createScheduledWorkflowDeliveryService(
-  createDrizzleScheduledWorkflowDeliveryStore(),
-);
+const defaultDeliveryService = createDefaultScheduledWorkflowDeliveryService();
 
 const defaultGeneralActionStore = createDrizzleGeneralActionLifecycleStore();
 

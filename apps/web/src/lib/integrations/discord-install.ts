@@ -5,12 +5,15 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  *
  * This is a DIFFERENT OAuth flow from the Better Auth `identify` account link
  * (ADR-0138): it authorizes the shared Tendnote bot into a guild with the
- * `bot`/`applications.commands` scopes. Discord's authorization-code grant appends
- * `guild_id` and `permissions` to the redirect, which is how the install is
- * captured without inferring anything from the guild. The installing owner comes
- * only from the signed-in Tendnote session, bound into a signed `state` and
- * re-checked on the callback, so an unauthenticated or mismatched-state return
- * writes no row.
+ * `bot`/`applications.commands` scopes. Discord's authorization-code grant returns
+ * an authorization `code`; the callback exchanges it server-to-server for the
+ * provider-authoritative install (`exchangeDiscordInstallCode`), whose token
+ * response carries the real `guild`. The redirect's `guild_id`/`permissions` query
+ * params are browser-controlled and NOT trusted — trusting them let an admitted
+ * user mint a valid state and then claim an arbitrary guild, turning the shared bot
+ * into a confused deputy. The installing owner comes only from the signed-in
+ * Tendnote session, bound into a signed `state` and re-checked on the callback, so
+ * an unauthenticated or mismatched-state return writes no row.
  *
  * Pure (no next/DB/Better Auth imports) so the URL construction, state signing,
  * and fail-closed callback rules are unit-testable; the thin route glue that reads
@@ -44,12 +47,34 @@ export const DISCORD_INSTALL_STATE_MAX_AGE_MS = 10 * 60 * 1000;
 export const DISCORD_INSTALL_STATE_COOKIE = "tendnote_discord_install_state";
 
 /**
+ * A Discord snowflake id: 17–20 digits. Guild ids, channel ids, and user ids are
+ * all snowflakes, so this is the shared shape check applied to any id that reaches
+ * the store — including the guild id derived from the provider-authoritative token
+ * exchange (never a raw query param).
+ */
+export function isDiscordSnowflake(value: string): boolean {
+  return /^\d{17,20}$/.test(value.trim());
+}
+
+/**
  * A Discord channel id (snowflake): 17–20 digits. Validated on both the client
  * (skip the round-trip on obviously bad input) and the server (reject a malformed
  * or whitespace-only id before it reaches the store).
  */
 export function isDiscordChannelId(value: string): boolean {
-  return /^\d{17,20}$/.test(value.trim());
+  return isDiscordSnowflake(value);
+}
+
+/**
+ * The canonical Discord install redirect URI. It MUST be byte-identical between
+ * the authorization request (install route) and the token exchange (callback):
+ * Discord rejects a token exchange whose `redirect_uri` differs from the one the
+ * `code` was issued for. Built from the canonical public base (`BETTER_AUTH_URL`)
+ * so it stays stable behind proxies, falling back to the request origin locally.
+ */
+export function resolveDiscordInstallRedirectUri(requestUrl: string): string {
+  const baseUrl = process.env.BETTER_AUTH_URL ?? new URL(requestUrl).origin;
+  return new URL("/api/integrations/discord/install/callback", baseUrl).toString();
 }
 
 /**
@@ -165,42 +190,45 @@ export type DiscordInstallRejectReason =
   | "unauthenticated"
   | "invalid_state"
   | "owner_mismatch"
-  | "missing_guild";
+  | "missing_code";
 
-export type DiscordInstallCallbackResult =
-  | {
-      status: "ok";
-      ownerUserId: string;
-      guildId: string;
-      permissions: string | null;
-      scopes: string[];
-    }
+/**
+ * Outcome of the fail-closed pre-exchange checks. `authorized` means the returning
+ * caller owns a valid, fresh, single-use state and Discord handed back an
+ * authorization `code` — but NOT yet that any guild install is real. The guild is
+ * only established by exchanging that `code` server-to-server with Discord (see
+ * `exchangeDiscordInstallCode`); nothing here is trusted from the raw query string
+ * except the opaque `code`, which is worthless without the client secret.
+ */
+export type DiscordInstallAuthorization =
+  | { status: "authorized"; ownerUserId: string; code: string; nonce: string }
   | { status: "reject"; reason: DiscordInstallRejectReason };
 
 /**
- * Fail-closed evaluation of the bot-install callback. Returns an `ok` decision
- * (carrying the guild + granted metadata to persist) only when every check passes:
- * Discord returned no error, a session owner exists, the signed state is valid and
- * fresh, its nonce matches the double-submit cookie, its owner matches the session
- * owner, and a guild id is present. Any failure rejects with a reason and writes
- * no row — no owner is ever inferred from the guild.
+ * Fail-closed evaluation of the bot-install callback's session/state layer. Returns
+ * `authorized` only when every check passes: Discord returned no error, a session
+ * owner exists, the signed state is valid and fresh, its nonce matches the
+ * double-submit cookie, its owner matches the session owner, and Discord returned
+ * an authorization `code`. Any failure rejects with a reason and writes no row.
  *
- * The installing owner is taken from `sessionOwnerUserId` (the signed-in session),
- * never from the callback params; the state's owner only has to AGREE with it.
+ * Deliberately does NOT read `guild_id`/`permissions` from the query string: those
+ * are browser-controlled and forgeable, so trusting them let an admitted user mint
+ * a valid state and then claim an arbitrary guild. The guild now comes only from
+ * the provider-authoritative token exchange keyed on this `code`. The installing
+ * owner is taken from `sessionOwnerUserId`; the state's owner only has to AGREE.
  */
 export function evaluateDiscordInstallCallback(input: {
   sessionOwnerUserId: string | null;
   params: {
     state?: string | null;
-    guildId?: string | null;
-    permissions?: string | null;
+    code?: string | null;
     error?: string | null;
   };
   cookieNonce: string | null;
   secret: string;
   now: number;
   maxAgeMs?: number;
-}): DiscordInstallCallbackResult {
+}): DiscordInstallAuthorization {
   if (input.params.error) {
     return { status: "reject", reason: "discord_error" };
   }
@@ -227,16 +255,15 @@ export function evaluateDiscordInstallCallback(input: {
   if (payload.ownerUserId !== input.sessionOwnerUserId) {
     return { status: "reject", reason: "owner_mismatch" };
   }
-  const guildId = input.params.guildId?.trim();
-  if (!guildId) {
-    return { status: "reject", reason: "missing_guild" };
+  const code = input.params.code?.trim();
+  if (!code) {
+    return { status: "reject", reason: "missing_code" };
   }
 
   return {
-    status: "ok",
+    status: "authorized",
     ownerUserId: input.sessionOwnerUserId,
-    guildId,
-    permissions: input.params.permissions?.trim() || null,
-    scopes: [...DISCORD_BOT_INSTALL_SCOPES],
+    code,
+    nonce: payload.nonce,
   };
 }
