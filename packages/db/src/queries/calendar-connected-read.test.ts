@@ -201,6 +201,7 @@ describe("readConnectedOwnerCalendar", () => {
     } as Response);
     let tokenReads = 0;
     const tokenProvider = createBetterAuthGoogleCalendarAccessTokenProvider({
+      findAccountId: async () => "account-1",
       getAccessToken: async () => {
         tokenReads += 1;
         if (tokenReads > 1) {

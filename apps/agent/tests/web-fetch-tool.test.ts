@@ -1,4 +1,4 @@
-import { webFetch } from "eve/tools/defaults";
+import { webFetch } from "eve/tools/web_fetch";
 import { describe, expect, it } from "vitest";
 import webFetchTool from "../agent/tools/web_fetch";
 

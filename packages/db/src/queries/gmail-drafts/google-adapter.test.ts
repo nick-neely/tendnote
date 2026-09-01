@@ -42,7 +42,9 @@ describe("Google Gmail draft adapter", () => {
     expect(call?.url).toBe("https://gmail.test/gmail/v1/users/me/drafts");
     expect(call?.init?.method).toBe("POST");
     // The access token is sent as a bearer header, never in the URL.
-    expect((call?.init?.headers as Record<string, string>).authorization).toBe("Bearer token-abc");
+    expect((call?.init?.headers as Record<string, string> | undefined)?.authorization).toBe(
+      "Bearer token-abc",
+    );
     expect(call?.url).not.toContain("token-abc");
 
     const payload = JSON.parse(String(call?.init?.body)) as { message: { raw: string } };

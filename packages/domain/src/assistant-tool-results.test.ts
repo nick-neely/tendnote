@@ -431,23 +431,25 @@ describe("assistant tool-result contract", () => {
       expect(parsed.success).toBe(true);
     });
 
-    it.each(
-      relationshipSemanticRecordKindSchema.options,
-    )("accepts a semantic %s result", (recordKind) => {
-      const parsed = semanticContextSearchToolResult.safeParse({
-        results: [semanticRow(recordKind, "confirmed_fact")],
-      });
-      expect(parsed.success).toBe(true);
-    });
+    it.each(relationshipSemanticRecordKindSchema.options)(
+      "accepts a semantic %s result",
+      (recordKind) => {
+        const parsed = semanticContextSearchToolResult.safeParse({
+          results: [semanticRow(recordKind, "confirmed_fact")],
+        });
+        expect(parsed.success).toBe(true);
+      },
+    );
 
-    it.each(
-      relationshipSemanticTrustLevelSchema.options,
-    )("accepts the semantic %s register", (trustLevel) => {
-      const parsed = semanticContextSearchToolResult.safeParse({
-        results: [semanticRow("general_action", trustLevel)],
-      });
-      expect(parsed.success).toBe(true);
-    });
+    it.each(relationshipSemanticTrustLevelSchema.options)(
+      "accepts the semantic %s register",
+      (trustLevel) => {
+        const parsed = semanticContextSearchToolResult.safeParse({
+          results: [semanticRow("general_action", trustLevel)],
+        });
+        expect(parsed.success).toBe(true);
+      },
+    );
 
     it("keeps one General Action from costing the rest of the result set", () => {
       const parsed = relationshipContextSearchToolResult.safeParse({

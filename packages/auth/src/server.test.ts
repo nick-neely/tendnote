@@ -31,6 +31,8 @@ describe("Better Auth production configuration", () => {
         secondaryStorage: {
           delete: async () => undefined,
           get: async () => null,
+          getAndDelete: async () => null,
+          increment: async () => 1,
           set: async () => undefined,
         },
       },

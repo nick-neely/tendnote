@@ -92,18 +92,18 @@ const householdSavedItem = {
 beforeEach(() => vi.resetAllMocks());
 
 describe("record reversible-mutation adapters", () => {
-  it.each([
-    "complete",
-    "dismiss",
-  ] as const)("projects Follow-Up %s and inverses through reopen", async (intent) => {
-    const adapter = followupLifecycleAdapter(intent);
-    vi.mocked(reopenFollowupAction).mockResolvedValue({ ok: true, view: followup });
+  it.each(["complete", "dismiss"] as const)(
+    "projects Follow-Up %s and inverses through reopen",
+    async (intent) => {
+      const adapter = followupLifecycleAdapter(intent);
+      vi.mocked(reopenFollowupAction).mockResolvedValue({ ok: true, view: followup });
 
-    expect(adapter.project(followup)).toBe(followup);
-    await adapter.inverse(followup, { ...followup, status: "completed" });
+      expect(adapter.project(followup)).toBe(followup);
+      await adapter.inverse(followup, { ...followup, status: "completed" });
 
-    expect(reopenFollowupAction).toHaveBeenCalledWith({ followupId: followup.id });
-  });
+      expect(reopenFollowupAction).toHaveBeenCalledWith({ followupId: followup.id });
+    },
+  );
 
   it("restores the exact prior resolved Follow-Up state after reopen", async () => {
     const prior = { ...followup, status: "dismissed" as const };

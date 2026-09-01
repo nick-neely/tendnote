@@ -1,5 +1,6 @@
 import "server-only";
 
+import { findBetterAuthAccountId } from "@tendnote/db/queries/better-auth-accounts";
 import {
   type CalendarCacheStore,
   type CalendarReader,
@@ -18,6 +19,7 @@ import { getAuth } from "@/lib/auth/server";
 export function createWebGoogleCalendarAccessTokenProvider() {
   const auth = getAuth();
   return createBetterAuthGoogleCalendarAccessTokenProvider({
+    findAccountId: findBetterAuthAccountId,
     getAccessToken: ({ body }) => auth.api.getAccessToken({ body }),
   });
 }

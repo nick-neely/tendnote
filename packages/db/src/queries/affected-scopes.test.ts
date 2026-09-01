@@ -72,25 +72,28 @@ describe("remaining affected-scope contracts", () => {
     ["general_action", "general-action"],
     ["routine", "general-action"],
     ["saved_item", "saved-item"],
-  ] as const)("adds the changed %s record projection to Account and owner surfaces", (recordKind, entity) => {
-    expect(
-      affectedScopesForReminder({
-        ownerUserId: "owner-1",
-        recordKind,
-        recordId: "record-1",
-      }),
-    ).toEqual([
-      { kind: "owner-collection", collection: "account", ownerUserId: "owner-1" },
-      {
-        kind: "viewer-entity",
-        entity,
-        entityId: "record-1",
-        viewerUserId: "owner-1",
-      },
-      { kind: "owner-collection", collection: "today", ownerUserId: "owner-1" },
-      { kind: "owner-collection", collection: "review", ownerUserId: "owner-1" },
-    ]);
-  });
+  ] as const)(
+    "adds the changed %s record projection to Account and owner surfaces",
+    (recordKind, entity) => {
+      expect(
+        affectedScopesForReminder({
+          ownerUserId: "owner-1",
+          recordKind,
+          recordId: "record-1",
+        }),
+      ).toEqual([
+        { kind: "owner-collection", collection: "account", ownerUserId: "owner-1" },
+        {
+          kind: "viewer-entity",
+          entity,
+          entityId: "record-1",
+          viewerUserId: "owner-1",
+        },
+        { kind: "owner-collection", collection: "today", ownerUserId: "owner-1" },
+        { kind: "owner-collection", collection: "review", ownerUserId: "owner-1" },
+      ]);
+    },
+  );
 
   it("keeps a Follow-Up reminder on Account and owner surfaces until person context is available", () => {
     expect(

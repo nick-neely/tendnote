@@ -68,15 +68,15 @@ describe("Reminder deep-link recovery", () => {
     expect(resolveReminderDeepLinkTarget).not.toHaveBeenCalled();
   });
 
-  it.each([
-    "removed or visibility-lost",
-    "already completed or resolved",
-  ])("shows the same non-leaking state when the target is %s", async () => {
-    resolveReminderDeepLinkTarget.mockResolvedValue(null);
-    const markup = renderToStaticMarkup(await ReminderOpenContent({ searchParams: params }));
+  it.each(["removed or visibility-lost", "already completed or resolved"])(
+    "shows the same non-leaking state when the target is %s",
+    async () => {
+      resolveReminderDeepLinkTarget.mockResolvedValue(null);
+      const markup = renderToStaticMarkup(await ReminderOpenContent({ searchParams: params }));
 
-    expect(markup).toContain("Reminder unavailable");
-    expect(markup).toContain("completed, removed, or is no longer available");
-    expect(markup).not.toContain(ACTION_ID);
-  });
+      expect(markup).toContain("Reminder unavailable");
+      expect(markup).toContain("completed, removed, or is no longer available");
+      expect(markup).not.toContain(ACTION_ID);
+    },
+  );
 });

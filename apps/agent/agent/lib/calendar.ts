@@ -1,3 +1,4 @@
+import { findBetterAuthAccountId } from "@tendnote/db/queries/better-auth-accounts";
 import {
   type CalendarReader,
   createBetterAuthGoogleCalendarAccessTokenProvider,
@@ -12,9 +13,10 @@ import { getAgentAuth } from "./auth-server";
  * Better Auth accepts the explicitly scoped owner id, decrypts/refreshes the
  * encrypted account token, and persists refreshed credentials itself.
  */
-export function createAgentGoogleCalendarAccessTokenProvider(): GoogleCalendarAccessTokenProvider {
+function createAgentGoogleCalendarAccessTokenProvider(): GoogleCalendarAccessTokenProvider {
   const auth = getAgentAuth();
   return createBetterAuthGoogleCalendarAccessTokenProvider({
+    findAccountId: findBetterAuthAccountId,
     getAccessToken: ({ body }) => auth.api.getAccessToken({ body }),
   });
 }

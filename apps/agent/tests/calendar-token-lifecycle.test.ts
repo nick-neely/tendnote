@@ -46,7 +46,7 @@ type Fixture = {
   auth: {
     api: {
       getAccessToken: (input: {
-        body: { providerId: string; userId: string };
+        body: { accountId: string; userId: string };
       }) => Promise<{ accessToken: string; accessTokenExpiresAt?: Date }>;
     };
   };
@@ -159,6 +159,18 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
   return { auth, accounts, refreshes };
 }
 
+/**
+ * Better Auth 1.7 selects the account by row id, so the boundary resolves the
+ * owner's linked Google account first. Mirror that lookup against the fixture's
+ * own account rows rather than the live database.
+ */
+function fixtureAccountIdResolver(fixture: Fixture) {
+  return async ({ ownerUserId, providerId }: { ownerUserId: string; providerId: string }) =>
+    fixture.accounts.find(
+      (candidate) => candidate.userId === ownerUserId && candidate.providerId === providerId,
+    )?.id ?? null;
+}
+
 function calendarEvent(id: string) {
   return {
     id,
@@ -182,6 +194,7 @@ describe("Eve Better Auth Calendar token lifecycle", () => {
       text: async () => "",
     } as Response);
     const getAccessToken = createBetterAuthGoogleCalendarAccessTokenProvider({
+      findAccountId: fixtureAccountIdResolver(fixture),
       getAccessToken: ({ body }) => fixture.auth.api.getAccessToken({ body }),
     });
     const reader = createDefaultGoogleCalendarReader({
@@ -224,6 +237,7 @@ describe("Eve Better Auth Calendar token lifecycle", () => {
       text: async () => "",
     } as Response);
     const getAccessToken = createBetterAuthGoogleCalendarAccessTokenProvider({
+      findAccountId: fixtureAccountIdResolver(fixture),
       getAccessToken: ({ body }) => fixture.auth.api.getAccessToken({ body }),
     });
     const reader = createDefaultGoogleCalendarReader({
@@ -309,6 +323,7 @@ describe("Eve Better Auth Calendar token lifecycle", () => {
       text: async () => "",
     } as Response);
     const getAccessToken = createBetterAuthGoogleCalendarAccessTokenProvider({
+      findAccountId: fixtureAccountIdResolver(fixture),
       getAccessToken: ({ body }) => fixture.auth.api.getAccessToken({ body }),
     });
 
@@ -336,10 +351,11 @@ describe("Eve Better Auth Calendar token lifecycle", () => {
   it("documents Better Auth's truthful error boundary for token lifecycle failures", async () => {
     const missing = await createFixture({ omitOwnerOne: true });
     const missingProvider = createBetterAuthGoogleCalendarAccessTokenProvider({
+      findAccountId: fixtureAccountIdResolver(missing),
       getAccessToken: ({ body }) => missing.auth.api.getAccessToken({ body }),
     });
     const missingRawError = await missing.auth.api
-      .getAccessToken({ body: { providerId: "google", userId: "owner-1" } })
+      .getAccessToken({ body: { accountId: "account-owner-1", userId: "owner-1" } })
       .catch((error: unknown) => error);
     const missingBoundaryError = await missingProvider({
       ownerUserId: "owner-1",
@@ -356,10 +372,11 @@ describe("Eve Better Auth Calendar token lifecycle", () => {
       ownerOneRefreshToken: null,
     });
     const undecryptableError = await undecryptable.auth.api
-      .getAccessToken({ body: { providerId: "google", userId: "owner-1" } })
+      .getAccessToken({ body: { accountId: "account-owner-1", userId: "owner-1" } })
       .catch((error: unknown) => error);
     const boundaryError = (fixture: Fixture) =>
       createBetterAuthGoogleCalendarAccessTokenProvider({
+        findAccountId: fixtureAccountIdResolver(fixture),
         getAccessToken: ({ body }) => fixture.auth.api.getAccessToken({ body }),
       })({ ownerUserId: "owner-1", providerKey: "google", capabilityKey: "calendar" }).catch(
         (error: unknown) => error,
@@ -372,7 +389,7 @@ describe("Eve Better Auth Calendar token lifecycle", () => {
       },
     });
     const invalidRefreshError = await invalidRefresh.auth.api
-      .getAccessToken({ body: { providerId: "google", userId: "owner-1" } })
+      .getAccessToken({ body: { accountId: "account-owner-1", userId: "owner-1" } })
       .catch((error: unknown) => error);
     const invalidRefreshBoundaryError = await boundaryError(invalidRefresh);
 
@@ -382,7 +399,7 @@ describe("Eve Better Auth Calendar token lifecycle", () => {
       },
     });
     const transientRefreshError = await transientRefresh.auth.api
-      .getAccessToken({ body: { providerId: "google", userId: "owner-1" } })
+      .getAccessToken({ body: { accountId: "account-owner-1", userId: "owner-1" } })
       .catch((error: unknown) => error);
     const transientRefreshBoundaryError = await boundaryError(transientRefresh);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import type { Table as TableInstance } from "@tanstack/react-table";
+import type { ReactTable } from "@tanstack/react-table";
 import type { ContactImportPreviewCandidate } from "@tendnote/db/queries/contacts-import-preview";
 import { ChevronLeftIcon, ChevronRightIcon, SearchIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { plural } from "./review-model";
+import type { ReviewTableFeatures } from "./review-table-features";
 
 type Candidate = ContactImportPreviewCandidate;
 
@@ -27,7 +28,7 @@ export function ReviewToolbar({
   onGlobalFilterChange,
   onConfirmSafeBulk,
 }: {
-  table: TableInstance<Candidate>;
+  table: ReactTable<ReviewTableFeatures, Candidate>;
   busy: boolean;
   bulkCount: number;
   globalFilter: string;
@@ -83,7 +84,7 @@ export function ReviewFooter({
   totalCount,
   fetchedCount,
 }: {
-  table: TableInstance<Candidate>;
+  table: ReactTable<ReviewTableFeatures, Candidate>;
   totalCount: number;
   fetchedCount: number;
 }) {
@@ -100,7 +101,7 @@ export function ReviewFooter({
           <span className="text-[length:var(--text-small)] text-muted-foreground">Rows</span>
           <Select
             onValueChange={(value) => table.setPageSize(Number(value))}
-            value={String(table.getState().pagination.pageSize)}
+            value={String(table.state.pagination.pageSize)}
           >
             <SelectTrigger className="w-16" size="sm">
               <SelectValue />
@@ -115,7 +116,7 @@ export function ReviewFooter({
           </Select>
         </div>
         <span className="text-[length:var(--text-small)] text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of {Math.max(1, table.getPageCount())}
+          Page {table.state.pagination.pageIndex + 1} of {Math.max(1, table.getPageCount())}
         </span>
         <div className="flex items-center gap-1">
           <Button

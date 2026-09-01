@@ -235,27 +235,25 @@ describe("explicit memory capture", () => {
     expect(result.sourceRecord.sensitivity).toBe("restricted");
   });
 
-  it.each([
-    "remember",
-    "save",
-    "note",
-    "keep track of",
-  ])("captures an explicit '%s' request through the parse + capture path", async (trigger) => {
-    const store = createInMemoryMemoryStore();
-    const capture = createMemoryCapture(store);
-    const caleb = await seedPerson(store);
+  it.each(["remember", "save", "note", "keep track of"])(
+    "captures an explicit '%s' request through the parse + capture path",
+    async (trigger) => {
+      const store = createInMemoryMemoryStore();
+      const capture = createMemoryCapture(store);
+      const caleb = await seedPerson(store);
 
-    const parsed = parseExplicitMemoryRequest(`${trigger} Caleb just started a new job`);
-    expect(parsed.isExplicitMemoryRequest).toBe(true);
+      const parsed = parseExplicitMemoryRequest(`${trigger} Caleb just started a new job`);
+      expect(parsed.isExplicitMemoryRequest).toBe(true);
 
-    const result = await capture.captureExplicitMemory({
-      ownerUserId: "user-1",
-      personId: caleb.id,
-      content: parsed.content,
-    });
+      const result = await capture.captureExplicitMemory({
+        ownerUserId: "user-1",
+        personId: caleb.id,
+        content: parsed.content,
+      });
 
-    expect(result.memory.status).toBe("approved");
-    expect(result.memory.content).toBe("Caleb just started a new job");
-    expect(result.memory.sourceRecordId).toBe(result.sourceRecord.id);
-  });
+      expect(result.memory.status).toBe("approved");
+      expect(result.memory.content).toBe("Caleb just started a new job");
+      expect(result.memory.sourceRecordId).toBe(result.sourceRecord.id);
+    },
+  );
 });

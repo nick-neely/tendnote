@@ -22,12 +22,18 @@ export async function POST() {
   const existingUser = await context.internalAdapter.findUserById(ownerUserId);
   const user = existingUser
     ? await syncLocalDemoEmail(existingUser, email)
-    : await context.internalAdapter.createUser({
-        id: ownerUserId,
-        email,
-        name: "Local development",
-        emailVerified: true,
-      });
+    : await context.internalAdapter.createUser(
+        {
+          id: ownerUserId,
+          email,
+          name: "Local development",
+          emailVerified: true,
+        },
+        // Better Auth 1.7 requires a provisioning source. This seeded owner comes
+        // from neither an OAuth nor a credential flow, so name the local-only
+        // route that created it rather than borrowing a real sign-in method.
+        { method: "local-development" },
+      );
 
   await ensureLocalDevelopmentAccessProfile({ userId: user.id });
 

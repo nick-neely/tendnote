@@ -55,6 +55,7 @@ describe("Phase 2E Contacts import boundary - no external write or inference sid
       "apps/web/src/app/(admitted)/account/contacts/import/review-columns.tsx",
       "apps/web/src/app/(admitted)/account/contacts/import/review-controls.tsx",
       "apps/web/src/app/(admitted)/account/contacts/import/review-model.ts",
+      "apps/web/src/app/(admitted)/account/contacts/import/review-table-features.ts",
       "apps/web/src/app/(admitted)/account/contacts/import/review-table.tsx",
       "apps/web/src/app/(admitted)/account/contacts/import/review-toasts.ts",
       "apps/web/src/app/(admitted)/account/contacts/import/use-confirm-runner.ts",

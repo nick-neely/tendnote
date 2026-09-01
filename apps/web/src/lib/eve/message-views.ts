@@ -102,13 +102,14 @@ export type AssistantActiveTool = {
 };
 
 /**
- * Whether Eve is still working: `submitted` (the turn is sent, no events yet)
- * and `streaming` (events arriving) are the only live states. `ready` and
- * `error` are both verdicts on a turn that is over - one settled, one failed -
- * and neither leaves anything running.
+ * Whether Eve is still working: `submitted` (the turn is sent, no events yet),
+ * `resuming` (reattaching to a turn that is already running server-side), and
+ * `streaming` (events arriving) are the live states. `ready` and `error` are
+ * both verdicts on a turn that is over - one settled, one failed - and neither
+ * leaves anything running.
  */
 export function isTurnInFlight(status: UseEveAgentStatus): boolean {
-  return status === "submitted" || status === "streaming";
+  return status === "submitted" || status === "resuming" || status === "streaming";
 }
 
 /**

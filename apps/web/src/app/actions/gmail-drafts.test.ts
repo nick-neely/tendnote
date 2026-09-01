@@ -84,26 +84,29 @@ describe("Gmail draft server actions", () => {
   it.each([
     ["create", createGmailDraftAction, createOwnerGmailDraft],
     ["update", updateGmailDraftAction, updateOwnerGmailDraft],
-  ])("runs %s through the owner-action seam and reconciles returned scopes", async (_, action, write) => {
-    const result = await action({
-      draftId: DRAFT_ID,
-      subject: "Checking in",
-      recipient: RECIPIENT,
-      bodyEdit: "How have you been?",
-    });
+  ])(
+    "runs %s through the owner-action seam and reconciles returned scopes",
+    async (_, action, write) => {
+      const result = await action({
+        draftId: DRAFT_ID,
+        subject: "Checking in",
+        recipient: RECIPIENT,
+        bodyEdit: "How have you been?",
+      });
 
-    expect(write).toHaveBeenCalledWith({
-      ownerUserId: "owner-1",
-      draftId: DRAFT_ID,
-      subject: "Checking in",
-      recipient: RECIPIENT,
-      bodyEdit: "How have you been?",
-    });
-    expect(result).toMatchObject({ ok: true, view: { status: "succeeded" } });
-    expect(updateTagSpy).toHaveBeenCalledWith("people:owner:owner-1");
-    expect(updateTagSpy).toHaveBeenCalledWith(`people:owner:owner-1:person:${PERSON_ID}`);
-    expect(updateTagSpy).toHaveBeenCalledWith(`people:visible-person:${PERSON_ID}`);
-  });
+      expect(write).toHaveBeenCalledWith({
+        ownerUserId: "owner-1",
+        draftId: DRAFT_ID,
+        subject: "Checking in",
+        recipient: RECIPIENT,
+        bodyEdit: "How have you been?",
+      });
+      expect(result).toMatchObject({ ok: true, view: { status: "succeeded" } });
+      expect(updateTagSpy).toHaveBeenCalledWith("people:owner:owner-1");
+      expect(updateTagSpy).toHaveBeenCalledWith(`people:owner:owner-1:person:${PERSON_ID}`);
+      expect(updateTagSpy).toHaveBeenCalledWith(`people:visible-person:${PERSON_ID}`);
+    },
+  );
 
   it("runs retry through the same owner-action seam", async () => {
     const result = await retryGmailDraftAction({ draftId: DRAFT_ID, actionId: ACTION_ID });
