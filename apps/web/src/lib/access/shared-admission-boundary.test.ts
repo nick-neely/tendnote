@@ -8,7 +8,7 @@ const request = new Request("https://app.tendnote.test/eve/v1/session");
 async function createBoundary(input: {
   policy: Parameters<typeof createPrivateBetaAccessResolver>[0]["policy"];
   evaluateFlag: Parameters<typeof createPrivateBetaAccessResolver>[0]["evaluateFlag"];
-  user: { id: string; email: string };
+  user: { id: string; email: string; emailVerified?: boolean };
 }) {
   const { eve, queries, web } = createAdmissionHarness(input);
   return { eve, queries, web };
@@ -60,7 +60,7 @@ describe("shared Web/Eve admission boundary", () => {
 
   it("uses one persisted store for the self-hosted owner and unrelated pending user", async () => {
     const evaluateFlag = vi.fn().mockResolvedValue(true);
-    const owner = { id: "owner-1", email: "owner@example.com" };
+    const owner = { id: "owner-1", email: "owner@example.com", emailVerified: true };
     const { eve, queries, web } = await createBoundary({
       evaluateFlag,
       policy: {
@@ -73,7 +73,7 @@ describe("shared Web/Eve admission boundary", () => {
 
     await queries.ensureAccessProfile({ userId: "other-1" });
     await expect(
-      web.resolveAccess({ userId: owner.id, email: owner.email }),
+      web.resolveAccess({ userId: owner.id, email: owner.email, emailVerified: true }),
     ).resolves.toMatchObject({
       admitted: true,
       profile: { source: "self_hosted_bootstrap" },

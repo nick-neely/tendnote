@@ -14,19 +14,23 @@ import { type Admission, createAdmissionPair } from "./admission-harness";
 import { createPrivateBetaAccessResolver } from "./resolve-access";
 
 const REQUEST = new Request("https://operator.example.test/eve/v1/session");
-const OWNER = { id: "owner-1", email: "owner@example.test" };
+const OWNER = { id: "owner-1", email: "owner@example.test", emailVerified: true };
 const INVITEE = { id: "invitee-1", email: "member@example.test" };
 const UNRELATED = { id: "unrelated-1", email: "other@example.test" };
 
 async function assertSharedBoundary(input: {
   admission: Admission;
-  user: { id: string; email: string };
+  user: { id: string; email: string; emailVerified?: boolean };
   admitted: boolean;
   source?: string;
 }) {
   const { web, eve } = createAdmissionPair(input.admission, input.user);
 
-  const decision = await web.resolveAccess({ userId: input.user.id, email: input.user.email });
+  const decision = await web.resolveAccess({
+    userId: input.user.id,
+    email: input.user.email,
+    emailVerified: input.user.emailVerified,
+  });
   expect(decision.admitted).toBe(input.admitted);
   if (input.source) {
     expect(decision.profile).toMatchObject({ source: input.source, status: "granted" });
@@ -92,7 +96,11 @@ describe("operator-owned self-hosted admission proof", () => {
         ownerResolver.resolveAccess({ userId: UNRELATED.id, email: UNRELATED.email }),
       ),
       ...Array.from({ length: 8 }, () =>
-        ownerResolver.resolveAccess({ userId: OWNER.id, email: OWNER.email }),
+        ownerResolver.resolveAccess({
+          userId: OWNER.id,
+          email: OWNER.email,
+          emailVerified: true,
+        }),
       ),
     ]);
     const unrelatedDecisions = firstVisits.slice(0, 8);

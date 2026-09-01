@@ -24,7 +24,12 @@ import {
 import { createOwnerActionRunner } from "./owner-action";
 import { ProductRateLimitError } from "./rate-limit/errors";
 
-const USER: SessionUser = { id: "owner-1", email: "owner@example.com", name: "Owner" };
+const USER: SessionUser = {
+  id: "owner-1",
+  email: "owner@example.com",
+  emailVerified: true,
+  name: "Owner",
+};
 const admittedDecision: AccessDecision = {
   admitted: true,
   status: "granted",

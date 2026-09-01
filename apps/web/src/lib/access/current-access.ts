@@ -45,7 +45,15 @@ export const getCurrentAccess = cache(async function getCurrentAccess(): Promise
 
   const user = session?.user;
   const sessionUser = user
-    ? { id: user.id, email: user.email, name: user.name, image: user.image }
+    ? {
+        id: user.id,
+        email: user.email,
+        // Trusted verified-ownership flag from Better Auth; admission gates the
+        // self-hosted owner grant on it, so it must reach the resolver unaltered.
+        emailVerified: user.emailVerified,
+        name: user.name,
+        image: user.image,
+      }
     : null;
 
   return resolveAccessState(sessionUser, (entity) => privateBetaAccess.resolveAccess(entity));

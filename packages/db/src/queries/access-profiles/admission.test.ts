@@ -3,7 +3,7 @@ import { createAdmissionResolver } from "./admission";
 import { createInMemoryAccessProfileStore } from "./in-memory-store";
 import { createAccessProfileQueries } from "./queries";
 
-const OWNER = { userId: "owner-1", email: "Owner@Example.com" };
+const OWNER = { userId: "owner-1", email: "Owner@Example.com", emailVerified: true };
 const OTHER = { userId: "other-1", email: "other@example.com" };
 
 describe("shared admission resolver", () => {
@@ -30,6 +30,50 @@ describe("shared admission resolver", () => {
     expect(otherDecision).toMatchObject({ admitted: false, status: "pending" });
     expect(evaluateFlag).not.toHaveBeenCalled();
     await expect(queries.listAdmittedOwnerUserIds()).resolves.toEqual([OWNER.userId]);
+  });
+
+  it("withholds the self-hosted owner role from an unverified matching session", async () => {
+    // An attacker who registers the configured owner email via public credential
+    // signup receives a session, but Better Auth marks it emailVerified=false. The
+    // email matches the bootstrap owner, yet the durable owner role must not be
+    // granted until ownership is verified.
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    const evaluateFlag = vi.fn().mockResolvedValue(true);
+    const resolver = createAdmissionResolver({
+      accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
+      evaluateFlag,
+      policy: { mode: "self-hosted", valid: true, bootstrapOwnerEmail: "owner@example.com" },
+    });
+
+    const unverified = await resolver.resolveAccess({ ...OWNER, emailVerified: false });
+
+    expect(unverified).toMatchObject({ admitted: false, status: "pending" });
+    // No self_hosted_bootstrap grant was persisted, so the singleton stays open
+    // for the real owner to claim once verified.
+    await expect(queries.listAdmittedOwnerUserIds()).resolves.toEqual([]);
+    expect(evaluateFlag).not.toHaveBeenCalled();
+
+    // The same session becomes the owner the instant its email is verified.
+    const verified = await resolver.resolveAccess({ ...OWNER, emailVerified: true });
+    expect(verified).toMatchObject({
+      admitted: true,
+      profile: { userId: OWNER.userId, source: "self_hosted_bootstrap" },
+    });
+    await expect(queries.listAdmittedOwnerUserIds()).resolves.toEqual([OWNER.userId]);
+  });
+
+  it("treats a missing emailVerified flag as unverified and fails closed", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    const resolver = createAdmissionResolver({
+      accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
+      evaluateFlag: vi.fn().mockResolvedValue(true),
+      policy: { mode: "self-hosted", valid: true, bootstrapOwnerEmail: "owner@example.com" },
+    });
+
+    const decision = await resolver.resolveAccess({ userId: OWNER.userId, email: OWNER.email });
+
+    expect(decision).toMatchObject({ admitted: false, status: "pending" });
+    await expect(queries.listAdmittedOwnerUserIds()).resolves.toEqual([]);
   });
 
   it("fails closed for invalid configuration and reports only a safe diagnostic", async () => {
