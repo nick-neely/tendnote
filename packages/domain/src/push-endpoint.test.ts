@@ -76,6 +76,54 @@ describe("Push endpoint shape", () => {
     expect(isBlockedPushAddress("push.example.com")).toBe(false);
   });
 
+  it("draws each blocked range at exactly the boundary the predicate always did", () => {
+    // Last address inside a range stays blocked; the first address outside is
+    // left alone. These pin the masked-CIDR match to the old hand-written edges.
+    const blocked = [
+      "100.64.0.0", // CGNAT floor
+      "100.127.255.255", // CGNAT ceiling
+      "172.16.0.0", // RFC 1918 /12 floor
+      "172.31.255.255", // RFC 1918 /12 ceiling
+      "192.0.255.255", // broad 192.0.0.0/16 ceiling
+      "198.18.0.0", // benchmarking /15 floor
+      "198.19.255.255", // benchmarking /15 ceiling
+      "198.51.255.255", // broad TEST-NET-2 /16 ceiling
+      "203.0.255.255", // broad TEST-NET-3 /16 ceiling
+      "224.0.0.0", // multicast/reserved floor
+      "255.255.255.255", // broadcast
+    ];
+    const allowed = [
+      "100.63.255.255", // just below CGNAT
+      "100.128.0.0", // just above CGNAT
+      "172.15.255.255", // just below /12
+      "172.32.0.0", // just above /12
+      "192.1.0.0", // just above 192.0.0.0/16
+      "198.17.255.255", // just below /15
+      "198.20.0.0", // just above /15
+      "198.50.255.255", // just below TEST-NET-2 /16
+      "198.52.0.0", // just above TEST-NET-2 /16
+      "203.1.0.0", // just above TEST-NET-3 /16
+      "223.255.255.255", // just below multicast floor
+    ];
+    for (const address of blocked) expect(isBlockedPushAddress(address), address).toBe(true);
+    for (const address of allowed) expect(isBlockedPushAddress(address), address).toBe(false);
+  });
+
+  it("draws each IPv6 prefix at exactly the boundary the predicate always did", () => {
+    const blocked = [
+      "2001:1ff::", // 2001::/23 ceiling
+      "2001:db8::1", // documentation /32
+      "100::", // discard-only /64 floor
+      "100:0:0:0:ffff::", // still inside 100::/64
+    ];
+    const allowed = [
+      "2001:200::", // just past 2001::/23
+      "100:0:0:1::", // fourth group set, past 100::/64
+    ];
+    for (const address of blocked) expect(isBlockedPushAddress(address), address).toBe(true);
+    for (const address of allowed) expect(isBlockedPushAddress(address), address).toBe(false);
+  });
+
   it("treats an unset allowlist as no host restriction", () => {
     expect(parsePushEndpointAllowlist(undefined)).toBeNull();
     expect(parsePushEndpointAllowlist("  ")).toBeNull();

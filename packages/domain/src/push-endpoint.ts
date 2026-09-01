@@ -82,49 +82,111 @@ function parseIpv6(value: string): Ipv6Groups | null {
   return [...head, ...Array.from({ length: filled }, () => 0), ...tail] as unknown as Ipv6Groups;
 }
 
+/** A single IPv4 CIDR block, kept as an unsigned base address plus prefix length. */
+type Ipv4Cidr = { readonly base: number; readonly prefix: number };
+
+/** Packs four octets into an unsigned 32-bit value for masked range compares. */
+function ipv4ToUint32([a, b, c, d]: Ipv4Octets): number {
+  return ((a << 24) | (b << 16) | (c << 8) | d) >>> 0;
+}
+
+function ipv4Cidr(a: number, b: number, c: number, d: number, prefix: number): Ipv4Cidr {
+  return { base: ipv4ToUint32([a, b, c, d]), prefix };
+}
+
+/**
+ * The IPv4 ranges a push endpoint must never address. Each entry reproduces one
+ * of the checks the predicate used to spell out by hand, including the ones that
+ * are deliberately broader than the matching RFC block: 192.0.0.0/16 (not just
+ * TEST-NET-1's /24), 198.51.0.0/16 (not just TEST-NET-2's /24), 203.0.0.0/16
+ * (not just TEST-NET-3's /24), and 224.0.0.0/3 for everything at or above 224.
+ * Do not narrow these to the strict RFC prefixes: that would admit an address
+ * the old code rejected and open a hole in the SSRF backstop.
+ */
+const IPV4_BLOCKED_RANGES: readonly Ipv4Cidr[] = [
+  ipv4Cidr(0, 0, 0, 0, 8), // unspecified and "this network"
+  ipv4Cidr(10, 0, 0, 0, 8), // RFC 1918
+  ipv4Cidr(100, 64, 0, 0, 10), // carrier-grade NAT
+  ipv4Cidr(127, 0, 0, 0, 8), // loopback
+  ipv4Cidr(169, 254, 0, 0, 16), // link-local, including 169.254.169.254
+  ipv4Cidr(172, 16, 0, 0, 12), // RFC 1918
+  ipv4Cidr(192, 0, 0, 0, 16), // IETF protocol assignments and TEST-NET-1 (broad /16)
+  ipv4Cidr(192, 168, 0, 0, 16), // RFC 1918
+  ipv4Cidr(198, 18, 0, 0, 15), // benchmarking
+  ipv4Cidr(198, 51, 0, 0, 16), // TEST-NET-2 (broad /16)
+  ipv4Cidr(203, 0, 0, 0, 16), // TEST-NET-3 (broad /16)
+  ipv4Cidr(224, 0, 0, 0, 3), // multicast, reserved, and 255.255.255.255
+];
+
+function matchesIpv4Cidr(value: number, { base, prefix }: Ipv4Cidr): boolean {
+  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  return (value & mask) >>> 0 === (base & mask) >>> 0;
+}
+
 function isBlockedIpv4(octets: Ipv4Octets): boolean {
-  const [first, second] = octets;
-  if (first === 0) return true; // 0.0.0.0/8 - unspecified and "this network"
-  if (first === 10) return true; // RFC 1918
-  if (first === 127) return true; // loopback
-  if (first === 100 && second >= 64 && second <= 127) return true; // carrier-grade NAT
-  if (first === 169 && second === 254) return true; // link-local, including 169.254.169.254
-  if (first === 172 && second >= 16 && second <= 31) return true; // RFC 1918
-  if (first === 192 && second === 0) return true; // IETF protocol assignments and TEST-NET-1
-  if (first === 192 && second === 168) return true; // RFC 1918
-  if (first === 198 && (second === 18 || second === 19)) return true; // benchmarking
-  if (first === 198 && second === 51) return true; // TEST-NET-2
-  if (first === 203 && second === 0) return true; // TEST-NET-3
-  if (first >= 224) return true; // multicast, reserved, and 255.255.255.255
-  return false;
+  const value = ipv4ToUint32(octets);
+  return IPV4_BLOCKED_RANGES.some((range) => matchesIpv4Cidr(value, range));
 }
 
 function embeddedIpv4(high: number, low: number): Ipv4Octets {
   return [high >> 8, high & 0xff, low >> 8, low & 0xff];
 }
 
-function isBlockedIpv6(groups: Ipv6Groups): boolean {
+/**
+ * The IPv6 forms that carry an IPv4 destination inside them, judged by the IPv4
+ * rules on the address they embed: ::ffff:a.b.c.d (mapped), ::a.b.c.d
+ * (compatible), the NAT64 well-known prefix, and 6to4. Returns `null` when the
+ * address is none of these, so the caller falls through to the prefix ranges.
+ * The all-zero address :: is not embedded IPv4 (nothing to embed); it falls
+ * through and is caught by ::/16 below, exactly as before.
+ */
+function embeddedIpv4Verdict(groups: Ipv6Groups): boolean | null {
   const leadingZeros = groups.findIndex((group) => group !== 0);
-  // ::ffff:a.b.c.d and ::a.b.c.d both reach IPv4 space; judge them as IPv4.
-  if (leadingZeros === -1) return true; // ::
-  if (leadingZeros >= 5) {
-    if (groups[5] === 0xffff || groups[5] === 0) {
-      return isBlockedIpv4(embeddedIpv4(groups[6], groups[7]));
-    }
-  }
-  // NAT64 well-known prefix and 6to4 also carry an IPv4 destination inside.
-  if (groups[0] === 0x0064 && groups[1] === 0xff9b) {
+  if (leadingZeros >= 5 && (groups[5] === 0xffff || groups[5] === 0)) {
     return isBlockedIpv4(embeddedIpv4(groups[6], groups[7]));
   }
-  if (groups[0] === 0x2002) return isBlockedIpv4(embeddedIpv4(groups[1], groups[2]));
-  if (groups[0] === 0) return true; // the rest of ::/16 is unallocated
-  if ((groups[0] & 0xfe00) === 0xfc00) return true; // fc00::/7, including fd00:ec2::254
-  if ((groups[0] & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
-  if ((groups[0] & 0xff00) === 0xff00) return true; // ff00::/8 multicast
-  if (groups[0] === 0x0100 && groups[1] === 0 && groups[2] === 0 && groups[3] === 0) return true;
-  if (groups[0] === 0x2001 && groups[1] <= 0x01ff) return true; // IETF protocol assignments
-  if (groups[0] === 0x2001 && groups[1] === 0x0db8) return true; // documentation
-  return false;
+  if (groups[0] === 0x0064 && groups[1] === 0xff9b) {
+    return isBlockedIpv4(embeddedIpv4(groups[6], groups[7])); // NAT64 well-known prefix
+  }
+  if (groups[0] === 0x2002) return isBlockedIpv4(embeddedIpv4(groups[1], groups[2])); // 6to4
+  return null;
+}
+
+/** An IPv6 prefix, as its fixed leading 16-bit groups plus the prefix length. */
+type Ipv6Prefix = { readonly base: readonly number[]; readonly prefix: number };
+
+/**
+ * The pure-prefix IPv6 ranges (no embedded IPv4) a push endpoint must never
+ * address. ::/16 covers both the unallocated remainder of that block and the
+ * unspecified address ::.
+ */
+const IPV6_BLOCKED_PREFIXES: readonly Ipv6Prefix[] = [
+  { base: [0x0000], prefix: 16 }, // ::/16 unallocated remainder, and :: itself
+  { base: [0xfc00], prefix: 7 }, // fc00::/7 unique local, including fd00:ec2::254
+  { base: [0xfe80], prefix: 10 }, // fe80::/10 link-local
+  { base: [0xff00], prefix: 8 }, // ff00::/8 multicast
+  { base: [0x0100, 0x0000, 0x0000, 0x0000], prefix: 64 }, // 100::/64 discard-only
+  { base: [0x2001, 0x0000], prefix: 23 }, // 2001::/23 IETF protocol assignments
+  { base: [0x2001, 0x0db8], prefix: 32 }, // 2001:db8::/32 documentation
+];
+
+function matchesIpv6Prefix(groups: Ipv6Groups, { base, prefix }: Ipv6Prefix): boolean {
+  let remaining = prefix;
+  for (let index = 0; index < base.length && remaining > 0; index += 1) {
+    const bits = Math.min(16, remaining);
+    const mask = bits === 16 ? 0xffff : (0xffff << (16 - bits)) & 0xffff;
+    const group = groups[index] ?? 0;
+    const groupBase = base[index] ?? 0;
+    if (((group ^ groupBase) & mask) !== 0) return false;
+    remaining -= bits;
+  }
+  return true;
+}
+
+function isBlockedIpv6(groups: Ipv6Groups): boolean {
+  const embedded = embeddedIpv4Verdict(groups);
+  if (embedded !== null) return embedded;
+  return IPV6_BLOCKED_PREFIXES.some((entry) => matchesIpv6Prefix(groups, entry));
 }
 
 /**
