@@ -527,7 +527,7 @@ describe("external CLA enforcement contract", () => {
     const config = readJson<{
       enforcement: {
         claAssistantAllowlist: string[];
-        claAssistantAllowlistPolicy?: { scope: string };
+        claAssistantAllowlistPolicy?: { scope: string; entries?: Record<string, string> };
         maintainerOverride: boolean;
       };
       routes: Record<string, { bypass: boolean; statusRequirement: string }>;
@@ -535,19 +535,32 @@ describe("external CLA enforcement contract", () => {
 
     // The allowlist is a bounded carve-out for automation accounts that can
     // never satisfy the gate (they hold no copyright and cannot sign). It must
-    // never bypass a human: every entry is an enumerated `[bot]` login, and a
-    // wildcard would let an unknown account slip the gate.
-    const allowlist = config.enforcement.claAssistantAllowlist;
+    // never bypass a human. Each entry must be a single GitHub App bot login: a
+    // lowercase app slug followed by the literal `[bot]`, fully anchored. The
+    // anchoring is the security control - the CLA Assistant dashboard treats the
+    // allowlist as comma-separated, so a permissive suffix check would let
+    // `alice,bob[bot]` (or `*[bot]`, or a trailing space) smuggle the human
+    // `alice` past the gate. This grammar rejects commas, whitespace, wildcards,
+    // and any bare human login.
+    const BOT_LOGIN = /^[a-z0-9-]+\[bot\]$/;
+    const { claAssistantAllowlist: allowlist, claAssistantAllowlistPolicy: policy } =
+      config.enforcement;
     for (const entry of allowlist) {
-      expect(entry.endsWith("[bot]")).toBe(true);
-      expect(entry).not.toContain("*");
+      expect(entry).toMatch(BOT_LOGIN);
     }
     expect(new Set(allowlist).size).toBe(allowlist.length);
-    // If any bot is allowlisted, the rationale/constraints must be documented.
+    // Any allowlisted bot must carry a policy record and vice versa - no drift, so
+    // an entry can never be added without its documented rationale, and a
+    // documented entry is actually the one applied.
     if (allowlist.length > 0) {
-      expect(config.enforcement.claAssistantAllowlistPolicy?.scope).toBe(
-        "trusted automation bots only",
-      );
+      expect(policy?.scope).toBe("trusted automation bots only");
+      const documented = Object.keys(policy?.entries ?? {});
+      for (const key of documented) expect(key).toMatch(BOT_LOGIN);
+      expect([...allowlist].sort()).toEqual([...documented].sort());
+      for (const rationale of Object.values(policy?.entries ?? {})) {
+        expect(typeof rationale).toBe("string");
+        expect((rationale as string).trim().length).toBeGreaterThan(0);
+      }
     }
     expect(config.enforcement.maintainerOverride).toBe(true);
     for (const route of Object.values(config.routes)) {
