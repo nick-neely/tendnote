@@ -50,11 +50,42 @@ export function createDraftLifecycle(store: DraftLifecycleStore) {
     const draft = await requireDraft(input);
     const status = resolveMessageDraftTransition(draft.status, action);
 
-    const updated = await store.updateDraft({
-      ownerUserId: input.ownerUserId,
-      draftId: draft.id,
-      patch: { status },
-    });
+    // Only `approve` authorizes an external Gmail export, so only it needs the
+    // optimistic-concurrency guard: the write flips to `approved` ONLY IF the
+    // persisted body still equals the body this transition just read. If a
+    // concurrent `editDraftBody` changed the body between that read and this write,
+    // approving unconditionally would stamp authorization onto text the user never
+    // reviewed (the shared Gmail gate authorizes on `status === "approved"` and the
+    // service reads the CURRENT body). The guard is applied atomically INSIDE the
+    // store's single UPDATE (`expectedBody`); on a body mismatch the store matches no
+    // row and returns null, and we refuse below without writing an audit entry.
+    //
+    // `dismiss`/`mark_sent_manually` authorize nothing external, so they write
+    // unconditionally exactly as before and can never return null here.
+    const updated =
+      action === "approve"
+        ? await store.updateDraft({
+            ownerUserId: input.ownerUserId,
+            draftId: draft.id,
+            patch: { status },
+            expectedBody: draft.body,
+          })
+        : await store.updateDraft({
+            ownerUserId: input.ownerUserId,
+            draftId: draft.id,
+            patch: { status },
+          });
+
+    if (!updated) {
+      // Reachable only on the guarded `approve` path: the row exists (requireDraft
+      // passed) but its body changed since we read it. A state refusal, not a
+      // not-found — the record is fine, it simply moved on and must be re-reviewed
+      // before approval can authorize an export. Rendered to the model as itself
+      // (a curated domain failure), unlike the opaque not-found sentinel.
+      throw new MessageDraftValidationError(
+        "This draft changed since it was read and cannot be approved. Review the current wording and approve it again.",
+      );
+    }
 
     await store.createAuditLogEntry({
       ownerUserId: input.ownerUserId,

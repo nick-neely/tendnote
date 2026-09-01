@@ -96,6 +96,92 @@ describe("draft lifecycle transitions", () => {
       ctx.lifecycle.approveDraft({ ownerUserId: OWNER, draftId: draft.id }),
     ).rejects.toThrow();
   });
+
+  it("approves the exact body it read (guard passes when the body is unchanged)", async () => {
+    const draft = await ctx.store.createDraft(draftInput(ctx.person));
+
+    // No concurrent edit: the persisted body still equals what approve reads, so the
+    // optimistic-concurrency guard matches the row and approval lands.
+    const approved = await ctx.lifecycle.approveDraft({ ownerUserId: OWNER, draftId: draft.id });
+
+    expect(approved.status).toBe("approved");
+    expect(approved.body).toBe(draft.body);
+    expect(await ctx.auditActions()).toContain("message_draft.approve");
+  });
+
+  it("refuses to approve a draft whose body changed between the approve's read and write (TOCTOU)", async () => {
+    const draft = await ctx.store.createDraft(draftInput(ctx.person));
+
+    // Simulate a concurrent editDraftBody that commits AFTER approveDraft's pre-read:
+    // requireDraft hands back the stale (original) body while the persisted row has
+    // already moved to a body the user never approved. If the approve wrote
+    // `approved` unconditionally, the Gmail gate would then authorize exporting that
+    // unreviewed revision. The store's expectedBody guard must match no row and the
+    // lifecycle must refuse.
+    const racyStore: InMemoryDraftLifecycleStore = {
+      ...ctx.store,
+      async getDraft(input) {
+        const current = await ctx.store.getDraft(input);
+        if (!current) {
+          return current;
+        }
+        // The persisted row races forward to an unapproved revision the instant
+        // after this stale snapshot is read.
+        await ctx.store.updateDraft({
+          ownerUserId: input.ownerUserId,
+          draftId: input.draftId,
+          patch: { body: "Injected revision that raced in after the approve read." },
+        });
+        return current;
+      },
+    };
+    const racyLifecycle = createDraftLifecycle(racyStore);
+
+    await expect(
+      racyLifecycle.approveDraft({ ownerUserId: OWNER, draftId: draft.id }),
+    ).rejects.toThrow(/changed since it was read/i);
+
+    // The row is NOT left approved, and no spurious approve audit entry was written.
+    expect((await ctx.store.getDraft({ ownerUserId: OWNER, draftId: draft.id }))?.status).toBe(
+      "draft",
+    );
+    expect(await ctx.auditActions()).not.toContain("message_draft.approve");
+  });
+});
+
+describe("approve optimistic-concurrency guard (store seam)", () => {
+  // The store applies the `expectedBody` guard atomically in its single UPDATE: the
+  // patch lands only if the row's CURRENT body still equals what was read, and a
+  // mismatch returns null so the caller distinguishes "body changed" from success.
+  it("applies the patch when the body still matches", async () => {
+    const draft = await ctx.store.createDraft(draftInput(ctx.person));
+
+    const updated = await ctx.store.updateDraft({
+      ownerUserId: OWNER,
+      draftId: draft.id,
+      patch: { status: "approved" },
+      expectedBody: draft.body,
+    });
+
+    expect(updated?.status).toBe("approved");
+  });
+
+  it("returns null and writes nothing when the body no longer matches", async () => {
+    const draft = await ctx.store.createDraft(draftInput(ctx.person));
+
+    const result = await ctx.store.updateDraft({
+      ownerUserId: OWNER,
+      draftId: draft.id,
+      patch: { status: "approved" },
+      expectedBody: "A body the row never had.",
+    });
+
+    expect(result).toBeNull();
+    // The row is untouched: still a draft, still the original body.
+    const persisted = await ctx.store.getDraft({ ownerUserId: OWNER, draftId: draft.id });
+    expect(persisted?.status).toBe("draft");
+    expect(persisted?.body).toBe(draft.body);
+  });
 });
 
 describe("draft editing", () => {

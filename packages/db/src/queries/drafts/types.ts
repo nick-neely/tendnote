@@ -8,6 +8,32 @@ import type {
 export type MessageDraftPatch = Partial<Pick<MessageDraft, "body" | "status">>;
 
 /**
+ * A bounded update against one owner-scoped draft row.
+ *
+ * `revertApprovalToDraft` and `expectedBody` are the two atomic concurrency guards
+ * for the stale-approval class of bug (security). They are independent: the edit
+ * side sets the former, the approve side sets the latter, and neither surface uses
+ * both at once.
+ *
+ * - `revertApprovalToDraft` (edit side): force `status = draft` iff the row is
+ *   CURRENTLY `approved`, in the SAME statement as the patch, so a concurrent
+ *   approval cannot survive a body edit.
+ * - `expectedBody` (approve side): apply the patch ONLY IF the row's CURRENT body
+ *   still equals this value. It is the optimistic-concurrency guard that binds an
+ *   approval to the exact body it was granted against: if a concurrent edit changed
+ *   the body since the approve read it, the guarded statement matches no row and the
+ *   store returns `null`, so the approve is refused instead of stamping `approved`
+ *   onto text the user never reviewed and letting the Gmail gate export it.
+ */
+export type UpdateDraftInput = {
+  ownerUserId: string;
+  draftId: string;
+  patch: MessageDraftPatch;
+  revertApprovalToDraft?: boolean;
+  expectedBody?: string;
+};
+
+/**
  * Postgres-owned persistence seam for Tendnote message drafts (PRD #75, issue
  * #76). This is the shared foundation every later slice calls — the generator
  * (#77), the web review surface (#78), and the Eve tools (#80) — so no surface
@@ -35,21 +61,19 @@ export type DraftStore = {
     statuses?: MessageDraftStatus[];
   }) => Promise<MessageDraft[]>;
   // Applies a bounded body/status patch. The persisted source-reference grounding
-  // contract is never mutated here (PRD: editing body preserves grounding).
+  // contract is never mutated here (PRD: editing body preserves grounding). See
+  // `UpdateDraftInput` for the two atomic concurrency guards.
   //
-  // `revertApprovalToDraft` closes a TOCTOU on the stale-approval fix (security):
-  // when set, the store atomically forces `status = draft` iff the row is CURRENTLY
-  // `approved`, in the SAME statement as the patch — never from a prior read — so a
-  // concurrent approval cannot survive a body edit and carry unreviewed text out to
-  // Gmail. Only `approved -> draft`; `dismissed`/`sent_manually`/`draft` are left as
-  // they are. The returned draft reflects the persisted status, so callers derive
-  // whether a reversion happened from it.
-  updateDraft: (input: {
-    ownerUserId: string;
-    draftId: string;
-    patch: MessageDraftPatch;
-    revertApprovalToDraft?: boolean;
-  }) => Promise<MessageDraft>;
+  // Overloaded on the `expectedBody` optimistic-concurrency guard: without it the
+  // update either succeeds or throws the not-found sentinel (unchanged behaviour);
+  // WITH it, a `null` return means the guard excluded the row — the draft's body
+  // changed since it was read — which the caller must surface as a re-review refusal
+  // rather than as a missing record. Every existing (unguarded) caller keeps a
+  // non-null `MessageDraft`.
+  updateDraft: {
+    (input: UpdateDraftInput & { expectedBody: string }): Promise<MessageDraft | null>;
+    (input: UpdateDraftInput): Promise<MessageDraft>;
+  };
 };
 
 /**
