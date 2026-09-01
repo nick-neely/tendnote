@@ -527,12 +527,28 @@ describe("external CLA enforcement contract", () => {
     const config = readJson<{
       enforcement: {
         claAssistantAllowlist: string[];
+        claAssistantAllowlistPolicy?: { scope: string };
         maintainerOverride: boolean;
       };
       routes: Record<string, { bypass: boolean; statusRequirement: string }>;
     }>(configPath);
 
-    expect(config.enforcement.claAssistantAllowlist).toEqual([]);
+    // The allowlist is a bounded carve-out for automation accounts that can
+    // never satisfy the gate (they hold no copyright and cannot sign). It must
+    // never bypass a human: every entry is an enumerated `[bot]` login, and a
+    // wildcard would let an unknown account slip the gate.
+    const allowlist = config.enforcement.claAssistantAllowlist;
+    for (const entry of allowlist) {
+      expect(entry.endsWith("[bot]")).toBe(true);
+      expect(entry).not.toContain("*");
+    }
+    expect(new Set(allowlist).size).toBe(allowlist.length);
+    // If any bot is allowlisted, the rationale/constraints must be documented.
+    if (allowlist.length > 0) {
+      expect(config.enforcement.claAssistantAllowlistPolicy?.scope).toBe(
+        "trusted automation bots only",
+      );
+    }
     expect(config.enforcement.maintainerOverride).toBe(true);
     for (const route of Object.values(config.routes)) {
       expect(route.bypass).toBe(false);

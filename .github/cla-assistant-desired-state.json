@@ -51,7 +51,21 @@
       }
     ],
     "requiresPostUpdateVerification": true,
-    "claAssistantAllowlist": [],
+    "claAssistantAllowlist": ["dependabot[bot]", "dependabot-preview[bot]"],
+    "claAssistantAllowlistPolicy": {
+      "scope": "trusted automation bots only",
+      "rationale": "A machine account cannot hold copyright in a contribution and cannot execute a CLA, so the individual/employer/corporate routes are meaningless for it. Automated dependency bumps carry no copyrightable authorship. Exempting these accounts removes a gate that can never be satisfied; it is not a bypass of the human contribution gate. The runbook's prohibition on allowlists targets HUMAN contributors gaining an undocumented bypass.",
+      "constraints": [
+        "Enumerate specific bot logins only; never a wildcard (no `*[bot]`, no `*`).",
+        "Never add a human contributor to this allowlist under any route.",
+        "Add a bot only if it opens pull requests whose commits it authors AND it cannot sign a CLA (review-only bots such as code-review assistants author no commits and need no entry).",
+        "Human-authored commits inside an otherwise-bot PR are not exempted; the CLA gate still applies to the human author."
+      ],
+      "entries": {
+        "dependabot[bot]": "GitHub Dependabot; automated dependency and GitHub Actions version bumps (.github/dependabot.yml).",
+        "dependabot-preview[bot]": "Legacy Dependabot identity; retained so a bump attributed to it is covered."
+      }
+    },
     "maintainerOverride": true,
     "maintainerOverrideScope": "repository administrators may consciously bypass pull-request rules; this is not an automatic CLA exemption"
   },

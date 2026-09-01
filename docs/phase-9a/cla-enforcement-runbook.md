@@ -58,8 +58,13 @@ GitHub account:
    `.github/cla-assistant-desired-state.json`. Stop if either differs.
 5. Link the Gist to `nick-neely/tendnote` in the CLA Assistant dashboard. Use
    the hosted service's current GitHub App flow and requested permissions; do
-   not substitute an unreviewed Action, DCO check, allowlist, or maintainer
-   exception.
+   not substitute an unreviewed Action, DCO check, a human-contributor
+   allowlist, or a maintainer exception for the human contribution gate. A
+   bounded automation-bot allowlist is a separate, permitted carve-out — see
+   [Automation-bot allowlist](#automation-bot-allowlist).
+6. Set the dashboard allowlist to exactly the bot logins in
+   `.github/cla-assistant-desired-state.json` → `enforcement.claAssistantAllowlist`
+   (currently `dependabot[bot]`, `dependabot-preview[bot]`), and nothing else.
 
 The linked agreement Gist is canonical: retain it as the dashboard's source of
 truth, and do not create a second hosted agreement to stand in for it. The
@@ -272,10 +277,46 @@ disposable files under `CLA_WORKDIR`:
 4. Re-query ruleset `19995472` and verify that the observed CLA context and
    its integration ID remain required
    alongside `Verify`, `Full CI qualification`, and `Vercel`.
-5. Do not remove the CLA requirement, add an allowlist, broaden or silently use
-   the documented repository-admin bypass, or claim live qualification if any
-   case was skipped, accepted by an operator, or recorded with private data.
+5. Do not remove the CLA requirement, add a human contributor to an allowlist,
+   broaden or silently use the documented repository-admin bypass, or claim live
+   qualification if any case was skipped, accepted by an operator, or recorded
+   with private data. The bounded automation-bot allowlist below is the one
+   permitted exception and applies to no human.
 
 The repository is not live-proof qualified until the owner has completed these
 identity-bound steps and attached the redacted, schema-valid evidence to the
 publication review. This runbook itself is not evidence of a hosted result.
+
+## Automation-bot allowlist
+
+The prohibition on allowlists exists to stop a **human** contributor from
+gaining an undocumented bypass of the contribution gate. It does not extend to
+automation accounts, which the gate can never legitimately clear: a machine
+account holds no copyright in a contribution and cannot execute any of the
+individual, employer, or corporate agreements, and automated dependency or
+Action version bumps carry no copyrightable authorship. Requiring a CLA of such
+an account is a check that can never pass, not a protection.
+
+A narrow, enumerated allowlist of trusted automation bots is therefore
+permitted and is not the bypass this runbook forbids. It is governed by
+`.github/cla-assistant-desired-state.json` →
+`enforcement.claAssistantAllowlistPolicy`, which is authoritative for the rules:
+
+- Enumerate specific bot logins only — never a wildcard (`*[bot]`, `*`).
+- Never add a human under any route; the human gate is unchanged.
+- Add a bot only if it authors the commits in the PRs it opens and cannot sign a
+  CLA. Review-only bots (code-review assistants, status reporters) author no
+  commits and get no entry.
+- A human-authored commit inside an otherwise-bot PR is still gated on that
+  human.
+
+Current entries: `dependabot[bot]`, `dependabot-preview[bot]`.
+
+**Applying it (owner, in the hosted dashboard — the manifest does not configure
+the live service):** in the CLA Assistant owner dashboard, set the contributor
+allowlist to exactly these logins (comma-separated), matching the manifest, and
+nothing else. After saving, re-check an open bot pull request (comment
+`@cla-assistant[bot] check` on it, or push a trivial rebase) so the
+`license/cla` status re-evaluates to passing for the allowlisted author. Keep
+the dashboard allowlist and the manifest in lockstep; a diff between them is a
+review finding.
