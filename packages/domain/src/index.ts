@@ -61,6 +61,7 @@ export * from "./privacy";
 export * from "./prompt-nudges";
 export * from "./provider-connection-catalog";
 export * from "./provider-connections";
+export * from "./push-endpoint";
 export * from "./record-surfacing";
 export * from "./relationship-shares";
 export * from "./reminders";

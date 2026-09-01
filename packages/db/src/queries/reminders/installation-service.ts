@@ -4,6 +4,7 @@ import {
   type ReminderInstallationSummary,
   reminderPushSubscriptionSchema,
 } from "@tendnote/domain/reminders";
+import { checkPushEndpointDestination, type PushEndpointCheck } from "./push-endpoint";
 import type { ReminderStore } from "./types";
 
 type InstallationJobCreator = (values: {
@@ -29,7 +30,17 @@ function toReminderInstallationSummary(
 export function createReminderInstallationService(input: {
   store: ReminderStore;
   createInstallationJobs: InstallationJobCreator;
+  /**
+   * Decides whether a subscription's endpoint is somewhere this server may
+   * later POST to, unattended. Defaults to the resolving check rather than to
+   * "yes", because the caller of this service is a Server Action and a Server
+   * Action's arguments are whatever the caller wrote, not whatever the browser's
+   * `PushManager` produced.
+   */
+  checkPushEndpoint?: PushEndpointCheck;
 }) {
+  const checkPushEndpoint = input.checkPushEndpoint ?? checkPushEndpointDestination;
+
   async function disableInstallation(values: {
     ownerUserId: string;
     installationId: string;
@@ -122,6 +133,16 @@ export function createReminderInstallationService(input: {
         throw new Error("Reminder registration requires a fresh explicit opt-in.");
       }
       const subscription = reminderPushSubscriptionSchema.parse(values.subscription);
+      /**
+       * A destination we can prove is off limits never reaches storage. One we
+       * merely could not resolve does: a name that does not answer cannot be
+       * reached, the mandatory control is at delivery - where the endpoint is
+       * resolved again and the socket is pinned to what passed - and failing
+       * registration on a resolver hiccup would cost a real subscriber their
+       * reminders to buy nothing.
+       */
+      const destination = await checkPushEndpoint(subscription.endpoint);
+      if (destination.status === "blocked") throw new Error(destination.reason);
       const installation = await input.store.upsertInstallation({
         ownerUserId: values.ownerUserId,
         clientInstallationId: values.clientInstallationId,
