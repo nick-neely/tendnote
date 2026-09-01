@@ -113,4 +113,75 @@ describe("Google Gmail draft adapter", () => {
     );
     expect(raw).toMatch(/Subject: =\?UTF-8\?B\?/);
   });
+
+  it("splits a long non-ASCII subject into RFC 2047 encoded-words each within the 75-char limit", async () => {
+    const { impl, calls } = fakeFetch({ body: { id: "d" } });
+    const adapter = createGoogleGmailDraftAdapter({
+      getAccessToken: async () => "t",
+      fetchImpl: impl,
+      baseUrl: "https://gmail.test/gmail/v1",
+    });
+
+    // A previously mishandled case: a long accented subject produced ONE ~1300-char
+    // encoded-word, exceeding RFC 2047's 75-char limit. It must now fold.
+    const subject = "Feliz cumpleaños ".repeat(40).trim();
+    await adapter.createDraft({ ownerUserId: OWNER, to: "a@b.com", subject, body: "b" });
+    const raw = decodeRaw(
+      (JSON.parse(String(calls[0]?.init?.body)) as { message: { raw: string } }).message.raw,
+    );
+
+    // Every encoded-word stays within the RFC 2047 limit, and decoding the words
+    // reconstructs the original subject exactly.
+    const words = raw.match(/=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=/g) ?? [];
+    expect(words.length).toBeGreaterThan(1);
+    for (const word of words) {
+      expect(word.length).toBeLessThanOrEqual(75);
+    }
+    const decoded = words
+      .map((w) =>
+        Buffer.from(w.slice("=?UTF-8?B?".length, -"?=".length), "base64").toString("utf8"),
+      )
+      .join("");
+    expect(decoded).toBe(subject);
+  });
+
+  it("refuses a subject that carries a CRLF, so no header can be injected", async () => {
+    const { impl, calls } = fakeFetch({ body: { id: "d" } });
+    const adapter = createGoogleGmailDraftAdapter({
+      getAccessToken: async () => "t",
+      fetchImpl: impl,
+      baseUrl: "https://gmail.test/gmail/v1",
+    });
+
+    await expect(
+      adapter.createDraft({
+        ownerUserId: OWNER,
+        to: "a@b.com",
+        subject: "Hi\r\nBcc: attacker@evil.example\r\nReply-To: attacker@evil.example",
+        body: "secret body",
+      }),
+    ).rejects.toThrow(/control character/i);
+    // The write never reached the provider — no draft with injected headers exists.
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a recipient that carries a CRLF, so no header can be injected", async () => {
+    const { impl, calls } = fakeFetch({ body: { id: "d" } });
+    const adapter = createGoogleGmailDraftAdapter({
+      getAccessToken: async () => "t",
+      fetchImpl: impl,
+      baseUrl: "https://gmail.test/gmail/v1",
+    });
+
+    await expect(
+      adapter.updateDraft({
+        ownerUserId: OWNER,
+        to: "a@b.com\r\nBcc: attacker@evil.example",
+        subject: "Hi",
+        body: "secret body",
+        gmailDraftId: "gmail-draft-1",
+      }),
+    ).rejects.toThrow(/control character/i);
+    expect(calls).toHaveLength(0);
+  });
 });

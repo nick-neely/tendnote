@@ -1,5 +1,6 @@
 import type { CreateMessageDraftInput, Person } from "@tendnote/domain";
 import { beforeEach, describe, expect, it } from "vitest";
+import { createGmailApprovalGate } from "../gmail-drafts/gate";
 import { createInMemoryDraftLifecycleStore } from "./in-memory-store";
 import { createDraftLifecycle } from "./lifecycle";
 import type { InMemoryDraftLifecycleStore } from "./types";
@@ -131,6 +132,59 @@ describe("draft editing", () => {
     await expect(
       ctx.lifecycle.editDraftBody({ ownerUserId: OWNER, draftId: draft.id, body: "new text" }),
     ).rejects.toThrow();
+  });
+
+  it("keeps an edited draft-status draft in draft (no spurious approval)", async () => {
+    const draft = await ctx.store.createDraft(draftInput(ctx.person));
+
+    const edited = await ctx.lifecycle.editDraftBody({
+      ownerUserId: OWNER,
+      draftId: draft.id,
+      body: "A revision of an unapproved draft.",
+    });
+
+    expect(edited.status).toBe("draft");
+  });
+
+  it("revokes approval when an approved draft's body is edited, so the stale approval cannot export the revision", async () => {
+    const draft = await ctx.store.createDraft(draftInput(ctx.person));
+    const approved = await ctx.lifecycle.approveDraft({ ownerUserId: OWNER, draftId: draft.id });
+    expect(approved.status).toBe("approved");
+
+    const edited = await ctx.lifecycle.editDraftBody({
+      ownerUserId: OWNER,
+      draftId: draft.id,
+      // A body the user never read or approved (as a prompt injection would supply).
+      body: "Injected replacement the user never approved.",
+    });
+
+    // The edit atomically returns the draft to unapproved and records the reversion.
+    expect(edited.status).toBe("draft");
+    expect(await ctx.auditActions()).toContain("message_draft.edit");
+
+    // End to end: the SHARED Gmail approval gate, reading the current persisted
+    // status, now blocks the external write — the prior approval cannot carry the
+    // revised body out to Gmail. Re-approval is required first.
+    const authorize = createGmailApprovalGate({
+      isConnected: async () => true,
+      getDraftStatus: async ({ ownerUserId, draftId }) =>
+        (await ctx.store.getDraft({ ownerUserId, draftId }))?.status ?? null,
+    });
+    const gate = await authorize({
+      ownerUserId: OWNER,
+      messageDraftId: draft.id,
+      kind: "create",
+      recipient: { email: "casey@example.com", source: "manual_entry", contactMethodId: null },
+      subject: "Hi",
+    });
+    expect(gate.ok).toBe(false);
+    if (!gate.ok) {
+      expect(gate.reason).toMatch(/approve/i);
+    }
+
+    // Re-approving the reviewed revision restores the ability to export.
+    const reapproved = await ctx.lifecycle.approveDraft({ ownerUserId: OWNER, draftId: draft.id });
+    expect(reapproved.status).toBe("approved");
   });
 });
 

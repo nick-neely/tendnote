@@ -90,6 +90,15 @@ export function createDraftLifecycle(store: DraftLifecycleStore) {
     /**
      * Edits the draft body in place. The persisted source-reference grounding is
      * never touched, so the draft stays explainable after the user rewrites it.
+     *
+     * Editing an APPROVED draft revokes the approval atomically: the same write that
+     * replaces the body also returns the status to `draft`. Approval is readiness for
+     * the exact text the user reviewed, and the shared Gmail gate authorizes an
+     * external write purely on `status === "approved"` while the Gmail service reads
+     * the CURRENT persisted body — so without this revert, a revised (unapproved) body
+     * could be exported to Gmail on the strength of the prior approval (a stale
+     * authorization a prompt injection could exploit). Reverting forces the user to
+     * re-approve the new wording before it can leave Tendnote.
      */
     async editDraftBody(input: EditDraftBodyInput): Promise<MessageDraft> {
       const draft = await requireDraft(input);
@@ -103,10 +112,11 @@ export function createDraftLifecycle(store: DraftLifecycleStore) {
         throw new MessageDraftValidationError("A draft edit must change the body.");
       }
 
+      const revokesApproval = draft.status === "approved";
       const updated = await store.updateDraft({
         ownerUserId: input.ownerUserId,
         draftId: draft.id,
-        patch: { body },
+        patch: revokesApproval ? { body, status: "draft" } : { body },
       });
 
       await store.createAuditLogEntry({
@@ -114,7 +124,13 @@ export function createDraftLifecycle(store: DraftLifecycleStore) {
         action: "message_draft.edit",
         entityType: "message_draft",
         entityId: updated.id,
-        metadataJson: { personId: updated.personId },
+        metadataJson: revokesApproval
+          ? {
+              personId: updated.personId,
+              previousStatus: draft.status,
+              status: updated.status,
+            }
+          : { personId: updated.personId },
       });
 
       return updated;

