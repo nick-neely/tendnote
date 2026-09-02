@@ -82,7 +82,13 @@
       // thresholds, so the score was measuring the absence of unit coverage that
       // the file exists specifically to do without. Same reason as the line above:
       // a verification utility, not runtime product code.
-      "packages/db/src/household-purge-live-check.ts"
+      "packages/db/src/household-purge-live-check.ts",
+      // Same shape, same reason: the Assistant conversation owner-scoping live
+      // check (`pnpm --filter @tendnote/db db:assistant-conversations:check`)
+      // proves against a real Postgres that a pre-claimed session id resists the
+      // other account's writes. Deliberately not in the suite; its CRAP score is
+      // the absence of unit coverage the file exists to do without.
+      "packages/db/src/assistant-conversations-live-check.ts"
     ]
   },
   "audit": {
