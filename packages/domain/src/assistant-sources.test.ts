@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sourcesFromToolOutput } from "../agent/lib/sources";
+import { sourcesFromToolOutput } from "./assistant-sources";
 
 /**
  * One Exa success as it reaches `part.output`: the gateway's default web search
@@ -76,6 +76,15 @@ describe("web_search sources", () => {
     ).toEqual([{ url: "https://example.com/a", title: "A", publishedAt: "2025-01-01" }]);
   });
 
+  it("reads the bare array shape Anthropic's native backend returns", () => {
+    expect(
+      sourcesFromToolOutput("web_search", [
+        { title: null, type: "web_search_result", url: "https://www.example.org/a" },
+      ]),
+      // No title, so the hostname stands in - and the bare `www.` is not a name.
+    ).toEqual([{ title: "example.org", url: "https://www.example.org/a" }]);
+  });
+
   it("drops every URL a citation must not become an anchor for", () => {
     expect(
       sourcesFromToolOutput("web_search", {
@@ -105,6 +114,16 @@ describe("web_search sources", () => {
     expect(sources).toHaveLength(10);
     expect(sources[0]).toEqual({ url: "https://example.com/a", title: "First" });
     expect(new Set(sources.map((source) => source.url)).size).toBe(10);
+  });
+
+  it("caps a long title rather than rendering it verbatim", () => {
+    const longTitle = "x".repeat(250);
+    const sources = sourcesFromToolOutput("web_search", {
+      results: [{ url: "https://example.com/long", title: longTitle }],
+    });
+
+    expect(sources[0]?.title).toHaveLength(200);
+    expect(sources[0]?.title.endsWith("…")).toBe(true);
   });
 });
 

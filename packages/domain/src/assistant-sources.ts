@@ -1,5 +1,5 @@
 /**
- * Citable sources, normalized out of raw tool output.
+ * Citable sources, normalized out of raw assistant tool output.
  *
  * The Assistant's sources strip needs `{url, title}` per turn, and the stream
  * carries no source part to read it from: eve's `EveMessagePart` union has no
@@ -7,10 +7,12 @@
  * only place a source ever exists is the `output` of a `dynamic-tool` part -
  * raw provider JSON for `web_search`, our own `execute` return for `web_fetch`.
  *
- * So this file is the one reading of those shapes. It is deliberately pure:
- * no eve import, no `@tendnote/db` import, no I/O, nothing that assumes a
- * server. The web app renders the same strip from the same `part.output`, and
- * a shape read two different ways in two places is a shape that will disagree.
+ * So this file is the one reading of those shapes, shared by both the agent
+ * (which never renders it, but must not drift from what the web app reads)
+ * and the web app (whose `turnSources` walks a message's parts through it). It
+ * is deliberately pure: no eve import, no `@tendnote/db` import, no I/O,
+ * nothing that assumes a server. A shape read two different ways in two
+ * places is a shape that will disagree.
  *
  * ## The shapes it handles
  *
@@ -32,9 +34,9 @@
  *
  * Parallel - the other gateway backend eve can be configured with - is close
  * enough to fold in here rather than to guess wrong about later: same
- * `results` array, `publishDate` instead of `publishedDate`. Native OpenAI,
- * Anthropic, and Google backends only apply to direct/BYO provider models,
- * which Tendnote does not use, and are not handled.
+ * `results` array, `publishDate` instead of `publishedDate`. Anthropic's
+ * native backend returns a bare array of `web_search_result` objects instead
+ * of a `results`-keyed object, so that shape is tolerated too.
  *
  * `web_fetch` is ours (`agent/tools/web_fetch.ts`), which returns
  * `{ content, contentType, truncated, url, source: { url, title, fetchedAt,
@@ -46,7 +48,7 @@
  */
 
 /** One citable source, in the shape the sources strip renders. */
-export type NormalizedSource = {
+export type AssistantSource = {
   readonly url: string;
   readonly title: string;
   /** ISO-8601 publication date when the provider reported one. */
@@ -61,6 +63,8 @@ const MAX_SOURCES = 10;
 
 /** Titles are chrome for a link, not content. */
 const MAX_TITLE_LENGTH = 200;
+
+const WEB_SOURCE_TOOLS = new Set(["web_search", "web_fetch"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -106,7 +110,7 @@ function readTitle(value: unknown, url: string): string {
   return title.length > MAX_TITLE_LENGTH ? `${title.slice(0, MAX_TITLE_LENGTH - 1)}…` : title;
 }
 
-function toSource(entry: unknown): NormalizedSource | undefined {
+function toSource(entry: unknown): AssistantSource | undefined {
   if (!isRecord(entry)) return undefined;
   const url = readSourceUrl(entry.url);
   if (url === undefined) return undefined;
@@ -122,17 +126,24 @@ function toSource(entry: unknown): NormalizedSource | undefined {
   };
 }
 
+/** The `results` array across every tolerated search shape. */
+function searchResults(output: unknown): unknown[] {
+  if (Array.isArray(output)) return output;
+  if (isRecord(output) && Array.isArray(output.results)) return output.results;
+  return [];
+}
+
 /** Provider search results, in the order the provider ranked them. */
-function searchSources(output: unknown): NormalizedSource[] {
-  if (!isRecord(output)) return [];
-  // The error variant carries no `results`, so this same check covers it.
-  const results = output.results;
-  if (!Array.isArray(results)) return [];
-  return results.map(toSource).filter((source): source is NormalizedSource => source !== undefined);
+function searchSources(output: unknown): AssistantSource[] {
+  // The error variant carries no `results` (and is not itself an array), so
+  // this same traversal covers it: it simply yields no results to map.
+  return searchResults(output)
+    .map(toSource)
+    .filter((source): source is AssistantSource => source !== undefined);
 }
 
 /** The single page a fetch returned. */
-function fetchSources(output: unknown): NormalizedSource[] {
+function fetchSources(output: unknown): AssistantSource[] {
   if (!isRecord(output)) return [];
   const source = toSource(output.source);
   if (source !== undefined) return [source];
@@ -148,16 +159,13 @@ function fetchSources(output: unknown): NormalizedSource[] {
  * not recognise - a missing source strip is the correct rendering of "nothing
  * was cited", and a guessed one is not.
  */
-export function sourcesFromToolOutput(toolName: string, output: unknown): NormalizedSource[] {
-  const sources =
-    toolName === "web_search"
-      ? searchSources(output)
-      : toolName === "web_fetch"
-        ? fetchSources(output)
-        : [];
+export function sourcesFromToolOutput(toolName: string, output: unknown): AssistantSource[] {
+  if (!WEB_SOURCE_TOOLS.has(toolName)) return [];
+
+  const sources = toolName === "web_fetch" ? fetchSources(output) : searchSources(output);
 
   const seen = new Set<string>();
-  const deduped: NormalizedSource[] = [];
+  const deduped: AssistantSource[] = [];
   for (const source of sources) {
     if (seen.has(source.url)) continue;
     seen.add(source.url);
