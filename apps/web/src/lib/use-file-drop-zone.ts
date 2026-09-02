@@ -35,7 +35,7 @@ function carriesFiles(transfer: DataTransfer | null): boolean {
  * understands, so a surface can pass the same list to both. An empty list
  * accepts everything.
  */
-export function matchesAccept(file: File, accept: readonly string[]): boolean {
+function matchesAccept(file: File, accept: readonly string[]): boolean {
   if (accept.length === 0) {
     return true;
   }
