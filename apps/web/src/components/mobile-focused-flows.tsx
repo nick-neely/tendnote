@@ -649,7 +649,7 @@ export function EveFlow({ children, onClose }: { children?: ReactNode; onClose: 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {children ?? (
           <div className="px-gutter py-4">
-            <MobileFailureState kind="eve" />
+            <MobileFailureState kind="assistant" />
           </div>
         )}
       </div>

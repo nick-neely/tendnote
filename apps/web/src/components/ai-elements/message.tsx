@@ -1,5 +1,19 @@
 "use client";
 
+/**
+ * AI Elements Message (https://elements.ai-sdk.dev/components/message).
+ *
+ * Local modifications, per the branch's registry rule:
+ * - `lucide-react` icons rerouted to `@/components/icons`.
+ * - `MessageContent` drops upstream's `is-user:dark` and takes Tendnote's own
+ *   user-bubble fill (see the comment there).
+ * - `MessageContent` is set on the Body step of the fixed type scale
+ *   (`--text-body`, 15/24) instead of the registry's `text-sm` (14/20). This is
+ *   the product's primary reading surface and DESIGN.md §4 fixes the scale; 20px
+ *   leading here was tighter than any other prose in the app.
+ * - `MessageResponse` adds paragraph rhythm to Streamdown's margin-less blocks.
+ */
+
 import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
@@ -38,7 +52,7 @@ export const MessageContent = ({ children, className, ...props }: MessageContent
       // dark palette to sit on its `bg-secondary` fill. Tendnote's bubble is a
       // light sage tint in both themes, so the variant is dropped — keeping it
       // would put dark-mode ink on a light ground.
-      "flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
+      "flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-[length:var(--text-body)] leading-[var(--text-body-line)]",
       // The user's own words sit in a quiet sage-tinted bubble — distinct from
       // the plain assistant text and from the bordered tool-result cards. A flat
       // neutral fill is invisible here because --secondary/--muted/--panel share

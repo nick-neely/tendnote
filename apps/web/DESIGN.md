@@ -270,13 +270,17 @@ header (never a card inside a sheet).
 
 1. **Activity disclosure** — one per turn, collapsed once finished. It holds the
    model's reasoning summary and each tool call as a labelled step ("Searching
-   people", "Loading Priya's context") with pending / active / complete state and
-   a one-line human summary where the result offers one. While streaming the
-   trigger reads "Working…" in the sanctioned `Shimmer` with the pulsing sage
-   dot; when done it reads "Thought for Ns" or "Worked for Ns", with N derived
-   from the durable stream timestamps so it survives reload and resume. Raw tool
-   names never appear outside the dev-only debug trace, and line-tier tool
-   results live only here — nothing trails under the answer.
+   people", "Loading Priya's context") in one of the two states the stream can
+   actually distinguish — active or complete — with a one-line human summary
+   where the result offers one. While streaming the trigger reads "Working…" in
+   the sanctioned `Shimmer` with the pulsing sage dot, and the reasoning body is
+   capped to a scrolling five-line viewport with a fade at the top so the answer
+   is not pushed off the panel; the cap comes off once the turn settles. When
+   done the trigger reads "Thought for Ns" or "Worked for Ns", with N derived
+   from the durable stream timestamps so it survives reload and resume. The app
+   never prints a raw tool name outside the dev-only debug trace — the model's
+   own reasoning text may name one, which is the model talking, not the chrome —
+   and line-tier tool results live only here, so nothing trails under the answer.
 2. **Answer** — markdown prose, one block per model step.
 3. **Result cards** — the trust-weighted cards (saved memory = sage/confirmed,
    logged context = neutral, tentative suggestion = clay) and the interactive
@@ -286,7 +290,9 @@ header (never a card inside a sheet).
    rest read-only; only a genuinely actionable, trust-bearing item earns buttons.
    Cards name the person and show the record's content; never surface a raw id.
 4. **Sources strip** — "Used N sources", collapsed, only when the turn searched or
-   fetched the web. Plain titled links, no favicons or previews.
+   fetched the web. Plain titled links with the bare domain in mono beside each
+   title, at most five shown behind a quiet "Show all N", no favicons or
+   previews.
 5. **Actions row** — ghost icon buttons revealed on hover / focus-within (always
    visible on coarse pointers): Copy, Retry. User turns get Edit, which loads the
    text back into the composer. No thumbs, share, or download.

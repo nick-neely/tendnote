@@ -36,7 +36,7 @@ export function EveSurface({ ownerUserId }: { ownerUserId: string }) {
   }, [attempt]);
 
   if (failed) {
-    return <MobileFailureState kind="eve" onRetry={() => setAttempt((value) => value + 1)} />;
+    return <MobileFailureState kind="assistant" onRetry={() => setAttempt((value) => value + 1)} />;
   }
   if (!context) {
     return (

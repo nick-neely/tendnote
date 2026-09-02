@@ -10,6 +10,17 @@ import { cn } from "@/lib/utils";
  * AI Elements Suggestion (https://elements.ai-sdk.dev/components/suggestion).
  * A horizontally scrollable row of one-click suggestion chips. Generic and
  * reusable — surfaces decide what each suggestion does on click.
+ *
+ * Local modifications, per the branch's registry rule:
+ * - `Suggestion`'s click handler is wrapped in `useCallback` so a chip does not
+ *   take a new identity on every parent render.
+ * - `children || suggestion` where upstream writes `children ?? suggestion`: an
+ *   empty string is not a label, and `??` would render a chip with no text.
+ *
+ * The `Suggestions` scroller is deliberately unused by the Assistant surfaces.
+ * Its `ScrollBar` is hidden, so a chip clipped at the column edge on a phone
+ * reads as broken rather than as scrollable; both the starters and the turn
+ * follow-ups wrap instead (`flex flex-wrap gap-2`) and use only `Suggestion`.
  */
 export type SuggestionsProps = ComponentProps<typeof ScrollArea>;
 

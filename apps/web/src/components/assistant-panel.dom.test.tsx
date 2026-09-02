@@ -742,6 +742,62 @@ it("closes the composer and offers a way forward when the session has ended", as
   expect(screen.getByText("Priya Shah works at a bakery.")).toBeDefined();
 });
 
+/**
+ * The words the ending overtook. They were never sent, and deleting them at the
+ * exact moment the session dies is the failure the queue exists to prevent - the
+ * user believes they are pending.
+ */
+it("keeps queued messages visible, and read-only, when the session ends", async () => {
+  render(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" surface="page" />);
+
+  await sendMessage("Mara adopted a cat");
+  await sendMessage("And she moved to Lisbon");
+  await waitFor(() => expect(screen.getByText("And she moved to Lisbon")).toBeDefined());
+
+  await act(async () => {
+    eve.failWith(
+      Object.assign(new Error("The session is no longer active."), {
+        code: "session_not_active",
+        status: 409,
+      }),
+    );
+  });
+
+  await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+  // Still there, still named, and plainly not going anywhere.
+  expect(screen.getByText("And she moved to Lisbon")).toBeDefined();
+  expect(screen.getByText("These weren't sent.")).toBeDefined();
+  // Send now would send into a session that refuses everything.
+  expect(screen.queryByRole("button", { name: "Send now" })).toBeNull();
+
+  // Remove still works, so the reader can clear the list once they are done with it.
+  await userEvent.click(screen.getByRole("button", { name: "Remove from the queue" }));
+  await waitFor(() => expect(screen.queryByText("And she moved to Lisbon")).toBeNull());
+});
+
+/**
+ * Reopening a thread the mount will not hand back ends it too. Eve retries the
+ * 404 for ~30s first, so by the time it arrives the answer is final - and a live
+ * composer over a session that can never take a message is the exact thing
+ * DESIGN.md §5 rules out.
+ */
+it("closes the composer when a resumed thread's stream is finally refused", async () => {
+  render(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" surface="page" />);
+
+  await act(async () => {
+    eve.failWith(
+      Object.assign(new Error("Session not found."), {
+        name: "ClientError",
+        status: 404,
+        body: '{"error":"Session not found.","ok":false}',
+      }),
+    );
+  });
+
+  await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+  expect(screen.getByText(/This conversation has ended/)).toBeDefined();
+});
+
 /** An outage is not an ending: the composer stays, because the next try may work. */
 it("keeps the composer when the failure is an ordinary outage", async () => {
   render(<AssistantPanel ownerUserId="owner-1" surface="page" />);

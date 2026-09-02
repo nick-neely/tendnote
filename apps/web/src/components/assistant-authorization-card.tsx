@@ -1,10 +1,10 @@
 "use client";
 
 import type { EveAuthorizationPart } from "eve/react";
-import { useEffect, useRef, useState } from "react";
 import { Body, Caption, ResultCard } from "@/components/assistant-result-card";
 import { CheckIcon, CopyIcon, ExternalLinkIcon, PlugIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
 
 /**
  * A mid-turn sign-in challenge, rendered instead of dropped.
@@ -18,44 +18,50 @@ import { Button } from "@/components/ui/button";
  * It reads as a tentative card because that is exactly what it is: nothing has
  * happened yet, and the next step is the owner's, taken deliberately, in a tab
  * they opened themselves. The URL is eve's own connect endpoint rather than
- * model output, but it still opens in a new tab with the referrer withheld —
- * this surface never hands a third party the page the reader was on.
+ * model output, but it goes through the same scheme guard the markdown renderer
+ * applies to a model-written link, and it opens in a new tab with the referrer
+ * withheld — this surface never hands a third party the page the reader was on.
  */
 
 /** Copies the device code and says so for a beat. */
 function CodeCopyButton({ code }: { code: string }) {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clipboard = useCopyToClipboard();
 
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
-
-  if (typeof navigator === "undefined" || !navigator.clipboard) {
+  if (!clipboard) {
     return null;
   }
 
   return (
     <Button
-      aria-label={copied ? "Code copied" : "Copy the code"}
+      aria-label={clipboard.copied ? "Code copied" : "Copy the code"}
       className="text-muted-foreground hover:text-primary"
-      onClick={() => {
-        void navigator.clipboard.writeText(code).then(() => {
-          setCopied(true);
-          if (timer.current) clearTimeout(timer.current);
-          timer.current = setTimeout(() => setCopied(false), 1500);
-        });
-      }}
+      onClick={() => clipboard.copy(code)}
       size="icon-sm"
       type="button"
       variant="ghost"
     >
-      {copied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
+      {clipboard.copied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
     </Button>
   );
+}
+
+/**
+ * The challenge URL, but only where a browser would treat it as an ordinary web
+ * address, and only over TLS.
+ *
+ * Today this is eve's own connect endpoint, so the guard is defence in depth
+ * rather than a live hole — but "the value is trustworthy today" is exactly the
+ * assumption a connector added later quietly breaks, and the cost of being wrong
+ * is a `javascript:` URL behind a button captioned "Open sign-in". Anything that
+ * does not pass keeps its place in the card as plain text, so the owner can still
+ * see where they were being sent.
+ */
+function safeChallengeHref(url: string): string | null {
+  try {
+    return new URL(url).protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
 }
 
 /** "expires in 4 minutes", or nothing when the stamp is missing or past. */
@@ -99,6 +105,7 @@ export function AssistantAuthorizationCard({
 
   const challenge = part.authorization;
   const expires = expiryLabel(challenge?.expiresAt, Date.now());
+  const signInHref = challenge?.url ? safeChallengeHref(challenge.url) : null;
 
   return (
     <ResultCard
@@ -117,13 +124,18 @@ export function AssistantAuthorizationCard({
           <CodeCopyButton code={challenge.userCode} />
         </div>
       ) : null}
-      {challenge?.url ? (
+      {signInHref ? (
         <Button asChild className="w-fit" size="sm" variant="default">
-          <a href={challenge.url} rel="noopener noreferrer" target="_blank">
+          <a href={signInHref} rel="noopener noreferrer" target="_blank">
             <ExternalLinkIcon aria-hidden />
             Open sign-in
           </a>
         </Button>
+      ) : null}
+      {challenge?.url && !signInHref ? (
+        <Body className="wrap-anywhere font-mono text-[length:var(--text-small)] text-muted-foreground">
+          {challenge.url}
+        </Body>
       ) : null}
       {expires ? <Caption>{expires}</Caption> : null}
     </ResultCard>

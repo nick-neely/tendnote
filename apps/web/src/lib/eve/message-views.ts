@@ -354,7 +354,7 @@ export type AssistantActivityStep = {
   readonly status: "active" | "complete";
 };
 
-/** A file Eve attached to the turn. */
+/** A file attached to a message, with the url eve resolved for it. */
 export type AssistantFilePart = Extract<EveMessagePart, { type: "file" }>;
 
 /**
@@ -379,7 +379,6 @@ export type AssistantTurnAnatomy = {
   readonly activity: readonly AssistantActivityStep[];
   readonly cards: readonly AssistantTurnCardUnit[];
   readonly authorizations: readonly EveAuthorizationPart[];
-  readonly files: readonly AssistantFilePart[];
 };
 
 function isReasoningPart(
@@ -426,8 +425,19 @@ export function messageAuthorizations(message: EveMessage): EveAuthorizationPart
   );
 }
 
-/** Files Eve attached to the turn. */
+/**
+ * Files carried by a message of the owner's own.
+ *
+ * Role-scoped because that is where the data actually is: eve builds a `file`
+ * part with a resolved `url` when it projects what the *user* sent, and an
+ * assistant turn's own attachments arrive as tool output instead. Collecting
+ * them from every role read as generic but rendered nothing, which made the
+ * attachment strip look wired up when it was reachable only in theory.
+ */
 export function messageFiles(message: EveMessage): AssistantFilePart[] {
+  if (message.role !== "user") {
+    return [];
+  }
   return message.parts.filter((part): part is AssistantFilePart => part.type === "file");
 }
 
@@ -484,7 +494,6 @@ export function messageTurnAnatomy(
     activity,
     authorizations: messageAuthorizations(message),
     cards,
-    files: messageFiles(message),
     reasoning: messageReasoning(message),
   };
 }

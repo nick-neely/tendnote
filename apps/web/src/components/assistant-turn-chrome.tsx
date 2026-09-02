@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Attachment,
   type AttachmentData,
@@ -10,8 +10,11 @@ import {
 import { MessageAction, MessageActions } from "@/components/ai-elements/message";
 import { Source, Sources, SourcesContent, SourcesTrigger } from "@/components/ai-elements/sources";
 import { CheckIcon, ChevronDownIcon, CopyIcon, PencilIcon, RotateCwIcon } from "@/components/icons";
+import { Button } from "@/components/ui/button";
 import type { AssistantFilePart } from "@/lib/eve/message-views";
-import type { AssistantSource } from "@/lib/eve/sources";
+import { type AssistantSource, sourceRows } from "@/lib/eve/sources";
+import { HOVER_REVEAL } from "@/lib/hover-reveal";
+import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,47 +27,22 @@ import { cn } from "@/lib/utils";
  * device there is no hover to reveal them with, so they are simply always there.
  */
 
-/** Reveal-on-hover, always visible where hovering is not a thing. */
-const HOVER_REVEAL =
-  "opacity-0 transition-opacity duration-150 ease-(--motion-ease-out) group-hover/turn:opacity-100 group-focus-within/turn:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100";
-
 /**
- * Copies text and says so for a beat. `navigator.clipboard` is absent over plain
- * HTTP and in older embedded webviews, so the control simply does not render
- * rather than offering a button that silently does nothing.
+ * The rows the strip shows before the reader asks for the rest. Five is the
+ * point where a footnote starts to read as a results page.
  */
-function useCopyToClipboard(): { copied: boolean; copy: (text: string) => void } | null {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
-
-  if (typeof navigator === "undefined" || !navigator.clipboard) {
-    return null;
-  }
-
-  return {
-    copied,
-    copy: (text: string) => {
-      void navigator.clipboard.writeText(text).then(() => {
-        setCopied(true);
-        if (timer.current) clearTimeout(timer.current);
-        timer.current = setTimeout(() => setCopied(false), 1500);
-      });
-    },
-  };
-}
+const VISIBLE_SOURCES = 5;
 
 /**
  * The actions on a finished assistant turn: take the answer with you, or ask for
  * it again. No thumbs, no share, no download — the transcript is not the record
  * (ADR 0029), and rating the assistant is not a thing this product asks of
  * anyone.
+ *
+ * Copy is offered only when there are words to copy. A turn that answered purely
+ * in cards — a capture that saved a memory and said nothing — has an empty
+ * `answer`, and a Copy button there puts an empty clipboard behind a
+ * confirmation tick.
  */
 export function AssistantTurnActions({
   answer,
@@ -76,21 +54,22 @@ export function AssistantTurnActions({
   retryDisabled: boolean;
 }) {
   const clipboard = useCopyToClipboard();
+  const copyable = answer.trim().length > 0 ? clipboard : null;
 
-  if (!clipboard && !onRetry) {
+  if (!copyable && !onRetry) {
     return null;
   }
 
   return (
     <MessageActions className={cn("-ml-1.5", HOVER_REVEAL)}>
-      {clipboard ? (
+      {copyable ? (
         <MessageAction
           className="text-muted-foreground hover:text-primary"
-          onClick={() => clipboard.copy(answer)}
+          onClick={() => copyable.copy(answer)}
           size="icon"
-          tooltip={clipboard.copied ? "Copied" : "Copy answer"}
+          tooltip={copyable.copied ? "Copied" : "Copy answer"}
         >
-          {clipboard.copied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
+          {copyable.copied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
         </MessageAction>
       ) : null}
       {onRetry ? (
@@ -135,21 +114,34 @@ export function AssistantUserTurnActions({ onEdit }: { onEdit: () => void }) {
  * There is no source part in the stream, so these are synthesized from the two
  * tools that reach the open web (see `lib/eve/sources.ts`). No favicons: a
  * favicon is a request to the site the moment the turn paints, which is the same
- * silent egress the markdown renderer refuses for images.
+ * silent egress the markdown renderer refuses for images. The domain carries the
+ * distinguishing work instead, in mono because it is a machine fact — without it
+ * a ten-row strip is ten interchangeable titles, two of which are often the
+ * same words.
+ *
+ * The registry's `Source` hardcodes its layout classes *before* spreading props,
+ * so a `className` replaces them rather than adding to them. Every class this
+ * anchor needs is therefore spelled out here, and the children are passed
+ * explicitly so the default icon branch never runs.
  */
 export function AssistantTurnSources({ sources }: { sources: readonly AssistantSource[] }) {
-  if (sources.length === 0) {
+  const rows = useMemo(() => sourceRows(sources), [sources]);
+  const [expanded, setExpanded] = useState(false);
+
+  if (rows.length === 0) {
     return null;
   }
+
+  const shown = expanded ? rows : rows.slice(0, VISIBLE_SOURCES);
 
   return (
     <Sources className="mb-0 text-[length:var(--text-small)]">
       <SourcesTrigger
         className="group text-muted-foreground transition-colors hover:text-primary"
-        count={sources.length}
+        count={rows.length}
       >
         <span className="font-medium">
-          Used {sources.length} {sources.length === 1 ? "source" : "sources"}
+          Used {rows.length} {rows.length === 1 ? "source" : "sources"}
         </span>
         <ChevronDownIcon
           aria-hidden
@@ -157,24 +149,39 @@ export function AssistantTurnSources({ sources }: { sources: readonly AssistantS
         />
       </SourcesTrigger>
       <SourcesContent className="max-w-full">
-        {sources.map((source) => (
+        {shown.map((row) => (
           <Source
-            className="max-w-full items-baseline text-muted-foreground transition-colors hover:text-primary"
-            href={source.url}
-            key={source.url}
+            className="flex max-w-full items-baseline gap-2 text-muted-foreground transition-colors hover:text-primary"
+            href={row.url}
+            key={row.url}
             rel="noopener noreferrer nofollow"
-            title={source.title}
-          />
+          >
+            <span className="min-w-0 truncate">{row.title}</span>
+            <span className="shrink-0 font-mono text-[length:var(--text-caption)] text-muted-foreground">
+              {row.host}
+            </span>
+          </Source>
         ))}
+        {rows.length > shown.length ? (
+          <Button
+            className="h-auto w-fit px-0 py-0.5 font-normal text-[length:var(--text-small)] text-muted-foreground hover:bg-transparent hover:text-primary"
+            onClick={() => setExpanded(true)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            Show all {rows.length}
+          </Button>
+        ) : null}
       </SourcesContent>
     </Sources>
   );
 }
 
 /**
- * Files the assistant attached to a turn. These render as images because they
- * are `file` parts eve projected — a first-party attachment with a known media
- * type — not markdown the model wrote, which stays link-only.
+ * Files attached to a turn. These render as images because they are `file` parts
+ * eve projected — a first-party attachment with a known media type — not
+ * markdown the model wrote, which stays link-only.
  */
 export function AssistantTurnFiles({ files }: { files: readonly AssistantFilePart[] }) {
   if (files.length === 0) {

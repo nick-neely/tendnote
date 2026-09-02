@@ -33,11 +33,12 @@ export type AssistantSurface = "bleed" | "page" | "panel";
 /**
  * The reassurance line under "Assistant".
  *
- * Two short sentences rather than one long clause: "Private, and reviewed before
- * anything is saved" made the reader work out what "reviewed" attached to. The
- * promise is two separate facts and now reads as two.
+ * It used to open with "Private.", which put the word twice in one header - once
+ * here and once in the chip beside it. The chip is the more scannable of the two
+ * and it is the one that stays, so the line carries only the half the chip
+ * cannot: what happens to what you say.
  */
-export const ASSISTANT_UNSCOPED_SUBTITLE = "Private. Nothing is saved without your review.";
+export const ASSISTANT_UNSCOPED_SUBTITLE = "Nothing is saved without your review.";
 
 /** Header copy, most specific first: the person this panel is scoped to, else the notebook. */
 export function assistantSubtitleFor(personName?: string): string {
@@ -171,13 +172,17 @@ export function AssistantEmptyCapture({ children }: { children?: ReactNode }) {
  * The question is an `<h2>` here because on `/assistant` it is the first real
  * heading under the destination's own title, and it is the largest type on the
  * screen for the same reason the composer is the widest control: before a
- * conversation exists there is nothing else to look at. It hugs the composer
- * (`justify-end`) instead of centring in the transcript region, so the greeting
- * and the box the reader is about to type into read as one group.
+ * conversation exists there is nothing else to look at.
+ *
+ * It renders *outside* the transcript region, immediately above the composer, so
+ * that the greeting, the box, and the chips are one block between two equally
+ * growing spacers - which is what makes the group centred rather than the
+ * composer alone. With the greeting inside the transcript region the centred
+ * thing was the composer, and the group it belongs to sat visibly high.
  */
 export function AssistantPageGreeting() {
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-end gap-2 pb-5 text-center">
+    <div className="flex shrink-0 flex-col items-center gap-2 pb-5 text-center">
       <h2 className="font-semibold text-[length:var(--text-h2)] leading-[var(--text-h2-line)]">
         What do you want to remember?
       </h2>

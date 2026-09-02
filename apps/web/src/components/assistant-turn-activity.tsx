@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { ChainOfThought, ChainOfThoughtStep } from "@/components/ai-elements/chain-of-thought";
 import { Reasoning, ReasoningTrigger, useReasoning } from "@/components/ai-elements/reasoning";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
@@ -35,6 +36,48 @@ import { cn } from "@/lib/utils";
  * disclosure's own chrome (the collapse animation, the muted type) is kept
  * verbatim from that component.
  */
+
+/**
+ * While a turn is live the reasoning is a *viewport*, not a document: about five
+ * lines, scrolled to whatever the model just wrote, fading out at the top so the
+ * clipping reads as deliberate rather than as a broken container. Without it an
+ * auto-opened disclosure grows to a few hundred pixels and pushes the answer off
+ * the panel before a word of it lands. Once the turn settles the cap comes off —
+ * the reader who opens a finished disclosure wants the whole thing.
+ */
+const STREAMING_REASONING_VIEWPORT =
+  "max-h-40 overflow-y-auto [mask-image:linear-gradient(to_bottom,transparent_0,#000_1.5rem)]";
+
+/**
+ * Keeps a scrolling element pinned to its own bottom as content arrives. The
+ * one authored motion moment on the turn, so it is a real scroll animation
+ * rather than a jump — and it is exactly a jump for anyone who asked for less
+ * motion, since a self-scrolling box is precisely the thing that setting means.
+ */
+function useStickToBottom(
+  ref: React.RefObject<HTMLElement | null>,
+  active: boolean,
+  content: string,
+) {
+  const shown = useRef("");
+
+  useEffect(() => {
+    const node = ref.current;
+    // Only new words move the viewport. A re-render that changed something else
+    // must not yank a reader who has just scrolled up inside it.
+    if (!node || !active || content === shown.current) {
+      return;
+    }
+    shown.current = content;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    // jsdom implements `scrollTop` but not `scrollTo`, and so do older webviews.
+    if (reduced || typeof node.scrollTo !== "function") {
+      node.scrollTop = node.scrollHeight;
+      return;
+    }
+    node.scrollTo({ behavior: "smooth", top: node.scrollHeight });
+  }, [active, content, ref]);
+}
 
 /** A tool call still running: the pulsing sage dot the composer's shimmer uses. */
 function ActiveStepIcon({ className }: { className?: string }) {
@@ -116,6 +159,9 @@ export function AssistantTurnActivity({
   streaming: boolean;
 }) {
   const thought = Boolean(reasoning?.text);
+  const reasoningText = reasoning?.text ?? "";
+  const reasoningRef = useRef<HTMLDivElement>(null);
+  useStickToBottom(reasoningRef, streaming, reasoningText);
 
   if (!reasoning && steps.length === 0) {
     return null;
@@ -133,11 +179,13 @@ export function AssistantTurnActivity({
         )}
       >
         {reasoning?.text ? (
-          // Tighter paragraph rhythm than the answer's: this is an aside the
-          // reader opened deliberately, and it is often many short paragraphs.
-          <AssistantMarkdown className="[&>ol]:my-2 [&>p]:my-2 [&>ul]:my-2 [&_ol]:pl-4 [&_ul]:pl-4">
-            {reasoning.text}
-          </AssistantMarkdown>
+          <div className={cn(streaming && STREAMING_REASONING_VIEWPORT)} ref={reasoningRef}>
+            {/* Tighter paragraph rhythm than the answer's: this is an aside the
+                reader opened deliberately, and it is often many short paragraphs. */}
+            <AssistantMarkdown className="[&>ol]:my-2 [&>p]:my-2 [&>ul]:my-2 [&_ol]:pl-4 [&_ul]:pl-4">
+              {reasoning.text}
+            </AssistantMarkdown>
+          </div>
         ) : null}
         {steps.length > 0 ? (
           <ChainOfThought className="space-y-2">

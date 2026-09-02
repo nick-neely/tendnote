@@ -15,6 +15,7 @@ import {
 import { SendIcon, XIcon } from "@/components/icons";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { QueuedMessage } from "@/lib/eve/send-queue";
+import { REVEAL_ON_FOCUS } from "@/lib/hover-reveal";
 
 /**
  * What you said while the assistant was still answering the last thing.
@@ -29,15 +30,25 @@ import type { QueuedMessage } from "@/lib/eve/send-queue";
  * takes an item back. **Send now** steers: it cancels the running turn and starts
  * a replacement with this message — a real interruption, so the tooltip says so
  * rather than implying the queue simply moved faster.
+ *
+ * When the conversation ends the strip does not go with the composer. Whatever is
+ * still in it was never sent, and silently deleting the user's own words at the
+ * exact moment the session dies is the one thing this list exists to prevent: it
+ * stays, read-only, with a line saying so, and Remove still works so the reader
+ * can clear it once they have copied what they wanted.
  */
 export function AssistantSendQueue({
   items,
+  note,
   onRemove,
   onSendNow,
 }: {
   items: readonly QueuedMessage[];
+  /** A plain fact about the whole list, e.g. that none of it went out. */
+  note?: string;
   onRemove: (id: string) => void;
-  onSendNow: (id: string) => void;
+  /** `null` where nothing can be sent any more — the list is a record, not a queue. */
+  onSendNow: ((id: string) => void) | null;
 }) {
   if (items.length === 0) {
     return null;
@@ -62,25 +73,29 @@ export function AssistantSendQueue({
                 </QueueItemContent>
                 <QueueItemActions className="shrink-0">
                   <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <QueueItemAction
-                          aria-label="Send now"
-                          className="[@media(hover:none)]:opacity-100"
-                          onClick={() => onSendNow(item.id)}
-                        >
-                          <SendIcon aria-hidden className="size-3.5" />
-                        </QueueItemAction>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Send now — this stops the current answer</p>
-                      </TooltipContent>
-                    </Tooltip>
+                    {onSendNow ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          {/* The registry reveals these on hover alone, which
+                              leaves a Tab stop on an invisible button. */}
+                          <QueueItemAction
+                            aria-label="Send now"
+                            className={REVEAL_ON_FOCUS}
+                            onClick={() => onSendNow(item.id)}
+                          >
+                            <SendIcon aria-hidden className="size-3.5" />
+                          </QueueItemAction>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Send now — this stops the current answer</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : null}
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <QueueItemAction
                           aria-label="Remove from the queue"
-                          className="[@media(hover:none)]:opacity-100"
+                          className={REVEAL_ON_FOCUS}
                           onClick={() => onRemove(item.id)}
                         >
                           <XIcon aria-hidden className="size-3.5" />
@@ -95,6 +110,11 @@ export function AssistantSendQueue({
               </QueueItem>
             ))}
           </QueueList>
+          {note ? (
+            <p className="px-1 pt-1 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+              {note}
+            </p>
+          ) : null}
         </QueueSectionContent>
       </QueueSection>
     </Queue>

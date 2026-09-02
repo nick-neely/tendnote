@@ -811,15 +811,29 @@ describe("messageTurnAnatomy (activity above the answer, payload below it)", () 
     expect(messageTurnAnatomy(message, false).authorizations).toHaveLength(1);
   });
 
-  it("surfaces file parts instead of dropping them", () => {
+  it("surfaces the files carried by a message of the owner's own", () => {
     const message: EveMessage = {
       id: "m1",
-      role: "assistant",
+      role: "user",
       parts: [{ type: "file", mediaType: "image/png", filename: "chart.png", url: "blob:x" }],
     };
 
     expect(messageFiles(message)).toEqual([
       { type: "file", mediaType: "image/png", filename: "chart.png", url: "blob:x" },
     ]);
+  });
+
+  /**
+   * eve only resolves a `url` for what the user sent; a `file` part on an
+   * assistant message would render as an attachment chip with nothing behind it.
+   */
+  it("does not claim an assistant turn attached a file", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [{ type: "file", mediaType: "image/png", filename: "chart.png", url: "blob:x" }],
+    };
+
+    expect(messageFiles(message)).toEqual([]);
   });
 });

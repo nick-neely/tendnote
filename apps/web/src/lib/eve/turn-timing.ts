@@ -161,6 +161,94 @@ function resultCallId(data: Record<string, unknown>): string | null {
 }
 
 /**
+ * `turn.started` → whichever of the three endings arrived, or `null` for a turn
+ * that is still running (or whose stream never said either).
+ *
+ * The three concerns below each walk the same short list of events once. One
+ * fused loop was measurably harder to read than three named ones and said less:
+ * a turn carries a handful of events, so the cost of the extra passes is noise
+ * and what is bought is a function whose name is what it returns.
+ */
+function turnSpanSeconds(timed: readonly TimedEvent[]): number | null {
+  let startedAt: number | null = null;
+  let endedAt: number | null = null;
+
+  for (const { at, type } of timed) {
+    if (type === "turn.started") {
+      startedAt ??= at;
+      continue;
+    }
+    if (TURN_END_TYPES.has(type)) {
+      endedAt = at;
+    }
+  }
+
+  if (startedAt === null || endedAt === null) {
+    return null;
+  }
+  return spanSeconds(startedAt, endedAt);
+}
+
+/**
+ * Total whole seconds the model spent reasoning, summed across steps. Keyed by
+ * `stepIndex` because a turn that stops to run tools reasons more than once.
+ */
+function reasoningTotalSeconds(timed: readonly TimedEvent[]): number | null {
+  const runs = new Map<string, Run>();
+
+  for (const { at, data, type } of timed) {
+    if (type === "reasoning.appended") {
+      openRun(runs, String(data.stepIndex ?? 0), at);
+      continue;
+    }
+    if (type === "reasoning.completed") {
+      closeRun(runs, String(data.stepIndex ?? 0), at);
+    }
+  }
+
+  return totalSeconds(runs);
+}
+
+/** One open-then-closed run per tool call, keyed by `callId`. */
+function toolRuns(timed: readonly TimedEvent[]): Map<string, Run> {
+  const runs = new Map<string, Run>();
+
+  for (const { at, data, type } of timed) {
+    if (type === "actions.requested") {
+      for (const callId of requestedCallIds(data)) {
+        openRun(runs, callId, at);
+      }
+      continue;
+    }
+    if (type === "action.result") {
+      const callId = resultCallId(data);
+      if (callId) {
+        closeRun(runs, callId, at);
+      }
+    }
+  }
+
+  return runs;
+}
+
+/** Each settled tool call's duration. A call that never returned has no entry. */
+function toolCallSeconds(timed: readonly TimedEvent[]): ReadonlyMap<string, number> {
+  const seconds = new Map<string, number>();
+
+  for (const [callId, run] of toolRuns(timed)) {
+    if (run.endedAt === null) {
+      continue;
+    }
+    const elapsed = spanSeconds(run.startedAt, run.endedAt);
+    if (elapsed !== null) {
+      seconds.set(callId, elapsed);
+    }
+  }
+
+  return seconds;
+}
+
+/**
  * Durations for the turn `turnId` identifies, derived from the durable stream.
  *
  * Pass the turn id from the assistant message's own `metadata.turnId`. When it
@@ -178,59 +266,9 @@ export function turnTiming(
     return NO_TURN_TIMING;
   }
 
-  let turnStartedAt: number | null = null;
-  let turnEndedAt: number | null = null;
-  const reasoning = new Map<string, Run>();
-  const tools = new Map<string, Run>();
-
-  for (const { at, data, type } of timed) {
-    if (type === "turn.started") {
-      turnStartedAt ??= at;
-      continue;
-    }
-    if (TURN_END_TYPES.has(type)) {
-      turnEndedAt = at;
-      continue;
-    }
-    if (type === "reasoning.appended") {
-      openRun(reasoning, String(data.stepIndex ?? 0), at);
-      continue;
-    }
-    if (type === "reasoning.completed") {
-      closeRun(reasoning, String(data.stepIndex ?? 0), at);
-      continue;
-    }
-    if (type === "actions.requested") {
-      for (const callId of requestedCallIds(data)) {
-        openRun(tools, callId, at);
-      }
-      continue;
-    }
-    if (type === "action.result") {
-      const callId = resultCallId(data);
-      if (callId) {
-        closeRun(tools, callId, at);
-      }
-    }
-  }
-
-  const toolSeconds = new Map<string, number>();
-  for (const [callId, run] of tools) {
-    if (run.endedAt === null) {
-      continue;
-    }
-    const seconds = spanSeconds(run.startedAt, run.endedAt);
-    if (seconds !== null) {
-      toolSeconds.set(callId, seconds);
-    }
-  }
-
   return {
-    reasoningSeconds: totalSeconds(reasoning),
-    toolSeconds,
-    turnSeconds:
-      turnStartedAt !== null && turnEndedAt !== null
-        ? spanSeconds(turnStartedAt, turnEndedAt)
-        : null,
+    reasoningSeconds: reasoningTotalSeconds(timed),
+    toolSeconds: toolCallSeconds(timed),
+    turnSeconds: turnSpanSeconds(timed),
   };
 }

@@ -1,5 +1,5 @@
 import type { AssistantSource } from "@tendnote/domain/assistant-sources";
-import { sourcesFromToolOutput } from "@tendnote/domain/assistant-sources";
+import { hostLabel, sourcesFromToolOutput } from "@tendnote/domain/assistant-sources";
 import type { EveMessage, EveMessagePart } from "eve/react";
 
 export type { AssistantSource } from "@tendnote/domain/assistant-sources";
@@ -61,4 +61,39 @@ export function turnSources(message: EveMessage): AssistantSource[] {
   }
 
   return sources;
+}
+
+/** One line of the sources strip: where it goes, what it is called, whose site it is. */
+export type AssistantSourceRow = {
+  readonly url: string;
+  readonly title: string;
+  /** The bare domain, rendered in mono - a machine fact, per DESIGN.md §4. */
+  readonly host: string;
+};
+
+/**
+ * The strip's display rows, deduplicated by what the reader can actually see.
+ *
+ * {@link turnSources} already dedupes by URL, which is the honest unit for "how
+ * many pages did this turn read". It is the wrong unit for a *list*: two URLs on
+ * one site can carry the same title (a canonical page and its `?utm=` twin, a
+ * fetch that followed a search hit), and the strip then shows the same line
+ * twice with nothing to tell them apart. Title-and-host is what a row is, so it
+ * is what a duplicate row is too.
+ */
+export function sourceRows(sources: readonly AssistantSource[]): AssistantSourceRow[] {
+  const seen = new Set<string>();
+  const rows: AssistantSourceRow[] = [];
+
+  for (const source of sources) {
+    const host = hostLabel(source.url);
+    const key = `${host} ${source.title}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    rows.push({ host, title: source.title, url: source.url });
+  }
+
+  return rows;
 }
