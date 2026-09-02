@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import agent from "../agent/agent";
 
 const repoRoot = join(import.meta.dirname, "../../..");
 const GEMINI = "google/gemini-3.7-flash";
@@ -38,6 +39,21 @@ describe("production model defaults", () => {
       expect(source).toMatch(/process\.env\.TENDNOTE_AGENT_MODEL\s*\?\?/);
       expect(source).toContain(GEMINI);
     }
+  });
+
+  it("asks the default model for thought summaries, and for the effort by name", () => {
+    // The Assistant renders a thinking disclosure from `reasoning` parts, and
+    // eve only forwards those when the provider emits any. For Gemini that
+    // takes `includeThoughts`; the *amount* of thinking is set by `reasoning`,
+    // so each provider derives the control its own API wants (see the comment
+    // in agent.ts). Pinning the whole `providerOptions` object is the point:
+    // an authored `thinkingBudget` would be merged alongside the effort-derived
+    // `thinkingLevel`, and an authored `anthropic` block would opt out of that
+    // provider's own budget clamp.
+    expect(agent.reasoning).toBe("low");
+    expect(agent.modelOptions?.providerOptions).toEqual({
+      google: { thinkingConfig: { includeThoughts: true } },
+    });
   });
 
   it("wires one resolved workflow model into both evaluation and evidence packaging", () => {

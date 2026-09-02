@@ -199,8 +199,12 @@ async function buildRuntimeToolSets(current: Principal | null) {
   // `web_fetch` is authored by Tendnote as a thin wrapper around Eve's
   // installed framework default. Keeping it in the static set makes this the
   // same framework assembly that web_chat receives before the dynamic gate
-  // overlays a forbidden mode.
-  expect(webFetchTool.execute).toBe(webFetch.execute);
+  // overlays a forbidden mode. The wrapper now has an executor of its own -
+  // it calls the framework one and attaches a citation - so what matters here
+  // is that it is an authored executor at all, which is what the gate has to
+  // be able to shadow.
+  expect(typeof webFetchTool.execute).toBe("function");
+  expect(webFetchTool.inputSchema).toBe(webFetch.inputSchema);
   // As of eve 0.47 a tool's name comes from its `tools/<slug>.ts` path rather
   // than the definition object, so the authored wrapper is named here the way
   // the compiler would name `agent/tools/web_fetch.ts`.

@@ -327,6 +327,12 @@ const REGISTRATION_ONLY_TOOL_FILES = NON_EXECUTING_TOOL_FILES.filter(
 // framework executor. It is not a Tendnote store adapter and therefore cannot
 // satisfy the owner-scoped registration rule below; its default executor and
 // bounded model projection have their own focused contract test.
+//
+// It now wraps that executor rather than re-exporting it - it awaits the
+// framework result and attaches a citation - so it also lands in the executing
+// list. The store-error rule still does not apply to it for the same reason it
+// never did: it reaches no store. The assertion below pins that, so the
+// exemption cannot come to cover a file that grew one.
 const FRAMEWORK_TOOL_REGISTRATION_FILES = ["apps/agent/agent/tools/web_fetch.ts"];
 
 const ACTIONS_PATH_SOURCES = [
@@ -556,7 +562,12 @@ describe("Phase 5 boundary — Eve exposes a bounded, single-record General Acti
     for (const path of DYNAMIC_TOOL_RESOLVER_FILES) {
       expect(read(path), `${path} calls no store`).not.toContain("@tendnote/db");
     }
-    for (const path of EXECUTING_TOOL_FILES) {
+    for (const path of FRAMEWORK_TOOL_REGISTRATION_FILES) {
+      expect(read(path), `${path} calls no store`).not.toContain("@tendnote/db");
+    }
+    for (const path of EXECUTING_TOOL_FILES.filter(
+      (path) => !FRAMEWORK_TOOL_REGISTRATION_FILES.includes(path),
+    )) {
       expect(stripComments(read(path)), `${path} wraps its store calls`).toMatch(
         /withModelSafeStoreErrors/,
       );
