@@ -69,6 +69,11 @@ const { eve } = vi.hoisted(() => {
       registerOnError: (handler?: (error: Error) => void): void => {
         onError = handler;
       },
+      /** eve's Stop: it settles the turn in flight without failing it. */
+      cancel: (): Promise<void> => {
+        settleTurn?.();
+        return Promise.resolve();
+      },
       send: (message: string, _options?: { clientContext?: unknown }): Promise<void> => {
         sent.push(message);
         publish({ error: undefined, status: "submitted" });
@@ -120,6 +125,7 @@ vi.mock("eve/react", async () => {
       const snapshot = useSyncExternalStore(eve.subscribe, eve.getSnapshot, eve.getSnapshot);
       return {
         ...snapshot,
+        cancel: eve.cancel,
         reset: () => {},
         respond: eve.respond,
         send: eve.send,
@@ -210,7 +216,7 @@ it("puts the message back when the turn fails, even though eve resolves the send
   await settleTurn(new Error("stream closed"));
 
   await waitFor(() => expect(composer().value).toBe("Mara adopted a cat"));
-  expect(screen.getByRole("alert").textContent).toContain("Eve is unavailable");
+  expect(screen.getByRole("alert").textContent).toContain("The assistant is unavailable");
 });
 
 it("never overwrites something newer the user typed while the turn was failing", async () => {
@@ -241,7 +247,12 @@ it("takes the next message after a failure instead of wedging on the error statu
   expect(composer().value).toBe("");
 });
 
-it("keeps a message in the composer when a turn is genuinely still in flight", async () => {
+/**
+ * Eve takes one turn at a time. The old answer was to refuse the second message
+ * and bounce it back into the composer; now it waits in a visible queue and goes
+ * out on its own when the turn settles.
+ */
+it("queues a message typed mid-turn instead of refusing it", async () => {
   render(<AssistantPanel ownerUserId="owner-1" />);
 
   await sendMessage("Mara adopted a cat");
@@ -249,7 +260,49 @@ it("keeps a message in the composer when a turn is genuinely still in flight", a
 
   await sendMessage("And she moved to Lisbon");
 
-  await waitFor(() => expect(composer().value).toBe("And she moved to Lisbon"));
+  // The composer is empty because the words are somewhere the user can see them.
+  await waitFor(() => expect(screen.getByText("And she moved to Lisbon")).toBeDefined());
+  expect(composer().value).toBe("");
+  expect(screen.getByText(/1 queued message/)).toBeDefined();
+  expect(eve.sent).toEqual(["Mara adopted a cat"]);
+});
+
+it("sends the queued message on its own once the turn settles", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await sendMessage("Mara adopted a cat");
+  await sendMessage("And she moved to Lisbon");
+  await settleTurn();
+
+  await waitFor(() => expect(eve.sent).toEqual(["Mara adopted a cat", "And she moved to Lisbon"]));
+  expect(screen.queryByText(/queued message/)).toBeNull();
+});
+
+it("drains the queue one message at a time, in the order they were typed", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await sendMessage("First");
+  await sendMessage("Second");
+  await sendMessage("Third");
+  expect(eve.sent).toEqual(["First"]);
+
+  await settleTurn();
+  await waitFor(() => expect(eve.sent).toEqual(["First", "Second"]));
+
+  await settleTurn();
+  await waitFor(() => expect(eve.sent).toEqual(["First", "Second", "Third"]));
+});
+
+it("takes a queued message back out when it is removed", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await sendMessage("Mara adopted a cat");
+  await sendMessage("Never mind");
+
+  await userEvent.click(screen.getByRole("button", { name: "Remove from the queue" }));
+  await settleTurn();
+
+  await waitFor(() => expect(screen.queryByText(/queued message/)).toBeNull());
   expect(eve.sent).toEqual(["Mara adopted a cat"]);
 });
 
@@ -391,4 +444,127 @@ it("will not let a decision go out while eve is busy with another turn", async (
 
   const decide = screen.getByRole("button", { name: "capture_memory" }) as HTMLButtonElement;
   expect(decide.disabled).toBe(true);
+});
+
+/**
+ * A turn that stopped to look something up, with the model's own account of why.
+ * The lookup is `line`-tier, so it belongs in the activity block above the answer
+ * rather than trailing beneath it as it used to.
+ */
+const turnWithReasoningAndLookup: readonly [EveMessage, EveMessage] = [
+  { id: "turn_0:user", role: "user", parts: [{ type: "text", text: "What about Priya?" }] },
+  {
+    id: "turn_0:assistant",
+    role: "assistant",
+    parts: [
+      {
+        type: "reasoning",
+        text: "They want the notebook, not the web.",
+        state: "done",
+        stepIndex: 0,
+      },
+      {
+        type: "dynamic-tool",
+        toolCallId: "call-1",
+        toolName: "search_people",
+        state: "output-available",
+        input: {},
+        output: { people: [] },
+      },
+      { type: "text", text: "Priya Shah works at a bakery.", state: "done", stepIndex: 0 },
+    ],
+  },
+];
+
+it("folds the turn's thinking and lookups above the answer, not under it", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await act(async () => {
+    eve.showTurn(turnWithReasoningAndLookup, "ready");
+  });
+
+  // Collapsed by default, and the trigger says what happened rather than naming
+  // a tool. The lookup itself is not on screen until the fold is opened.
+  const trigger = screen.getByRole("button", { name: /Thought (it through|for)/ });
+  expect(screen.queryByText("Searched people")).toBeNull();
+
+  await userEvent.click(trigger);
+
+  expect(screen.getByText("They want the notebook, not the web.")).toBeDefined();
+  expect(screen.getByText("Searched people")).toBeDefined();
+  // The whole point: the raw tool name never reaches the transcript.
+  expect(screen.queryByText("search people")).toBeNull();
+});
+
+it("says it worked, not that it thought, when there was no reasoning to show", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await act(async () => {
+    eve.showTurn(
+      [
+        turnWithReasoningAndLookup[0],
+        {
+          ...turnWithReasoningAndLookup[1],
+          parts: turnWithReasoningAndLookup[1].parts.filter((part) => part.type !== "reasoning"),
+        },
+      ] as readonly EveMessage[],
+      "ready",
+    );
+  });
+
+  expect(screen.getByRole("button", { name: /Worked (on it|for)/ })).toBeDefined();
+});
+
+it("copies the answer and asks again from the finished turn", async () => {
+  const written: string[] = [];
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: {
+      writeText: (text: string) => {
+        written.push(text);
+        return Promise.resolve();
+      },
+    },
+  });
+
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await act(async () => {
+    eve.showTurn(turnWithReasoningAndLookup, "ready");
+  });
+
+  await userEvent.click(screen.getByRole("button", { name: "Copy answer" }));
+  await waitFor(() => expect(written).toEqual(["Priya Shah works at a bakery."]));
+
+  // Retry re-sends the message that started the turn, not the answer.
+  await userEvent.click(screen.getByRole("button", { name: "Ask again" }));
+  await waitFor(() => expect(eve.sent).toEqual(["What about Priya?"]));
+});
+
+it("puts a message of your own back in the composer to edit", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await act(async () => {
+    eve.showTurn(turnWithReasoningAndLookup, "ready");
+  });
+
+  await userEvent.click(screen.getByRole("button", { name: "Edit and send again" }));
+
+  await waitFor(() => expect(composer().value).toBe("What about Priya?"));
+});
+
+/**
+ * "Eve" is the framework's name, not the product's. It may live in identifiers
+ * forever; it may never reach a reader.
+ */
+it("never says Eve to the reader", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  expect(document.body.textContent).not.toMatch(/\bEve\b/);
+
+  await act(async () => {
+    eve.showTurn(turnWithReasoningAndLookup, "ready");
+  });
+
+  expect(document.body.textContent).not.toMatch(/\bEve\b/);
 });

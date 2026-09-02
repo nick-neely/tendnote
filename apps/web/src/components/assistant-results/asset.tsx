@@ -148,6 +148,7 @@ export const assetSearchModule = defineModule<"asset_search">({
     },
   },
   tier: (view) => (view.results.length > 0 ? "disclosure" : "line"),
+  summary: (view) => (view.results.length > 0 ? null : "Nothing found on your things"),
   key: (view) =>
     `asset-search:${view.results.map((result) => `${result.recordKind}:${result.recordId}`).join("|")}`,
   render: (view, isNew) => {
@@ -229,6 +230,7 @@ export const assetContextModule = defineModule<"asset_context">({
     },
   },
   tier: (view) => (view.found ? "card" : "line"),
+  summary: (view) => (view.found ? null : "No such asset"),
   key: (view) => `asset-context:${view.assetName ?? "unknown"}`,
   render: (view, isNew) =>
     view.found ? (

@@ -13,7 +13,7 @@ type EveContext =
       : never
     : never;
 
-/** Loads Eve's optional owner context only after the owner opens an Eve surface. */
+/** Loads the assistant's optional owner context only after the owner opens it. */
 export function EveSurface({ ownerUserId }: { ownerUserId: string }) {
   const [context, setContext] = useState<EveContext | null>(null);
   const [failed, setFailed] = useState(false);
@@ -42,8 +42,8 @@ export function EveSurface({ ownerUserId }: { ownerUserId: string }) {
     return (
       <section
         aria-busy="true"
-        aria-label="Loading Eve"
-        className="h-full animate-pulse rounded-xl border bg-muted/40"
+        aria-label="Loading the assistant"
+        className="h-full animate-pulse bg-muted/40"
       />
     );
   }
@@ -52,6 +52,9 @@ export function EveSurface({ ownerUserId }: { ownerUserId: string }) {
       nudges={context.nudges}
       ownerUserId={ownerUserId}
       suggestPersonName={context.suggestPersonName}
+      // The phone's flow already owns a header and a gutter, so the panel sheds
+      // its own card: one title, one border, no nesting (DESIGN.md §5).
+      surface="bleed"
     />
   );
 }

@@ -59,6 +59,14 @@ const genericModule = defineModule<"generic">({
   kind: "generic",
   parsers: {},
   tier: () => "line",
+  // The activity step is already labelled with the past-tense call, so the
+  // summary carries only what the *result* added — the honest negative, or the
+  // fact that a known tool came back unreadable. A benign unrecognized tool that
+  // simply ran adds nothing.
+  summary: (view) => {
+    if (view.malformed) return "Didn't return a readable result";
+    return view.note ?? null;
+  },
   key: (view) => {
     if (view.malformed) return `tool-malformed:${view.toolName}`;
     if (view.note) return `tool-empty:${view.toolName}`;
@@ -215,6 +223,17 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
 export function toolViewTier(view: AssistantToolView): ToolViewTier {
   const tier = RESULT_MODULES[view.kind].tier as (view: AssistantToolView) => ToolViewTier;
   return tier(view);
+}
+
+/**
+ * The owning module's one-line summary of a `line`-tier result, for the turn's
+ * activity disclosure, or `null` when the past-tense call label already says it.
+ */
+export function resultViewSummary(view: AssistantToolView): string | null {
+  const summary = RESULT_MODULES[view.kind].summary as
+    | ((view: AssistantToolView) => string | null)
+    | undefined;
+  return summary ? summary(view) : null;
 }
 
 /**

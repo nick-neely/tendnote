@@ -60,6 +60,7 @@ export const householdCheckinModule = defineModule<"household_check_in">({
   // recedes to a line: it is news about nothing, and a card would give it weight
   // the household never earned.
   tier: (view) => (view.records.length > 0 ? "card" : "line"),
+  summary: (view) => (view.records.length > 0 ? null : checkinAbsenceCopy(view)),
   key: (view) => `household-check-in:${view.records.map((record) => record.recordId).join("|")}`,
   render: (view, isNew) => {
     if (view.records.length === 0) {
@@ -148,6 +149,7 @@ export const giftPlanSearchModule = defineModule<"gift_plan_search">({
     },
   },
   tier: (view) => (view.plans.length > 0 ? "card" : "line"),
+  summary: (view) => (view.plans.length > 0 ? null : "No gift plans"),
   key: (view) => `gift-plan-search:${view.plans.map((plan) => plan.giftPlanId).join("|")}`,
   render: (view, isNew) => {
     if (view.plans.length === 0) {
@@ -192,6 +194,7 @@ export const giftIdeaAddedModule = defineModule<"gift_idea_added">({
     },
   },
   tier: () => "line",
+  summary: (view) => `Added ${view.title} to the plan`,
   key: (view) => `gift-idea-added:${view.giftIdeaId}`,
   render: (view, isNew) => (
     <ToolActivityLine icon={<GiftIcon aria-hidden className="size-3.5" />} isNew={isNew}>
@@ -228,6 +231,12 @@ export const captureOutcomeModule = defineModule<"capture_outcome">({
     },
   },
   tier: () => "line",
+  // The audience is the whole point of this result, so it survives into the
+  // activity summary rather than being folded away with the destination.
+  summary: (view) =>
+    view.outcomes
+      .map((outcome) => `Saved to ${outcome.destination} · ${outcome.visibility}`)
+      .join(" · "),
   key: (view) =>
     `capture-outcome:${view.destination}:${view.outcomes.map((outcome) => outcome.visibility).join("|")}`,
   render: (view, isNew) => (

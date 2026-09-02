@@ -410,12 +410,14 @@ describe("Phase Seven phone browser proof", () => {
     await closeFocusedFlow();
     await expect.element(page.getByRole("button", { name: "Capture" })).toHaveFocus();
     await page.viewport(390, 844);
-    await act(async () => userEvent.click(page.getByRole("button", { name: "Open Eve" })));
-    await expect.element(page.getByRole("dialog", { name: "Eve" })).toBeVisible();
+    await act(async () =>
+      userEvent.click(page.getByRole("button", { name: "Open the assistant" })),
+    );
+    await expect.element(page.getByRole("dialog", { name: "Assistant" })).toBeVisible();
     await expect.element(page.getByRole("log", { name: "Eve transcript" })).toBeVisible();
     await expect.element(page.getByRole("textbox", { name: "Message Eve" })).toBeVisible();
     await closeFocusedFlow();
-    await expect.element(page.getByRole("button", { name: "Open Eve" })).toHaveFocus();
+    await expect.element(page.getByRole("button", { name: "Open the assistant" })).toHaveFocus();
 
     const menuButton = page.getByRole("button", { name: "Menu" });
     await act(async () => {

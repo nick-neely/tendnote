@@ -96,7 +96,7 @@ function described(title: string, lines: readonly string[] = []) {
 it("shows the tool and the exact arguments it is frozen with, not eve's placeholder prompt", () => {
   renderCard(FETCH_REQUEST);
 
-  expect(screen.getByText("Eve wants to run web fetch.")).toBeDefined();
+  expect(screen.getByText("The assistant wants to run web fetch.")).toBeDefined();
   expect(screen.getByText("url")).toBeDefined();
   expect(screen.getByText("https://example.com/articles/tea-ceremony")).toBeDefined();
   expect(screen.queryByText(/Approve tool call:/)).toBeNull();
@@ -157,7 +157,7 @@ it("labels the heading with the state chip on one row", () => {
 
   const header = document.querySelector("[data-slot=approval-header]");
   expect(header?.contains(screen.getByText("Needs your approval"))).toBe(true);
-  expect(header?.contains(screen.getByText("Eve wants to run web fetch."))).toBe(true);
+  expect(header?.contains(screen.getByText("The assistant wants to run web fetch."))).toBe(true);
 });
 
 it("keeps a long or nested argument out of the way until it is asked for", async () => {
@@ -193,12 +193,12 @@ it("leads with the record the server described, keeping the frozen input reachab
 
   await waitFor(() => expect(screen.getByText("Accept a follow-up with Mara")).toBeDefined());
   expect(screen.getByText("Reason: check in about the move")).toBeDefined();
-  expect(screen.queryByText("Eve wants to run accept suggested followup.")).toBeNull();
+  expect(screen.queryByText("The assistant wants to run accept suggested followup.")).toBeNull();
 
   // A summary is an aid to the decision, never a replacement for it: what actually
   // executes is the input, so it stays one deliberate click away.
   expect(screen.queryByText("fu_123")).toBeNull();
-  await userEvent.click(screen.getByRole("button", { name: "Show everything Eve will send" }));
+  await userEvent.click(screen.getByRole("button", { name: "Show everything that will be sent" }));
   expect(screen.getByText("followupId")).toBeDefined();
   expect(screen.getByText("fu_123")).toBeDefined();
 });
@@ -211,7 +211,7 @@ it("puts the decision on the disclosure's row rather than a row of its own", asy
   const decision = document.querySelector("[data-slot=approval-decision]");
   expect(decision).not.toBeNull();
   expect(
-    decision?.contains(screen.getByRole("button", { name: "Show everything Eve will send" })),
+    decision?.contains(screen.getByRole("button", { name: "Show everything that will be sent" })),
   ).toBe(true);
   expect(decision?.contains(screen.getByRole("button", { name: "Approve" }))).toBe(true);
   expect(decision?.contains(screen.getByRole("button", { name: "Cancel" }))).toBe(true);
@@ -239,7 +239,7 @@ it("falls back to the generic heading when no describer is registered", async ()
   renderCard(FETCH_REQUEST);
 
   await waitFor(() => expect(describeSubject).toHaveBeenCalled());
-  expect(screen.getByText("Eve wants to run web fetch.")).toBeDefined();
+  expect(screen.getByText("The assistant wants to run web fetch.")).toBeDefined();
   expect(screen.getByText("https://example.com/articles/tea-ceremony")).toBeDefined();
   expect(screen.queryByText(/isn't available to you/)).toBeNull();
 });
@@ -257,7 +257,7 @@ it("says so plainly, and stays answerable, when the record does not resolve", as
   await waitFor(() =>
     expect(screen.getByText("This record isn't available to you.")).toBeDefined(),
   );
-  expect(screen.getByText("Eve wants to run accept suggested followup.")).toBeDefined();
+  expect(screen.getByText("The assistant wants to run accept suggested followup.")).toBeDefined();
   expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(
     false,
   );
@@ -287,7 +287,7 @@ it("makes no claim about the record when the lookup itself fails", async () => {
   renderCard(FOLLOWUP_REQUEST);
 
   await waitFor(() => expect(describeSubject).toHaveBeenCalled());
-  expect(screen.getByText("Eve wants to run accept suggested followup.")).toBeDefined();
+  expect(screen.getByText("The assistant wants to run accept suggested followup.")).toBeDefined();
   expect(screen.queryByText(/isn't available to you/)).toBeNull();
   expect(screen.getByText("fu_123")).toBeDefined();
 });
@@ -426,7 +426,7 @@ it("renders a question's choices, and takes a typed answer only when eve allows 
     input: { question: "Which Mara did you mean?" },
   });
 
-  expect(screen.getByText("Eve has a question")).toBeDefined();
+  expect(screen.getByText("A question for you")).toBeDefined();
   await userEvent.type(screen.getByLabelText("Your answer"), "Neither, a third one");
   await userEvent.click(screen.getByRole("button", { name: "Send" }));
 

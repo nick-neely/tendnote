@@ -638,9 +638,20 @@ export function CaptureFlow({
 
 export function EveFlow({ children, onClose }: { children?: ReactNode; onClose: () => void }) {
   return (
-    <FullScreenFlow description="Focused Eve conversation." onClose={onClose} title="Eve">
-      <div className="min-h-0 flex-1 overflow-hidden px-gutter py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-        {children ?? <MobileFailureState kind="eve" />}
+    <FullScreenFlow
+      description="Focused assistant conversation."
+      onClose={onClose}
+      title="Assistant"
+    >
+      {/* No inset here: the panel renders full-bleed inside this flow and owns
+          its own gutter and safe-area padding, so a card-in-a-sheet under two
+          stacked titles is no longer what a phone user sees. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {children ?? (
+          <div className="px-gutter py-4">
+            <MobileFailureState kind="eve" />
+          </div>
+        )}
       </div>
     </FullScreenFlow>
   );

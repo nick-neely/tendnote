@@ -212,7 +212,7 @@ function approvalCopy(
 ): { chip: string; heading: string; sending: string } {
   if (request.kind !== "tool-approval") {
     return {
-      chip: "Eve has a question",
+      chip: "A question for you",
       heading: request.prompt,
       sending: "Sending your answer…",
     };
@@ -223,7 +223,7 @@ function approvalCopy(
     heading:
       subject.status === "described"
         ? subject.subject.title
-        : `Eve wants to run ${humanizeToolName(request.toolName)}.`,
+        : `The assistant wants to run ${humanizeToolName(request.toolName)}.`,
     // Neither "approval" nor "refusal": the owner may have just pressed Cancel.
     sending: "Sending your decision…",
   };
@@ -446,7 +446,7 @@ function ApprovalInputToggle({ expanded, onToggle }: { expanded: boolean; onTogg
       onClick={onToggle}
       type="button"
     >
-      {expanded ? "Show less" : "Show everything Eve will send"}
+      {expanded ? "Show less" : "Show everything that will be sent"}
     </button>
   );
 }

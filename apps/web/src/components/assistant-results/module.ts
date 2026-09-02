@@ -54,6 +54,22 @@ export interface ResultModule<K extends AssistantToolView["kind"]> {
   };
   /** How much the user needs to notice this result (see {@link ToolViewTier}). */
   readonly tier: (view: ViewOf<K>) => ToolViewTier;
+  /**
+   * One plain sentence of what this result actually said, for the turn's
+   * activity disclosure. A `line`-tier result renders inside that disclosure as
+   * a step whose label is the past-tense *call* ("Recalled what you know"); this
+   * is the half only the result knows ("Priya Shah · 1 confirmed · 3 logged").
+   *
+   * Plain text, never JSX: the disclosure sets its own type scale and colour, and
+   * a step description that smuggled in a card's markup would reintroduce the
+   * nested chrome the anatomy exists to remove. Return `null` when the label
+   * already says everything — most saves do, and a description restating the
+   * label is noise.
+   *
+   * Only consulted for `line`-tier views; a card or disclosure renders in full
+   * below the answer and has nothing to summarize.
+   */
+  readonly summary?: (view: ViewOf<K>) => string | null;
   /** Refresh-stable React key, derived from the persisted records the view references. */
   readonly key: (view: ViewOf<K>) => string;
   /** Same-kind durable saves in one turn fold into a collapsed group when set. */

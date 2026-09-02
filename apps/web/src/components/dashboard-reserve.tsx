@@ -52,11 +52,19 @@ export function DashboardAssistantReserve() {
       <AssistantPanelHeader
         actions={
           <>
-            <span aria-hidden className={cn(assistantChipClass, "bg-secondary text-transparent")}>
-              <span className="size-3" />
-              Debug
-            </span>
             <AssistantPrivateChip />
+            {/* The live header's remaining affordances — the dev-only Debug toggle
+                and the "Open" link — are geometry, not content, so they reserve as
+                blank space of the same width rather than as controls that cannot
+                yet be pressed. The Debug toggle is absent from production builds,
+                so its reserve has to be too or the swap would shift the header. */}
+            {process.env.NODE_ENV === "production" ? null : (
+              <span aria-hidden className={cn(assistantChipClass, "bg-secondary text-transparent")}>
+                <span className="size-3" />
+                Debug
+              </span>
+            )}
+            <span aria-hidden className="size-7" />
           </>
         }
         subtitle={ASSISTANT_UNSCOPED_SUBTITLE}
