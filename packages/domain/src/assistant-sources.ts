@@ -64,6 +64,31 @@ const MAX_SOURCES = 10;
 /** Titles are chrome for a link, not content. */
 const MAX_TITLE_LENGTH = 200;
 
+/**
+ * A readable label for a URL that came without one.
+ *
+ * Shared with `agent/tools/web_fetch.ts`, which needs the same fallback for the
+ * citation it attaches: a page whose title cannot be found is still perfectly
+ * citable by its host, and the two must agree on what that host is called or one
+ * source reads two ways depending on which tool produced it.
+ */
+export function hostLabel(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * A title cut to length, with the cut marked. Also shared with `web_fetch`: it
+ * clips the `<title>` it extracts, this module clips the one a search provider
+ * returned, and a citation must not change length by route.
+ */
+export function clipTitle(text: string, max: number = MAX_TITLE_LENGTH): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
 const WEB_SOURCE_TOOLS = new Set(["web_search", "web_fetch"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -95,19 +120,9 @@ function readSourceUrl(value: unknown): string | undefined {
   }
 }
 
-/** A readable label for a URL that came without one. */
-function hostLabel(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
-}
-
 function readTitle(value: unknown, url: string): string {
   const title = readString(value);
-  if (title === undefined) return hostLabel(url);
-  return title.length > MAX_TITLE_LENGTH ? `${title.slice(0, MAX_TITLE_LENGTH - 1)}…` : title;
+  return title === undefined ? hostLabel(url) : clipTitle(title);
 }
 
 function toSource(entry: unknown): AssistantSource | undefined {

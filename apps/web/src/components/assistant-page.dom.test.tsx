@@ -27,16 +27,31 @@ function rail() {
  * through the history API rather than the router.
  */
 
-const { actions, panel, router } = vi.hoisted(() => ({
+type ThreadResult =
+  | { ok: true; view: AssistantConversationView | null }
+  | { ok: false; error: string };
+
+const { actions, panel, router, toast } = vi.hoisted(() => ({
   actions: {
-    archive: vi.fn(async () => ({ ok: true as const, view: null })),
-    list: vi.fn(async (): Promise<AssistantConversationView[]> => []),
-    record: vi.fn(async () => ({ ok: true as const, view: { sessionId: "wrun_new" } })),
-    rename: vi.fn(async () => ({ ok: true as const, view: null })),
-    unarchive: vi.fn(async () => ({ ok: true as const, view: null })),
+    archive: vi.fn(async (): Promise<ThreadResult> => ({ ok: true, view: null })),
+    list: vi.fn(
+      async (): Promise<
+        { ok: true; view: AssistantConversationView[] } | { ok: false; error: string }
+      > => ({
+        ok: true,
+        view: [],
+      }),
+    ),
+    record: vi.fn(async () => ({
+      ok: true as const,
+      view: { sessionId: "wrun_new", recorded: true },
+    })),
+    rename: vi.fn(async (): Promise<ThreadResult> => ({ ok: true, view: null })),
+    unarchive: vi.fn(async (): Promise<ThreadResult> => ({ ok: true, view: null })),
   },
   panel: { mounts: [] as { key: string | null; initialSessionId?: string }[] },
   router: { push: vi.fn() },
+  toast: { error: vi.fn() },
 }));
 
 vi.mock("@/app/actions/assistant-conversations", () => ({
@@ -48,6 +63,7 @@ vi.mock("@/app/actions/assistant-conversations", () => ({
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
+vi.mock("sonner", () => ({ toast }));
 
 /**
  * The panel stands in for itself: what matters here is how many times it was
@@ -96,8 +112,12 @@ beforeEach(() => {
   for (const action of Object.values(actions)) action.mockClear();
   actions.list.mockReset();
   actions.record.mockReset();
-  actions.list.mockResolvedValue(CONVERSATIONS);
-  actions.record.mockResolvedValue({ ok: true, view: { sessionId: "wrun_new" } });
+  toast.error.mockClear();
+  actions.list.mockResolvedValue({ ok: true, view: CONVERSATIONS });
+  actions.record.mockResolvedValue({
+    ok: true,
+    view: { sessionId: "wrun_new", recorded: true },
+  });
   window.localStorage.clear();
   window.history.replaceState(null, "", "/assistant");
 });
@@ -173,15 +193,18 @@ it("shows a new thread at the top of the rail before the server answers", async 
 
 /** And the server's answer wins from the moment it exists, model title included. */
 it("takes the stored title over its own guess as soon as the row exists", async () => {
-  actions.list.mockResolvedValue([
-    {
-      archived: false,
-      lastActivityAt: new Date(),
-      sessionId: "wrun_new",
-      title: "Updates on Priya Shah",
-    },
-    ...CONVERSATIONS,
-  ]);
+  actions.list.mockResolvedValue({
+    ok: true,
+    view: [
+      {
+        archived: false,
+        lastActivityAt: new Date(),
+        sessionId: "wrun_new",
+        title: "Updates on Priya Shah",
+      },
+      ...CONVERSATIONS,
+    ],
+  });
   renderPage();
 
   await screen.findByText("fresh panel");
@@ -189,6 +212,72 @@ it("takes the stored title over its own guess as soon as the row exists", async 
 
   const row = await screen.findByRole("link", { name: "Updates on Priya Shah" });
   expect(row.getAttribute("aria-current")).toBe("page");
+});
+
+/**
+ * `runOwnerAction` returns a refusal as data, so the rail's job is to check it.
+ * Applying a rename the server declined would leave the list asserting a name
+ * that is not stored anywhere.
+ */
+it("keeps the stored title and speaks up when a rename is refused", async () => {
+  actions.rename.mockResolvedValue({ ok: false, error: "You've reached a usage limit." });
+  renderPage();
+  await screen.findByText("fresh panel");
+
+  await userEvent.click(rail().getByRole("button", { name: "Actions for Notes on Jordan" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+  const field = screen.getByRole("textbox", { name: "Rename Notes on Jordan" });
+  await userEvent.clear(field);
+  await userEvent.type(field, "Jordan check-in{Enter}");
+
+  await waitFor(() => expect(toast.error).toHaveBeenCalledWith("You've reached a usage limit."));
+  expect(await rail().findByRole("link", { name: "Notes on Jordan" })).toBeDefined();
+  expect(rail().queryByRole("link", { name: "Jordan check-in" })).toBeNull();
+});
+
+/** The row the server saved is what the rail shows, not the change that was asked for. */
+it("takes the saved row from a rename rather than the typed title", async () => {
+  actions.rename.mockResolvedValue({
+    ok: true,
+    view: {
+      archived: false,
+      lastActivityAt: new Date(),
+      sessionId: "wrun_existing",
+      title: "Jordan check-in",
+    },
+  });
+  renderPage();
+  await screen.findByText("fresh panel");
+
+  await userEvent.click(rail().getByRole("button", { name: "Actions for Notes on Jordan" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+  const field = screen.getByRole("textbox", { name: "Rename Notes on Jordan" });
+  await userEvent.clear(field);
+  await userEvent.type(field, "Jordan check-in{Enter}");
+
+  expect(await rail().findByRole("link", { name: "Jordan check-in" })).toBeDefined();
+  expect(toast.error).not.toHaveBeenCalled();
+});
+
+/**
+ * `ok` with no row is the owner-scoped query matching nothing — the thread is
+ * gone, or was never this owner's. Hiding it locally would be a lie; the repair
+ * is to say so and re-read.
+ */
+it("re-reads the list rather than archiving a thread the server does not have", async () => {
+  actions.archive.mockResolvedValue({ ok: true, view: null });
+  renderPage();
+  await screen.findByText("fresh panel");
+  actions.list.mockClear();
+
+  await userEvent.click(rail().getByRole("button", { name: "Actions for Notes on Jordan" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Archive" }));
+
+  await waitFor(() =>
+    expect(toast.error).toHaveBeenCalledWith("That conversation is no longer here."),
+  );
+  expect(actions.list).toHaveBeenCalled();
+  expect(rail().getByRole("link", { name: "Notes on Jordan" })).toBeDefined();
 });
 
 it("starts a new conversation on a panel that no longer holds the old session", async () => {

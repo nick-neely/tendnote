@@ -10,8 +10,8 @@ import {
   unarchiveAssistantConversation,
   upsertAssistantConversation,
 } from "@tendnote/db/queries/assistant-conversations";
+import { getEveSessionOwnerUserId } from "@tendnote/db/queries/eve-session-owners";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { runOwnerAction } from "@/lib/owner-action";
 
 /**
@@ -32,6 +32,12 @@ import { runOwnerAction } from "@/lib/owner-action";
  *
  * A session id is opaque to Tendnote (Eve's durable workflow run id), so it is
  * validated only for shape and length. Nothing here trusts what it says.
+ *
+ * The one action that can *create* a row goes further and checks the id against
+ * `eve_session_owners` first, because a `WHERE owner_user_id = …` clause cannot
+ * protect a row that does not exist yet: an insert under a guessed id is how a
+ * caller would pre-claim a session eve has not minted, and then hold the row
+ * that session's own agent hook later writes its title into.
  */
 
 /** Comfortably longer than any Eve run id, short enough to refuse a runaway string. */
@@ -93,6 +99,22 @@ function toAssistantConversationView(
  * arriving first, which is deliberate — the browser is fast, and the hook is the
  * one that cannot be skipped.
  *
+ * ## Why the session id is checked before anything is inserted
+ *
+ * This is the only entry point that creates a row, and it creates it under a
+ * string the client chose. Owner scoping cannot help there: a `WHERE` clause
+ * filters rows that exist, and the row does not exist yet. So the id is checked
+ * against `eve_session_owners` — the binding the session lifecycle hook wrote
+ * from inside Eve's own durable execution (ADR 0237) — and an id that is unbound
+ * or bound to somebody else records nothing.
+ *
+ * Nothing is lost by refusing. The hook's own `message.received` upsert creates
+ * the same row authoritatively from inside the session, so a claim that arrives
+ * before the binding lands (or never arrives at all) costs the rail a moment,
+ * not the thread. That is why the refusal is `recorded: false` rather than an
+ * error: it is not a failure the person can act on, and saying "no such session"
+ * to a caller who guessed one would answer the question they were asking.
+ *
  * `firstMessage` is capped by the query layer and is only ever the opening
  * message: a repeat call bumps activity and leaves the stored text and the title
  * exactly as they were.
@@ -104,7 +126,12 @@ export async function recordAssistantConversationAction(input: {
   return runOwnerAction({
     schema: recordSchema,
     input,
+    budget: { costCategory: "server-action" },
     body: async ({ ownerUserId, input: parsed }) => {
+      if ((await getEveSessionOwnerUserId(parsed.sessionId)) !== ownerUserId) {
+        return { sessionId: parsed.sessionId, recorded: false };
+      }
+
       await upsertAssistantConversation({
         ownerUserId,
         sessionId: parsed.sessionId,
@@ -113,26 +140,31 @@ export async function recordAssistantConversationAction(input: {
           ASSISTANT_CONVERSATION_FIRST_MESSAGE_MAX_LENGTH,
         ),
       });
-      return { sessionId: parsed.sessionId };
+      return { sessionId: parsed.sessionId, recorded: true };
     },
     result: (recorded) => recorded,
   });
 }
 
 /**
- * The owner's conversations, newest activity first. A plain read with no
- * mutation protocol around it, in the shape `getArchivedSavedItemViewsAction`
- * already uses for quiet secondary history.
+ * The owner's conversations, newest activity first.
+ *
+ * A read, but it goes through the same runner as its siblings rather than
+ * hand-rolling the gate: one admission call, one parse, one result shape, and a
+ * malformed `limit` comes back as data the rail can ignore instead of as a
+ * server-action exception the browser can only render as a generic failure.
  */
 export async function listAssistantConversationsAction(input?: {
   limit?: number;
   includeArchived?: boolean;
-}): Promise<AssistantConversationView[]> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = listSchema.parse(input ?? {});
-  const conversations = await listAssistantConversations({ ownerUserId, ...parsed });
-
-  return conversations.map(toAssistantConversationView);
+}) {
+  return runOwnerAction({
+    schema: listSchema,
+    input: input ?? {},
+    body: ({ ownerUserId, input: parsed }) =>
+      listAssistantConversations({ ownerUserId, ...parsed }),
+    result: (conversations) => conversations.map(toAssistantConversationView),
+  });
 }
 
 /** The owner's own name for a thread, which the first-turn title never overwrites. */
@@ -143,6 +175,7 @@ export async function renameAssistantConversationAction(input: {
   return runOwnerAction({
     schema: renameSchema,
     input,
+    budget: { costCategory: "server-action" },
     body: ({ ownerUserId, input: parsed }) =>
       renameAssistantConversation({
         ownerUserId,
@@ -161,6 +194,7 @@ export async function archiveAssistantConversationAction(input: { sessionId: str
   return runOwnerAction({
     schema: sessionSchema,
     input,
+    budget: { costCategory: "server-action" },
     body: ({ ownerUserId, input: parsed }) =>
       archiveAssistantConversation({ ownerUserId, sessionId: parsed.sessionId }),
     result: (conversation) => (conversation ? toAssistantConversationView(conversation) : null),
@@ -171,6 +205,7 @@ export async function unarchiveAssistantConversationAction(input: { sessionId: s
   return runOwnerAction({
     schema: sessionSchema,
     input,
+    budget: { costCategory: "server-action" },
     body: ({ ownerUserId, input: parsed }) =>
       unarchiveAssistantConversation({ ownerUserId, sessionId: parsed.sessionId }),
     result: (conversation) => (conversation ? toAssistantConversationView(conversation) : null),

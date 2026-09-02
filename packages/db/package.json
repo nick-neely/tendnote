@@ -82,6 +82,7 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "TMPDIR=/tmp tsx src/seed.ts",
     "db:audit-retention:check": "TMPDIR=/tmp tsx src/audit-retention-live-check.ts",
+    "db:assistant-conversations:check": "TMPDIR=/tmp tsx src/assistant-conversations-live-check.ts",
     "db:purge:check": "TMPDIR=/tmp tsx src/household-purge-live-check.ts",
     "db:account-deletion:check": "TMPDIR=/tmp tsx src/household-account-deletion-live-check.ts",
     "db:eval:reset": "TMPDIR=/tmp tsx src/eval/reset.ts",

@@ -1,3 +1,4 @@
+import type { AssistantConversationTitleSource } from "@tendnote/domain/assistant-conversations";
 import { index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
@@ -22,7 +23,10 @@ import { timestamps } from "./common";
  * `title_source` is what keeps the asynchronous title upgrade idempotent: the
  * first message writes a `placeholder` immediately (zero latency, no model
  * call), and the first-turn hook replaces it once with a `model` title. A row
- * already marked `model`, or renamed by its owner, is never overwritten.
+ * already marked `model` or `owner` is never overwritten — and the two are kept
+ * apart rather than folded together so the column stays honest about who named
+ * the thread: `owner` is a name the person typed, `model` is one that was
+ * generated for them.
  *
  * `first_message` is kept (capped) so a title can be regenerated later without
  * replaying the Eve stream, which is the only other place the text exists.
@@ -40,7 +44,7 @@ export const assistantConversations = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     titleSource: text("title_source")
-      .$type<"placeholder" | "model">()
+      .$type<AssistantConversationTitleSource>()
       .notNull()
       .default("placeholder"),
     firstMessage: text("first_message"),

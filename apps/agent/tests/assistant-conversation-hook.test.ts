@@ -167,12 +167,13 @@ describe("assistant conversation hook", () => {
     await events["message.completed"]?.(messageCompleted("Priya is moving in October."), context());
     await events["turn.completed"]?.(turnCompleted(), context());
 
-    expect(touch).toHaveBeenCalledWith({ sessionId: "wrun_1" });
+    expect(touch).toHaveBeenCalledWith({ ownerUserId: "user-1", sessionId: "wrun_1" });
     expect(generateTitle).toHaveBeenCalledWith({
       userMessage: "Remind me what Priya said about the move",
       assistantReply: "Priya is moving in October.",
     });
     expect(setTitle).toHaveBeenCalledWith({
+      ownerUserId: "user-1",
       sessionId: "wrun_1",
       title: "Priya's move",
       source: "model",
@@ -194,7 +195,7 @@ describe("assistant conversation hook", () => {
     const { touch, generateTitle, setTitle, events } = build();
     await events["turn.completed"]?.(turnCompleted("turn-2"), context({ turnSequence: 3 }));
 
-    expect(touch).toHaveBeenCalledWith({ sessionId: "wrun_1" });
+    expect(touch).toHaveBeenCalledWith({ ownerUserId: "user-1", sessionId: "wrun_1" });
     expect(generateTitle).not.toHaveBeenCalled();
     expect(setTitle).not.toHaveBeenCalled();
   });
@@ -207,6 +208,23 @@ describe("assistant conversation hook", () => {
 
     expect(generateTitle).not.toHaveBeenCalled();
     expect(setTitle).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The owner-scoped `touch` answers `null` for a row this session's owner does
+   * not own — a session id somebody else pre-claimed. There is nothing here to
+   * title, and titling it anyway would put this conversation's words on their
+   * thread.
+   */
+  it("titles nothing when no row of this owner's answers for the session", async () => {
+    const { generateTitle, setTitle, warn, events } = build({
+      touch: vi.fn(async () => null),
+    });
+    await events["turn.completed"]?.(turnCompleted(), context());
+
+    expect(generateTitle).not.toHaveBeenCalled();
+    expect(setTitle).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("skips the model call when titling is switched off", async () => {

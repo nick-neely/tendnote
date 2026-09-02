@@ -81,6 +81,18 @@ now — there is no way to erase an Eve session's durable stream from Tendnote, 
 Owner account deletion is the exception that works, because the cascade takes the
 row and the account's admission together.
 
+Every write is owner-scoped, the agent hook's included. Running inside a
+session's own durable execution proves *which session*, not which row: the table
+is keyed by session id, and a session id can be named by anyone, so the hook
+carries the principal the channel's `AuthFn` stamped into its activity bump and
+its title write rather than filtering on the id alone. The one entry point that
+can create a row — the browser's claim — cannot be protected by a `WHERE` clause
+at all, because the row does not exist yet, so it verifies the id against
+`eve_session_owners` before inserting and records nothing for an id that is
+unbound or bound to someone else; the hook's own upsert creates that row
+authoritatively from inside the session regardless, so refusing costs the rail a
+moment and never the thread.
+
 Only top-level `web_chat` sessions are recorded. A Discord session, a scheduled
 run, and a subagent turn all resolve to a different mode from the principal the
 channel's own `AuthFn` stamped (ADR-0128), so none of them can appear in a

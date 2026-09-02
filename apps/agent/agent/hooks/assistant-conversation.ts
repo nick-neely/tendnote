@@ -39,6 +39,12 @@ import { resolveSessionEveMode } from "../lib/eve-modes";
  * keeps its placeholder title is a cosmetic loss, a failed turn is not. The
  * owner comes from the principal the channel's own `AuthFn` stamped, never from
  * message text, and only a top-level `web_chat` session is recorded at all.
+ *
+ * That owner travels with *every* write, the activity bump and the title
+ * included. Running inside the session proves which session, not which row: the
+ * table is keyed by session id, the web action lets a browser name one, and a
+ * row pre-claimed under this id by another account would otherwise be the row
+ * this hook bumped and titled (ADR 0238).
  */
 
 /** As much of the opening reply as usefully sharpens a five-word title. */
@@ -200,7 +206,7 @@ export const createAssistantConversationHook = (
 
         let conversation: Awaited<ReturnType<typeof touch>> = null;
         try {
-          conversation = await touch({ sessionId: ctx.session.id });
+          conversation = await touch({ ownerUserId, sessionId: ctx.session.id });
         } catch (error) {
           warn("assistant-conversation: could not record turn activity", error);
           return;
@@ -222,7 +228,7 @@ export const createAssistantConversationHook = (
             await generateTitle({ userMessage, assistantReply }),
           );
           if (title) {
-            await setTitle({ sessionId: ctx.session.id, title, source: "model" });
+            await setTitle({ ownerUserId, sessionId: ctx.session.id, title, source: "model" });
           }
         } catch (error) {
           warn("assistant-conversation: could not title the conversation", error);

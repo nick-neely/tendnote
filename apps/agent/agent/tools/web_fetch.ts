@@ -1,3 +1,4 @@
+import { clipTitle, hostLabel } from "@tendnote/domain/assistant-sources";
 import { defineTool, type ToolContext } from "eve/tools";
 import { type WebFetchToolInput, webFetch } from "eve/tools/web_fetch";
 import { z } from "zod";
@@ -41,9 +42,6 @@ type WebFetchOutput = Omit<z.infer<typeof WEB_FETCH_OUTPUT_SCHEMA>, "source">;
 /** Enough of the response to hold a `<title>` or a leading heading. */
 const TITLE_SCAN_BYTES = 64 * 1024;
 
-/** A citation title is chrome for a link, not content. */
-const MAX_TITLE_LENGTH = 200;
-
 const NAMED_ENTITIES: Readonly<Record<string, string>> = {
   amp: "&",
   apos: "'",
@@ -72,10 +70,15 @@ function decodeEntities(text: string): string {
   });
 }
 
+/**
+ * `clipTitle` and `hostLabel` come from the same module that *reads* these
+ * citations back (`sourcesFromToolOutput`), so a title clipped here and one
+ * clipped from a search result are clipped identically. Only the entity
+ * decoding is local: it is a property of scraped markup, not of a citation.
+ */
 function tidyTitle(raw: string): string | undefined {
   const title = decodeEntities(raw).replace(/\s+/g, " ").trim();
-  if (title === "") return undefined;
-  return title.length > MAX_TITLE_LENGTH ? `${title.slice(0, MAX_TITLE_LENGTH - 1)}…` : title;
+  return title === "" ? undefined : clipTitle(title);
 }
 
 /**
@@ -97,14 +100,6 @@ function extractTitle(fetched: WebFetchOutput): string {
     (heading === undefined ? undefined : tidyTitle(heading)) ??
     hostLabel(fetched.url)
   );
-}
-
-function hostLabel(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
 }
 
 const UNTRUSTED_CONTENT_GUIDANCE =

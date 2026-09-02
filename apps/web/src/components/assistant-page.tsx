@@ -1,9 +1,11 @@
 "use client";
 
 import type { PromptNudge } from "@tendnote/domain";
+import { placeholderConversationTitle } from "@tendnote/domain/assistant-conversations";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   type AssistantConversationView,
   archiveAssistantConversationAction,
@@ -28,6 +30,7 @@ import {
   loadAssistantRailCollapsed,
   saveAssistantRailCollapsed,
 } from "@/lib/assistant/rail-preference";
+import type { OwnerActionResult } from "@/lib/owner-action-result";
 import { cn } from "@/lib/utils";
 
 /**
@@ -121,7 +124,8 @@ export function AssistantPage({
   // owner-scoped action, so there is no local edit for the server to clobber.
   const refreshConversations = useCallback(async () => {
     try {
-      setConversations(await listAssistantConversationsAction({ includeArchived: true }));
+      const result = await listAssistantConversationsAction({ includeArchived: true });
+      if (result.ok) setConversations(result.view);
     } catch {
       // A list that failed to refresh is a stale title, not a lost conversation.
     }
@@ -180,10 +184,11 @@ export function AssistantPage({
     setConversations((current) => [
       {
         sessionId: newSessionId,
-        // The placeholder the server is writing at this same moment. Showing the
+        // The placeholder the server is writing at this same moment, from the
+        // same shared rule, so the two can never visibly disagree. Showing the
         // owner's own words now, and the model's title when it lands, is the
         // whole two-step ladder (ADR 0238) seen from the rail.
-        title: placeholderTitle(firstMessage),
+        title: placeholderConversationTitle(firstMessage),
         lastActivityAt: new Date(),
         archived: false,
       },
@@ -192,8 +197,8 @@ export function AssistantPage({
     window.history.replaceState(null, "", `/assistant/${encodeURIComponent(newSessionId)}`);
 
     void recordAssistantConversationAction({ sessionId: newSessionId, firstMessage })
-      // Immediately, so the server's own placeholder replaces the optimistic
-      // guess above and the two clipping rules can never visibly disagree.
+      // Immediately, so the server's own row — with whatever the agent hook has
+      // already written into it — replaces the optimistic guess above.
       .then(refreshConversations)
       // Then once more, because the model title is written by the agent hook as
       // the first turn completes and the rail is the only place it shows.
@@ -206,38 +211,65 @@ export function AssistantPage({
       });
   }
 
+  /**
+   * A rail mutation, applied to the list only once the server has agreed to it.
+   *
+   * `runOwnerAction` answers a refusal as *data* — a rate limit reached, a
+   * malformed title — so an unchecked `await` reads as success and leaves the
+   * rail asserting a rename or an archive that never happened. `ok` with a
+   * `null` view is the second no: the owner-scoped query matched no row, so the
+   * thread is gone or was never theirs, and the honest repair is to re-read the
+   * list rather than to edit a row the server does not have.
+   *
+   * The stored row is what gets applied, not the change that was asked for, so
+   * the rail always shows what was actually saved. A refusal is spoken once as a
+   * toast because the rail has nowhere of its own to say it, and its `run`
+   * wrapper does not catch — throwing from here would be an unhandled rejection.
+   */
+  async function applyThreadChange(
+    pending: Promise<OwnerActionResult<AssistantConversationView | null>>,
+  ): Promise<void> {
+    let result: OwnerActionResult<AssistantConversationView | null>;
+    try {
+      result = await pending;
+    } catch {
+      toast.error(MUTATION_FAILED_MESSAGE);
+      return;
+    }
+
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    if (!result.view) {
+      toast.error("That conversation is no longer here.");
+      await refreshConversations();
+      return;
+    }
+
+    const saved = result.view;
+    setConversations((current) =>
+      current.map((conversation) =>
+        conversation.sessionId === saved.sessionId ? saved : conversation,
+      ),
+    );
+  }
+
   const rail = (
     <AssistantConversationRail
       archived={archived}
       conversations={active}
       currentSessionId={currentSessionId}
       now={now}
-      onArchive={async (id) => {
-        await archiveAssistantConversationAction({ sessionId: id });
-        setConversations((current) =>
-          current.map((conversation) =>
-            conversation.sessionId === id ? { ...conversation, archived: true } : conversation,
-          ),
-        );
-      }}
+      onArchive={(id) => applyThreadChange(archiveAssistantConversationAction({ sessionId: id }))}
       onNavigate={() => setRailSheetOpen(false)}
       onNewConversation={startNewConversation}
-      onRename={async (id, title) => {
-        await renameAssistantConversationAction({ sessionId: id, title });
-        setConversations((current) =>
-          current.map((conversation) =>
-            conversation.sessionId === id ? { ...conversation, title } : conversation,
-          ),
-        );
-      }}
-      onUnarchive={async (id) => {
-        await unarchiveAssistantConversationAction({ sessionId: id });
-        setConversations((current) =>
-          current.map((conversation) =>
-            conversation.sessionId === id ? { ...conversation, archived: false } : conversation,
-          ),
-        );
-      }}
+      onRename={(id, title) =>
+        applyThreadChange(renameAssistantConversationAction({ sessionId: id, title }))
+      }
+      onUnarchive={(id) =>
+        applyThreadChange(unarchiveAssistantConversationAction({ sessionId: id }))
+      }
     />
   );
 
@@ -325,30 +357,8 @@ export function AssistantPage({
  */
 const TITLE_SETTLE_MS = 12_000;
 
-/**
- * The rail's optimistic first title, for the moment between eve naming the
- * session and Tendnote answering with the row.
- *
- * A deliberate second copy of `placeholderConversationTitle` in
- * `@tendnote/db/queries/assistant-conversations`, which is the authoritative one
- * but reaches the database client and so cannot be imported into the browser.
- * The divergence risk is bounded to that moment: the claim below re-reads the
- * list the instant the row exists, and the server's answer wins from then on.
- */
-const PLACEHOLDER_TITLE_MAX_LENGTH = 60;
-
-function placeholderTitle(firstMessage: string): string {
-  const normalized = firstMessage.replace(/\s+/g, " ").trim();
-  if (!normalized) return "New conversation";
-
-  const points = [...normalized];
-  if (points.length <= PLACEHOLDER_TITLE_MAX_LENGTH) return normalized;
-
-  const clipped = points.slice(0, PLACEHOLDER_TITLE_MAX_LENGTH).join("");
-  const lastSpace = clipped.lastIndexOf(" ");
-  const base = lastSpace >= 24 ? clipped.slice(0, lastSpace) : clipped;
-  return `${base.replace(/[\s.,;:!?—–-]+$/u, "")}…`;
-}
+/** For the failures that carry no owner-facing sentence of their own. */
+const MUTATION_FAILED_MESSAGE = "That did not save. Try again in a moment.";
 
 /**
  * One header for the destination: who is talking, which thread, and the standing

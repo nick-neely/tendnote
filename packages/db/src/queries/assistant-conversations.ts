@@ -1,3 +1,9 @@
+import type { AssistantConversationTitleSource } from "@tendnote/domain/assistant-conversations";
+import {
+  normalizeConversationTitle,
+  normalizeFirstMessage,
+  placeholderConversationTitle,
+} from "@tendnote/domain/assistant-conversations";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "../client";
 import { assistantConversations } from "../schema";
@@ -18,16 +24,34 @@ import { assistantConversations } from "../schema";
  * from naming one that does not exist. This is the same rule
  * `eve_session_owners` exists to enforce on Eve's own routes.
  *
- * The two exceptions take no owner argument and say so in their names'
- * neighbourhood: `touchAssistantConversation` and
- * `setAssistantConversationTitle` are called by the agent hook from *inside*
- * the session's own durable execution, which is a stronger proof of authority
- * than any argument could be. Neither is reachable from a web request, and
- * neither returns anything an owner-scoped read would not.
+ * That includes the two the agent hook calls —`touchAssistantConversation` and
+ * `setAssistantConversationTitle`. Running inside the session's own durable
+ * execution proves *which session*, not which row: a session id the hook has
+ * never seen before may already have a row somebody else pre-claimed by naming
+ * the id first, and without `owner_user_id` in the `WHERE` clause the hook would
+ * bump that stranger's thread and write this conversation's model title onto it.
+ * So the hook passes the owner the channel's own `AuthFn` stamped, and both
+ * writes carry it.
+ *
+ * ## Where the naming rules live
+ *
+ * The clipping and normalizing below are re-exports from
+ * `@tendnote/domain/assistant-conversations`. The browser writes the same
+ * placeholder title optimistically the instant eve mints a session id, and this
+ * module reaches the database client, so the rules cannot live here and still be
+ * the same rules on both sides.
  */
 
-/** How the current title was produced, and therefore whether it may be replaced. */
-export type AssistantConversationTitleSource = "placeholder" | "model";
+export {
+  ASSISTANT_CONVERSATION_FALLBACK_TITLE,
+  ASSISTANT_CONVERSATION_FIRST_MESSAGE_MAX_LENGTH,
+  ASSISTANT_CONVERSATION_PLACEHOLDER_TITLE_MAX_LENGTH,
+  ASSISTANT_CONVERSATION_TITLE_MAX_LENGTH,
+  normalizeConversationTitle,
+  normalizeFirstMessage,
+  placeholderConversationTitle,
+} from "@tendnote/domain/assistant-conversations";
+export type { AssistantConversationTitleSource };
 
 export type AssistantConversation = {
   sessionId: string;
@@ -41,26 +65,8 @@ export type AssistantConversation = {
   updatedAt: Date;
 };
 
-/** Enough of the opening message to regenerate a title without replaying Eve's stream. */
-export const ASSISTANT_CONVERSATION_FIRST_MESSAGE_MAX_LENGTH = 500;
-
-/** A rail entry, not a sentence: long enough to be specific, short enough to read at a glance. */
-export const ASSISTANT_CONVERSATION_TITLE_MAX_LENGTH = 120;
-
-/** The placeholder is a clipped first message, so it stops well before the stored title cap. */
-export const ASSISTANT_CONVERSATION_PLACEHOLDER_TITLE_MAX_LENGTH = 60;
-
-/**
- * Shown when the opening message carries no text of its own — an attachment-only
- * turn, or one whose text is entirely whitespace.
- */
-export const ASSISTANT_CONVERSATION_FALLBACK_TITLE = "New conversation";
-
 /** Default page size for the rail. Deep history is a separate, deliberate read. */
 const DEFAULT_LIST_LIMIT = 50;
-
-/** Below this, a word-boundary cut would throw away most of the placeholder. */
-const MIN_WORD_BOUNDARY_OFFSET = 24;
 
 const SELECTED_COLUMNS = {
   sessionId: assistantConversations.sessionId,
@@ -73,51 +79,6 @@ const SELECTED_COLUMNS = {
   createdAt: assistantConversations.createdAt,
   updatedAt: assistantConversations.updatedAt,
 } as const;
-
-/** Collapse the newlines a composer produces so a title stays one line. */
-function normalizeMessageText(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
-}
-
-function clipToCodePoints(text: string, limit: number): string {
-  const points = [...text];
-  return points.length <= limit ? text : points.slice(0, limit).join("");
-}
-
-/**
- * The immediate, free title: the owner's own opening words, clipped on a word
- * boundary. It costs nothing and is right often enough that the model title
- * that replaces it reads as a refinement rather than a correction.
- */
-export function placeholderConversationTitle(firstMessage: string): string {
-  const normalized = normalizeMessageText(firstMessage);
-  if (!normalized) return ASSISTANT_CONVERSATION_FALLBACK_TITLE;
-
-  const points = [...normalized];
-  if (points.length <= ASSISTANT_CONVERSATION_PLACEHOLDER_TITLE_MAX_LENGTH) return normalized;
-
-  const clipped = points.slice(0, ASSISTANT_CONVERSATION_PLACEHOLDER_TITLE_MAX_LENGTH).join("");
-  const lastSpace = clipped.lastIndexOf(" ");
-  const base = lastSpace >= MIN_WORD_BOUNDARY_OFFSET ? clipped.slice(0, lastSpace) : clipped;
-
-  return `${base.replace(/[\s.,;:!?—–-]+$/u, "")}…`;
-}
-
-/** The stored form of the opening message: one line, capped, or `null` when empty. */
-export function normalizeFirstMessage(firstMessage: string | null | undefined): string | null {
-  const normalized = normalizeMessageText(firstMessage ?? "");
-  if (!normalized) return null;
-
-  return clipToCodePoints(normalized, ASSISTANT_CONVERSATION_FIRST_MESSAGE_MAX_LENGTH);
-}
-
-/** The stored form of a title, whoever authored it. Never empty, never overlong. */
-export function normalizeConversationTitle(title: string): string {
-  const normalized = normalizeMessageText(title);
-  if (!normalized) return ASSISTANT_CONVERSATION_FALLBACK_TITLE;
-
-  return clipToCodePoints(normalized, ASSISTANT_CONVERSATION_TITLE_MAX_LENGTH);
-}
 
 /**
  * Record that `ownerUserId` is talking in `sessionId`, creating the thread on
@@ -208,9 +169,13 @@ export async function getAssistantConversation(input: {
 }
 
 /**
- * The owner's own name for a thread. It is recorded as a `model` title so the
- * first-turn hook, which only ever replaces a `placeholder`, cannot overwrite a
- * rename that landed while the turn was still running.
+ * The owner's own name for a thread, recorded as an `owner` title.
+ *
+ * Any source but `placeholder` is enough to stop the first-turn hook, which only
+ * ever replaces a placeholder, from overwriting a rename that landed while the
+ * turn was still running. Saying `owner` rather than borrowing `model` is what
+ * keeps the column honest: nothing downstream has to guess whether a title the
+ * person typed was actually generated.
  */
 export async function renameAssistantConversation(input: {
   ownerUserId: string;
@@ -221,7 +186,7 @@ export async function renameAssistantConversation(input: {
     .update(assistantConversations)
     .set({
       title: normalizeConversationTitle(input.title),
-      titleSource: "model",
+      titleSource: "owner",
       updatedAt: new Date(),
     })
     .where(
@@ -277,12 +242,16 @@ async function setArchivedAt(
  * Agent-side: keep the thread's place in the list current as its turns land,
  * and hand back the two fields the first-turn titling path needs.
  *
- * It takes no owner argument because its only caller is the hook running inside
- * that session's own durable execution. It deliberately returns the opening
- * message and nothing else that a list read would not already show, so it stays
- * a bad tool for anyone who reached it with a guessed id.
+ * `ownerUserId` is the principal the channel's own `AuthFn` stamped on this
+ * session, not an argument any message could influence. It is required for the
+ * same reason the owner-facing queries require it: the row is keyed by session
+ * id alone, and a session id can be *named* by anyone. Without it, a row
+ * pre-claimed under this id by another account would be the row this hook
+ * bumped. It deliberately returns the opening message and nothing else a list
+ * read would not already show.
  */
 export async function touchAssistantConversation(input: {
+  ownerUserId: string;
   sessionId: string;
   at?: Date;
 }): Promise<{ firstMessage: string | null; titleSource: AssistantConversationTitleSource } | null> {
@@ -290,7 +259,12 @@ export async function touchAssistantConversation(input: {
   const [row] = await getDb()
     .update(assistantConversations)
     .set({ lastActivityAt: at, updatedAt: at })
-    .where(eq(assistantConversations.sessionId, input.sessionId))
+    .where(
+      and(
+        eq(assistantConversations.sessionId, input.sessionId),
+        eq(assistantConversations.ownerUserId, input.ownerUserId),
+      ),
+    )
     .returning({
       firstMessage: assistantConversations.firstMessage,
       titleSource: assistantConversations.titleSource,
@@ -306,8 +280,13 @@ export async function touchAssistantConversation(input: {
  * story. A retried turn, a second hook invocation, or a title that arrives after
  * the owner has renamed the thread all update zero rows, so the person's own
  * words always win over the model's.
+ *
+ * `owner_user_id` sits beside it for the reason `touchAssistantConversation`
+ * gives: a model title generated from this conversation must never be able to
+ * land on a row belonging to somebody else who named the id first.
  */
 export async function setAssistantConversationTitle(input: {
+  ownerUserId: string;
   sessionId: string;
   title: string;
   source: "model";
@@ -322,6 +301,7 @@ export async function setAssistantConversationTitle(input: {
     .where(
       and(
         eq(assistantConversations.sessionId, input.sessionId),
+        eq(assistantConversations.ownerUserId, input.ownerUserId),
         eq(assistantConversations.titleSource, "placeholder"),
       ),
     )
