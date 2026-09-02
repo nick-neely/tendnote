@@ -138,6 +138,9 @@ const UNGATED_TOOLS = [
   "search_assets",
   "search_gift_plans",
   "search_people",
+  // Neither a read nor a write: it echoes back a filtered copy of its own input for
+  // the chip strip, so there is no record for an owner to approve.
+  "suggest_next_steps",
   "task_cancel",
   "task_update",
   "write_file",

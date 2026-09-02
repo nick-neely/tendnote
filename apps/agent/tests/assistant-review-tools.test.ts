@@ -368,9 +368,12 @@ describe("tools do not bypass owner scoping or scope/sensitivity rules", () => {
   // Tools that perform owner-scoped reads/writes (everything except the
   // owner-agnostic people search and the framework web_fetch wrapper. The latter
   // delegates to Eve's bounded, provider-independent HTTP executor and reads no
-  // Tendnote state, so there is no owner to resolve.
+  // Tendnote state, so there is no owner to resolve. `suggest_next_steps` is the
+  // same absence for a different reason: it touches no store at all, echoing back a
+  // filtered copy of its own input for the Assistant's chip strip.
   const ownerScopedTools = toolFiles.filter(
-    (file) => file !== "search_people.ts" && file !== "web_fetch.ts",
+    (file) =>
+      file !== "search_people.ts" && file !== "web_fetch.ts" && file !== "suggest_next_steps.ts",
   );
 
   for (const file of ownerScopedTools) {
