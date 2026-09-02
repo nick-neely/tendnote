@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
  * One deviation from the brief worth naming: the body renders through
  * `AssistantMarkdown` rather than the registry's `ReasoningContent`. That
  * component hard-codes a bare `Streamdown`, which renders a Markdown image as a
- * real `<img src>` — the exact egress channel `assistant-markdown.tsx` exists to
+ * real image element — the exact egress channel `assistant-markdown.tsx` exists to
  * close, and reasoning text is as model-controlled as the answer is. The
  * disclosure's own chrome (the collapse animation, the muted type) is kept
  * verbatim from that component.
