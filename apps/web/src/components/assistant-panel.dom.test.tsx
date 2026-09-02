@@ -42,6 +42,15 @@ const { eve } = vi.hoisted(() => {
     status: "ready",
   };
 
+  /** What `useEveAgent` hands `registerCallbacks` on every render. */
+  type CallbackOptions = {
+    initialEvents?: unknown;
+    initialSession?: unknown;
+    onError?: (error: Error) => void;
+    onSessionChange?: (session: { sessionId: string } | undefined) => void;
+    resume?: boolean;
+  };
+
   const listeners = new Set<() => void>();
   const sent: string[] = [];
   const responded: unknown[][] = [];
@@ -59,6 +68,29 @@ const { eve } = vi.hoisted(() => {
     for (const listener of listeners) {
       listener();
     }
+  }
+
+  /** Latches the callbacks `onError`/`failWith` and `onSessionChange`/`nameSession` call. */
+  function applyCallbacks(options: CallbackOptions | undefined): void {
+    onError = options?.onError;
+    onSessionChange = options?.onSessionChange;
+  }
+
+  /** Records the store's one-time construction options, the first time only. */
+  function recordMount(options: CallbackOptions | undefined): void {
+    if (mounted.length > 0) return;
+    mounted.push({
+      initialEvents: options?.initialEvents,
+      initialSession: options?.initialSession,
+      resume: options?.resume,
+    });
+  }
+
+  /** Records a follow of an existing session, the first time only. */
+  function recordResume(options: CallbackOptions | undefined): void {
+    if (!options?.resume) return;
+    if (resumed.includes(options.initialSession)) return;
+    resumed.push(options.initialSession);
   }
 
   return {
@@ -86,25 +118,10 @@ const { eve } = vi.hoisted(() => {
         if ("failure" in prefix) throw prefix.failure;
         return prefix.events;
       },
-      registerCallbacks: (options?: {
-        initialEvents?: unknown;
-        initialSession?: unknown;
-        onError?: (error: Error) => void;
-        onSessionChange?: (session: { sessionId: string } | undefined) => void;
-        resume?: boolean;
-      }): void => {
-        onError = options?.onError;
-        onSessionChange = options?.onSessionChange;
-        if (mounted.length === 0) {
-          mounted.push({
-            initialEvents: options?.initialEvents,
-            initialSession: options?.initialSession,
-            resume: options?.resume,
-          });
-        }
-        if (options?.resume && !resumed.includes(options.initialSession)) {
-          resumed.push(options.initialSession);
-        }
+      registerCallbacks: (options?: CallbackOptions): void => {
+        applyCallbacks(options);
+        recordMount(options);
+        recordResume(options);
       },
       /** The server has minted (or reattached to) a session id. */
       nameSession: (sessionId: string): void => {
