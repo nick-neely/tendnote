@@ -71,7 +71,7 @@ import {
 import { type AssistantSendQueueControls, useSendQueue } from "@/lib/eve/use-send-queue";
 import { cn } from "@/lib/utils";
 
-export type AssistantPersonContext = SelectedPersonContext;
+type AssistantPersonContext = SelectedPersonContext;
 
 type AgentStatus = AssistantAgentStatus;
 
