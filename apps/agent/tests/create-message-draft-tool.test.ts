@@ -123,6 +123,7 @@ describe("create_message_draft tool", () => {
               trust: "confirmed_fact",
             },
           ],
+          digest: "digest-from-the-proposal",
         },
       },
       ctx,
@@ -143,6 +144,9 @@ describe("create_message_draft tool", () => {
             trust: "confirmed_fact",
           },
         ],
+        // Carried through unchanged so the seam can check the wording it is about to
+        // persist against the proposal that issued it; the model cannot recompute it.
+        proposalDigest: "digest-from-the-proposal",
       }),
     );
   });

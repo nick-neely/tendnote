@@ -7,6 +7,7 @@ import { LogOutIcon } from "@/components/icons";
 import { useReminderInstallation } from "@/components/reminder-installation-context";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { resetApprovalSubjectCache } from "@/lib/approval-subject-cache";
 import { signOut } from "@/lib/auth/client";
 import { safeReturnTo } from "@/lib/auth/return-to";
 import { clearAllLocalComposerDrafts } from "@/lib/local-composer-draft";
@@ -58,6 +59,9 @@ export function SignOutButton({
 
     try {
       await signOut();
+      // Everything this device still holds about the person who just left. A
+      // sign-out is a soft navigation — no reload tears these down on its own.
+      resetApprovalSubjectCache();
       try {
         clearAllLocalComposerDrafts(window.localStorage);
       } catch {

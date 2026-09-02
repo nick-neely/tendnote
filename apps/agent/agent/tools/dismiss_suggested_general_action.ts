@@ -1,6 +1,8 @@
 import { dismissSuggestedGeneralAction } from "@tendnote/db/queries/general-actions";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -15,8 +17,9 @@ const inputSchema = z.object({
  * 0159). Only call on the user's explicit rejection.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Dismiss a suggested General Action the user does not want. Only call this when the user has explicitly rejected that specific suggestion. It leaves review without adding anything to the active ledger. Returns the persisted id and new status; name the action by its title, never the raw id.",
+    "Dismiss a suggested General Action the user does not want. Only call this when the user has explicitly rejected that specific suggestion. It leaves review without adding anything to the active ledger. Returns the persisted id and new status; name the action by its title, never the raw id. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

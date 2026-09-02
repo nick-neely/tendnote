@@ -16,6 +16,7 @@ import {
 } from "@tendnote/domain/reminders";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
@@ -82,8 +83,9 @@ const inputSchema = z.object({
  * before attaching them. Returns a compact persisted reference, never a raw id in prose.
  */
 export default defineTool({
+  approval: requireOwnerApproval(),
   description:
-    "Create an ACTIVE General Action (a durable to-do) directly, or a Routine when a recurring cadence is given. Only call this when the user explicitly asks to add/create/track an action in the current turn (e.g. 'add an action to replace the water filter', 'set up a routine to change the filters every 6 months') - never invent one on their behalf, and never from your own initiative or an inference. If the user is only brainstorming or asking you to plan, propose review-gated suggestions with suggest_general_action / plan_suggested_general_actions instead. A due date is optional (omit for an unscheduled 'someday' action); resolve relative timing to a concrete date, and ask if it is ambiguous. If an explicit request names an Area that does not exist, create the Action now with `areaId` omitted; an unfiled Action is valid and you must not wait for or invent filing. If the user explicitly asks to be reminded or notified, pass reminderSchedule together with the concrete dueAt; the saved result distinguishes the Action from its notification, and a failed notification must be reported as failed. Never attach a reminder to an inferred suggestion. Resolve any people with search_people first - they are context links, not follow-ups. Returns the persisted action reference (id, title, status, timing, cadence); refer to it by its title, never the raw id.",
+    "Create an ACTIVE General Action (a durable to-do) directly, or a Routine when a recurring cadence is given. Only call this when the user explicitly asks to add/create/track an action in the current turn (e.g. 'add an action to replace the water filter', 'set up a routine to change the filters every 6 months') - never invent one on their behalf, and never from your own initiative or an inference. If the user is only brainstorming or asking you to plan, propose review-gated suggestions with suggest_general_action / plan_suggested_general_actions instead. A due date is optional (omit for an unscheduled 'someday' action); resolve relative timing to a concrete date, and ask if it is ambiguous. If an explicit request names an Area that does not exist, create the Action now with `areaId` omitted; an unfiled Action is valid and you must not wait for or invent filing. If the user explicitly asks to be reminded or notified, pass reminderSchedule together with the concrete dueAt; the saved result distinguishes the Action from its notification, and a failed notification must be reported as failed. Never attach a reminder to an inferred suggestion. Resolve any people with search_people first - they are context links, not follow-ups. Returns the persisted action reference (id, title, status, timing, cadence); refer to it by its title, never the raw id. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

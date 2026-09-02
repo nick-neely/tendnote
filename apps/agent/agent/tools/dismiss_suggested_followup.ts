@@ -1,6 +1,8 @@
 import { dismissSuggestedFollowup } from "@tendnote/db/queries/followups";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -16,8 +18,9 @@ const inputSchema = z.object({
  * explicit rejection.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Dismiss a suggested follow-up the user does not want. Only call this when the user has explicitly rejected it. It leaves review without creating any reminder. Returns the persisted id and new status; name the person, never the raw id.",
+    "Dismiss a suggested follow-up the user does not want. Only call this when the user has explicitly rejected it. It leaves review without creating any reminder. Returns the persisted id and new status; name the person, never the raw id. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

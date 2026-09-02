@@ -9,7 +9,10 @@ import { relationshipAgendaTool } from "../../../lib/tools/relationship-agenda";
 export default defineTool(
   relationshipAgendaTool({
     description:
-      "Read the caller's visible relationship agenda for private strategy requests. Visible context includes the caller's private records plus selected-member and whole-household records the caller can view. This is read-only: it ranks existing context and never creates reminders, suggestions, scans, briefs, drafts, memories, source records, or external actions. Preserve visibility/provenance language when it affects trust or actionability. Each candidate carries the `personId` and source refs a grounded propose_followup call needs; use them as handles only and name people by display name, never by a raw id.",
+      "Read the caller's visible relationship agenda for private strategy requests. Visible context includes the caller's private records plus selected-member and whole-household records the caller can view. This is read-only: it ranks existing context and never creates reminders, suggestions, scans, briefs, drafts, memories, source records, or external actions. Preserve visibility/provenance language when it affects trust or actionability. Restricted-sensitivity candidates are never included here: only the root agent, with the owner present to approve it, can ask for them. Each candidate carries the `personId` and source refs a grounded propose_followup call needs; use them as handles only and name people by display name, never by a raw id.",
     toolCallHandles: true,
+    // A subagent turn has nobody to ask, so it does not get to ask: the field is
+    // off this registration's schema entirely and the read stays ordinary.
+    restrictedContext: "unavailable",
   }),
 );

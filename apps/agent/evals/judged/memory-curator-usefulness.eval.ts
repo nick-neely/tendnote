@@ -1,4 +1,4 @@
-import { defineEval } from "eve/evals";
+import { defineEval } from "../define-eval";
 import { subagentOutput } from "./helpers";
 
 export default defineEval({

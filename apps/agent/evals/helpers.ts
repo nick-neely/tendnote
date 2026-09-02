@@ -1,5 +1,12 @@
-import type { AssertionHandle, EveEvalAssertions } from "eve/evals";
-import { calledToolNames } from "./expectations";
+import type {
+  AssertionHandle,
+  EveEvalAssertions,
+  EveEvalContext,
+  EveEvalTurn,
+  InputRequest,
+} from "eve/evals";
+import { APPROVAL_APPROVE_OPTION_ID, APPROVAL_REQUEST_KIND } from "../agent/lib/approval";
+import { calledToolNames, requestedApproval } from "./expectations";
 
 type EvalEvent = {
   type?: unknown;
@@ -31,14 +38,75 @@ const SUBAGENT_EVENT_TYPES = [
   "subagent.completed",
 ] as const;
 
-export function requestedTool(events: readonly unknown[], toolName: string): boolean {
-  return events.some(
-    (event) =>
-      isActionRequestedEvent(event) &&
-      event.data.actions.some(
-        (action) => action.kind === "tool-call" && action.toolName === toolName,
-      ),
+/**
+ * The part of an eval session an approval round needs. eve exports the session
+ * driver's interface only through `EveEvalContext` and `EveEvalSession`, so
+ * name the one method here rather than depending on either whole surface.
+ */
+type ApprovalResponder = Pick<EveEvalContext, "respond">;
+
+/** How many approval rounds one turn may need before the harness gives up. */
+const MAX_APPROVAL_ROUNDS = 5;
+
+/**
+ * Answer every parked owner approval with Approve and let the turn finish.
+ *
+ * Gated tools park the turn at `waiting` instead of executing, which would
+ * leave every behavior eval graded on half a turn. These evals are about what
+ * Eve *does once allowed*, not about the gate — the gate has deterministic
+ * policy tests (ADR-0059) — so the harness plays the owner who says yes, and
+ * `requestedApprovalFor` is how an eval asserts it was asked at all.
+ *
+ * This is the mechanism; `defineEval` in `./define-eval` is where it becomes the
+ * default, so an eval gets it without asking. It is exported for the two places
+ * that answer explicitly: {@link sendApproving}, and the harness tests.
+ *
+ * Only tool approvals are answered. An `ask_question` prompt is the model
+ * asking, not the gate, and an eval that wants one still answers it itself.
+ */
+export async function approveToolApprovals(
+  session: ApprovalResponder,
+  turn: EveEvalTurn,
+): Promise<EveEvalTurn> {
+  let current = turn;
+
+  for (let round = 0; round < MAX_APPROVAL_ROUNDS; round += 1) {
+    if (current.status !== "waiting") return current;
+
+    const pending = current.inputRequests.filter(isToolApprovalRequest);
+    if (pending.length === 0) return current;
+
+    current = await session.respond(
+      pending.map((request) => ({
+        requestId: request.requestId,
+        optionId: APPROVAL_APPROVE_OPTION_ID,
+      })),
+    );
+  }
+
+  return current;
+}
+
+/**
+ * `t.send`, then approve whatever the turn parked on.
+ *
+ * The same thing `t.send` already does under `defineEval`. Kept as the explicit
+ * spelling for an eval that wants the approving read at its call site, and as
+ * the seam the harness tests drive directly.
+ */
+export async function sendApproving(t: EveEvalContext, message: string): Promise<EveEvalTurn> {
+  return await approveToolApprovals(t, await t.send(message));
+}
+
+/** Assert the owner was asked before `toolName` did anything. */
+export function requestedApprovalFor(t: EveEvalAssertions, toolName: string): AssertionHandle {
+  return t.eventsSatisfy(`asked the owner to approve ${toolName}`, (events) =>
+    requestedApproval(events, toolName),
   );
+}
+
+function isToolApprovalRequest(request: InputRequest): boolean {
+  return request.kind === APPROVAL_REQUEST_KIND;
 }
 
 export function usedSubagent(events: readonly unknown[], subagentName: string): boolean {

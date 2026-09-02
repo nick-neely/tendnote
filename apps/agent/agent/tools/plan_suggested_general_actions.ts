@@ -1,8 +1,12 @@
 import { withDatabaseTransaction } from "@tendnote/db/client";
 import { suggestGeneralAction } from "@tendnote/db/queries/general-actions";
-import { generalActionRecurrenceSchema } from "@tendnote/domain";
+import {
+  generalActionRecurrenceSchema,
+  RESTRICTED_REVEAL_REQUEST_DESCRIPTION,
+} from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireRestrictedRevealApproval } from "../lib/approval";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
@@ -70,9 +74,12 @@ const inputSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Set true ONLY when the user directly asked about delicate context. Restricted source records are excluded from proactive suggestion by default.",
+      "Ask to ground this on a restricted-sensitivity source record, which proactive " +
+        `suggestion excludes by default. ${RESTRICTED_REVEAL_REQUEST_DESCRIPTION}`,
     ),
 });
+
+type PlanSuggestedGeneralActionsInput = z.infer<typeof inputSchema>;
 
 /**
  * Shallow planning (ADR 0163): turns one explicit planning request into a SMALL,
@@ -85,7 +92,10 @@ const inputSchema = z.object({
  * uses, so the review, grounding, and scope posture are identical.
  */
 export default defineTool({
-  description: `Break ONE explicit planning request ('help me plan the camping trip', 'what are the steps to onboard the new hire?') into a SMALL flat set of SUGGESTED General Actions (at most ${MAX_SHALLOW_PLAN_ACTIONS}) for the user to review. All steps are grounded in one sourceRecordId — log the planning request as a note first if you have nothing to ground on. This is shallow planning only: a few concrete steps, never sub-tasks, dependencies, phases, projects, or a kanban board, and never active actions. Every step is tentative until the user accepts it. Use this only when the user explicitly asks you to plan or break something down; for a single suggestion use suggest_general_action, and to add a real action use create_general_action on an explicit ask. Returns the proposed steps and their review components; refer to them by title, never raw ids.`,
+  // One flag here grounds up to five proposals at once, which is exactly the fan-out
+  // an injected instruction wants. It asks the owner now (ADR 0058).
+  approval: requireRestrictedRevealApproval<PlanSuggestedGeneralActionsInput>(),
+  description: `Break ONE explicit planning request ('help me plan the camping trip', 'what are the steps to onboard the new hire?') into a SMALL flat set of SUGGESTED General Actions (at most ${MAX_SHALLOW_PLAN_ACTIONS}) for the user to review. All steps are grounded in one sourceRecordId — log the planning request as a note first if you have nothing to ground on. This is shallow planning only: a few concrete steps, never sub-tasks, dependencies, phases, projects, or a kanban board, and never active actions. Every step is tentative until the user accepts it. Use this only when the user explicitly asks you to plan or break something down; for a single suggestion use suggest_general_action, and to add a real action use create_general_action on an explicit ask. Returns the proposed steps and their review components; refer to them by title, never raw ids. Setting directlyRequested pauses the whole call for the user to approve restricted grounding; if they decline, do not plan it another way.`,
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

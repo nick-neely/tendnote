@@ -8,7 +8,11 @@ import {
   contextFactOriginSchema,
   selfContextFactCategorySchema,
 } from "./context-facts";
-import { sensitivitySchema, visibilityChoiceSchema } from "./privacy";
+import {
+  RESTRICTED_REVEAL_REQUEST_DESCRIPTION,
+  sensitivitySchema,
+  visibilityChoiceSchema,
+} from "./privacy";
 import { savedItemKindSchema } from "./saved-items";
 
 export const globalRecallFamilySchema = z.enum([
@@ -146,10 +150,8 @@ const globalRecallInputObjectSchema = z.object({
     .default(false)
     .describe(
       "Reveal restricted-sensitivity records, which are withheld from every ordinary " +
-        "search. Set true ONLY when the user explicitly asks to see the delicate context " +
-        "AND the query itself names the target - never speculatively, never to widen a " +
-        "search that came back thin. " +
-        RESTRICTED_UNLOCK_RULE,
+        `search. ${RESTRICTED_REVEAL_REQUEST_DESCRIPTION} The query itself must name the ` +
+        `target. ${RESTRICTED_UNLOCK_RULE}`,
     ),
   matchKinds: z
     .array(globalRecallMatchKindSchema)

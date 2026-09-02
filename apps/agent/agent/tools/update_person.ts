@@ -2,6 +2,8 @@ import { updatePerson } from "@tendnote/db/queries/people";
 import { birthdaySchema, relationshipTypeSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -74,8 +76,9 @@ const inputSchema = z
  * `capture_source_record`. Only the provided fields change.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Update an existing person's profile fields — display name, first/last name, birthday, relationship type, closeness, or one-line blurb — when the user asks to change those details ('change Mara's birthday to March 3', 'rename Sam to Samuel', 'mark Theo as a colleague'). Resolve the person with search_people first; pass only the fields that change. This edits profile attributes, NOT memories — use capture_memory for facts about a person and capture_source_record for logged context. Returns the updated person reference.",
+    "Update an existing person's profile fields — display name, first/last name, birthday, relationship type, closeness, or one-line blurb — when the user asks to change those details ('change Mara's birthday to March 3', 'rename Sam to Samuel', 'mark Theo as a colleague'). Resolve the person with search_people first; pass only the fields that change. This edits profile attributes, NOT memories — use capture_memory for facts about a person and capture_source_record for logged context. Returns the updated person reference. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

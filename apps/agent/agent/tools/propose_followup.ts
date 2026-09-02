@@ -12,5 +12,8 @@ export default defineTool(
       "Use this only in an explicit flow (just logged a note, reviewing a source record or memory, viewing a person, or the user asked 'should I follow up?').",
     groundingHint:
       "the note you just logged, the source record under review, or one returned by get_person_context/search.",
+    // The owner is on the other end of this session, so a restricted request can
+    // be put to them.
+    restrictedContext: "owner-approval",
   }),
 );

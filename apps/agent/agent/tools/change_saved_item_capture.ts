@@ -6,6 +6,8 @@ import {
 } from "@tendnote/domain/conversational-capture";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -35,8 +37,9 @@ function field(result: unknown, name: "clarification" | "confirmation"): unknown
 }
 
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Change the wording of the destination record created by capture_saved_item when the user explicitly corrects that just-saved capture. Use the exact changeTarget returned by Capture.",
+    "Change the wording of the destination record created by capture_saved_item when the user explicitly corrects that just-saved capture. Use the exact changeTarget returned by Capture. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema: z.object({
     clarificationAnswer: z.string().trim().min(1).max(500).optional(),
     originalText: z.string().trim().min(1).max(20_000),

@@ -1,5 +1,5 @@
-import { defineEval } from "eve/evals";
 import { satisfies } from "eve/evals/expect";
+import { defineEval } from "../define-eval";
 
 export default defineEval({
   description: "Judge recall tone, factuality, and grounded summarization.",

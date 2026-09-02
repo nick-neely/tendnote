@@ -1,5 +1,5 @@
-import { defineEval } from "eve/evals";
 import { includes } from "eve/evals/expect";
+import { defineEval } from "../define-eval";
 import { without } from "../expectations";
 import { usedNoSubagents, usedOnlyAllowedTools } from "../helpers";
 

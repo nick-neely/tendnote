@@ -2,6 +2,8 @@ import { editGeneralAction } from "@tendnote/db/queries/general-actions";
 import { generalActionLinkSchema, generalActionRecurrenceSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import {
   assertCurrentTurnAuthorizesGeneralActionEdit,
   currentAuthenticatedTurnMessage,
@@ -59,8 +61,9 @@ const inputSchema = z.object({
  * shared layer. Returns a compact reference, never a raw id in prose.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Edit a single General Action's content — its title, notes, due date, cadence (making it a Routine or one-time), Area, or links. Only call this on the user's explicit, action-specific instruction in the current turn, against an id you resolved deterministically; never re-author an action on your own initiative or from earlier context, and never batch-edit many at once. Pass only the fields to change: omit a field to leave it, or pass null to clear notes/due date/Area or to make a Routine one-time again. Ask which action if the request could match more than one. Returns the updated action reference; name it by its title, never the raw id.",
+    "Edit a single General Action's content — its title, notes, due date, cadence (making it a Routine or one-time), Area, or links. Only call this on the user's explicit, action-specific instruction in the current turn, against an id you resolved deterministically; never re-author an action on your own initiative or from earlier context, and never batch-edit many at once. Pass only the fields to change: omit a field to leave it, or pass null to clear notes/due date/Area or to make a Routine one-time again. Ask which action if the request could match more than one. Returns the updated action reference; name it by its title, never the raw id. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const turnId = ctx.session.turn.id;

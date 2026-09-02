@@ -10,6 +10,8 @@ import {
 import { findLinkedGmailDraftAction, gmailDraftApprovalSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
@@ -47,8 +49,9 @@ const inputSchema = z.object({
  * provider payloads — it only reports Tendnote's last known external draft state.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Save an APPROVED Tendnote message draft to the user's Gmail as a DRAFT (create it, or update the existing linked Gmail draft after a revision). It NEVER sends email and never contacts anyone — the user sends it themselves from Gmail. Requires an existing approved Tendnote draft (use create_message_draft, then have the user approve it) plus a recipient email and subject the user explicitly confirmed — never draft from raw relationship context, and never infer a recipient. It goes through the same approval gate as the web UI: it is blocked unless Gmail is connected and the Tendnote draft is approved. On success, tell the user their Gmail draft is ready to review and send from Gmail — never say it was sent. On a block or failure, explain why; do not claim anything was saved.",
+    "Save an APPROVED Tendnote message draft to the user's Gmail as a DRAFT (create it, or update the existing linked Gmail draft after a revision). It NEVER sends email and never contacts anyone — the user sends it themselves from Gmail. Requires an existing approved Tendnote draft (use create_message_draft, then have the user approve it) plus a recipient email and subject the user explicitly confirmed — never draft from raw relationship context, and never infer a recipient. It goes through the same approval gate as the web UI: it is blocked unless Gmail is connected and the Tendnote draft is approved. On success, tell the user their Gmail draft is ready to review and send from Gmail — never say it was sent. On a block or failure, explain why; do not claim anything was saved. This call also pauses for the user's own approval, which shows them the recipient, subject, and message before anything reaches Gmail; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

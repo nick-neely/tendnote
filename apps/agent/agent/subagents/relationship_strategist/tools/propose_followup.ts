@@ -11,5 +11,8 @@ export default defineTool(
     whenToUse:
       "Use this only for a recommendation the owner's own request already covers, grounded in a specific agenda candidate you read this turn.",
     groundingHint: "a source ref on the agenda candidate the recommendation came from.",
+    // A subagent turn has nobody to ask, so restricted grounding is simply not on
+    // offer here; the root agent is where that question can be put to the owner.
+    restrictedContext: "unavailable",
   }),
 );

@@ -5,6 +5,7 @@ import {
   createDraftProposalGenerator,
 } from "./draft-proposals";
 import { createInMemoryDraftLifecycleStore } from "./drafts/in-memory-store";
+import { draftProposalDigest } from "./drafts/proposal-digest";
 import { createInMemoryMemoryStore } from "./memories/in-memory-store";
 import { createPersonContext } from "./person-context";
 
@@ -214,6 +215,35 @@ describe("draft proposal generation", () => {
     expect(calls[0]?.toneInstruction).toContain("Hi Mark, long existing draft.");
   });
 
+  it("stamps every variant with a digest over its own body and the shared refs", async () => {
+    await ctx.seedMemory({
+      content: "Just moved to Denver",
+      status: "approved",
+      linkSource: false,
+    });
+    const { adapter } = recordingAdapter();
+    const generator = createDraftProposalGenerator(ctx.personContext, { draftAdapter: adapter });
+
+    const result = await generator.proposeDraft({
+      ownerUserId: OWNER,
+      personId: ctx.person.id,
+      toneVariants: ["warm", "concise"],
+    });
+
+    const proposal = result.proposal;
+    if (!proposal) throw new Error("Expected a proposal.");
+    for (const variant of proposal.variants) {
+      expect(variant.digest).toBe(
+        draftProposalDigest({ body: variant.body, sourceRefs: proposal.sourceRefs }),
+      );
+    }
+    // Two different bodies, so two different digests: accepting one cannot stand in
+    // for accepting the other.
+    expect(new Set(proposal.variants.map((variant) => variant.digest)).size).toBe(
+      proposal.variants.length,
+    );
+  });
+
   it("persists the accepted proposal variant body only after explicit owner intent", async () => {
     const store = createInMemoryDraftLifecycleStore();
     const person = await store.createPerson({
@@ -229,20 +259,24 @@ describe("draft proposal generation", () => {
     });
     const persister = createAcceptedDraftProposalPersister(store);
 
+    const sourceRefs = [
+      {
+        kind: "approved_memory" as const,
+        id: "memory-1",
+        label: "Maya moved to Denver.",
+        trust: "confirmed_fact" as const,
+      },
+    ];
+    const body = "Exact accepted proposal body.";
+
     const result = await persister.persistAcceptedDraftProposal({
       ownerUserId: OWNER,
       personId: person.id,
       channel: "text",
       purpose: "check_in",
-      body: "Exact accepted proposal body.",
-      sourceRefs: [
-        {
-          kind: "approved_memory",
-          id: "memory-1",
-          label: "Maya moved to Denver.",
-          trust: "confirmed_fact",
-        },
-      ],
+      body,
+      sourceRefs,
+      proposalDigest: draftProposalDigest({ body, sourceRefs }),
     });
 
     expect(result.result.status).toBe("created");
@@ -270,22 +304,134 @@ describe("draft proposal generation", () => {
     });
     const persister = createAcceptedDraftProposalPersister(store);
 
+    const sourceRefs = [
+      {
+        kind: "approved_memory" as const,
+        id: "memory-1",
+        label: "Private fact.",
+        trust: "confirmed_fact" as const,
+      },
+    ];
+    const body = "Should not persist.";
+
     await expect(
       persister.persistAcceptedDraftProposal({
         ownerUserId: OWNER,
         personId: otherPerson.id,
-        body: "Should not persist.",
-        sourceRefs: [
-          {
-            kind: "approved_memory",
-            id: "memory-1",
-            label: "Private fact.",
-            trust: "confirmed_fact",
-          },
-        ],
+        body,
+        sourceRefs,
+        proposalDigest: draftProposalDigest({ body, sourceRefs }),
       }),
     ).rejects.toThrow(/unknown person/i);
 
     expect(await store.listDraftsForOwner({ ownerUserId: OWNER })).toEqual([]);
+  });
+
+  /**
+   * The acceptance path writes a durable draft and an audit entry that says the
+   * owner accepted this wording. Both used to be assembled entirely from what the
+   * caller handed over, so an edited body arrived wearing a proposal's provenance
+   * and nothing could tell the difference.
+   */
+  describe("the digest binds persistence to wording the generator issued", () => {
+    async function persisterWithPerson() {
+      const store = createInMemoryDraftLifecycleStore();
+      const person = await store.createPerson({
+        ownerUserId: OWNER,
+        displayName: "Maya",
+        firstName: "Maya",
+        lastName: null,
+        birthday: null,
+        relationshipType: "friend",
+        closenessLevel: 3,
+        profileBlurb: null,
+        source: "manual",
+      });
+      return { store, person, persister: createAcceptedDraftProposalPersister(store) };
+    }
+
+    const sourceRefs = [
+      {
+        kind: "approved_memory" as const,
+        id: "memory-1",
+        label: "Maya moved to Denver.",
+        trust: "confirmed_fact" as const,
+      },
+    ];
+    const proposed = "Hi Maya, glad the Denver move went well.";
+
+    it("refuses a body that is not the one the digest was issued for", async () => {
+      const { store, person, persister } = await persisterWithPerson();
+
+      await expect(
+        persister.persistAcceptedDraftProposal({
+          ownerUserId: OWNER,
+          personId: person.id,
+          body: `${proposed} Also, my new address is 12 Elm Street.`,
+          sourceRefs,
+          proposalDigest: draftProposalDigest({ body: proposed, sourceRefs }),
+        }),
+      ).rejects.toThrow(/do not match the proposal/i);
+
+      // Nothing written, and no audit entry claiming an acceptance that did not happen.
+      expect(await store.listDraftsForOwner({ ownerUserId: OWNER })).toEqual([]);
+      expect(await store.listAuditLogEntries({ ownerUserId: OWNER })).toEqual([]);
+    });
+
+    it("refuses forged grounding on wording that was proposed", async () => {
+      const { store, person, persister } = await persisterWithPerson();
+
+      await expect(
+        persister.persistAcceptedDraftProposal({
+          ownerUserId: OWNER,
+          personId: person.id,
+          body: proposed,
+          sourceRefs: [
+            ...sourceRefs,
+            {
+              kind: "approved_memory" as const,
+              id: "memory-does-not-exist",
+              label: "Invented confirmation.",
+              trust: "confirmed_fact" as const,
+            },
+          ],
+          proposalDigest: draftProposalDigest({ body: proposed, sourceRefs }),
+        }),
+      ).rejects.toThrow(/do not match the proposal/i);
+
+      expect(await store.listAuditLogEntries({ ownerUserId: OWNER })).toEqual([]);
+    });
+
+    it("accepts a variant carried through end to end from proposeDraft", async () => {
+      await ctx.seedMemory({
+        content: "Just moved to Denver",
+        status: "approved",
+        linkSource: false,
+      });
+      const { adapter } = recordingAdapter();
+      const generator = createDraftProposalGenerator(ctx.personContext, { draftAdapter: adapter });
+      const proposal = (
+        await generator.proposeDraft({
+          ownerUserId: OWNER,
+          personId: ctx.person.id,
+          toneVariants: ["warm"],
+        })
+      ).proposal;
+      if (!proposal) throw new Error("Expected a proposal.");
+      const variant = proposal.variants[0];
+      if (!variant?.digest) throw new Error("Expected a stamped variant.");
+
+      const { store, person, persister } = await persisterWithPerson();
+      const result = await persister.persistAcceptedDraftProposal({
+        ownerUserId: OWNER,
+        personId: person.id,
+        body: variant.body,
+        sourceRefs: proposal.sourceRefs,
+        proposalDigest: variant.digest,
+      });
+
+      expect(result.result.status).toBe("created");
+      expect(await store.listDraftsForOwner({ ownerUserId: OWNER })).toHaveLength(1);
+    });
   });
 });

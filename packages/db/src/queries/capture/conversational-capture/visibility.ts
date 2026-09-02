@@ -1,5 +1,6 @@
 import type {
   ConversationalCaptureRequestedScope,
+  ConversationalCaptureSurface,
   ConversationalCaptureVisibility,
 } from "@tendnote/domain";
 import type { CaptureVisibility } from "./types";
@@ -24,6 +25,11 @@ export function createCaptureVisibilityResolver(deps: {
     originalText: string;
     contextVisibility?: ConversationalCaptureVisibility;
     requestedScope?: ConversationalCaptureRequestedScope;
+    /**
+     * Which surface produced `originalText`. Defaults to the Capture box, which is
+     * where this text has always come from; see `textMayNameAnAudience`.
+     */
+    surface?: ConversationalCaptureSurface;
   }): Promise<CaptureVisibility> {
     /**
      * A deliberate scope choice outranks everything the text says.
@@ -60,6 +66,25 @@ export function createCaptureVisibilityResolver(deps: {
         label: "Only me",
         captureText: input.originalText,
       };
+    }
+
+    /**
+     * Past this point the audience comes out of the sentence itself, which is only
+     * an instruction when the owner is the one who wrote it.
+     *
+     * In the Capture box they are: `originalText` is keystrokes, and "…and share
+     * this with my household" is the owner asking, in the only way that surface
+     * offers. Through Eve it is not: the field is a model-authored transcription of
+     * a turn, and anything that reached the model — a pasted email, a fetched page,
+     * a household member's note — can put that suffix in it. Widening on those
+     * words would let text Eve merely *read* choose who else sees the capture.
+     *
+     * So Eve gets one way to ask for a wider audience, `requestedScope`, and that
+     * one pauses for the owner's approval before the write happens. Anything else
+     * it transcribes stays private. The Capture box keeps both paths, unchanged.
+     */
+    if (!textMayNameAnAudience(input.surface)) {
+      return fromContext(input.originalText, input.contextVisibility);
     }
 
     const householdMatch = input.originalText.match(HOUSEHOLD_AUDIENCE);
@@ -105,6 +130,16 @@ export function createCaptureVisibilityResolver(deps: {
 
     return fromContext(input.originalText, input.contextVisibility);
   };
+}
+
+/**
+ * Whether an audience phrase inside the capture text is the owner's own
+ * instruction. True for the Capture box, and for a caller that names no surface:
+ * the default keeps every existing in-process caller and test on the behaviour
+ * they had, and the two production entry points both pass one.
+ */
+function textMayNameAnAudience(surface?: ConversationalCaptureSurface): boolean {
+  return surface !== "eve";
 }
 
 function fromContext(

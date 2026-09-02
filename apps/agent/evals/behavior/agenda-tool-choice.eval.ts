@@ -1,4 +1,4 @@
-import { defineEval } from "eve/evals";
+import { defineEval } from "../define-eval";
 
 export default defineEval({
   description: "Broad relationship planning uses the read-only agenda tool.",

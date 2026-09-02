@@ -40,6 +40,7 @@ the bounded publication evidence path.
 - [0159 — Eve mutates General Actions only on explicit instruction](0159-eve-mutates-general-actions-only-on-explicit-instruction.md)
 - [0195 — Agent-backed surfaces use shared typed capabilities](0195-agent-backed-surfaces-use-shared-typed-capabilities.md)
 - [0197 — Conversational Capture separates explicit and inferred authority](0197-conversational-capture-separates-explicit-and-inferred-authority.md)
+- [0237 — Eve tool arguments are requests, not proofs](0237-eve-tool-arguments-are-requests-not-proofs.md)
 
 ## Product phases
 

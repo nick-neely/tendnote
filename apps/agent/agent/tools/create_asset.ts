@@ -2,6 +2,7 @@ import { createAsset } from "@tendnote/db/queries/assets";
 import { assetKindSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
 import { toAssetModelRef, toAssetRef } from "../lib/asset-view";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
@@ -44,8 +45,9 @@ const inputSchema = z.object({
  * sentence containing the word "our".
  */
 export default defineTool({
+  approval: requireOwnerApproval(),
   description:
-    "Create an ACTIVE Asset - a thing the user owns or tracks (an appliance, vehicle, subscription, service, item, or property) - when they explicitly ask you to in the current turn ('add my Corolla as an asset', 'start tracking the kitchen fridge'). Search first with `search_assets`: if they already have it, use that asset instead of making a second one. The asset is created private; changing who can see it happens in the app. Do NOT use this for a thing you inferred they own from a receipt, a photo, a note, or anything else you worked out yourself - that is `propose_asset_memories`, which puts it up for review. Do NOT use it on a 'Use Capture' / 'capture this' turn, or a turn with another supported explicit clause: `capture_saved_item` owns those and creates its own review-gated Asset outcome. Do NOT create an asset just to hang a fact on it when the user only told you a detail. Returns the persisted asset reference; name it by its name, never the raw id.",
+    "Create an ACTIVE Asset - a thing the user owns or tracks (an appliance, vehicle, subscription, service, item, or property) - when they explicitly ask you to in the current turn ('add my Corolla as an asset', 'start tracking the kitchen fridge'). Search first with `search_assets`: if they already have it, use that asset instead of making a second one. The asset is created private; changing who can see it happens in the app. Do NOT use this for a thing you inferred they own from a receipt, a photo, a note, or anything else you worked out yourself - that is `propose_asset_memories`, which puts it up for review. Do NOT use it on a 'Use Capture' / 'capture this' turn, or a turn with another supported explicit clause: `capture_saved_item` owns those and creates its own review-gated Asset outcome. Do NOT create an asset just to hang a fact on it when the user only told you a detail. Returns the persisted asset reference; name it by its name, never the raw id. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

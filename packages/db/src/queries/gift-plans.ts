@@ -46,6 +46,17 @@ export function getGiftPlanDetail(input: { callerUserId: string; giftPlanId: str
   return defaultGiftPlans.getGiftPlanDetail(input);
 }
 
+/**
+ * One idea with the plan it belongs to, behind the plan's own proof.
+ *
+ * The idea tools name an idea by id and nothing else, so this is how a surface
+ * that has to *show* somebody what they are about to change gets from the id to
+ * the words — without a second query that could answer differently.
+ */
+export function getGiftIdea(input: { callerUserId: string; giftIdeaId: string }) {
+  return defaultGiftPlans.getGiftIdea(input);
+}
+
 export function listGiftPlans(input: {
   callerUserId: string;
   includeArchived?: boolean;

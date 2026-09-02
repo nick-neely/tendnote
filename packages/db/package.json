@@ -14,6 +14,7 @@
     "./queries/audit-retention": "./src/queries/audit-retention.ts",
     "./queries/asset-search": "./src/queries/asset-search.ts",
     "./queries/asset-snapshots": "./src/queries/asset-snapshots.ts",
+    "./queries/approval-subjects": "./src/queries/approval-subjects.ts",
     "./queries/assets": "./src/queries/assets.ts",
     "./queries/auth-users": "./src/queries/auth-users.ts",
     "./queries/background-job-deliveries": "./src/queries/background-job-deliveries.ts",

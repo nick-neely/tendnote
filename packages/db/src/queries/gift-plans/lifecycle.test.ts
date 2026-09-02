@@ -200,6 +200,71 @@ describe("Gift Plan lifecycle", () => {
     });
   });
 
+  describe("reading one idea", () => {
+    /**
+     * The read the approval card is built on: an idea named by id and nothing
+     * else has to become words somebody can decide about, and it must not
+     * become words for anyone the plan is not for.
+     */
+    it("answers a co-planner with the idea and the plan it sits on", async () => {
+      const added = await plans.addGiftIdea({
+        actorUserId: CO_PLANNER,
+        giftPlanId: planId,
+        title: "Wool blanket",
+      });
+
+      const found = await plans.getGiftIdea({
+        callerUserId: CO_PLANNER,
+        giftIdeaId: added.result.id,
+      });
+
+      expect(found?.idea.title).toBe("Wool blanket");
+      expect(found?.plan.subjectName).toBe("Rowan");
+    });
+
+    it("answers nothing for a caller the plan is not shared with", async () => {
+      const added = await plans.addGiftIdea({
+        actorUserId: CO_PLANNER,
+        giftPlanId: planId,
+        title: "Wool blanket",
+      });
+
+      await expect(
+        plans.getGiftIdea({ callerUserId: BYSTANDER, giftIdeaId: added.result.id }),
+      ).resolves.toBeNull();
+    });
+
+    it("answers nothing for the Surprise Subject of the plan it belongs to", async () => {
+      const surprised = await plans.createGiftPlan({
+        ownerUserId: OWNER,
+        subjectName: "Bystander",
+        occasion: "Birthday",
+        scope: "shared",
+        householdId,
+        selectedUserIds: [CO_PLANNER],
+        surpriseSubjectUserId: BYSTANDER,
+      });
+      const added = await plans.addGiftIdea({
+        actorUserId: CO_PLANNER,
+        giftPlanId: surprised.result.id,
+        title: "Wool blanket",
+      });
+
+      await expect(
+        plans.getGiftIdea({ callerUserId: BYSTANDER, giftIdeaId: added.result.id }),
+      ).resolves.toBeNull();
+    });
+
+    it("answers nothing for an id that names no idea", async () => {
+      await expect(
+        plans.getGiftIdea({
+          callerUserId: OWNER,
+          giftIdeaId: "11111111-1111-4111-8111-111111111111",
+        }),
+      ).resolves.toBeNull();
+    });
+  });
+
   describe("contributions", () => {
     it("lets a co-planner add and edit their own idea and nobody else's", async () => {
       const mine = await plans.addGiftIdea({

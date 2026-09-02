@@ -269,11 +269,14 @@ describe("Discord private capture channel", () => {
     ).resolves.toEqual({ type: "rejected", reason: "attachments_not_supported" });
   });
 
-  it("does not expose durable-truth promotion tools in Discord Capture Mode", () => {
-    // The capture path performs exactly one capability, and the registry says
-    // so; `tests/eve-mode-gate.test.ts` proves the other 62 are withheld from a
-    // Discord-stamped session rather than merely listed as absent.
-    expect(modeAllowsTool("discord_capture", "capture_source_record")).toBe(true);
+  it("exposes no tool at all in Discord Capture Mode", () => {
+    // The capture path here is a deterministic handler, not a model session, so
+    // the mode names no capability: `capture_source_record` carries an
+    // unconditional owner approval that only `web_chat` can answer (ADR-0237),
+    // and a mode that advertised it would be promising a call it could only be
+    // refused. `tests/eve-mode-gate.test.ts` proves every authored tool is
+    // withheld from a Discord-stamped session rather than merely listed absent.
+    expect(modeAllowsTool("discord_capture", "capture_source_record")).toBe(false);
     expect(modeAllowsTool("discord_capture", "approve_suggested_memory")).toBe(false);
     expect(modeAllowsTool("discord_capture", "propose_followup")).toBe(false);
     expect(modeAllowsTool("discord_capture", "create_message_draft")).toBe(false);

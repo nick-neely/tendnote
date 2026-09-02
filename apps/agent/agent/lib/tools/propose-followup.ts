@@ -1,5 +1,7 @@
 import { suggestFollowup } from "@tendnote/db/queries/followups";
+import { RESTRICTED_REVEAL_REQUEST_DESCRIPTION } from "@tendnote/domain";
 import { z } from "zod";
+import { requireRestrictedRevealApproval } from "../approval";
 import { type OwnerScopedContext, resolveOwnerUserId } from "../owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../store-errors";
@@ -20,9 +22,22 @@ export type ProposeFollowupToolOptions = {
   whenToUse: string;
   /** Where this caller's `sourceRecordId` legitimately comes from. */
   groundingHint: string;
+  /**
+   * Whether this registration may ground a suggestion in a restricted source
+   * record at all.
+   *
+   * `"owner-approval"` keeps `directlyRequested` on the model-facing schema and
+   * makes it a request: setting it parks the call until the owner answers. A
+   * suggestion is review-gated, but the restricted text still travels into a card
+   * the owner will read, so the flag widens authority rather than labelling
+   * provenance. `"unavailable"` removes the field and pins the proposal to
+   * ordinary grounding, which is the only honest answer on a subagent turn -
+   * nobody is there to ask (ADR 0058).
+   */
+  restrictedContext: "owner-approval" | "unavailable";
 };
 
-function inputSchemaFor(options: ProposeFollowupToolOptions) {
+function baseSchemaFor(options: ProposeFollowupToolOptions) {
   return z.object({
     personId: z
       .uuid()
@@ -43,16 +58,38 @@ function inputSchemaFor(options: ProposeFollowupToolOptions) {
       .describe(
         `The source record this suggestion is grounded in - ${options.groundingHint} A suggestion must be grounded.`,
       ),
+  });
+}
+
+function restrictedSchemaFor(options: ProposeFollowupToolOptions) {
+  return baseSchemaFor(options).extend({
     directlyRequested: z
       .boolean()
       .optional()
       .describe(
-        "Set true ONLY when the user directly asked about this delicate context. Restricted source records are excluded from proactive suggestion by default.",
+        "Ask to ground this suggestion in a restricted-sensitivity source record, which " +
+          `proactive suggestion excludes by default. ${RESTRICTED_REVEAL_REQUEST_DESCRIPTION}`,
       ),
   });
 }
 
-type ProposeFollowupInput = z.infer<ReturnType<typeof inputSchemaFor>>;
+/**
+ * The restricted-grounding request, present only where somebody can answer it.
+ *
+ * One declared shape, two at runtime: the base schema parses to the same object
+ * minus one optional field, so declaring the wider type keeps eve's inference on a
+ * single object instead of a union it cannot resolve - while the schema eve
+ * actually renders for the model is whichever one is returned.
+ */
+function inputSchemaFor(
+  options: ProposeFollowupToolOptions,
+): ReturnType<typeof restrictedSchemaFor> {
+  return options.restrictedContext === "unavailable"
+    ? (baseSchemaFor(options) as ReturnType<typeof restrictedSchemaFor>)
+    : restrictedSchemaFor(options);
+}
+
+type ProposeFollowupInput = z.infer<ReturnType<typeof restrictedSchemaFor>>;
 
 /**
  * The shared review-gated suggestion path (PRD #42, ADR-0006). Eve proposes
@@ -104,6 +141,14 @@ type ProposeFollowupOutput = Awaited<ReturnType<typeof suggestionWrite.execute>>
 
 export function proposeFollowupTool(options: ProposeFollowupToolOptions) {
   return {
+    ...(options.restrictedContext === "owner-approval"
+      ? {
+          // A restricted source record reaching a review card is still a reveal, so
+          // the flag asks the owner rather than speaking for them. An ordinary
+          // proposal (the flag unset) runs exactly as it always did.
+          approval: requireRestrictedRevealApproval<ProposeFollowupInput>(),
+        }
+      : {}),
     description:
       "Propose a SUGGESTED follow-up for the user to review - never an active reminder. " +
       `${options.whenToUse} ` +

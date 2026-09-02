@@ -1,4 +1,4 @@
-import type { AssertionHandle, EveEvalAssertions } from "eve/evals";
+import type { AssertionHandle, EveEvalAssertions, EveEvalTurn } from "eve/evals";
 import { describe, expect, it } from "vitest";
 import { isDraftRevisionReplyCanonical } from "../evals/behavior/draft-revision-assertions";
 import { isUnfiledActionReplyTruthful } from "../evals/behavior/general-action-area-filing.eval";
@@ -8,8 +8,11 @@ import {
   memoryCleanupReplyMatchesCount,
 } from "../evals/behavior/memory-curator-routing.eval";
 import { statesPurchaseLocationLimitation } from "../evals/behavior/phase-seven-recall-limitations.eval";
+import { defineEval, sendWithoutApproving } from "../evals/define-eval";
 import {
+  approvalRequestedToolNames,
   assistantMessageMatches,
+  followupIdFromToolOutput,
   hasCapturePersonClarification,
   hasFields,
   hasFollowupLifecycleState,
@@ -24,14 +27,19 @@ import {
   isPrivateOrOmitted,
   isSemanticClarification,
   isUntruthfulActionMutationClaim,
+  requestedApproval,
   requestedQuestionMatches,
   someToolOutputHasFields,
+  toolApprovalRequests,
   toolOutputs,
 } from "../evals/expectations";
 import {
+  approveToolApprovals,
   firstSubagentIndex,
   firstToolRequestIndex,
   notCalledSubagent,
+  requestedApprovalFor,
+  sendApproving,
   usedNoSubagents,
   usedRelationshipStrategyPath,
   usedSubagent,
@@ -1113,5 +1121,385 @@ describe("grounded Suggested Memory proposal", () => {
         groundedEvents({ proposal: { component: { type: "plain_text" } } }),
       ),
     ).toBe(false);
+  });
+});
+
+/**
+ * The approval half of the harness: gated tools park a turn instead of running
+ * it, so the suite needs to answer the request and to be able to assert one was
+ * made. Both are stream projections, so both are pinned here rather than
+ * discovered on a live run.
+ */
+const approvalRequest = (toolName: string, requestId: string, input: unknown = {}) => ({
+  type: "input.requested",
+  data: {
+    requests: [
+      {
+        action: { callId: "call-1", input, kind: "tool-call", toolName },
+        allowFreeform: false,
+        display: "confirmation",
+        kind: "tool-approval",
+        options: [
+          { id: "approve", label: "Approve" },
+          { id: "cancel", label: "Cancel" },
+        ],
+        prompt: `Approve tool call: ${toolName}`,
+        requestId,
+      },
+    ],
+  },
+});
+
+const questionRequest = {
+  type: "input.requested",
+  data: {
+    requests: [
+      {
+        action: { callId: "call-2", input: {}, kind: "tool-call", toolName: "ask_question" },
+        display: "text",
+        kind: "question",
+        prompt: "Which one?",
+        requestId: "req-question",
+      },
+    ],
+  },
+};
+
+describe("parked tool approval projections", () => {
+  it("names the tool whose call is waiting on the owner", () => {
+    const events = [approvalRequest("web_fetch", "req-1", { url: "https://example.com/a" })];
+
+    expect(approvalRequestedToolNames(events)).toEqual(["web_fetch"]);
+    expect(requestedApproval(events, "web_fetch")).toBe(true);
+    expect(requestedApproval(events, "create_person")).toBe(false);
+  });
+
+  it("carries the frozen call input, which is what the owner is judging", () => {
+    const url = "https://example.com/manual?model=EDR1RXD1";
+
+    expect(toolApprovalRequests([approvalRequest("web_fetch", "req-1", { url })])).toEqual([
+      { requestId: "req-1", toolName: "web_fetch", input: { url } },
+    ]);
+  });
+
+  it("does not confuse a model question with an approval", () => {
+    // `ask_question` parks the same way. Counting it as an approval would make
+    // "the owner was asked to approve this" true of any clarifying turn.
+    expect(approvalRequestedToolNames([questionRequest])).toEqual([]);
+    expect(requestedApproval([questionRequest], "ask_question")).toBe(false);
+  });
+
+  it("sees an approval a background subagent raised on the parent session", () => {
+    const nested = {
+      type: "subagent.event",
+      data: { event: approvalRequest("create_asset", "req-3") },
+    };
+
+    expect(approvalRequestedToolNames([nested])).toEqual(["create_asset"]);
+  });
+
+  it("ignores malformed requests instead of inventing a tool name", () => {
+    expect(
+      approvalRequestedToolNames([
+        { type: "input.requested", data: { requests: [{ kind: "tool-approval" }] } },
+        { type: "input.requested", data: {} },
+        { type: "input.requested" },
+        toolRequest,
+      ]),
+    ).toEqual([]);
+  });
+});
+
+/** A turn double: `status`, `inputRequests`, and nothing else the helper reads. */
+function parkedTurn(requests: readonly unknown[]): EveEvalTurn {
+  return {
+    status: requests.length === 0 ? "completed" : "waiting",
+    inputRequests: requests,
+  } as unknown as EveEvalTurn;
+}
+
+describe("auto-answering parked approvals", () => {
+  it("approves every pending tool approval and returns the resumed turn", async () => {
+    const sent: unknown[] = [];
+    const responder = {
+      respond: async (responses: unknown) => {
+        sent.push(responses);
+        return parkedTurn([]);
+      },
+    };
+
+    const resumed = await approveToolApprovals(
+      responder as never,
+      parkedTurn([
+        { kind: "tool-approval", requestId: "req-1" },
+        { kind: "tool-approval", requestId: "req-2" },
+      ]),
+    );
+
+    expect(sent).toEqual([
+      [
+        { requestId: "req-1", optionId: "approve" },
+        { requestId: "req-2", optionId: "approve" },
+      ],
+    ]);
+    expect(resumed.status).toBe("completed");
+  });
+
+  it("leaves a completed turn alone", async () => {
+    let calls = 0;
+    const responder = {
+      respond: async () => {
+        calls += 1;
+        return parkedTurn([]);
+      },
+    };
+
+    await approveToolApprovals(responder as never, parkedTurn([]));
+    expect(calls).toBe(0);
+  });
+
+  it("leaves a turn parked on a question for the eval to answer itself", async () => {
+    let calls = 0;
+    const responder = {
+      respond: async () => {
+        calls += 1;
+        return parkedTurn([]);
+      },
+    };
+
+    const turn = await approveToolApprovals(
+      responder as never,
+      parkedTurn([{ kind: "question", requestId: "req-question" }]),
+    );
+
+    expect(calls).toBe(0);
+    expect(turn.status).toBe("waiting");
+  });
+
+  it("answers a turn that parks again on the next gated call", async () => {
+    const rounds = [parkedTurn([{ kind: "tool-approval", requestId: "req-2" }]), parkedTurn([])];
+    const responder = { respond: async () => rounds.shift() as EveEvalTurn };
+
+    const resumed = await approveToolApprovals(
+      responder as never,
+      parkedTurn([{ kind: "tool-approval", requestId: "req-1" }]),
+    );
+
+    expect(resumed.status).toBe("completed");
+  });
+
+  it("gives up rather than looping forever on a turn that never resumes", async () => {
+    let calls = 0;
+    const responder = {
+      respond: async () => {
+        calls += 1;
+        return parkedTurn([{ kind: "tool-approval", requestId: "req-1" }]);
+      },
+    };
+
+    const turn = await approveToolApprovals(
+      responder as never,
+      parkedTurn([{ kind: "tool-approval", requestId: "req-1" }]),
+    );
+
+    expect(calls).toBe(5);
+    expect(turn.status).toBe("waiting");
+  });
+});
+
+/**
+ * A context double: the two methods the wrapper touches, plus a live accessor
+ * and a plain field, which is what a spread copy would have quietly frozen.
+ */
+function fakeEvalContext(turns: readonly EveEvalTurn[]) {
+  const sent: string[] = [];
+  const answered: unknown[] = [];
+  const context = {
+    target: "the-agent-under-test",
+    get reply() {
+      return `reply after ${sent.length} turn(s)`;
+    },
+    async send(message: string) {
+      sent.push(message);
+      return turns[sent.length - 1] ?? parkedTurn([]);
+    },
+    async respond(responses: readonly unknown[]) {
+      answered.push(responses);
+      return parkedTurn([]);
+    },
+    newSession() {
+      return context;
+    },
+  };
+
+  return { context, sent, answered };
+}
+
+/** Runs one eval definition's test body against a context double. */
+async function runEvalTest(definition: unknown, context: unknown): Promise<void> {
+  await (definition as { test: (t: unknown) => Promise<void> }).test(context);
+}
+
+describe("the eval driver answers a parked approval by default", () => {
+  const gated = () => [parkedTurn([{ kind: "tool-approval", requestId: "req-1" }])];
+
+  it("approves what a plain `t.send` parked on, without the eval asking", async () => {
+    const { context, answered } = fakeEvalContext(gated());
+    let status: string | undefined;
+
+    const evaluation = defineEval({
+      description: "d",
+      async test(t) {
+        status = (await t.send("save that")).status;
+      },
+    });
+    await runEvalTest(evaluation, context);
+
+    // Forty-eight eval files name a tool that is gated today; the one that
+    // remembered to say `sendApproving` is not the reason they should pass.
+    expect(answered).toEqual([[{ requestId: "req-1", optionId: "approve" }]]);
+    expect(status).toBe("completed");
+  });
+
+  it("leaves the turn parked for an eval that asked not to approve", async () => {
+    const { context, answered } = fakeEvalContext(gated());
+    let status: string | undefined;
+
+    const evaluation = defineEval({
+      description: "d",
+      async test(t) {
+        status = (await sendWithoutApproving(t, "save that")).status;
+      },
+    });
+    await runEvalTest(evaluation, context);
+
+    expect(answered).toEqual([]);
+    expect(status).toBe("waiting");
+  });
+
+  it("forwards everything else to the real context, reading it live", async () => {
+    const { context } = fakeEvalContext([parkedTurn([]), parkedTurn([])]);
+    const seen: unknown[] = [];
+
+    await runEvalTest(
+      defineEval({
+        description: "d",
+        async test(t) {
+          seen.push(t.target, t.reply);
+          await t.send("one");
+          // Wrapped in its own proxy, so it is never the same object back.
+          seen.push(t.reply, (t.newSession() as unknown) === (t as unknown));
+        },
+      }),
+      context,
+    );
+
+    // `reply` is an accessor over a moving session: a spread copy would have
+    // captured the first value and reported it for the rest of the eval.
+    expect(seen).toEqual([
+      "the-agent-under-test",
+      "reply after 0 turn(s)",
+      "reply after 1 turn(s)",
+      false,
+    ]);
+  });
+
+  it("does the same thing the explicit spelling does", async () => {
+    // `sendApproving` predates the default and is kept as the spelling an eval
+    // can reach for at its call site; it must not drift away from `t.send`.
+    const { context, answered } = fakeEvalContext(gated());
+
+    const turn = await sendApproving(context as never, "save that");
+
+    expect(answered).toEqual([[{ requestId: "req-1", optionId: "approve" }]]);
+    expect(turn.status).toBe("completed");
+  });
+
+  it("wraps a second session too, so a gated call there is answered as well", async () => {
+    const { context, answered } = fakeEvalContext(gated());
+
+    await runEvalTest(
+      defineEval({
+        description: "d",
+        async test(t) {
+          await t.newSession().send("save that");
+        },
+      }),
+      context,
+    );
+
+    expect(answered).toEqual([[{ requestId: "req-1", optionId: "approve" }]]);
+  });
+});
+
+describe("correlating a follow-up across turns", () => {
+  // A lifecycle eval sends the create turn and the update turn separately, so the
+  // id has to come out of the first turn's result: without it the second turn
+  // grades whatever follow-up happened to be lying around.
+  it("reads the id a lifecycle result nests under `followup`", () => {
+    expect(
+      followupIdFromToolOutput(
+        [result("create_followup", { followup: { id: "f-1" } })],
+        "create_followup",
+      ),
+    ).toBe("f-1");
+  });
+
+  it("reads the first of the list tool's own `followups` array", () => {
+    expect(
+      followupIdFromToolOutput(
+        [result("list_due_followups", { followups: [{ id: "f-2" }, { id: "f-3" }] })],
+        "list_due_followups",
+      ),
+    ).toBe("f-2");
+  });
+
+  it("keeps looking past a result that carries no id", () => {
+    expect(
+      followupIdFromToolOutput(
+        [
+          result("create_followup", { followup: null }),
+          result("create_followup", { followup: { id: 7 } }),
+          result("create_followup", { followup: { id: "f-4" } }),
+        ],
+        "create_followup",
+      ),
+    ).toBe("f-4");
+  });
+
+  it("is null rather than a guess when nothing matched", () => {
+    expect(followupIdFromToolOutput([], "create_followup")).toBeNull();
+    expect(
+      followupIdFromToolOutput([result("create_followup", { followup: {} })], "create_followup"),
+    ).toBeNull();
+    expect(
+      followupIdFromToolOutput(
+        [result("list_due_followups", { followups: [] })],
+        "list_due_followups",
+      ),
+    ).toBeNull();
+    expect(
+      followupIdFromToolOutput(
+        [result("update_followup_status", { followup: { id: "f-5" } })],
+        "create_followup",
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("approval assertion helper", () => {
+  it("passes only when the named tool actually asked", () => {
+    const events = [approvalRequest("web_fetch", "req-1")];
+
+    const asked = recordingScope(events);
+    requestedApprovalFor(asked.scope, "web_fetch");
+    expect(asked.recorded[0]).toEqual({
+      label: "asked the owner to approve web_fetch",
+      passed: true,
+    });
+
+    const notAsked = recordingScope(events);
+    requestedApprovalFor(notAsked.scope, "create_person");
+    expect(notAsked.recorded[0]?.passed).toBe(false);
   });
 });

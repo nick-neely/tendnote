@@ -31,17 +31,24 @@ describe("Eve mode gate", () => {
     expect(await resolveTurn?.({}, resolveContext(WEB_OWNER))).toBeNull();
   });
 
-  it("withholds everything but capture from a Discord-stamped session", async () => {
+  it("withholds every capability from a Discord-stamped session", async () => {
     const withheld = await withheldTools({
       principalType: "user",
       attributes: { channel: "discord" },
     });
 
-    expect(Object.keys(withheld)).not.toContain("capture_source_record");
-    for (const tool of ["create_message_draft", "save_draft_to_gmail", "capture_memory"]) {
+    // Including the capture the mode is named for: that route is a
+    // deterministic handler, and `capture_source_record` parks for an approval
+    // only `web_chat` can answer (ADR-0237), so the mode advertises nothing.
+    for (const tool of [
+      "capture_source_record",
+      "create_message_draft",
+      "save_draft_to_gmail",
+      "capture_memory",
+    ]) {
       expect(Object.keys(withheld), tool).toContain(tool);
     }
-    expect(Object.keys(withheld)).toHaveLength(EVE_GATED_TOOL_NAMES.length - 1);
+    expect(Object.keys(withheld)).toHaveLength(EVE_GATED_TOOL_NAMES.length);
   });
 
   it("reports, rather than performs, a call the mode does not allow", async () => {

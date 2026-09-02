@@ -1,6 +1,8 @@
 import { archiveMemory } from "@tendnote/db/queries/memories";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -33,8 +35,9 @@ const inputSchema = z.object({
  * is the memory's state now, never a claim about what this call did.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Archive one memory the user explicitly asks you to drop in the current turn ('forget that', 'archive that memory about the move'). Requires a memoryId from a result in this conversation - a memory you just saved or one a review tool returned. Archiving takes it out of recall and every normal view while keeping the record itself; it is not a deletion, and the user can restore it in the app. Do NOT use this on your own initiative, to tidy up memories you judge stale, wrong, or duplicated, to act on a cleanup proposal the user has not accepted, or on more than the one memory they pointed at. If it is not obvious exactly which memory they mean, ask - never archive a guess. Confirm plainly afterwards and do not keep using the fact.",
+    "Archive one memory the user explicitly asks you to drop in the current turn ('forget that', 'archive that memory about the move'). Requires a memoryId from a result in this conversation - a memory you just saved or one a review tool returned. Archiving takes it out of recall and every normal view while keeping the record itself; it is not a deletion, and the user can restore it in the app. Do NOT use this on your own initiative, to tidy up memories you judge stale, wrong, or duplicated, to act on a cleanup proposal the user has not accepted, or on more than the one memory they pointed at. If it is not obvious exactly which memory they mean, ask - never archive a guess. Confirm plainly afterwards and do not keep using the fact. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

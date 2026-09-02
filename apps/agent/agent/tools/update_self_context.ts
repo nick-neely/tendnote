@@ -3,6 +3,8 @@ import { selfContextFactCategorySchema } from "@tendnote/domain/context-facts";
 import { sensitivitySchema } from "@tendnote/domain/privacy";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { toSelfContextFactToolView } from "../lib/self-context-fact-view";
@@ -30,8 +32,9 @@ const inputSchema = z.object({
 });
 
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Correct one active Self Context fact only when the user explicitly asks to change it. Use the exact id from a prior Self Context result, preserve the user's wording, and pass expectedUpdatedAt when available so stale intent cannot overwrite a newer correction. This replaces the current statement rather than creating a parallel fact; a conflict is returned for focused clarification.",
+    "Correct one active Self Context fact only when the user explicitly asks to change it. Use the exact id from a prior Self Context result, preserve the user's wording, and pass expectedUpdatedAt when available so stale intent cannot overwrite a newer correction. This replaces the current statement rather than creating a parallel fact; a conflict is returned for focused clarification. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

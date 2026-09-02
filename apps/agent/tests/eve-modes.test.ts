@@ -70,13 +70,16 @@ describe("Eve mode registry", () => {
     expect(toolsUnavailableInMode("web_chat")).toEqual([]);
   });
 
-  it("holds Discord Capture Mode to the one capability that surface has", () => {
-    expect(eveModeDefinition("discord_capture").tools, REGISTRY_DRIFT).toEqual([
-      "capture_source_record",
-    ]);
+  it("advertises no tool to Discord Capture Mode, including the capture it is named for", () => {
+    // The Discord route is a deterministic handler that never starts a model
+    // session, and `capture_source_record` now carries an unconditional owner
+    // approval that denies outside `web_chat` (ADR-0237), so the entry it used
+    // to hold could only ever have been refused.
+    expect(eveModeDefinition("discord_capture").tools, REGISTRY_DRIFT).toEqual([]);
     expect(eveModeDefinition("discord_capture").skills).toEqual(["capturing-and-review"]);
 
     for (const tool of [
+      "capture_source_record",
       "create_message_draft",
       "save_draft_to_gmail",
       "approve_suggested_memory",
@@ -116,7 +119,6 @@ describe("Eve mode registry", () => {
       "search_semantic_context",
       "plan_suggested_general_actions",
       "propose_asset_actions",
-      "propose_asset_memories",
       "propose_followup",
       "propose_suggested_memory",
       "suggest_general_action",
@@ -134,6 +136,10 @@ describe("Eve mode registry", () => {
       "create_message_draft",
       "create_person",
       "household_check_in",
+      // Review-gated in what it proposes, durable in the Source Record it
+      // grounds them on, so it parks - and a park is a hang where nobody is
+      // watching (ADR-0237).
+      "propose_asset_memories",
       "save_draft_to_gmail",
       "update_person",
     ] as const) {

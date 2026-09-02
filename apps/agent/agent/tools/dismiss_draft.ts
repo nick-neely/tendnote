@@ -1,6 +1,8 @@
 import { dismissDraft } from "@tendnote/db/queries/drafts";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -28,8 +30,9 @@ const inputSchema = z.object({
  * outside Tendnote, and neither is an inference Eve is entitled to make.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Throw away one of the user's Tendnote message drafts, when they explicitly say so in the current turn ('scrap that one', 'delete the draft to Sam'). Requires a draftId from `list_message_drafts` or from creating it. This is a Tendnote-only lifecycle change: nothing is sent, nothing external is touched, and the notes and memories the draft was built from are untouched. Do NOT dismiss a draft because you think it is weak, stale, duplicated, or superseded by one you just wrote - that is the user's call, not yours - and do NOT dismiss several at once. Never use this to approve a draft or to mark one as sent; those are the user's own actions in the app. Confirm plainly afterwards and offer to write another only if they ask.",
+    "Throw away one of the user's Tendnote message drafts, when they explicitly say so in the current turn ('scrap that one', 'delete the draft to Sam'). Requires a draftId from `list_message_drafts` or from creating it. This is a Tendnote-only lifecycle change: nothing is sent, nothing external is touched, and the notes and memories the draft was built from are untouched. Do NOT dismiss a draft because you think it is weak, stale, duplicated, or superseded by one you just wrote - that is the user's call, not yours - and do NOT dismiss several at once. Never use this to approve a draft or to mark one as sent; those are the user's own actions in the app. Confirm plainly afterwards and offer to write another only if they ask. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

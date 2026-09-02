@@ -35,6 +35,13 @@ export const CARD_TONE: Record<
   },
 };
 
+/**
+ * What a card is a card *of*, stamped on `data-tool-view`. Almost always a persisted
+ * result kind; `input_request` is the one non-result card — a tool call parked on the
+ * owner's approval, which has no output yet and so has no result kind to name.
+ */
+export type ResultCardKind = AssistantToolView["kind"] | "input_request";
+
 export function ResultCard({
   tone,
   icon,
@@ -50,7 +57,7 @@ export function ResultCard({
   footer?: React.ReactNode;
   children: React.ReactNode;
   isNew: boolean;
-  kind: AssistantToolView["kind"];
+  kind: ResultCardKind;
 }) {
   const t = CARD_TONE[tone];
 
@@ -82,9 +89,25 @@ export function ResultCard({
   );
 }
 
-export function Body({ children }: { children: React.ReactNode }) {
+export function Body({
+  children,
+  className,
+  id,
+}: {
+  children: React.ReactNode;
+  /** For content whose own line breaks are load-bearing, e.g. `whitespace-pre-line`. */
+  className?: string;
+  /** So a control elsewhere in the card can point at this text with `aria-describedby`. */
+  id?: string;
+}) {
   return (
-    <p className="max-w-[68ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]">
+    <p
+      className={cn(
+        "max-w-[68ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]",
+        className,
+      )}
+      id={id}
+    >
       {children}
     </p>
   );

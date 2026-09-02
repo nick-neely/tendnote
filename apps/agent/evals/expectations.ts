@@ -315,6 +315,57 @@ function promptFrom(value: unknown): string[] | null {
   return [value.prompt];
 }
 
+/**
+ * One tool call parked on an owner approval, as an eval sees it.
+ *
+ * eve puts the frozen call under `action`, so `input` here is exactly what the
+ * approver is shown and what the tool will run with if they approve.
+ */
+export type ToolApprovalRequest = {
+  readonly requestId: string;
+  readonly toolName: string;
+  readonly input: unknown;
+};
+
+/**
+ * Every tool call this turn parked for the owner's decision.
+ *
+ * Gated tools no longer just run, so "did the model reach for this?" and "was
+ * the owner actually asked first?" became different questions. This answers the
+ * second one from the same stream the rest of the assertions read, including
+ * the requests a background subagent raises on its parent session.
+ */
+export function toolApprovalRequests(events: readonly unknown[]): ToolApprovalRequest[] {
+  return events.flatMap((event): ToolApprovalRequest[] => {
+    if (!isRecord(event)) return [];
+    if (event.type === "subagent.event") {
+      const nested = isRecord(event.data) ? event.data.event : undefined;
+      return nested === undefined ? [] : toolApprovalRequests([nested]);
+    }
+    if (event.type !== "input.requested") return [];
+
+    const requests =
+      isRecord(event.data) && Array.isArray(event.data.requests) ? event.data.requests : [];
+    return requests.flatMap((request): ToolApprovalRequest[] => {
+      if (!isRecord(request) || request.kind !== "tool-approval") return [];
+      const action = isRecord(request.action) ? request.action : null;
+      const toolName = action?.toolName ?? request.toolName;
+      if (typeof toolName !== "string" || typeof request.requestId !== "string") return [];
+      return [{ requestId: request.requestId, toolName, input: action?.input }];
+    });
+  });
+}
+
+/** The tools whose calls parked for approval this turn, in request order. */
+export function approvalRequestedToolNames(events: readonly unknown[]): string[] {
+  return toolApprovalRequests(events).map((request) => request.toolName);
+}
+
+/** True when `toolName` asked the owner before doing anything. */
+export function requestedApproval(events: readonly unknown[], toolName: string): boolean {
+  return toolApprovalRequests(events).some((request) => request.toolName === toolName);
+}
+
 /** Return only the final completed assistant prose from the Eve 0.32 stream. */
 export function assistantMessageTexts(events: readonly unknown[]): string[] {
   const completed = events.flatMap((event) => {

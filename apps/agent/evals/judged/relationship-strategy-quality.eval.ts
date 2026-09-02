@@ -1,5 +1,5 @@
-import { defineEval } from "eve/evals";
 import { satisfies } from "eve/evals/expect";
+import { defineEval } from "../define-eval";
 import { toolOutputs } from "../expectations";
 import { usedRelationshipStrategyPath } from "../helpers";
 import { subagentOutput } from "./helpers";

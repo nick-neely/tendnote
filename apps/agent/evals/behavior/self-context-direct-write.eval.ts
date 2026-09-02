@@ -1,4 +1,4 @@
-import { defineEval } from "eve/evals";
+import { defineEval } from "../define-eval";
 import { someToolOutputHasFields, without } from "../expectations";
 
 const ALTERNATE_SELF_CONTEXT_WRITES = [

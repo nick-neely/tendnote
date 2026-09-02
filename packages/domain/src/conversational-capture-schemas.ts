@@ -4,6 +4,12 @@ import { sensitivitySchema } from "./privacy";
 import { reminderScheduleChoiceSchema } from "./reminders";
 export const conversationalCaptureInputModeSchema = z.enum(["typed", "dictated"]);
 export const conversationalCaptureSurfaceSchema = z.enum(["global_capture", "eve"]);
+/**
+ * Which product surface produced a capture request. Set at the call site, never by
+ * a model argument, so a policy that has to know whether `originalText` is the
+ * owner's keystrokes or a model's transcription of them can ask.
+ */
+export type ConversationalCaptureSurface = z.infer<typeof conversationalCaptureSurfaceSchema>;
 export const conversationalCaptureVisibilitySchema = z.discriminatedUnion("scope", [
   z.object({ scope: z.literal("private") }).strict(),
   z

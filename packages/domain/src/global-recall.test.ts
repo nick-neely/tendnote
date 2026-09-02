@@ -188,8 +188,14 @@ describe("Global Recall contract", () => {
 
       expect(properties.includeRestricted?.description).toMatch(/one record family at a time/);
       expect(properties.includeRestricted?.description).toMatch(
-        /only when the user explicitly asks/i,
+        /only when the user explicitly asked/i,
       );
+      // The flag asks; it does not decide. A model reading this must learn that
+      // setting it pauses the call for the owner, and that a decline ends it.
+      expect(properties.includeRestricted?.description).toMatch(
+        /REQUESTS that reveal rather than authorising it/,
+      );
+      expect(properties.includeRestricted?.description).toMatch(/if they decline/i);
       expect(properties.family?.description).toMatch(/one record family at a time/);
     });
 

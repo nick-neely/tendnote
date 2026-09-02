@@ -1,6 +1,8 @@
 import { createFollowup } from "@tendnote/db/queries/followups";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
@@ -31,8 +33,9 @@ const inputSchema = z.object({
  * prose.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Create an active follow-up reminder for a person. Only call this when the user explicitly asks to be reminded or to follow up — never invent a reminder on their behalf. Requires a resolved personId (use search_people first), a reason, and a concrete dueAt; if the user's timing is vague or ambiguous (e.g. 'sometime', 'soon'), ask a clarifying question instead of guessing a date. Returns the persisted follow-up reference (id, reason, due date, status, plus the person id for your tool calls) — refer to the person by name from context, never show the raw id.",
+    "Create an active follow-up reminder for a person. Only call this when the user explicitly asks to be reminded or to follow up — never invent a reminder on their behalf. Requires a resolved personId (use search_people first), a reason, and a concrete dueAt; if the user's timing is vague or ambiguous (e.g. 'sometime', 'soon'), ask a clarifying question instead of guessing a date. Returns the persisted follow-up reference (id, reason, due date, status, plus the person id for your tool calls) — refer to the person by name from context, never show the raw id. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

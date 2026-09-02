@@ -14,6 +14,7 @@ import { createDefaultDraftAdapter } from "./drafts";
 import type { DraftAdapter } from "./drafts/draft-adapter";
 import { createDrizzleDraftLifecycleStore } from "./drafts/drizzle-store";
 import { draftGenerationOutcome } from "./drafts/mutation-lifecycle";
+import { draftProposalDigest, draftProposalDigestMatches } from "./drafts/proposal-digest";
 import type { DraftLifecycleStore } from "./drafts/types";
 import type { GetPersonContextInput, PersonContextResult } from "./person-context";
 import { getPersonContext } from "./person-context";
@@ -30,6 +31,14 @@ export type ProposeDraftInput = {
   purpose?: MessageDraftPurpose;
   toneInstruction?: string;
   toneVariants?: string[];
+  /**
+   * Whether restricted-sensitivity context may ground this proposal.
+   *
+   * A caller-side decision, never a model argument: the subagent that proposes
+   * drafts pins it to false because a delegated turn has nobody to ask, and the
+   * root's `create_message_draft` reaches it through `includeRestricted`, which
+   * parks for the owner's own approval before the call runs (ADR 0058).
+   */
   directlyRequested?: boolean;
   revisionContext?: { body: string; instruction?: string };
   followupContext?: { id: string; reason: string };
@@ -51,6 +60,12 @@ export type PersistAcceptedDraftProposalInput = {
   purpose?: MessageDraftPurpose;
   body: string;
   sourceRefs: DraftSourceRef[];
+  /**
+   * The `digest` the accepted variant carried out of `proposeDraft`. Required: it
+   * is what makes `message_draft.accepted_proposal` a statement about wording this
+   * seam actually issued rather than about whatever its caller assembled.
+   */
+  proposalDigest: string;
 };
 
 const MAX_LABEL_LENGTH = 200;
@@ -134,6 +149,10 @@ export function createDraftProposalGenerator(
               label: labelTone(tone, index),
               toneInstruction: tone,
               body,
+              // Stamped here, where the wording and its grounding are both in hand,
+              // so accepting this variant later can be checked against what was
+              // proposed rather than trusted.
+              digest: draftProposalDigest({ body, sourceRefs }),
             };
           }),
         );
@@ -170,6 +189,27 @@ export function createAcceptedDraftProposalPersister(store: DraftLifecycleStore)
     async persistAcceptedDraftProposal(input: PersistAcceptedDraftProposalInput) {
       const channel = input.channel ?? "text";
       const purpose = input.purpose ?? "other";
+      /**
+       * The body and the references are the whole record: the draft's text, the
+       * grounding the owner will see attached to it, and the ids the audit entry
+       * names. Checking the digest first means this seam persists only wording a
+       * `proposeDraft` call produced, so a body edited between the proposal and the
+       * acceptance cannot arrive wearing that proposal's provenance. It is a
+       * content check, not an authorisation: the caller still owes the owner's
+       * decision, which on the Eve path is the approval that parks the
+       * `acceptedProposal` call.
+       */
+      if (
+        !draftProposalDigestMatches({
+          body: input.body,
+          sourceRefs: input.sourceRefs,
+          digest: input.proposalDigest,
+        })
+      ) {
+        throw new Error(
+          "This draft body and its source references do not match the proposal they claim to come from.",
+        );
+      }
       const person = await store.getPerson({
         ownerUserId: input.ownerUserId,
         personId: input.personId,

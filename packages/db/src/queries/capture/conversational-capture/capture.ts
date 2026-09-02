@@ -112,6 +112,7 @@ async function resolveCaptureVisibility(
   return deps.resolveVisibility({
     ownerUserId: parsedInput.ownerUserId,
     originalText: parsedInput.originalText,
+    surface: parsedInput.surface,
     ...(parsedInput.contextVisibility ? { contextVisibility: parsedInput.contextVisibility } : {}),
     ...(parsedInput.requestedScope ? { requestedScope: parsedInput.requestedScope } : {}),
   });

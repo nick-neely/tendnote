@@ -1,5 +1,5 @@
-import { defineEval } from "eve/evals";
 import { satisfies } from "eve/evals/expect";
+import { defineEval } from "../define-eval";
 
 export function isPendingAssetReviewReply(reply: string) {
   const pending = /review|accept|confirm|approve|waiting for you/i.test(reply);

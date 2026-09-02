@@ -46,7 +46,10 @@ has, and never turn one into an active reminder on your own.
   active reminders.
 - **Restricted context is not used for proactive suggestions** by default. Only propose
   a follow-up grounded in restricted context when the user directly asked about that
-  delicate topic (set `directlyRequested`).
+  delicate topic (set `directlyRequested`), which pauses the call for them to approve
+  that grounding themselves; if they decline, propose from ordinary context or not at
+  all. `relationship_strategist` has no such argument - a delegated turn has nobody to
+  ask - so a restricted-grounded suggestion has to come from you.
 - **Review suggested follow-ups** with `list_suggested_followup_reviews` (scope to a
   person with `personId`, or omit for all), or `get_suggested_followup_review` for one.
   They render interactive cards the user can accept or dismiss inline.

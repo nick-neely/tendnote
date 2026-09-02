@@ -23,10 +23,6 @@ const inputSchema = z.object({
     .max(3)
     .optional()
     .describe("Optional tone variants to generate, such as warm, concise, or professional."),
-  includeRestricted: z
-    .boolean()
-    .optional()
-    .describe("Set true only when the owner directly asked to draft about restricted context."),
   revisionContext: z
     .object({
       body: z.string().min(1),
@@ -53,9 +49,23 @@ const inputSchema = z.object({
     .describe("When proposing from a current brief item, its id, title, and reason."),
 });
 
+/**
+ * There is deliberately no `includeRestricted` here.
+ *
+ * Restricted context is revealed only on the owner's own direct request in the
+ * current turn (ADR 0058), and the owner's turn reached the *root* agent. A
+ * subagent runs on a delegated task with nobody to ask, so a flag on this schema
+ * could only ever be the model vouching for a request it never heard - which is
+ * exactly the assertion a prompt injection mints. Gating it would be no better:
+ * the approval seam denies a subagent turn, so a set flag would kill the whole
+ * proposal instead of narrowing it. Omitting the field pins `directlyRequested`
+ * to false and leaves the proposal grounded in ordinary context. If the owner
+ * really did ask for a delicate topic, the root's `create_message_draft` carries
+ * `includeRestricted` and can put that question to them.
+ */
 export default defineTool({
   description:
-    "Return ephemeral, source-grounded Draft Proposals with tone variants. This tool never persists a Tendnote Message Draft, never creates an external/Gmail draft, and never sends anything.",
+    "Return ephemeral, source-grounded Draft Proposals with tone variants. Restricted-sensitivity context is never included; only the root agent, with the owner present to approve it, can draft from that. This tool never persists a Tendnote Message Draft, never creates an external/Gmail draft, and never sends anything.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
@@ -67,7 +77,8 @@ export default defineTool({
         channel: input.channel,
         toneInstruction: input.toneInstruction,
         toneVariants: input.toneVariants,
-        directlyRequested: input.includeRestricted ?? false,
+        // Not a model-facing argument: see the note above the tool.
+        directlyRequested: false,
         revisionContext: input.revisionContext,
         followupContext: input.followupContext,
         briefItemContext: input.briefItemContext,
@@ -96,6 +107,11 @@ export default defineTool({
           label: variant.label,
           toneInstruction: variant.toneInstruction,
           body: variant.body,
+          // Binds this exact wording to the proposal that issued it. The owner's
+          // acceptance travels to the root's `create_message_draft` as
+          // `acceptedProposal.digest`, and persistence recomputes it: a body
+          // altered on the way past no longer matches and is refused.
+          digest: variant.digest,
         })),
         sourceRefs: output.proposal.sourceRefs.map((sourceRef) => ({
           kind: sourceRef.kind,
@@ -104,7 +120,7 @@ export default defineTool({
           trust: sourceRef.trust,
         })),
         guidance:
-          "These are ephemeral Draft Proposals. Do not say a Tendnote draft was saved. Durable persistence requires explicit owner intent through create_message_draft.",
+          "These are ephemeral Draft Proposals. Do not say a Tendnote draft was saved. Durable persistence requires explicit owner intent through create_message_draft, which needs the chosen variant's body and digest and the sourceRefs above, copied exactly.",
       },
     };
   },

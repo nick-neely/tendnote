@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it, vi } from "vitest";
+import {
+  claimApprovalSubjectLookup,
+  readApprovalSubject,
+  resetApprovalSubjectCache,
+  settleApprovalSubject,
+} from "@/lib/approval-subject-cache";
 import { render, screen, userEvent, waitFor } from "@/test/dom";
 
 const { disableCurrentReminderInstallationAction, push, refresh, signOut } = vi.hoisted(() => ({
@@ -17,6 +23,7 @@ import { SignOutButton } from "./sign-out-button";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetApprovalSubjectCache();
   window.localStorage.clear();
   window.localStorage.setItem("tendnote.reminder-installation-id", "browser-installation-1");
   disableCurrentReminderInstallationAction.mockResolvedValue({ ok: true });
@@ -60,6 +67,27 @@ it("lands on sign-in by default, and on a caller's own destination when given on
   await waitFor(() => {
     expect(push).toHaveBeenCalledWith("/sign-in");
   });
+});
+
+/**
+ * The approval cards resolve what a parked tool call is about with owner-scoped reads,
+ * and keep the answers in a module-level cache so a settled status line can reuse what
+ * its card resolved. Signing out is a soft navigation - nothing tears that cache down
+ * on its own - so one person's record titles would otherwise still be in memory for
+ * whoever signs in next on the same device.
+ */
+it("forgets what it learned about the leaving owner's records", async () => {
+  const user = userEvent.setup();
+  claimApprovalSubjectLookup("call-1");
+  settleApprovalSubject("call-1", {
+    status: "described",
+    subject: { title: "Accept a follow-up with Mara", lines: [] },
+  });
+  render(<SignOutButton />);
+
+  await user.click(screen.getByRole("button", { name: "Sign out" }));
+
+  await waitFor(() => expect(readApprovalSubject("call-1").status).toBe("pending"));
 });
 
 /**

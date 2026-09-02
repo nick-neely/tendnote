@@ -153,7 +153,6 @@ describe("Relationship Strategist subagent", () => {
         windowEnd: "2026-07-08T00:00:00.000Z",
         query: "who should I prioritize this week?",
         includeKinds: ["recent_context"],
-        directlyRequested: false,
       },
       ctx,
     );
@@ -163,6 +162,8 @@ describe("Relationship Strategist subagent", () => {
         ownerUserId: "user-1",
         query: "who should I prioritize this week?",
         includeKinds: ["recent_context"],
+        // Pinned, not passed: this registration offers no restricted-context
+        // argument at all, because a delegated turn has nobody to ask.
         directlyRequested: false,
       }),
     );

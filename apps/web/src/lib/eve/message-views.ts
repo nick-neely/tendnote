@@ -11,6 +11,12 @@ import {
   toAssistantToolView,
 } from "@/components/assistant-results/registry";
 import { activeToolLabel } from "./active-tool-label";
+import {
+  type AssistantInputRequestView,
+  type AssistantInputResolutionView,
+  toInputRequestView,
+  toInputResolutionView,
+} from "./input-request-view";
 import type { AssistantToolView } from "./tool-result-view";
 
 function isTextPart(part: EveMessagePart): part is Extract<EveMessagePart, { type: "text" }> {
@@ -156,7 +162,29 @@ export type AssistantTurnUnit =
       readonly type: "group";
       readonly kind: GroupableToolKind;
       readonly entries: readonly [AssistantToolEntry, ...AssistantToolEntry[]];
-    };
+    }
+  /** A call parked on the owner: the approval (or question) card they act on. */
+  | { readonly type: "request"; readonly request: AssistantInputRequestView }
+  /** A parked call that has settled: a quiet status in the slot the card held. */
+  | { readonly type: "resolution"; readonly resolution: AssistantInputResolutionView }
+  /** A call still running: the transient working shimmer. */
+  | { readonly type: "active"; readonly active: AssistantActiveTool };
+
+/**
+ * The two units a turn's *persisted results* fold into. Kept separate from the
+ * full {@link AssistantTurnUnit} union so {@link groupTurnToolEntries} stays a
+ * statement about results only — grouping has nothing to say about a parked
+ * request or a working line, and its callers should not have to prove that.
+ */
+export type AssistantToolUnit = Extract<AssistantTurnUnit, { type: "group" | "single" }>;
+
+/**
+ * Every unit that renders as a card in the turn — i.e. all of them except the
+ * transient working line, which is panel chrome the composer's own "Thinking…"
+ * shimmer shares rather than a tool-result card. Splitting it out at the type level
+ * is what keeps the card registry exhaustive over exactly the cards.
+ */
+export type AssistantTurnCardUnit = Exclude<AssistantTurnUnit, { type: "active" }>;
 
 type PendingGroup = {
   kind: GroupableToolKind;
@@ -177,7 +205,7 @@ function isPendingGroup(
  * kind are interleaved, and a kind that occurs only once degrades back to a single
  * so a solitary save still earns its full card.
  */
-export function groupTurnToolEntries(entries: readonly AssistantToolEntry[]): AssistantTurnUnit[] {
+export function groupTurnToolEntries(entries: readonly AssistantToolEntry[]): AssistantToolUnit[] {
   const slots: ({ type: "single"; entry: AssistantToolEntry } | PendingGroup)[] = [];
   const pendingByKind = new Map<GroupableToolKind, PendingGroup>();
 
@@ -197,7 +225,7 @@ export function groupTurnToolEntries(entries: readonly AssistantToolEntry[]): As
     }
   }
 
-  return slots.map((slot): AssistantTurnUnit => {
+  return slots.map((slot): AssistantToolUnit => {
     if (!isPendingGroup(slot)) {
       return slot;
     }
@@ -206,4 +234,79 @@ export function groupTurnToolEntries(entries: readonly AssistantToolEntry[]): As
       ? { type: "group", kind: slot.kind, entries: slot.entries }
       : { type: "single", entry: first };
   });
+}
+
+/**
+ * Everything one assistant turn did with tools, in the order it happened.
+ *
+ * Part order *is* turn order, and the default reducer keys a tool part by its call
+ * id, so each call contributes exactly one unit here: the working shimmer while it
+ * runs, the approval card while it waits on the owner, the settled status once it is
+ * answered or refused, and the result card once it produces one. That is what keeps a
+ * parked call in the seat its tool call occupies instead of floating to the bottom of
+ * the turn, and what makes a shimmer and a card for the same call impossible.
+ *
+ * Same-kind durable saves still fold into one collapsed group
+ * ({@link groupTurnToolEntries}), which then takes the slot of its first member so a
+ * busy capture turn reads as a short summary without reordering the turn around it.
+ *
+ * `turnInFlight` gates only the working lines: a call parked in `input-available`
+ * when a turn ends would otherwise claim forever that Eve is still searching (see
+ * {@link messageActiveToolViews}). A parked approval is *not* activity — the turn is
+ * durably waiting on a person, so its card outlives the stream.
+ */
+export function messageTurnUnits(message: EveMessage, turnInFlight: boolean): AssistantTurnUnit[] {
+  if (message.role !== "assistant") {
+    return [];
+  }
+
+  const placed: { at: number; unit: AssistantTurnUnit }[] = [];
+  const results: { at: number; entry: AssistantToolEntry }[] = [];
+
+  message.parts.forEach((part, at) => {
+    if (part.type !== "dynamic-tool") {
+      return;
+    }
+
+    if (isCompletedToolPart(part)) {
+      results.push({
+        at,
+        entry: {
+          toolCallId: part.toolCallId,
+          view: toAssistantToolView({ toolName: part.toolName, output: part.output }),
+        },
+      });
+      return;
+    }
+
+    const request = toInputRequestView(part);
+    if (request) {
+      placed.push({ at, unit: { type: "request", request } });
+      return;
+    }
+
+    const resolution = toInputResolutionView(part);
+    if (resolution) {
+      placed.push({ at, unit: { type: "resolution", resolution } });
+      return;
+    }
+
+    if (turnInFlight && isActiveToolPart(part)) {
+      placed.push({
+        at,
+        unit: {
+          type: "active",
+          active: { toolCallId: part.toolCallId, label: activeToolLabel(part.toolName) },
+        },
+      });
+    }
+  });
+
+  const slotOf = new Map(results.map(({ at, entry }) => [entry.toolCallId, at]));
+  for (const unit of groupTurnToolEntries(results.map(({ entry }) => entry))) {
+    const first = unit.type === "group" ? unit.entries[0] : unit.entry;
+    placed.push({ at: slotOf.get(first.toolCallId) ?? 0, unit });
+  }
+
+  return placed.sort((a, b) => a.at - b.at).map(({ unit }) => unit);
 }

@@ -1,4 +1,4 @@
-import { defineEval } from "eve/evals";
+import { defineEval } from "../define-eval";
 
 export default defineEval({
   description: "Judge whether Cleanup Preview output is useful, deduped, and clearly review-only.",

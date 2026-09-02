@@ -1,6 +1,8 @@
 import { editDraftBody } from "@tendnote/db/queries/drafts";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { requireOwnerApproval } from "../lib/approval";
+import { describeRegisteredSubject } from "../lib/approval/subject-registry";
 import { resolveOwnerUserId } from "../lib/owner";
 import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { DRAFT_REVISION_REPLY_CANONICAL } from "../lib/response-contracts";
@@ -51,8 +53,9 @@ const inputSchema = z.object({
  * draft, or a send claim.
  */
 export default defineTool({
+  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
   description:
-    "Rewrite the body of one of the user's existing Tendnote message drafts, when they ask for a change in the current turn ('make it shorter', 'take out the bit about the move', 'warmer opening'). Requires a draftId from `list_message_drafts` or from creating it. Send the COMPLETE new text: start from what the draft says now and apply only what they asked for this turn - never regenerate the message from scratch, never quietly improve wording they did not mention, and never fold in facts they did not ask you to add. Do NOT use this to write a new draft (`create_message_draft`) or to act on your own idea of a better message. An already-approved draft can still be edited when the user asks for the change - doing so returns it to an unapproved draft, so say the old approval no longer covers the new wording and it must be re-approved before it can be saved to Gmail. A dismissed or already-sent draft cannot be edited at all, and the attempt is refused. This is an internal, text-only edit: an unapproved draft remains an unapproved Tendnote draft; it is never ready to send, an external or Gmail draft, or sent. Nothing is approved, exported, or sent by this call, and saving to Gmail is still `save_draft_to_gmail` with its own approval gate. Returns the updated draft reference; say what you changed, briefly.",
+    "Rewrite the body of one of the user's existing Tendnote message drafts, when they ask for a change in the current turn ('make it shorter', 'take out the bit about the move', 'warmer opening'). Requires a draftId from `list_message_drafts` or from creating it. Send the COMPLETE new text: start from what the draft says now and apply only what they asked for this turn - never regenerate the message from scratch, never quietly improve wording they did not mention, and never fold in facts they did not ask you to add. Do NOT use this to write a new draft (`create_message_draft`) or to act on your own idea of a better message. An already-approved draft can still be edited when the user asks for the change - doing so returns it to an unapproved draft, so say the old approval no longer covers the new wording and it must be re-approved before it can be saved to Gmail. A dismissed or already-sent draft cannot be edited at all, and the attempt is refused. This is an internal, text-only edit: an unapproved draft remains an unapproved Tendnote draft; it is never ready to send, an external or Gmail draft, or sent. Nothing is approved, exported, or sent by this call, and saving to Gmail is still `save_draft_to_gmail` with its own approval gate. Returns the updated draft reference; say what you changed, briefly. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
