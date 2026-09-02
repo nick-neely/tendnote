@@ -292,7 +292,10 @@ header (never a card inside a sheet).
 4. **Sources strip** — "Used N sources", collapsed, only when the turn searched or
    fetched the web. Plain titled links with the bare domain in mono beside each
    title, at most five shown behind a quiet "Show all N", no favicons or
-   previews.
+   previews. A link in the answer whose target is one of those sources carries a
+   small mono citation number — 1, 2, 3 in the order the reader meets them,
+   repeated links sharing a number — whose hover card names the page, its full
+   URL, and its host; the link itself keeps its ordinary click-to-confirm.
 5. **Actions row** — ghost icon buttons revealed on hover / focus-within (always
    visible on coarse pointers): Copy, Retry. User turns get Edit, which loads the
    text back into the composer. No thumbs, share, or download.

@@ -80,9 +80,9 @@ locally; they are not an unmodified upstream copy.
 - **Exact redistributed paths** (all under
   [`apps/web/src/components/ai-elements/`](apps/web/src/components/ai-elements/)):
   `attachments.tsx`, `chain-of-thought.tsx`, `conversation.tsx`,
-  `message.tsx`, `prompt-input.tsx`, `queue.tsx`, `reasoning.tsx`,
-  `sources.tsx`, `suggestion.tsx`. The co-located `suggestion.dom.test.tsx`
-  is Tendnote-authored.
+  `inline-citation.tsx`, `message.tsx`, `prompt-input.tsx`, `queue.tsx`,
+  `reasoning.tsx`, `sources.tsx`, `suggestion.tsx`. The co-located
+  `suggestion.dom.test.tsx` is Tendnote-authored.
 - **Local modifications** (each file's header comment names its own):
   `lucide-react` icon imports rerouted to `@/components/icons`;
   `@radix-ui/react-use-controllable-state` imports rewritten to
@@ -92,9 +92,48 @@ locally; they are not an unmodified upstream copy.
   Streamdown plugins and Tendnote's user-bubble treatment; `conversation.tsx`
   adds `role="log"`; `prompt-input.tsx` imports Tendnote's `@/components/ui/*`
   primitives and carries a local restore-on-rejection composer contract;
-  biome formatting throughout.
+  `inline-citation.tsx` lets `InlineCitationCardTrigger` render a caller's
+  `children` in place of upstream's hostname label; biome formatting
+  throughout.
 
 If these files are re-pulled from the registry, re-run the future-bundle gate
 in [`docs/agents/third-party-bundles.md`](docs/agents/third-party-bundles.md)
 against the pinned upstream source and update the commit pin and retrieval
 date here.
+
+## shadcn/ui (carousel primitive)
+
+Tendnote redistributes one shadcn/ui component as a source file. It is
+installed with the shadcn CLI as a registry dependency of the AI Elements
+`inline-citation` component above and then adapted locally; it is not an
+unmodified upstream copy.
+
+- **Project:** [shadcn-ui/ui](https://github.com/shadcn-ui/ui).
+- **Release:** the `ui.shadcn.com` registry serves the `main` branch and
+  publishes no per-file tag. Pinned to the `main` branch current at retrieval,
+  installed through CLI package `shadcn@4.19.0`.
+- **License:** MIT. The complete text is included at
+  [`LICENSES/MIT.txt`](LICENSES/MIT.txt), as required for redistribution.
+- **Retrieved:** 2026-09-02.
+- **Copyright:** `Copyright (c) 2023 shadcn`, from the upstream
+  [`LICENSE.md`](https://raw.githubusercontent.com/shadcn-ui/ui/main/LICENSE.md)
+  retrieved and checked on 2026-09-02. The shared `LICENSES/MIT.txt` carries the
+  MIT terms; this line is the copyright holder they are granted by.
+- **NOTICE review:** The upstream repository contains no `NOTICE` or `NOTICE.md`
+  file (checked 2026-09-02). No nested third-party work is identified by the
+  upstream license material. The component depends on the separately installed
+  npm package `embla-carousel-react`, which is an ordinary dependency, not
+  redistributed source.
+- **Exact redistributed path:**
+  [`apps/web/src/components/ui/carousel.tsx`](apps/web/src/components/ui/carousel.tsx).
+- **Local modifications** (named in the file's header comment):
+  `lucide-react` icon imports rerouted to `@/components/icons`; biome
+  formatting.
+
+This record covers `carousel.tsx` only. The other files under
+`apps/web/src/components/ui/` predate this record and are not yet inventoried
+here; adding them is tracked separately from this component.
+
+If this file is re-pulled from the registry, re-run the future-bundle gate in
+[`docs/agents/third-party-bundles.md`](docs/agents/third-party-bundles.md)
+against the pinned upstream source and update the retrieval date here.
