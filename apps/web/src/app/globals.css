@@ -32,6 +32,24 @@
 }
 
 /*
+ * The same escape hatch at every width, for a destination that is a canvas
+ * rather than a column of cards — today only `/assistant`, whose conversation
+ * rail belongs against the left edge of the window and whose transcript centres
+ * itself in what is left. Inside the shell's 1280px reading measure that page
+ * read as a narrow strip with two wide margins of nothing, which is the one
+ * shape a chat surface must not have.
+ *
+ * A route-level attribute rather than a second shell, for the reason above: the
+ * shell must not have to know which URL it is rendering. A destination that
+ * takes the window says so, and pays for its own gutters and vertical rhythm.
+ */
+main:has(> [data-full-bleed]) {
+  max-width: none;
+  padding: 0;
+  gap: 0;
+}
+
+/*
  * The phone gutter, as one number.
  *
  * Every narrow-viewport surface used to pick its own edge inset - the shell's
@@ -181,14 +199,33 @@
   --chart-4: oklch(0.54 0.13 65);
   --chart-5: oklch(0.43 0.11 145);
   --radius: 0.625rem;
-  --sidebar: oklch(0.975 0 0);
-  --sidebar-foreground: oklch(0.18 0.018 145);
-  --sidebar-primary: oklch(0.39 0.085 142);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.955 0.006 145);
-  --sidebar-accent-foreground: oklch(0.24 0.025 145);
-  --sidebar-border: oklch(0.88 0.006 145);
-  --sidebar-ring: oklch(0.56 0.095 142);
+  /*
+   * The shadcn Sidebar's own palette, expressed entirely in Tendnote's tokens.
+   *
+   * The registry ships a second, standalone colour scale here — its own greys,
+   * its own accent — which is exactly how a sidebar ends up looking like a
+   * different product bolted to the side of this one. Pointing every one of
+   * them at a token the rest of the app already uses means the conversation
+   * rail is the same quiet `panel` surface as the dashboard rail, its rules are
+   * the same hairline, and its focus ring is the same sage.
+   *
+   * `--sidebar-accent` is the *selected* tint, not a hover grey: the registry
+   * spends one token on both, and Tendnote's selection has always been sage at
+   * 10%. Rows therefore pass `hover:bg-muted` so hover stays neutral and only
+   * the row you are in is tinted (state is never colour alone either way — the
+   * active row also carries `aria-current`).
+   *
+   * These reference tokens that `.dark` redefines on the same element, so they
+   * resolve per theme on their own and need no dark override of their own.
+   */
+  --sidebar: var(--panel);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: color-mix(in oklch, var(--primary) 10%, transparent);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 
   --text-display: 2rem;
   --text-display-line: 2.5rem;
@@ -254,14 +291,8 @@
   --chart-3: oklch(0.68 0.08 230);
   --chart-4: oklch(0.7 0.13 65);
   --chart-5: oklch(0.58 0.1 145);
-  --sidebar: oklch(0.12 0.004 145);
-  --sidebar-foreground: oklch(0.96 0 0);
-  --sidebar-primary: oklch(0.66 0.105 142);
-  --sidebar-primary-foreground: oklch(0.09 0 0);
-  --sidebar-accent: oklch(0.2 0.006 145);
-  --sidebar-accent-foreground: oklch(0.92 0.004 145);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.66 0.105 142);
+  /* No `--sidebar-*` here on purpose: they are defined once in `:root` as
+     references to the tokens this block redefines, so they follow the theme. */
 
   --sb-thumb: oklch(1 0 0 / 0.22);
   --sb-thumb-hover: oklch(1 0 0 / 0.38);

@@ -13,7 +13,7 @@ function header() {
 }
 
 function rail() {
-  return within(screen.getByRole("complementary", { name: "Conversations" }));
+  return within(screen.getByRole("navigation", { name: "Conversations" }));
 }
 
 /**
@@ -95,6 +95,7 @@ vi.mock("@/components/assistant-panel", async () => {
   };
 });
 
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { AssistantPage } from "./assistant-page";
 
 const CONVERSATIONS: AssistantConversationView[] = [
@@ -122,23 +123,31 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/assistant");
 });
 
-function renderPage(sessionId: string | null = null) {
-  return render(
-    <AssistantPage
-      conversations={CONVERSATIONS}
-      nudges={[]}
-      ownerUserId="owner-1"
-      sessionId={sessionId}
-      suggestPersonName={null}
-    />,
+/** The root layout's tooltip provider, which the rail's icon labels sit under. */
+function page(props: Partial<Parameters<typeof AssistantPage>[0]> = {}) {
+  return (
+    <TooltipProvider>
+      <AssistantPage
+        conversations={CONVERSATIONS}
+        nudges={[]}
+        ownerUserId="owner-1"
+        sessionId={null}
+        suggestPersonName={null}
+        {...props}
+      />
+    </TooltipProvider>
   );
+}
+
+function renderPage(sessionId: string | null = null) {
+  return render(page({ sessionId }));
 }
 
 it("shows the owner's threads beside a fresh conversation", async () => {
   renderPage();
 
   expect(await screen.findByText("fresh panel")).toBeDefined();
-  expect(screen.getByRole("link", { name: "Notes on Jordan" })).toBeDefined();
+  expect(rail().getByRole("link", { name: "Notes on Jordan" })).toBeDefined();
   expect(screen.getByRole("heading", { level: 1, name: "Assistant" })).toBeDefined();
 });
 
@@ -146,7 +155,7 @@ it("reopens the thread the URL names", async () => {
   renderPage("wrun_existing");
 
   expect(await screen.findByText("resuming wrun_existing")).toBeDefined();
-  expect(screen.getByRole("link", { name: "Notes on Jordan" }).getAttribute("aria-current")).toBe(
+  expect(rail().getByRole("link", { name: "Notes on Jordan" }).getAttribute("aria-current")).toBe(
     "page",
   );
 });
@@ -280,6 +289,32 @@ it("re-reads the list rather than archiving a thread the server does not have", 
   expect(rail().getByRole("link", { name: "Notes on Jordan" })).toBeDefined();
 });
 
+/**
+ * Archiving is a round trip, not a local hide: the row the server saved is what
+ * moves, which is what puts it in the Archived group rather than out of sight.
+ */
+it("moves a thread the server archived into the Archived group", async () => {
+  actions.archive.mockResolvedValue({
+    ok: true,
+    view: {
+      archived: true,
+      lastActivityAt: new Date(),
+      sessionId: "wrun_existing",
+      title: "Notes on Jordan",
+    },
+  });
+  renderPage();
+  await screen.findByText("fresh panel");
+
+  await userEvent.click(rail().getByRole("button", { name: "Actions for Notes on Jordan" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Archive" }));
+
+  await waitFor(() => expect(rail().queryByRole("link", { name: "Notes on Jordan" })).toBeNull());
+  await userEvent.click(rail().getByRole("button", { name: "Archived 1" }));
+  expect(rail().getByRole("link", { name: "Notes on Jordan" })).toBeDefined();
+  expect(toast.error).not.toHaveBeenCalled();
+});
+
 it("starts a new conversation on a panel that no longer holds the old session", async () => {
   renderPage("wrun_existing");
 
@@ -290,19 +325,41 @@ it("starts a new conversation on a panel that no longer holds the old session", 
   expect(router.push).toHaveBeenCalledWith("/assistant");
 });
 
-it("remembers a folded rail on this device", async () => {
+/**
+ * The fold is the sidebar's own cookie, and the server hands its answer back as
+ * `railOpen`. What the page owes it is the two halves of that round trip: write
+ * the cookie when the trigger is pressed, and start folded when it says so.
+ */
+it("writes the fold to the sidebar cookie and starts from what the server read", async () => {
   const view = renderPage();
   await screen.findByText("fresh panel");
+  expect(rail().getByRole("button", { name: "New conversation" })).toBeDefined();
 
-  await userEvent.click(header().getByRole("button", { name: "Hide conversations" }));
-  expect(header().getByRole("button", { name: "Show conversations" })).toBeDefined();
+  await userEvent.click(header().getByRole("button", { name: "Conversations" }));
+
+  await waitFor(() => expect(document.cookie).toContain("sidebar_state=false"));
 
   view.unmount();
-  renderPage();
+  render(page({ railOpen: false }));
+  await screen.findByText("fresh panel");
 
-  await waitFor(() =>
-    expect(header().getByRole("button", { name: "Show conversations" })).toBeDefined(),
-  );
+  // A folded rail is an icon rail, so the standing action moves to the header
+  // rather than leaving the page with no way to start a conversation.
+  expect(header().getByRole("button", { name: "New conversation" })).toBeDefined();
+});
+
+/**
+ * Two controls the header used to carry and no longer does: the privacy chip
+ * said the standing promise a second time, and the trace toggle was development
+ * chrome sitting permanently in a product header.
+ */
+it("keeps the header down to who is talking and which thread", async () => {
+  renderPage("wrun_existing");
+  await screen.findByText("resuming wrun_existing");
+
+  expect(header().getByText("Notes on Jordan")).toBeDefined();
+  expect(header().queryByText("Private")).toBeNull();
+  expect(header().queryByRole("button", { name: /trace|debug/i })).toBeNull();
 });
 
 it("never says Eve to the reader", async () => {

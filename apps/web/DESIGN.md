@@ -169,18 +169,28 @@ product patterns over invented affordances.
   The assistant carries the dashboard but stays a notebook in tone: no
   "chat with your data" framing, no avatar, no AI theatre.
 - **Assistant page** (`/assistant`, `/assistant/[sessionId]`): the one place the
-  assistant is a destination. Desktop is a 260px collapsible conversation rail
-  (`panel` surface, grouped Today / Yesterday / Previous 7 days / Older, rename
-  and archive per row, no delete) beside a centered 44rem transcript column with
-  the composer pinned to its bottom. An empty conversation centers the greeting,
-  composer, and suggestion chips; the first message settles the layout into
+  assistant is a destination, and the one route that opts out of the shell's
+  1280px measure — it declares `data-full-bleed` (`globals.css`) so the rail
+  meets the left edge of the window and the transcript centres in what is left.
+  Desktop is the shadcn Sidebar (`collapsible="icon"`, cookie-persisted fold,
+  `--sidebar-*` mapped onto Tendnote's own tokens so it is the same `panel`
+  surface, hairline, and sage as everything else): "New conversation" in the
+  header, one group per bucket (Today / Yesterday / Previous 7 days / Older),
+  rename and archive per row, no delete, and a closed **Archived** group that is
+  absent entirely when empty. Folded, it is an icon rail keeping New
+  conversation and a way back to the list, not a rail that disappears. Beside it
+  sits a centred 52rem transcript column with the composer pinned to its bottom.
+  The header is "Assistant" + the sage dot + the current thread title and the
+  sidebar trigger — no privacy chip (the empty state says it in a sentence) and
+  no debug toggle. An empty conversation centres the greeting, composer, and
+  suggestion chips; the first message settles the layout into
   transcript-over-composer in one 200ms transition. Threads are Tendnote-owned
   titles over Eve sessions (ADR 0238): the transcript is readable history, never
   the source of truth, so there is no export, share, or download. A thread whose
   session has ended stays readable and swaps the composer for a quiet "Start a
   new conversation" notice; never show a composer that will fail. Phone: one
-  header, the rail as a sheet, full-bleed transcript, composer above the
-  safe-area inset.
+  header, the rail as the sidebar's own sheet (focus trapped, focus returned to
+  the trigger), full-bleed transcript, composer above the safe-area inset.
 - **Dashboard review rail**: open suggested-memory reviews surface inline in the
   rail with a compact Save (approve) / Dismiss affordance, so the common case is
   handled without opening each person. The full review (edit wording, sensitivity,

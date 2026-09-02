@@ -11,26 +11,26 @@ import {
 } from "@/app/actions/assistant-conversations";
 import { AssistantConversationRail } from "@/components/assistant-conversation-rail";
 import { AssistantPageTranscriptReserve } from "@/components/assistant-page-reserve";
-import {
-  ASSISTANT_DEBUG_AVAILABLE,
-  ASSISTANT_UNSCOPED_SUBTITLE,
-  AssistantDebugToggle,
-  AssistantMark,
-  AssistantPrivateChip,
-} from "@/components/assistant-panel-chrome";
-import { ListIcon, NotebookPenIcon, PanelLeftIcon } from "@/components/icons";
+import { AssistantMark } from "@/components/assistant-panel-chrome";
+import { NotebookPenIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import {
-  loadAssistantRailCollapsed,
-  saveAssistantRailCollapsed,
-} from "@/lib/assistant/rail-preference";
+import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useConversationRailState } from "@/lib/assistant/use-conversation-rail-state";
 import { cn } from "@/lib/utils";
 
 /**
  * The Assistant as a destination: a conversation rail beside one centred
  * transcript column.
+ *
+ * ## Why the page takes the whole window
+ *
+ * The admitted shell puts every destination inside a 1280px reading measure,
+ * which is right for a ledger of cards and wrong for this: at 1440px the rail
+ * sat 80px in from the left with nothing beside it and the transcript floated
+ * in the middle of two empty margins. `data-full-bleed` (globals.css) is the
+ * route's own opt-out of that measure — the same shape the mobile canvas
+ * already used, at every width — so the rail meets the left edge of the window
+ * and the transcript centres itself in what is left of it.
  *
  * ## Why the panel is not remounted when the URL changes
  *
@@ -79,15 +79,27 @@ export type AssistantPageProps = {
   /** Calendar-derived openings for a brand-new conversation (#114). */
   nudges: PromptNudge[];
   ownerUserId: string;
+  /**
+   * Whether the rail was left open, read from the sidebar cookie by the surface.
+   *
+   * Request state rather than a judgment about this URL, which is why it comes
+   * in beside the surface model's props rather than out of it. Absent (a first
+   * visit, or a render with no request behind it) means open.
+   */
+  railOpen?: boolean;
   /** The thread this URL names, or `null` on `/assistant`. */
   sessionId: string | null;
   suggestPersonName: string | null;
 };
 
+/** The transcript's reading measure, centred in whatever the rail leaves. */
+const columnClass = "mx-auto w-full max-w-[52rem] px-gutter sm:px-6";
+
 export function AssistantPage({
   conversations: serverConversations,
   nudges,
   ownerUserId,
+  railOpen = true,
   sessionId,
   suggestPersonName,
 }: AssistantPageProps) {
@@ -97,22 +109,11 @@ export function AssistantPage({
     resumeSessionId: sessionId,
   }));
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(sessionId);
-  const [railCollapsed, setRailCollapsed] = useState(false);
-  const [railSheetOpen, setRailSheetOpen] = useState(false);
-  // The page owns its header, so it owns the dev-only trace toggle that sits in
-  // it and hands the state down to the panel that renders the trace.
-  const [showDebug, setShowDebug] = useState(false);
   // The bucket boundaries are calendar-relative; pinning "now" to the mount
   // keeps a row from jumping between headings on an unrelated re-render.
   const [now] = useState(() => new Date());
   const newThreadCount = useRef(0);
   const router = useRouter();
-
-  // The stored fold, applied after mount so the server-rendered shell and the
-  // first client paint agree. A blocked store simply leaves the rail open.
-  useEffect(() => {
-    setRailCollapsed(loadAssistantRailCollapsed(globalThis.localStorage));
-  }, []);
 
   /**
    * A genuine navigation landed: a rail link, the back button, or a pasted URL.
@@ -135,7 +136,6 @@ export function AssistantPage({
   }, [sessionId]);
 
   function startNewConversation() {
-    setRailSheetOpen(false);
     newThreadCount.current += 1;
     routeSession.current = null;
     setCurrentSessionId(null);
@@ -179,91 +179,46 @@ export function AssistantPage({
       });
   }
 
-  const rail = (
-    <AssistantConversationRail
-      archived={list.archived}
-      conversations={list.active}
-      currentSessionId={currentSessionId}
-      now={now}
-      onArchive={list.archive}
-      onNavigate={() => setRailSheetOpen(false)}
-      onNewConversation={startNewConversation}
-      onRename={list.rename}
-      onUnarchive={list.unarchive}
-    />
-  );
-
   return (
     // A destination that does not scroll: the transcript scrolls inside its own
     // column and the composer stays put. Below `lg` the shell's fixed bottom bar
-    // owns the last 4rem and the safe area with it; above it the admitted main
-    // adds its own 4rem of vertical padding under the 3.5rem header.
-    <div
-      className="flex h-[calc(100dvh-4rem-env(safe-area-inset-bottom))] min-h-0 lg:h-[calc(100dvh-7.5rem)]"
-      data-mobile-bleed
+    // owns the last 4rem and the safe area with it; above it the shell's header
+    // and its rule own the first 3.5rem plus a pixel, and `data-full-bleed` has
+    // just taken back the padding the admitted main would otherwise add.
+    <SidebarProvider
+      className="h-[calc(100dvh-4rem-env(safe-area-inset-bottom))] min-h-0 lg:h-[calc(100dvh-3.5rem-2px)]"
+      data-full-bleed
+      defaultOpen={railOpen}
     >
-      {/* 260px, hairline, and `panel` — the same quiet secondary surface the
-          dashboard rail uses, so the page reads as the product at page scale
-          rather than as a second design. */}
-      <aside
-        aria-label="Conversations"
-        className={cn(
-          "hidden w-[260px] shrink-0 border-r bg-panel lg:block",
-          railCollapsed && "lg:hidden",
-        )}
-      >
-        {rail}
-      </aside>
+      <AssistantConversationRail
+        archived={list.archived}
+        conversations={list.active}
+        currentSessionId={currentSessionId}
+        now={now}
+        onArchive={list.archive}
+        onNewConversation={startNewConversation}
+        onRename={list.rename}
+        onUnarchive={list.unarchive}
+      />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <AssistantPageHeader
           onNewConversation={startNewConversation}
-          onToggleDebug={() => setShowDebug((on) => !on)}
-          onOpenRailSheet={() => setRailSheetOpen(true)}
-          onToggleRail={() => {
-            const next = !railCollapsed;
-            setRailCollapsed(next);
-            saveAssistantRailCollapsed(globalThis.localStorage, next);
-          }}
-          railCollapsed={railCollapsed}
-          showDebug={showDebug}
           title={list.titleOf(currentSessionId)}
         />
-        <div className="mx-auto flex min-h-0 w-full max-w-[44rem] flex-1 flex-col px-gutter sm:px-6">
+        <div className={cn("flex min-h-0 flex-1 flex-col", columnClass)}>
           <AssistantPanel
-            debugOpen={showDebug}
             initialSessionId={thread.resumeSessionId ?? undefined}
             key={thread.key}
             nudges={nudges}
             onSessionStarted={claimSession}
-            onToggleDebug={() => setShowDebug((on) => !on)}
             ownerUserId={ownerUserId}
             suggestPersonName={suggestPersonName}
             surface="page"
           />
         </div>
       </div>
-
-      {/* The phone reaches the same rail through the shell's own full-screen
-          overlay primitive rather than a second kind of drawer. */}
-      <Dialog onOpenChange={setRailSheetOpen} open={railSheetOpen}>
-        <DialogContent
-          className="inset-0 top-0 left-0 flex h-dvh max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none bg-panel p-0"
-          showCloseButton={false}
-        >
-          <DialogDescription className="sr-only">
-            Your saved conversations, newest first.
-          </DialogDescription>
-          <header className="flex min-h-14 items-center justify-between gap-2 border-b px-gutter pt-[env(safe-area-inset-top)]">
-            <DialogTitle className="font-semibold text-base">Conversations</DialogTitle>
-            <Button onClick={() => setRailSheetOpen(false)} size="sm" type="button" variant="ghost">
-              Close
-            </Button>
-          </header>
-          <div className="min-h-0 flex-1 overflow-hidden">{rail}</div>
-        </DialogContent>
-      </Dialog>
-    </div>
+    </SidebarProvider>
   );
 }
 
@@ -278,60 +233,60 @@ export function AssistantPage({
 const TITLE_SETTLE_MS = 12_000;
 
 /**
- * One header for the destination: who is talking, which thread, and the standing
- * promise about what happens to it.
+ * One header for the destination: who is talking, and which thread.
  *
- * Its inner row is constrained to the transcript's own width so the thread title
- * and the conversation beneath it share a left edge; the rule under it spans the
- * column, which is what keeps the composer's canvas feeling like a page rather
- * than a floating card.
+ * It spans the full canvas rather than the transcript's measure. Once the rail
+ * is against the left edge of the window, a header row that stopped where the
+ * text column stops would leave the fold control floating in the middle of the
+ * page instead of sitting at the corner of the thing it folds.
+ *
+ * Two things that used to live here are gone. The Private chip said the standing
+ * promise twice — the empty state says it in a sentence — and the debug toggle
+ * was development chrome sitting permanently in a product header.
  */
 function AssistantPageHeader({
   onNewConversation,
-  onOpenRailSheet,
-  onToggleDebug,
-  onToggleRail,
-  railCollapsed,
-  showDebug,
   title,
 }: {
   onNewConversation: () => void;
-  onOpenRailSheet: () => void;
-  onToggleDebug: () => void;
-  onToggleRail: () => void;
-  railCollapsed: boolean;
-  showDebug: boolean;
   title: string | null;
 }) {
+  const { isMobile, openMobile, state } = useSidebar();
+  // The rail carries this action wherever the rail is a list. It is a header
+  // control only where it is not: an icon-width rail, and a phone.
+  const railOffersNewConversation = !isMobile && state === "expanded";
+
+  /**
+   * Focus comes back here when the phone's rail sheet closes.
+   *
+   * Radix's modal dialog does not use its usual restore for this: it explicitly
+   * refocuses the `DialogTrigger`, and the sidebar's sheet is fully controlled
+   * with no trigger inside it, so the ref is null and focus falls to `<body>` —
+   * a keyboard or screen-reader owner who closes the rail loses their place
+   * entirely. This control is the thing that opened it, so it is where the
+   * place belongs, including after picking a thread: the transcript that
+   * arrives is a new subject, not a new page, and the header is the top of it.
+   */
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const sheetWasOpen = useRef(false);
+  useEffect(() => {
+    if (sheetWasOpen.current && !openMobile) triggerRef.current?.focus();
+    sheetWasOpen.current = openMobile;
+  }, [openMobile]);
+
   return (
     // The page's height already stops above the phone's bottom bar; the top
     // inset has no such owner, so the header holds it and the transcript below
     // simply gets that much less room.
     <header className="shrink-0 border-b pt-[env(safe-area-inset-top)]">
-      <div className="mx-auto flex min-h-14 w-full max-w-[44rem] items-center gap-2 px-gutter sm:px-6">
-        {/* Named for what it opens rather than for the rail's fold state, so it
-            is never a second control called "Show conversations". */}
-        <Button
+      <div className="flex min-h-14 w-full items-center gap-2 px-gutter sm:px-6">
+        {/* Named for what it reveals rather than for the fold state, so it is
+            never a control whose label changes under the pointer. */}
+        <SidebarTrigger
           aria-label="Conversations"
-          className="text-muted-foreground lg:hidden"
-          onClick={onOpenRailSheet}
-          size="icon-sm"
-          type="button"
-          variant="ghost"
-        >
-          <ListIcon aria-hidden />
-        </Button>
-        <Button
-          aria-label={railCollapsed ? "Show conversations" : "Hide conversations"}
-          aria-pressed={railCollapsed}
-          className="hidden text-muted-foreground lg:inline-flex"
-          onClick={onToggleRail}
-          size="icon-sm"
-          type="button"
-          variant="ghost"
-        >
-          <PanelLeftIcon aria-hidden />
-        </Button>
+          className="-ml-1 shrink-0 text-muted-foreground"
+          ref={triggerRef}
+        />
 
         <div className="flex min-w-0 flex-1 items-baseline gap-2">
           <h1 className="flex shrink-0 items-center gap-2 font-semibold text-sm">
@@ -343,33 +298,22 @@ function AssistantPageHeader({
               <span aria-hidden className="text-muted-foreground/60">
                 ·
               </span>
-              <span className="min-w-0 truncate text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+              {/* The full title stays reachable on hover for the ones the
+                  measure clips; the rail row it came from clips too. */}
+              <span
+                className="min-w-0 truncate text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]"
+                title={title}
+              >
                 {title}
               </span>
             </>
-          ) : (
-            // The standing promise, not a label for anything on screen: a phone
-            // header clipping it to "Private. Nothing is…" says less than
-            // nothing, and the Private chip beside it already carries the point.
-            <span className="hidden min-w-0 truncate text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)] sm:inline">
-              {ASSISTANT_UNSCOPED_SUBTITLE}
-            </span>
-          )}
+          ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5">
-          <span className="hidden sm:inline-flex">
-            <AssistantPrivateChip />
-          </span>
-          {ASSISTANT_DEBUG_AVAILABLE ? (
-            <AssistantDebugToggle onPressedChange={onToggleDebug} pressed={showDebug} />
-          ) : null}
-          {/* The rail already offers this where the rail is on screen. This is the
-              same action for the two cases where it is not: a phone, and a folded
-              rail on a wide screen. */}
+        {railOffersNewConversation ? null : (
           <Button
             aria-label="New conversation"
-            className={cn("text-muted-foreground", !railCollapsed && "lg:hidden")}
+            className="shrink-0 text-muted-foreground"
             onClick={onNewConversation}
             size="icon-sm"
             type="button"
@@ -377,7 +321,7 @@ function AssistantPageHeader({
           >
             <NotebookPenIcon aria-hidden />
           </Button>
-        </div>
+        )}
       </div>
     </header>
   );

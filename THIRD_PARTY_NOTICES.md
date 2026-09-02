@@ -101,11 +101,13 @@ in [`docs/agents/third-party-bundles.md`](docs/agents/third-party-bundles.md)
 against the pinned upstream source and update the commit pin and retrieval
 date here.
 
-## shadcn/ui (carousel primitive)
+## shadcn/ui (carousel and sidebar primitives)
 
-Tendnote redistributes one shadcn/ui component as a source file. It is
-installed with the shadcn CLI as a registry dependency of the AI Elements
-`inline-citation` component above and then adapted locally; it is not an
+Tendnote redistributes a small set of shadcn/ui components as source files.
+They are installed with the shadcn CLI — `carousel` as a registry dependency of
+the AI Elements `inline-citation` component above, `sidebar` (with its own
+registry dependencies `sheet`, `skeleton`, and the `use-mobile` hook) for the
+Assistant page's conversation rail — and then adapted locally; they are not an
 unmodified upstream copy.
 
 - **Project:** [shadcn-ui/ui](https://github.com/shadcn-ui/ui).
@@ -121,19 +123,32 @@ unmodified upstream copy.
   MIT terms; this line is the copyright holder they are granted by.
 - **NOTICE review:** The upstream repository contains no `NOTICE` or `NOTICE.md`
   file (checked 2026-09-02). No nested third-party work is identified by the
-  upstream license material. The component depends on the separately installed
-  npm package `embla-carousel-react`, which is an ordinary dependency, not
-  redistributed source.
-- **Exact redistributed path:**
-  [`apps/web/src/components/ui/carousel.tsx`](apps/web/src/components/ui/carousel.tsx).
-- **Local modifications** (named in the file's header comment):
-  `lucide-react` icon imports rerouted to `@/components/icons`; biome
-  formatting.
+  upstream license material. The components depend on separately installed npm
+  packages (`embla-carousel-react`, `radix-ui`, `class-variance-authority`),
+  which are ordinary dependencies, not redistributed source.
+- **Exact redistributed paths:**
+  [`apps/web/src/components/ui/carousel.tsx`](apps/web/src/components/ui/carousel.tsx),
+  [`apps/web/src/components/ui/sidebar.tsx`](apps/web/src/components/ui/sidebar.tsx),
+  [`apps/web/src/components/ui/sheet.tsx`](apps/web/src/components/ui/sheet.tsx),
+  [`apps/web/src/components/ui/skeleton.tsx`](apps/web/src/components/ui/skeleton.tsx),
+  [`apps/web/src/hooks/use-mobile.ts`](apps/web/src/hooks/use-mobile.ts).
+- **Local modifications** (each file's header comment names its own):
+  `lucide-react` icon imports rerouted to `@/components/icons` in
+  `carousel.tsx`, `sidebar.tsx`, and `sheet.tsx`; `sidebar.tsx` renders
+  `data-active` only when a row is active, because React writes a `false` data
+  attribute as the string `"false"` and Tailwind v4's `data-active:` variant
+  matches on the attribute's presence; biome formatting throughout.
+  `skeleton.tsx` and `use-mobile.ts` are unmodified apart from formatting.
+  Two behaviours the registry leaves to the host are supplied from outside these
+  files rather than by editing them: the sidebar's `--sidebar-*` palette is
+  redefined in `apps/web/src/app/globals.css` in terms of Tendnote's own tokens,
+  and the desktop container's whole-window `fixed inset-y-0 h-svh` geometry is
+  offset by a `className` at the one call site that mounts it.
 
-This record covers `carousel.tsx` only. The other files under
+This record covers the files listed above. The other files under
 `apps/web/src/components/ui/` predate this record and are not yet inventoried
-here; adding them is tracked separately from this component.
+here; adding them is tracked separately from these components.
 
-If this file is re-pulled from the registry, re-run the future-bundle gate in
+If any of these files is re-pulled from the registry, re-run the future-bundle gate in
 [`docs/agents/third-party-bundles.md`](docs/agents/third-party-bundles.md)
 against the pinned upstream source and update the retrieval date here.

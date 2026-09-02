@@ -53,6 +53,19 @@
           }
         }
       }
+    },
+    {
+      "includes": ["apps/web/src/components/ui/sidebar.tsx"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useExhaustiveDependencies": "off"
+          },
+          "suspicious": {
+            "noDocumentCookie": "off"
+          }
+        }
+      }
     }
   ],
   "javascript": {
