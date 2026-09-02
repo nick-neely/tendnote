@@ -136,6 +136,30 @@ it("gives neither answer more weight than the other", () => {
   expect(approve.getAttribute("data-variant")).not.toBe("default");
 });
 
+/**
+ * The card interrupts a conversation, so its height is part of whether it gets read.
+ * These pin the composition that keeps it short: no sentence repeats what the chip and
+ * the live buttons already say, the state chip labels the heading instead of standing
+ * on a line of its own, and no row exists only to hold the buttons (below, where the
+ * request that has something to disclose is defined).
+ */
+it("carries the wait in the chip and the live buttons, not a standing footer sentence", () => {
+  renderCard(FETCH_REQUEST);
+
+  expect(screen.getByText("Needs your approval")).toBeDefined();
+  expect(screen.queryByText(/Nothing happens until you choose/)).toBeNull();
+  expect(screen.queryByText(/Eve is waiting/)).toBeNull();
+  expect(screen.queryByRole("status")).toBeNull();
+});
+
+it("labels the heading with the state chip on one row", () => {
+  renderCard(FETCH_REQUEST);
+
+  const header = document.querySelector("[data-slot=approval-header]");
+  expect(header?.contains(screen.getByText("Needs your approval"))).toBe(true);
+  expect(header?.contains(screen.getByText("Eve wants to run web fetch."))).toBe(true);
+});
+
 it("keeps a long or nested argument out of the way until it is asked for", async () => {
   const note = "x".repeat(400);
   renderCard({
@@ -177,6 +201,20 @@ it("leads with the record the server described, keeping the frozen input reachab
   await userEvent.click(screen.getByRole("button", { name: "Show everything Eve will send" }));
   expect(screen.getByText("followupId")).toBeDefined();
   expect(screen.getByText("fu_123")).toBeDefined();
+});
+
+it("puts the decision on the disclosure's row rather than a row of its own", async () => {
+  describeSubject.mockResolvedValue(described("Accept a follow-up with Mara"));
+  renderCard(FOLLOWUP_REQUEST);
+
+  await waitFor(() => expect(screen.getByText("Accept a follow-up with Mara")).toBeDefined());
+  const decision = document.querySelector("[data-slot=approval-decision]");
+  expect(decision).not.toBeNull();
+  expect(
+    decision?.contains(screen.getByRole("button", { name: "Show everything Eve will send" })),
+  ).toBe(true);
+  expect(decision?.contains(screen.getByRole("button", { name: "Approve" }))).toBe(true);
+  expect(decision?.contains(screen.getByRole("button", { name: "Cancel" }))).toBe(true);
 });
 
 it("asks about the call with the tool name and the input the card itself displays", async () => {
@@ -329,6 +367,23 @@ it("locks both options while an answer is on the wire, so a decision is sent onc
 
   await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(respond).toHaveBeenCalledTimes(1);
+});
+
+/**
+ * The one thing the resting card no longer says. A spinner sits inside a button the
+ * owner has already looked away from, so the round trip gets an announced line for
+ * exactly as long as it lasts.
+ */
+it("announces the round trip while an answer is on the wire, and only then", async () => {
+  const respond = vi.fn(() => new Promise<void>(() => {}));
+  renderCard(FETCH_REQUEST, { respond });
+
+  expect(screen.queryByRole("status")).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe("Sending your decision…"),
+  );
 });
 
 it("disables the decision while eve is busy with another turn", () => {

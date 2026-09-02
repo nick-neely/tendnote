@@ -143,6 +143,19 @@ const UNGATED_TOOLS = [
   "write_file",
 ] as const;
 
+/**
+ * The subset of {@link FLAG_GATED_TOOLS} that only ever reads. The rest of that
+ * list produces a review artifact, so "this call may park" is a fair thing for
+ * its description to say; these five answer a question and must not.
+ */
+const FLAG_GATED_READ_TOOLS = [
+  "get_person_context",
+  "get_relationship_agenda",
+  "search_global_recall",
+  "search_relationship_context",
+  "search_semantic_context",
+] as const;
+
 function authoredToolFiles(): string[] {
   return readdirSync(join(agentRoot, "tools"))
     .filter((file) => file.endsWith(".ts"))
@@ -192,6 +205,37 @@ describe("the write surface is classified, and the classification is complete", 
     for (const name of [...WRITE_TOOLS, ...EGRESS_TOOLS, ...FLAG_GATED_TOOLS]) {
       expect(authored, `${name} must author a tool to be gated`).toContain(name);
     }
+  });
+});
+
+/**
+ * A tool description is instruction, not documentation: it is what the model has
+ * in front of it when it decides whether to call. When the write gates landed,
+ * enough descriptions mentioned pausing that the model generalised the idea to
+ * the whole tool set and started asking first - "Would you like me to search for
+ * Sam?" instead of calling `search_people`, which parks for nobody. So a read's
+ * top-level description may not say the call pauses. The one argument that does
+ * park a read is the restricted-reveal flag, and it says so in its own
+ * `.describe()`, where it is attached to the thing that is actually true of it.
+ */
+describe("a read never tells the model it pauses", () => {
+  const readTools = [...UNGATED_TOOLS, ...FLAG_GATED_READ_TOOLS].filter((name) =>
+    authorsTool(readFileSync(join(agentRoot, "tools", `${name}.ts`), "utf8")),
+  );
+
+  it("classifies the flag-gated reads as flag-gated", () => {
+    for (const name of FLAG_GATED_READ_TOOLS) {
+      expect(FLAG_GATED_TOOLS as readonly string[]).toContain(name);
+    }
+  });
+
+  it.each(readTools)("%s describes itself as running, not parking", async (name) => {
+    const { description } = (await loadTool(name)) as { description?: string };
+
+    expect(
+      description ?? "",
+      `${name} is a read: nothing about it parks for an approval, so its description must not tell the model it might. Say what the restricted-reveal argument does in that argument's own .describe() instead.`,
+    ).not.toMatch(/\bpauses?\b/i);
   });
 });
 

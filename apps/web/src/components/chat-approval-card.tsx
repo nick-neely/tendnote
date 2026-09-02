@@ -53,6 +53,15 @@ import { humanizeToolName } from "@/lib/eve/tool-name";
  *
  * `kind: "question"` requests arrive through the same channel (the framework's own
  * `ask_question`), and there the prompt is the model's real question, so it leads.
+ *
+ * A fourth rule is about size, and it is not cosmetic. This card interrupts a
+ * conversation, and a card that fills half the panel makes the transcript around it
+ * unreadable while the owner decides — which is how a gate stops being read at all. So
+ * every row here carries something: the state chip labels the heading on its own line,
+ * and the decision shares the line the disclosure starts rather than taking one of its
+ * own. The standing "nothing happens until you choose" footer is gone with it; the chip
+ * says that, and two live buttons say it better. Only the round trip still gets words,
+ * and only while it is in flight.
  */
 
 /** Identity for the freeform answer in `sending`; no option id can collide with it. */
@@ -85,6 +94,12 @@ export function ChatApprovalCard({
   /** The answer currently on the wire, identified so its own control shows the wait. */
   const [sending, setSending] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  /**
+   * Whether the frozen input is unfolded. It lives here rather than beside the list
+   * because its control does not: the disclosure shares the decision row with the
+   * buttons, which is what keeps that row from being a band of empty space.
+   */
+  const [showInput, setShowInput] = useState(false);
   const describedById = useId();
 
   // Answering takes the whole session — eve refuses a response while any turn is in
@@ -109,45 +124,71 @@ export function ChatApprovalCard({
     }
   }
 
+  const input = visibleApprovalFields(request.fields, subject.status === "described", showInput);
+
   return (
-    <ResultCard
-      footer={<Caption>{copy.waiting}</Caption>}
-      isNew={isNew}
-      kind="input_request"
-      tone="tentative"
-    >
-      <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
-        <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-        {copy.chip}
-      </span>
+    <ResultCard isNew={isNew} kind="input_request" tone="tentative">
+      {/* One child, so this card sets its own rhythm rather than the shell's uniform
+          gap: the state chip, the heading and the record it names are one thought and
+          sit tight together, and only the decision is held apart from them. */}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1">
+          {/* The chip labels the heading, so it sits on the heading's line while both
+              fit and drops above it when they do not — one structure, no breakpoint. */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1" data-slot="approval-header">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
+              <span aria-hidden className="size-1.5 rounded-full bg-accent" />
+              {copy.chip}
+            </span>
 
-      <Body className="whitespace-pre-line" id={describedById}>
-        {copy.heading}
-      </Body>
+            <Body className="whitespace-pre-line" id={describedById}>
+              {copy.heading}
+            </Body>
+          </div>
 
-      {isApproval ? <ApprovalSubjectDetail subject={subject} /> : null}
+          {isApproval ? <ApprovalSubjectDetail subject={subject} /> : null}
+        </div>
 
-      {/* The arguments the call is frozen with. Once the record itself has a heading
-          and detail lines, the ids and flags behind it are the second thing to read
-          rather than the first — but they are never summarized away, because what
-          executes is this input and not the sentence describing it. */}
-      {request.fields.length > 0 ? (
-        <ApprovalInputFields fields={request.fields} secondary={subject.status === "described"} />
-      ) : null}
+        {/* The arguments the call is frozen with. Once the record itself has a heading
+            and detail lines, the ids and flags behind it are the second thing to read
+            rather than the first — but they are never summarized away, because what
+            executes is this input and not the sentence describing it. */}
+        {input.shown.length > 0 ? (
+          <ApprovalInputFields expanded={showInput} fields={input.shown} />
+        ) : null}
 
-      <ApprovalAnswerControls
-        describedById={describedById}
-        locked={locked}
-        onAnswer={answer}
-        request={request}
-        sending={sending}
-      />
+        <ApprovalAnswerControls
+          describedById={describedById}
+          disclosure={
+            input.collapsible ? (
+              <ApprovalInputToggle
+                expanded={showInput}
+                onToggle={() => setShowInput((open) => !open)}
+              />
+            ) : null
+          }
+          locked={locked}
+          onAnswer={answer}
+          request={request}
+          sending={sending}
+        />
 
-      {failure ? (
-        <p className="text-[length:var(--text-small)] text-destructive" role="alert">
-          {failure}
-        </p>
-      ) : null}
+        {/* The card's resting state says "nothing has happened yet" through the chip and
+            the two live buttons; only the round trip needs words, and only while it
+            lasts. Announced, because the visible sign of it is a spinner in a button
+            the owner has already stopped looking at. */}
+        {sending !== null ? (
+          <p className="text-[length:var(--text-caption)] text-muted-foreground" role="status">
+            {copy.sending}
+          </p>
+        ) : null}
+
+        {failure ? (
+          <p className="text-[length:var(--text-small)] text-destructive" role="alert">
+            {failure}
+          </p>
+        ) : null}
+      </div>
     </ResultCard>
   );
 }
@@ -168,12 +209,12 @@ export function ChatApprovalCard({
 function approvalCopy(
   request: AssistantInputRequestView,
   subject: ApprovalSubjectState,
-): { chip: string; heading: string; waiting: string } {
+): { chip: string; heading: string; sending: string } {
   if (request.kind !== "tool-approval") {
     return {
       chip: "Eve has a question",
       heading: request.prompt,
-      waiting: "Eve is waiting for your answer.",
+      sending: "Sending your answer…",
     };
   }
 
@@ -183,12 +224,21 @@ function approvalCopy(
       subject.status === "described"
         ? subject.subject.title
         : `Eve wants to run ${humanizeToolName(request.toolName)}.`,
-    waiting: "Nothing happens until you choose. Eve is waiting.",
+    // Neither "approval" nor "refusal": the owner may have just pressed Cancel.
+    sending: "Sending your decision…",
   };
 }
 
 /**
- * The ways this request can be answered, exactly as eve offered them.
+ * The decision row: the ways this request can be answered, exactly as eve offered
+ * them, sharing a line with whatever else the card has to say for itself.
+ *
+ * The buttons used to own a row of their own, which left most of it empty and made a
+ * short card tall. They sit instead at the end of the line the disclosure starts, so
+ * the row carries the last thing to read and the thing to do with it. `mr-auto` on the
+ * disclosure rather than `justify-between` is what makes the wrap graceful: below
+ * roughly 360px the two stop fitting, the disclosure keeps the first line, and the
+ * buttons take the second still right-aligned.
  *
  * Options and freeform are independent — a question can carry both — so neither is
  * assumed. When eve offers neither, the turn is still resolvable by typing in the
@@ -197,36 +247,50 @@ function approvalCopy(
  */
 function ApprovalAnswerControls({
   describedById,
+  disclosure,
   locked,
   onAnswer,
   request,
   sending,
 }: {
   describedById: string;
+  /** The frozen input's show/hide control, when there is anything folded away. */
+  disclosure: React.ReactNode;
   locked: boolean;
   onAnswer: AnswerHandler;
   request: AssistantInputRequestView;
   /** The key of the control whose answer is on the wire, or null. */
   sending: string | null;
 }) {
-  if (request.options.length === 0 && !request.allowFreeform) {
-    return <Caption>Answer in the message box below to continue.</Caption>;
-  }
+  const hasOptions = request.options.length > 0;
+  const note =
+    !hasOptions && !request.allowFreeform ? (
+      <Caption>Answer in the message box below to continue.</Caption>
+    ) : null;
 
   return (
     <>
-      {request.options.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
-          {request.options.map((option) => (
-            <OptionButton
-              describedById={describedById}
-              disabled={locked}
-              key={option.id}
-              onChoose={() => void onAnswer(option.id, { optionId: option.id })}
-              option={option}
-              sending={sending === option.id}
-            />
-          ))}
+      {disclosure || hasOptions || note ? (
+        <div
+          className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5"
+          data-slot="approval-decision"
+        >
+          {disclosure ? <span className="mr-auto">{disclosure}</span> : null}
+          {note}
+          {hasOptions ? (
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              {request.options.map((option) => (
+                <OptionButton
+                  describedById={describedById}
+                  disabled={locked}
+                  key={option.id}
+                  onChoose={() => void onAnswer(option.id, { optionId: option.id })}
+                  option={option}
+                  sending={sending === option.id}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -280,7 +344,9 @@ function ApprovalFreeformField({
         value={draft}
       />
       <Button disabled={locked || trimmed.length === 0} size="sm" type="submit">
-        {sending ? <Spinner /> : null}
+        {/* Decorative: the card's own status line is what announces the round trip, and
+            a second live region saying "Loading" would only talk over it. */}
+        {sending ? <Spinner aria-hidden /> : null}
         Send
       </Button>
     </form>
@@ -326,8 +392,11 @@ function ApprovalSubjectDetail({ subject }: { subject: ApprovalSubjectState }) {
     return null;
   }
 
+  // A hairline, not a stripe: one thin rule is the ledger's own way of marking a
+  // quotation (DESIGN.md §5), while anything thicker becomes the colored side bar the
+  // system rejects outright.
   return (
-    <div className="flex flex-col gap-0.5 border-accent/25 border-l-2 pl-2.5">
+    <div className="flex flex-col gap-0.5 border-accent/45 border-l pl-2.5">
       {subject.subject.lines.map((line) => (
         <p
           className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]"
@@ -341,57 +410,68 @@ function ApprovalSubjectDetail({ subject }: { subject: ApprovalSubjectState }) {
 }
 
 /**
- * The parked call's arguments, as a labelled list.
+ * Which arguments are on show, and whether anything is being held back.
  *
  * Long or numerous arguments collapse to a preview rather than burying the buttons —
  * but only the *presentation* collapses: everything is one click away, and the cap is
  * generous enough that ordinary calls (a URL, a memory, a person id) never trip it. A
  * decision the owner has to scroll past is a decision they will stop reading.
+ *
+ * `secondary` is true when a described record already leads the card. The input then
+ * starts folded — every argument, not just the overflow — so the owner reads the record
+ * first and the ids second. One click still reaches the literal payload, and the
+ * disclosure is always offered in this mode so there is never a card whose input cannot
+ * be opened.
  */
-function ApprovalInputFields({
-  fields,
-  secondary,
-}: {
-  fields: readonly AssistantInputField[];
-  /**
-   * True when a described record already leads the card. The input then starts
-   * folded — every argument, not just the overflow — so the owner reads the record
-   * first and the ids second. One click still reaches the literal payload, and the
-   * toggle is always offered in this mode so there is never a card whose input
-   * cannot be opened.
-   */
-  secondary: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const overflowing =
-    secondary || fields.length > PREVIEW_FIELDS || fields.some((field) => field.block);
-  const shown = expanded ? fields : secondary ? [] : fields.slice(0, PREVIEW_FIELDS);
-  const toggle = overflowing ? (
+function visibleApprovalFields(
+  fields: readonly AssistantInputField[],
+  secondary: boolean,
+  expanded: boolean,
+): { collapsible: boolean; shown: readonly AssistantInputField[] } {
+  if (fields.length === 0) {
+    return { collapsible: false, shown: [] };
+  }
+
+  return {
+    collapsible: secondary || fields.length > PREVIEW_FIELDS || fields.some((f) => f.block),
+    shown: expanded ? fields : secondary ? [] : fields.slice(0, PREVIEW_FIELDS),
+  };
+}
+
+function ApprovalInputToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+  return (
     <button
       aria-expanded={expanded}
-      className="w-fit text-[length:var(--text-caption)] text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
-      onClick={() => setExpanded((open) => !open)}
+      className="text-[length:var(--text-caption)] text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+      onClick={onToggle}
       type="button"
     >
       {expanded ? "Show less" : "Show everything Eve will send"}
     </button>
-  ) : null;
+  );
+}
 
-  // Folded away entirely, the bordered well would be an empty box around nothing, so
-  // the disclosure stands on its own until there is something to put in it.
-  if (shown.length === 0) {
-    return toggle;
-  }
-
+/**
+ * The parked call's arguments, as a labelled list.
+ *
+ * Flat, with no well around it: the card is already a bordered surface, and a second
+ * box inside it bought nothing but two rows of padding on the one card that most needs
+ * to be short. The mono values and muted keys separate the payload from the prose above
+ * it well enough on their own.
+ */
+function ApprovalInputFields({
+  expanded,
+  fields,
+}: {
+  expanded: boolean;
+  fields: readonly AssistantInputField[];
+}) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg border border-accent/20 bg-background/60 p-2.5">
-      <dl className="flex flex-col gap-1.5">
-        {shown.map((field) => (
-          <ApprovalInputRow expanded={expanded} field={field} key={field.key ?? field.value} />
-        ))}
-      </dl>
-      {toggle}
-    </div>
+    <dl className="flex flex-col gap-1.5">
+      {fields.map((field) => (
+        <ApprovalInputRow expanded={expanded} field={field} key={field.key ?? field.value} />
+      ))}
+    </dl>
   );
 }
 
@@ -415,8 +495,17 @@ function ApprovalInputRow({ expanded, field }: { expanded: boolean; field: Assis
     return value;
   }
 
+  // A scalar reads as one fact, so its name sits on the same line as it and the pair
+  // costs one row instead of two. A block value needs the full width for its own
+  // wrapping, so there the name keeps a line of its own above it.
   return (
-    <div className="flex flex-col gap-0.5">
+    <div
+      className={
+        field.block
+          ? "flex flex-col gap-0.5"
+          : "flex flex-wrap items-baseline gap-x-2 leading-[var(--text-small-line)]"
+      }
+    >
       <dt className="font-medium text-[length:var(--text-caption)] text-muted-foreground">
         {field.key}
       </dt>
@@ -462,7 +551,8 @@ function OptionButton({
         option.style === "primary" ? "default" : option.style === "danger" ? "ghost" : "outline"
       }
     >
-      {sending ? <Spinner /> : null}
+      {/* Decorative, for the reason given on the freeform Send button. */}
+      {sending ? <Spinner aria-hidden /> : null}
       {option.label}
     </Button>
   );
