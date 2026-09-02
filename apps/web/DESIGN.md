@@ -166,8 +166,21 @@ product patterns over invented affordances.
   the working column on the left, and a quiet right rail holding Today, **Needs
   review**, and People. On mobile the assistant leads at the top, directly under
   the greeting, so capture is the first thing in reach; the rail follows below it.
-  The assistant carries the dashboard but must stay a notebook, not a chat product:
-  no transcript persistence, no assistant-as-destination framing.
+  The assistant carries the dashboard but stays a notebook in tone: no
+  "chat with your data" framing, no avatar, no AI theatre.
+- **Assistant page** (`/assistant`, `/assistant/[sessionId]`): the one place the
+  assistant is a destination. Desktop is a 260px collapsible conversation rail
+  (`panel` surface, grouped Today / Yesterday / Previous 7 days / Older, rename
+  and archive per row, no delete) beside a centered 44rem transcript column with
+  the composer pinned to its bottom. An empty conversation centers the greeting,
+  composer, and suggestion chips; the first message settles the layout into
+  transcript-over-composer in one 200ms transition. Threads are Tendnote-owned
+  titles over Eve sessions (ADR 0238): the transcript is readable history, never
+  the source of truth, so there is no export, share, or download. A thread whose
+  session has ended stays readable and swaps the composer for a quiet "Start a
+  new conversation" notice; never show a composer that will fail. Phone: one
+  header, the rail as a sheet, full-bleed transcript, composer above the
+  safe-area inset.
 - **Dashboard review rail**: open suggested-memory reviews surface inline in the
   rail with a compact Save (approve) / Dismiss affordance, so the common case is
   handled without opening each person. The full review (edit wording, sensitivity,
@@ -246,20 +259,53 @@ focus uses sage ring and border. Error states use destructive color plus a messa
 ### Assistant Panel
 
 The assistant panel uses `panel` background, border separation, and explicit
-approval language. It should feel like a margin note or workbench, not the center
-of the product.
+approval language. Its name is **"Assistant"** on every surface; Eve is the
+framework underneath and never appears in copy, labels, or routes. The only
+identity mark is an 8px sage dot before the word "Assistant" — no avatar, no
+sparkle, no robot. On the dashboard it is a working column; on `/assistant` it
+fills the page; in the mobile capture sheet it renders full-bleed under one
+header (never a card inside a sheet).
 
-Eve's turns render trust-weighted result cards (saved memory = sage/confirmed,
-logged context = neutral, tentative suggestion = clay). One of these is
-interactive: the **tentative suggestion card** ("Ready to review") carries inline
-Approve / Dismiss, so the user can resolve a suggestion without leaving chat. On
-action it resolves in place — Approve flips it to the confirmed (sage) treatment
-("Saved to memory"), Dismiss settles it to a quiet neutral state — using the same
-owner-scoped review mutations as the dashboard rail and person ledger. Keep the
-other cards read-only; only a genuinely actionable, trust-bearing item earns
-buttons. Cards name the person and show the record's content; never surface a raw
-id. The full review (edit wording, sensitivity, archive) stays on the person
-ledger, which the card links to.
+**Turn anatomy.** Every assistant turn renders, in order:
+
+1. **Activity disclosure** — one per turn, collapsed once finished. It holds the
+   model's reasoning summary and each tool call as a labelled step ("Searching
+   people", "Loading Priya's context") with pending / active / complete state and
+   a one-line human summary where the result offers one. While streaming the
+   trigger reads "Working…" in the sanctioned `Shimmer` with the pulsing sage
+   dot; when done it reads "Thought for Ns" or "Worked for Ns", with N derived
+   from the durable stream timestamps so it survives reload and resume. Raw tool
+   names never appear outside the dev-only debug trace, and line-tier tool
+   results live only here — nothing trails under the answer.
+2. **Answer** — markdown prose, one block per model step.
+3. **Result cards** — the trust-weighted cards (saved memory = sage/confirmed,
+   logged context = neutral, tentative suggestion = clay) and the interactive
+   ones: review, follow-up, general action, asset, draft, and the **approval
+   card** for in-turn owner approval (ADR 0237). Interactive cards resolve in
+   place using the same owner-scoped mutations as the rail and ledger. Keep the
+   rest read-only; only a genuinely actionable, trust-bearing item earns buttons.
+   Cards name the person and show the record's content; never surface a raw id.
+4. **Sources strip** — "Used N sources", collapsed, only when the turn searched or
+   fetched the web. Plain titled links, no favicons or previews.
+5. **Actions row** — ghost icon buttons revealed on hover / focus-within (always
+   visible on coarse pointers): Copy, Retry. User turns get Edit, which loads the
+   text back into the composer. No thumbs, share, or download.
+6. **Follow-up suggestions** — at most three chips under the latest completed
+   turn, derived by the app from what the turn produced (ADR 0027), gone as soon
+   as the user sends anything.
+
+Authorization challenges (a connection needing sign-in) render as a tentative
+card with the sign-in link and code; file parts render as attachment thumbnails.
+Reasoning text goes through the same guarded markdown as the answer (images are
+rewritten to links).
+
+**Composer.** A bordered box: textarea, then a control row with the "+" evidence
+menu, the "Enter to send · Shift + Enter for a new line" hint, and a submit that
+morphs into Stop while a turn runs. A picked evidence file shows as an inline
+attachment chip (display only; evidence still routes through the shared asset
+capture, never into the turn — ADR 0185). Typing while a turn runs is allowed:
+messages queue in a "Queued" strip above the composer with Send now (interrupt)
+and Remove, and drain one per settled turn.
 
 ### Empty States
 
@@ -354,7 +400,8 @@ For Phase 1A:
 2. Keep the dashboard and people surfaces light-default Field Notebook.
 3. Use Personal Ledger density on person detail, memory review, and source
    metadata.
-4. Keep Eve/assistant surfaces visually secondary and approval-gated.
+4. Keep assistant surfaces approval-gated; the dashboard column stays a
+   working column, and only `/assistant` treats it as a destination.
 5. Re-run `/impeccable document` after the first real Phase 1A surface is built
    so this file can capture components from production code rather than seed
    intent.
