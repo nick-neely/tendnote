@@ -332,9 +332,17 @@ rewritten to links).
 menu, the "Enter to send · Shift + Enter for a new line" hint, and a submit that
 morphs into Stop while a turn runs. A picked evidence file shows as an inline
 attachment chip (display only; evidence still routes through the shared asset
-capture, never into the turn — ADR 0185). Typing while a turn runs is allowed:
-messages queue in a "Queued" strip above the composer with Send now (interrupt)
-and Remove, and drain one per settled turn.
+capture, never into the turn — ADR 0185). A file dragged anywhere over the
+conversation surface — or an image pasted into the textarea — takes the same
+route, and while a file drag is over it the whole surface shows one decorative
+drop overlay: a hairline dashed sage frame inset from the edge over the panel's
+own quiet tone, "Drop to attach" and the line that says where the file goes, no
+icon tile. On an idle session with an empty line and no file the submit is
+plainly inert (muted surface, muted-foreground ink) and Enter does nothing;
+it is never natively `disabled`, which would fade the whole input group.
+Typing while a turn runs is allowed: messages queue in a "Queued" strip above
+the composer with Send now (interrupt) and Remove, and drain one per settled
+turn.
 
 ### Empty States
 

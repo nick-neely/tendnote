@@ -264,7 +264,9 @@ vi.mock("@/components/assistant-turn-unit", async () => {
 vi.mock("@/app/actions/asset-evidence", () => ({
   addAssetEvidenceAction: vi.fn(),
   addAssetEvidenceToNewAssetAction: vi.fn(),
-  listAssetEvidenceDestinationsAction: vi.fn(),
+  // Resolves rather than returning `undefined`: a dropped file opens the shared
+  // capture panel, which loads its destinations the moment it mounts.
+  listAssetEvidenceDestinationsAction: vi.fn(() => Promise.resolve([])),
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
@@ -1169,4 +1171,110 @@ it("offers the model's own follow-ups without ever naming the tool that wrote th
   // The call left no trace: no activity disclosure, no line, no card.
   expect(screen.queryByRole("button", { name: /Worked|Thought/ })).toBeNull();
   expect(document.body.textContent).not.toMatch(/suggest.next.steps/i);
+});
+
+/**
+ * A file dragged over the panel is aimed at the conversation, not at the 46px
+ * composer box, so the whole surface is the target and the whole surface says
+ * so. Where the file goes afterwards is the composer's business
+ * (`assistant-composer.dom.test.tsx`); what matters here is that the panel is
+ * the thing that catches it, and that nothing but a file lights it up.
+ *
+ * jsdom implements neither `DragEvent` nor `DataTransfer`: these are plain
+ * events carrying the two fields the drop zone reads.
+ */
+function dragEvent(
+  type: string,
+  { files = [], types = ["Files"] }: { files?: File[]; types?: string[] } = {},
+): Event {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", { value: { dropEffect: "none", files, types } });
+  return event;
+}
+
+function panelSurface(): HTMLElement {
+  const surface = document.getElementById("assistant");
+  if (!surface) throw new Error("the assistant panel is not on the page");
+  return surface;
+}
+
+function dragOverPanel(event: Event): void {
+  act(() => {
+    panelSurface().dispatchEvent(event);
+  });
+}
+
+it("offers the whole panel as a drop target the moment a file is dragged over it", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  dragOverPanel(dragEvent("dragenter"));
+
+  expect(screen.getByText("Drop to attach")).toBeDefined();
+  // What happens to the file is the reassurance the overlay owes the reader:
+  // it becomes evidence to review, and the turn never reads it (ADR 0185).
+  expect(
+    screen.getByText("Kept as evidence for your review, never read by the assistant."),
+  ).toBeDefined();
+
+  dragOverPanel(dragEvent("dragleave"));
+  expect(screen.queryByText("Drop to attach")).toBeNull();
+});
+
+it("stays out of the way when the drag is only text", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  dragOverPanel(dragEvent("dragenter", { types: ["text/plain"] }));
+
+  expect(screen.queryByText("Drop to attach")).toBeNull();
+});
+
+it("routes a file dropped on the transcript into the same capture the plus menu opens", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+  const receipt = new File([new Uint8Array(4)], "receipt.png", { type: "image/png" });
+
+  dragOverPanel(dragEvent("dragenter"));
+  dragOverPanel(dragEvent("drop", { files: [receipt] }));
+
+  await waitFor(() =>
+    expect(screen.getByRole("region", { name: "Attach asset evidence" })).toBeDefined(),
+  );
+  // The overlay goes with the drop, and the file shows as the composer's chip.
+  expect(screen.queryByText("Drop to attach")).toBeNull();
+  expect(screen.getAllByText("receipt.png").length).toBeGreaterThan(0);
+});
+
+it("says what it takes when the dropped file is a kind it does not", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+  const archive = new File([new Uint8Array(4)], "photos.zip", { type: "application/zip" });
+
+  dragOverPanel(dragEvent("drop", { files: [archive] }));
+
+  await waitFor(() =>
+    expect(screen.getByText("Use a JPEG, PNG, WebP, HEIC, or PDF file.")).toBeDefined(),
+  );
+  expect(screen.queryByRole("region", { name: "Attach asset evidence" })).toBeNull();
+});
+
+it("takes no drops on an ended thread, where there is nowhere to put a file", async () => {
+  await openThread(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" />);
+
+  await act(async () => {
+    eve.failWith(
+      Object.assign(new Error("The session is no longer active."), {
+        code: "session_not_active",
+        status: 409,
+      }),
+    );
+  });
+  await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+
+  dragOverPanel(dragEvent("dragenter"));
+  dragOverPanel(
+    dragEvent("drop", { files: [new File([new Uint8Array(4)], "r.png", { type: "image/png" })] }),
+  );
+
+  // No overlay promising an attach, and no capture opened behind the notice:
+  // the composer that would hold one is gone with the session.
+  expect(screen.queryByText("Drop to attach")).toBeNull();
+  expect(screen.queryByRole("region", { name: "Attach asset evidence" })).toBeNull();
 });

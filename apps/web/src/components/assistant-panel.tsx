@@ -43,10 +43,12 @@ import {
   AssistantUserTurnActions,
 } from "@/components/assistant-turn-chrome";
 import { AssistantTurnUnitView } from "@/components/assistant-turn-unit";
+import { DropOverlay } from "@/components/drop-overlay";
 import { ArrowUpRightIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ui/shimmer";
 import { ASSISTANT_CONVERSATION_STARTERS } from "@/lib/assistant/starters";
+import { EVIDENCE_DROP_ACCEPT, type EvidencePick, useEvidencePick } from "@/lib/eve/evidence-pick";
 import { followUpSuggestions } from "@/lib/eve/follow-up-suggestions";
 import {
   isTurnInFlight,
@@ -69,6 +71,7 @@ import {
   useResumedSession,
 } from "@/lib/eve/use-assistant-session";
 import { type AssistantSendQueueControls, useSendQueue } from "@/lib/eve/use-send-queue";
+import { useFileDropZone } from "@/lib/use-file-drop-zone";
 import { cn } from "@/lib/utils";
 
 type AssistantPersonContext = SelectedPersonContext;
@@ -238,9 +241,24 @@ function AssistantConversationPanel({
   const centeredComposer =
     surface === "page" && !resuming && messages.length === 0 && agent.status === "ready";
 
+  // The whole conversation surface is a drop target, not just the composer box:
+  // a file dragged over the transcript is aimed at this panel, and a target the
+  // size of one input is a target the user has to find. The drop lands in the
+  // same evidence capture the "+" menu opens (ADR 0185) — the state lives here
+  // because the target and the composer are two different elements. An ended
+  // thread has no composer at all, and so nowhere to render a capture: it takes
+  // no drops, exactly as it offers no "+" menu.
+  const surfaceRef = useRef<HTMLElement>(null);
+  const evidence = useEvidencePick();
+  const dragging = useFileDropZone(surfaceRef, {
+    accept: EVIDENCE_DROP_ACCEPT,
+    enabled: !ended,
+    onFiles: evidence.takeDrop,
+  });
+
   return (
     <PromptInputProvider key={ownerUserId}>
-      <AssistantPanelShell id="assistant" surface={surface}>
+      <AssistantPanelShell className="relative" id="assistant" ref={surfaceRef} surface={surface}>
         <AssistantHeader context={context} sessionId={agent.session?.sessionId} surface={surface} />
 
         {/* The leading flex-1 spacer (in AssistantConversation) anchors a short
@@ -277,6 +295,7 @@ function AssistantConversationPanel({
           centered={centeredComposer}
           context={context}
           ended={ended}
+          evidence={evidence}
           nudges={nudges}
           onStop={() => void agent.cancel()}
           onSend={sendPrompt}
@@ -291,6 +310,13 @@ function AssistantConversationPanel({
         />
 
         <AssistantSettleSpacer grow={centeredComposer} surface={surface} />
+
+        {dragging ? (
+          <DropOverlay
+            hint="Kept as evidence for your review, never read by the assistant."
+            title="Drop to attach"
+          />
+        ) : null}
       </AssistantPanelShell>
     </PromptInputProvider>
   );
@@ -332,6 +358,7 @@ function AssistantComposerRegion({
   centered,
   context,
   ended,
+  evidence,
   nudges,
   onSend,
   onSendNudge,
@@ -347,6 +374,7 @@ function AssistantComposerRegion({
   centered: boolean;
   context?: AssistantPersonContext;
   ended: boolean;
+  evidence: EvidencePick;
   nudges: PromptNudge[];
   onSend: SendPrompt;
   onSendNudge: (prompt: string) => void;
@@ -384,6 +412,7 @@ function AssistantComposerRegion({
           <AssistantLiveComposer
             centered={centered}
             context={context}
+            evidence={evidence}
             nudges={nudges}
             onSend={onSend}
             onSendNudge={onSendNudge}
@@ -404,6 +433,7 @@ function AssistantComposerRegion({
 function AssistantLiveComposer({
   centered,
   context,
+  evidence,
   nudges,
   onSend,
   onSendNudge,
@@ -416,6 +446,7 @@ function AssistantLiveComposer({
 }: {
   centered: boolean;
   context?: AssistantPersonContext;
+  evidence: EvidencePick;
   nudges: PromptNudge[];
   onSend: SendPrompt;
   onSendNudge: (prompt: string) => void;
@@ -430,6 +461,7 @@ function AssistantLiveComposer({
     <>
       <AssistantComposerForm
         context={context}
+        evidence={evidence}
         onStop={onStop}
         onSubmit={onSubmit}
         ownerUserId={ownerUserId}
