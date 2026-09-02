@@ -34,6 +34,10 @@ export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
 export const MessageContent = ({ children, className, ...props }: MessageContentProps) => (
   <div
     className={cn(
+      // Upstream ships `is-user:dark` here, which flips the user bubble to the
+      // dark palette to sit on its `bg-secondary` fill. Tendnote's bubble is a
+      // light sage tint in both themes, so the variant is dropped — keeping it
+      // would put dark-mode ink on a light ground.
       "flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
       // The user's own words sit in a quiet sage-tinted bubble — distinct from
       // the plain assistant text and from the bordered tool-result cards. A flat
