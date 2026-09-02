@@ -41,6 +41,7 @@ the bounded publication evidence path.
 - [0195 — Agent-backed surfaces use shared typed capabilities](0195-agent-backed-surfaces-use-shared-typed-capabilities.md)
 - [0197 — Conversational Capture separates explicit and inferred authority](0197-conversational-capture-separates-explicit-and-inferred-authority.md)
 - [0237 — Eve tool arguments are requests, not proofs](0237-eve-tool-arguments-are-requests-not-proofs.md)
+- [0238 — Assistant conversations are Tendnote threads over Eve sessions](0238-assistant-conversations-are-tendnote-threads-over-eve-sessions.md)
 
 ## Product phases
 

@@ -11,7 +11,7 @@ describe("mobile failure recovery", () => {
     ["capture_change", "Change wasn't saved", "Try change again"],
     ["capture_save", "Capture wasn't saved", "Try saving again"],
     ["capture_undo", "Undo wasn't confirmed", "Try Undo again"],
-    ["eve", "Eve is unavailable", "Try Eve again"],
+    ["assistant", "The assistant is unavailable", "Try again"],
     ["cache_mismatch", "Tendnote needs a refresh", "Refresh"],
   ] as const)("distinguishes %s with its safe next action", (kind, heading, action) => {
     render(<MobileFailureState kind={kind} onRetry={vi.fn()} />);

@@ -4,12 +4,19 @@ import { render, screen, setMatchMedia, waitFor } from "@/test/dom";
 
 const { mounted } = vi.hoisted(() => ({ mounted: vi.fn() }));
 
+// The column claims its Eve session as a listable thread (ADR 0238), which puts
+// the server-action module in this client component's import graph. Vitest
+// resolves it for real, `server-only` and all, so it stands aside here.
+vi.mock("@/app/actions/assistant-conversations", () => ({
+  recordAssistantConversationAction: vi.fn(async () => ({ ok: true })),
+}));
+
 vi.mock("@/components/assistant-panel", () => ({
   AssistantPanel: ({ suggestPersonName }: { suggestPersonName: string | null }) => {
     mounted();
     return (
       <div>
-        <textarea aria-label="Ask Eve" />
+        <textarea aria-label="Ask the assistant" />
         <p>{suggestPersonName ?? "no suggestion"}</p>
       </div>
     );
@@ -37,13 +44,13 @@ it("puts the composer on screen with no gate to open first", async () => {
   );
 
   expect(screen.queryByRole("button", { name: /open eve/i })).toBeNull();
-  expect(await screen.findByRole("textbox", { name: "Ask Eve" })).toBeDefined();
+  expect(await screen.findByRole("textbox", { name: "Ask the assistant" })).toBeDefined();
   await waitFor(() => expect(screen.getByText("Jordan Rivera")).toBeDefined());
 });
 
 /**
  * `hidden lg:contents` hides this column on a phone but React still mounts it. A
- * second panel mounted out of sight would read the on-device Eve draft and consume
+ * second panel mounted out of sight would read the on-device composer draft and consume
  * the one-shot "send this draft" handoff the mobile Today band writes — sending a
  * turn into a tree the owner cannot see. The panel mounts only where it is the
  * assistant.
@@ -53,7 +60,9 @@ it("never mounts the panel on a viewport where the column is hidden", async () =
   render(<DashboardAssistant nudges={[]} ownerUserId="owner-1" suggestPersonName={null} />);
 
   expect(screen.getByRole("region", { name: "Loading the assistant" })).toBeDefined();
-  await waitFor(() => expect(screen.queryByRole("textbox", { name: "Ask Eve" })).toBeNull());
+  await waitFor(() =>
+    expect(screen.queryByRole("textbox", { name: "Ask the assistant" })).toBeNull(),
+  );
   expect(mounted).not.toHaveBeenCalled();
 });
 
@@ -68,7 +77,9 @@ it("reserves the assistant with the panel's own copy, not a generic skeleton", (
   const reserve = screen.getByRole("region", { name: "Loading the assistant" });
   expect(reserve.getAttribute("aria-busy")).toBe("true");
   expect(screen.getByRole("heading", { name: "Assistant" })).toBeDefined();
-  expect(screen.getByText(/Jot anything you want to remember/)).toBeDefined();
-  expect(screen.getByText("Start your notebook")).toBeDefined();
-  expect(screen.getByText("Private")).toBeDefined();
+  expect(screen.getByText(/nothing is saved without your review/i)).toBeDefined();
+  expect(screen.getByText("What do you want to remember?")).toBeDefined();
+  // The header's reassurance is the subtitle and nothing else: the "Private" chip
+  // beside it said the same thing a second time and is gone from both.
+  expect(screen.queryByText("Private")).toBeNull();
 });

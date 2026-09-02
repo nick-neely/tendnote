@@ -199,8 +199,12 @@ async function buildRuntimeToolSets(current: Principal | null) {
   // `web_fetch` is authored by Tendnote as a thin wrapper around Eve's
   // installed framework default. Keeping it in the static set makes this the
   // same framework assembly that web_chat receives before the dynamic gate
-  // overlays a forbidden mode.
-  expect(webFetchTool.execute).toBe(webFetch.execute);
+  // overlays a forbidden mode. The wrapper now has an executor of its own -
+  // it calls the framework one and attaches a citation - so what matters here
+  // is that it is an authored executor at all, which is what the gate has to
+  // be able to shadow.
+  expect(typeof webFetchTool.execute).toBe("function");
+  expect(webFetchTool.inputSchema).toBe(webFetch.inputSchema);
   // As of eve 0.47 a tool's name comes from its `tools/<slug>.ts` path rather
   // than the definition object, so the authored wrapper is named here the way
   // the compiler would name `agent/tools/web_fetch.ts`.
@@ -283,6 +287,39 @@ async function expectWithheldFetch(sets: ToolSets, mode: string): Promise<void> 
   expect(result).toMatchObject({ performed: false, tool: "web_fetch", mode });
 }
 
+/**
+ * `web_search` in an allowed mode: provider-managed on both sides of the merge.
+ * Nothing local shadows it, so the model reaches the provider's own tool and no
+ * executor of ours is ever the one that runs.
+ */
+function expectProviderManagedSearch(sets: ToolSets): void {
+  const providerSearch = sets.providerTools.web_search;
+  const finalSearch = sets.finalTools.web_search;
+
+  expect(providerSearch?.type).toBe("provider");
+  expect(providerSearch?.isProviderExecuted).toBe(true);
+  expect(finalSearch?.type).toBe("provider");
+  expect(finalSearch?.isProviderExecuted).toBe(true);
+  expect(finalSearch?.execute).toBeUndefined();
+}
+
+/**
+ * `web_fetch` in an allowed mode. It is authored rather than provider-executed,
+ * so the merge has to carry our own executor through untouched - the same
+ * function object, not a replacement wearing the same name.
+ */
+function expectAuthoredFetch(sets: ToolSets): void {
+  const providerFetch = sets.providerTools.web_fetch;
+  const finalFetch = sets.finalTools.web_fetch;
+
+  expect(providerFetch?.type).not.toBe("provider");
+  expect(providerFetch?.execute).toBeDefined();
+  expect(providerFetch?.description).toContain("public HTTPS");
+  expect(providerFetch?.description).toContain("untrusted external web content");
+  expect(finalFetch?.type).not.toBe("provider");
+  expect(finalFetch?.execute).toBe(providerFetch?.execute);
+}
+
 describe("Eve mode gate at the 0.32 runtime tool merge", () => {
   it.each(FORBIDDEN_SESSIONS)(
     "shadows both network tools before a %s session can execute either",
@@ -294,23 +331,8 @@ describe("Eve mode gate at the 0.32 runtime tool merge", () => {
   );
 
   it("keeps provider-managed search for an authenticated web_chat turn", async () => {
-    const { providerTools, finalTools } = await buildRuntimeToolSets(WEB_OWNER);
-    const providerSearch = providerTools.web_search;
-    const finalSearch = finalTools.web_search;
-
-    expect(providerSearch?.type).toBe("provider");
-    expect(providerSearch?.isProviderExecuted).toBe(true);
-    expect(finalSearch?.type).toBe("provider");
-    expect(finalSearch?.isProviderExecuted).toBe(true);
-    expect(finalSearch?.execute).toBeUndefined();
-
-    const providerFetch = providerTools.web_fetch;
-    const finalFetch = finalTools.web_fetch;
-    expect(providerFetch?.type).not.toBe("provider");
-    expect(providerFetch?.execute).toBeDefined();
-    expect(providerFetch?.description).toContain("public HTTPS");
-    expect(providerFetch?.description).toContain("untrusted external web content");
-    expect(finalFetch?.type).not.toBe("provider");
-    expect(finalFetch?.execute).toBe(providerFetch?.execute);
+    const sets = await buildRuntimeToolSets(WEB_OWNER);
+    expectProviderManagedSearch(sets);
+    expectAuthoredFetch(sets);
   });
 });

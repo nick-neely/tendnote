@@ -1,4 +1,10 @@
-import type { EveDynamicToolPart, EveMessage, EveMessagePart, UseEveAgentStatus } from "eve/react";
+import type {
+  EveAuthorizationPart,
+  EveDynamicToolPart,
+  EveMessage,
+  EveMessagePart,
+  UseEveAgentStatus,
+} from "eve/react";
 // This lib→components import is deliberate: message-views is the chat view-model glue
 // that turns Eve message parts into renderable turn units, and the result-module
 // registry is the single source for projection and grouping. Co-locating each kind's
@@ -8,9 +14,11 @@ import type { EveDynamicToolPart, EveMessage, EveMessagePart, UseEveAgentStatus 
 import {
   type GroupableToolKind,
   isGroupableToolKind,
+  resultViewSummary,
   toAssistantToolView,
+  toolViewTier,
 } from "@/components/assistant-results/registry";
-import { activeToolLabel } from "./active-tool-label";
+import { activeToolLabel, completedToolLabel } from "./active-tool-label";
 import {
   type AssistantInputRequestView,
   type AssistantInputResolutionView,
@@ -21,6 +29,23 @@ import type { AssistantToolView } from "./tool-result-view";
 
 function isTextPart(part: EveMessagePart): part is Extract<EveMessagePart, { type: "text" }> {
   return part.type === "text";
+}
+
+/**
+ * Tools the model calls to steer the interface rather than to do anything the
+ * reader asked for. Their whole output is chrome — `suggest_next_steps` is the
+ * follow-up chips and nothing else — so surfacing the call as an activity step, a
+ * result card, or a line would narrate the app talking to itself. They are
+ * filtered at the projection seam rather than at each renderer, so a silent tool
+ * is silent everywhere by construction.
+ */
+const SILENT_TOOL_NAMES: ReadonlySet<string> = new Set(["suggest_next_steps"]);
+
+/** The tool whose result the model uses to propose the turn's follow-up chips. */
+const SUGGEST_NEXT_STEPS_TOOL = "suggest_next_steps";
+
+function isRenderedToolPart(part: EveMessagePart): boolean {
+  return part.type !== "dynamic-tool" || !SILENT_TOOL_NAMES.has(part.toolName);
 }
 
 /** Only terminal `output-available` tool parts carry a persisted payload. */
@@ -48,6 +73,13 @@ function isActiveToolPart(
  */
 export type AssistantToolEntry = {
   readonly toolCallId: string;
+  /**
+   * The tool that produced the result. The projected view deliberately forgets
+   * it — a `saved_memory` card is about the memory, not about `capture_memory` —
+   * but the activity disclosure still has to *name* the call in past tense, and
+   * only the call knows which tool it was.
+   */
+  readonly toolName: string;
   readonly view: AssistantToolView;
 };
 
@@ -95,10 +127,50 @@ export function messageToolViews(message: EveMessage): AssistantToolEntry[] {
     return [];
   }
 
-  return message.parts.filter(isCompletedToolPart).map((part) => ({
-    toolCallId: part.toolCallId,
-    view: toAssistantToolView({ toolName: part.toolName, output: part.output }),
-  }));
+  return message.parts
+    .filter(isRenderedToolPart)
+    .filter(isCompletedToolPart)
+    .map((part) => ({
+      toolCallId: part.toolCallId,
+      toolName: part.toolName,
+      view: toAssistantToolView({ toolName: part.toolName, output: part.output }),
+    }));
+}
+
+/**
+ * The follow-up prompts the model itself proposed for this turn, or `null` when
+ * it proposed none.
+ *
+ * The distinction matters: `null` means the tool never ran, and the app falls
+ * back to what it can derive from the turn's results; an *empty* array means the
+ * model looked at its own answer and decided there was no useful next step, which
+ * is an answer, not an absence. Only the last call counts — a turn that revised
+ * its mind mid-stream meant the revision.
+ */
+export function messageProposedFollowUps(message: EveMessage): readonly string[] | null {
+  if (message.role !== "assistant") {
+    return null;
+  }
+
+  let proposed: readonly string[] | null = null;
+  for (const part of message.parts) {
+    if (
+      part.type !== "dynamic-tool" ||
+      part.toolName !== SUGGEST_NEXT_STEPS_TOOL ||
+      part.state !== "output-available"
+    ) {
+      continue;
+    }
+    const output = part.output;
+    if (typeof output !== "object" || output === null) {
+      continue;
+    }
+    const suggestions = (output as { suggestions?: unknown }).suggestions;
+    if (Array.isArray(suggestions)) {
+      proposed = suggestions.filter((item): item is string => typeof item === "string");
+    }
+  }
+  return proposed;
 }
 
 /** One in-flight tool call, surfaced as a transient "working" shimmer line. */
@@ -141,10 +213,13 @@ export function messageActiveToolViews(
     return [];
   }
 
-  return message.parts.filter(isActiveToolPart).map((part) => ({
-    toolCallId: part.toolCallId,
-    label: activeToolLabel(part.toolName),
-  }));
+  return message.parts
+    .filter(isRenderedToolPart)
+    .filter(isActiveToolPart)
+    .map((part) => ({
+      toolCallId: part.toolCallId,
+      label: activeToolLabel(part.toolName),
+    }));
 }
 
 /**
@@ -264,7 +339,9 @@ export function messageTurnUnits(message: EveMessage, turnInFlight: boolean): As
   const results: { at: number; entry: AssistantToolEntry }[] = [];
 
   message.parts.forEach((part, at) => {
-    if (part.type !== "dynamic-tool") {
+    // A silent tool contributes no unit in any state: not a working line while it
+    // runs, not a card when it lands.
+    if (part.type !== "dynamic-tool" || !isRenderedToolPart(part)) {
       return;
     }
 
@@ -273,6 +350,7 @@ export function messageTurnUnits(message: EveMessage, turnInFlight: boolean): As
         at,
         entry: {
           toolCallId: part.toolCallId,
+          toolName: part.toolName,
           view: toAssistantToolView({ toolName: part.toolName, output: part.output }),
         },
       });
@@ -309,4 +387,174 @@ export function messageTurnUnits(message: EveMessage, turnInFlight: boolean): As
   }
 
   return placed.sort((a, b) => a.at - b.at).map(({ unit }) => unit);
+}
+
+// ---------------------------------------------------------------------------
+// Turn anatomy (activity vs answer vs cards)
+// ---------------------------------------------------------------------------
+
+/**
+ * The turn's thinking, consolidated. Eve buffers one reasoning block per agent
+ * step, so a turn that stopped twice to run tools arrives as several parts; the
+ * disclosure shows one continuous account of the turn rather than three folds
+ * the reader has to open in sequence. `streaming` is true while any block is
+ * still being written — that is what keeps the trigger saying "Working…".
+ */
+export type AssistantTurnReasoning = {
+  readonly text: string;
+  readonly streaming: boolean;
+};
+
+/** One tool call as the activity disclosure lists it. */
+export type AssistantActivityStep = {
+  readonly toolCallId: string;
+  /** Present-continuous while it runs, past tense once it settled. */
+  readonly label: string;
+  /** The result module's one-line summary, when the kind has something to add. */
+  readonly description: string | null;
+  readonly status: "active" | "complete";
+};
+
+/** A file attached to a message, with the url eve resolved for it. */
+export type AssistantFilePart = Extract<EveMessagePart, { type: "file" }>;
+
+/**
+ * One assistant turn, split into the four things that render in order: what it
+ * was doing, what it said, what it produced, and what it needs the owner to
+ * authorize.
+ *
+ * The split is the whole point of the anatomy. Before it, a turn's ambient
+ * lookups ("Searched people") trailed *underneath* the answer, so the last thing
+ * a reader saw was housekeeping rather than the reply. Now the same lookups sit
+ * in the collapsible activity block above the answer, and only results that
+ * carry durable state — cards, disclosures, review affordances, parked approvals
+ * — stay below it as the payload.
+ *
+ * The partition is by presentational tier, not by a hand-kept list: a `line` is
+ * by definition a result that recedes, so it belongs to the activity, and a
+ * `card`/`disclosure` is by definition something the reader has to notice. A
+ * group is always a run of durable saves, so it is always payload.
+ */
+export type AssistantTurnAnatomy = {
+  readonly reasoning: AssistantTurnReasoning | null;
+  readonly activity: readonly AssistantActivityStep[];
+  readonly cards: readonly AssistantTurnCardUnit[];
+  readonly authorizations: readonly EveAuthorizationPart[];
+};
+
+function isReasoningPart(
+  part: EveMessagePart,
+): part is Extract<EveMessagePart, { type: "reasoning" }> {
+  return part.type === "reasoning";
+}
+
+/**
+ * The turn's reasoning, or `null` when the model produced none. An empty-text
+ * block that is still streaming is *not* nothing: it is the moment before the
+ * first thought arrives, and the disclosure has to exist to say "Working…".
+ */
+export function messageReasoning(message: EveMessage): AssistantTurnReasoning | null {
+  if (message.role !== "assistant") {
+    return null;
+  }
+
+  const parts = message.parts.filter(isReasoningPart);
+  if (parts.length === 0) {
+    return null;
+  }
+
+  return {
+    streaming: parts.some((part) => part.state === "streaming"),
+    text: parts
+      .map((part) => part.text.trim())
+      .filter((text) => text.length > 0)
+      .join("\n\n"),
+  };
+}
+
+/**
+ * Mid-turn sign-in challenges (an OAuth connect the tool needs before it can
+ * run). eve projects these as their own part; a turn carrying nothing else would
+ * otherwise render as an empty bubble with no way forward.
+ */
+export function messageAuthorizations(message: EveMessage): EveAuthorizationPart[] {
+  if (message.role !== "assistant") {
+    return [];
+  }
+  return message.parts.filter(
+    (part): part is EveAuthorizationPart => part.type === "authorization",
+  );
+}
+
+/**
+ * Files carried by a message of the owner's own.
+ *
+ * Role-scoped because that is where the data actually is: eve builds a `file`
+ * part with a resolved `url` when it projects what the *user* sent, and an
+ * assistant turn's own attachments arrive as tool output instead. Collecting
+ * them from every role read as generic but rendered nothing, which made the
+ * attachment strip look wired up when it was reachable only in theory.
+ */
+export function messageFiles(message: EveMessage): AssistantFilePart[] {
+  if (message.role !== "user") {
+    return [];
+  }
+  return message.parts.filter((part): part is AssistantFilePart => part.type === "file");
+}
+
+/**
+ * Splits a turn's units into the activity list and the cards below the answer.
+ * The anatomy's one real decision, kept as a plain function over plain data so
+ * {@link messageTurnAnatomy}'s tests prove it without mounting a panel.
+ */
+function partitionTurnUnits(units: readonly AssistantTurnUnit[]): {
+  activity: AssistantActivityStep[];
+  cards: AssistantTurnCardUnit[];
+} {
+  const activity: AssistantActivityStep[] = [];
+  const cards: AssistantTurnCardUnit[] = [];
+
+  for (const unit of units) {
+    if (unit.type === "active") {
+      activity.push({
+        description: null,
+        label: unit.active.label,
+        status: "active",
+        toolCallId: unit.active.toolCallId,
+      });
+      continue;
+    }
+
+    if (unit.type === "single" && toolViewTier(unit.entry.view) === "line") {
+      activity.push({
+        description: resultViewSummary(unit.entry.view),
+        label: completedToolLabel(unit.entry.toolName),
+        status: "complete",
+        toolCallId: unit.entry.toolCallId,
+      });
+      continue;
+    }
+
+    cards.push(unit);
+  }
+
+  return { activity, cards };
+}
+
+/**
+ * Everything one assistant turn renders, in anatomical order. `turnInFlight`
+ * has the same meaning it has for {@link messageTurnUnits}: only the live turn
+ * may show work in progress.
+ */
+export function messageTurnAnatomy(
+  message: EveMessage,
+  turnInFlight: boolean,
+): AssistantTurnAnatomy {
+  const { activity, cards } = partitionTurnUnits(messageTurnUnits(message, turnInFlight));
+  return {
+    activity,
+    authorizations: messageAuthorizations(message),
+    cards,
+    reasoning: messageReasoning(message),
+  };
 }

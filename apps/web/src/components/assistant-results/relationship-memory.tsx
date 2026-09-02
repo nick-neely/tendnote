@@ -465,6 +465,9 @@ export const personContextModule = defineModule<"person_context">({
     note: "No matching person to recall",
   },
   tier: () => "line",
+  // The step label already says "Recalled what you know"; the summary is who,
+  // and how much of them there is.
+  summary: (view) => `${view.personName ?? "This person"} · ${summarizeTiers(view)}`,
   key: (view) => `context:${view.personId}`,
   render: (view, isNew) => (
     <ToolActivityLine icon={<BookOpenIcon aria-hidden className="size-3.5" />} isNew={isNew}>
@@ -543,6 +546,7 @@ export const relationshipContextSearchModule = defineModule<"relationship_contex
     },
   },
   tier: (view) => (view.results.length > 0 ? "disclosure" : "line"),
+  summary: (view) => (view.results.length > 0 ? null : "Nothing matching in your notebook"),
   key: (view) => `search:${view.results.map((result) => result.recordId).join(":")}`,
   render: (view, isNew) =>
     view.results.length > 0 ? (
@@ -572,6 +576,7 @@ export const semanticContextSearchModule = defineModule<"semantic_context_search
     },
   },
   tier: (view) => (view.results.length > 0 ? "disclosure" : "line"),
+  summary: (view) => (view.results.length > 0 ? null : "No semantic matches found"),
   key: (view) => `semantic-search:${view.results.map((result) => result.recordId).join(":")}`,
   render: (view, isNew) =>
     view.results.length > 0 ? (
@@ -600,6 +605,8 @@ export const relationshipAgendaModule = defineModule<"relationship_agenda">({
     },
   },
   tier: (view) => (view.candidates.length > 0 ? "disclosure" : "line"),
+  summary: (view) =>
+    view.candidates.length > 0 ? null : "Nothing on the relationship agenda for that window",
   key: (view) => `agenda:${view.candidates.map(relationshipAgendaCandidateKey).join(":")}`,
   render: (view, isNew) => {
     if (view.candidates.length === 0) {
@@ -645,6 +652,7 @@ export const memoryCuratorProposalsModule = defineModule<"memory_curator_proposa
   // review proposals the user is meant to read and act on, so they stay open on a card
   // rather than collapsing behind a summary like an ambient search result set.
   tier: (view) => (view.proposals.length > 0 ? "card" : "line"),
+  summary: (view) => (view.proposals.length > 0 ? null : "No memory cleanup proposals found"),
   key: (view) => `memory-curator:${view.proposals.map((proposal) => proposal.id).join(":")}`,
   render: (view, isNew) => {
     if (view.proposals.length === 0) {

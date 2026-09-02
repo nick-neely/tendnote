@@ -103,6 +103,10 @@ export const globalRecallModule = defineModule<"global_recall">({
   // a source, so an empty-but-limited read keeps the disclosure rather than
   // collapsing to a line that would drop the caveat.
   tier: (view) => (view.results.length > 0 || view.limitations.length > 0 ? "disclosure" : "line"),
+  summary: (view) =>
+    view.results.length > 0 || view.limitations.length > 0
+      ? null
+      : "Nothing matching in your records",
   key: (view) =>
     `global-recall:${view.results.map((result) => `${result.canonicalKind}:${result.canonicalId}`).join("|")}`,
   render: (view, isNew) => {

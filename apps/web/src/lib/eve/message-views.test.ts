@@ -6,9 +6,13 @@ import {
   groupTurnToolEntries,
   isTurnInFlight,
   messageActiveToolViews,
+  messageAuthorizations,
+  messageFiles,
+  messageReasoning,
   messageText,
   messageTextSegments,
   messageToolViews,
+  messageTurnAnatomy,
   messageTurnUnits,
 } from "./message-views";
 import type { AssistantToolView } from "./tool-result-view";
@@ -90,6 +94,7 @@ describe("messageToolViews (persisted tool results → renderable views)", () =>
     expect(messageToolViews(message)).toEqual([
       {
         toolCallId: "call-1",
+        toolName: "capture_source_record",
         view: {
           kind: "saved_source_record",
           sourceRecordId: "source-1",
@@ -180,7 +185,7 @@ describe("messageToolViews (persisted tool results → renderable views)", () =>
 
 describe("groupTurnToolEntries (folding same-kind durable saves into groups)", () => {
   function entry(id: string, view: AssistantToolView): AssistantToolEntry {
-    return { toolCallId: id, view };
+    return { toolCallId: id, toolName: "capture_memory", view };
   }
 
   function memory(
@@ -591,5 +596,244 @@ describe("messageTurnUnits (a turn's tool activity, in the order it happened)", 
     };
 
     expect(messageTurnUnits(message, true)).toEqual([]);
+  });
+});
+
+describe("messageReasoning (one account of the turn, not one per step)", () => {
+  it("joins the blocks the model wrote across its steps", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [
+        { type: "reasoning", text: "They asked about Priya.", state: "done", stepIndex: 0 },
+        { type: "text", text: "Looking her up.", state: "done", stepIndex: 0 },
+        { type: "reasoning", text: "One memory, three notes.", state: "done", stepIndex: 1 },
+      ],
+    };
+
+    expect(messageReasoning(message)).toEqual({
+      streaming: false,
+      text: "They asked about Priya.\n\nOne memory, three notes.",
+    });
+  });
+
+  it("is streaming while any block still is", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [
+        { type: "reasoning", text: "Done thinking.", state: "done", stepIndex: 0 },
+        { type: "reasoning", text: "Still", state: "streaming", stepIndex: 1 },
+      ],
+    };
+
+    expect(messageReasoning(message)?.streaming).toBe(true);
+  });
+
+  it("exists before the first thought arrives, so the disclosure can say so", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [{ type: "reasoning", text: "", state: "streaming", stepIndex: 0 }],
+    };
+
+    expect(messageReasoning(message)).toEqual({ streaming: true, text: "" });
+  });
+
+  it("is nothing at all when the model produced none", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [{ type: "text", text: "Saved.", state: "done" }],
+    };
+
+    expect(messageReasoning(message)).toBeNull();
+  });
+});
+
+describe("messageTurnAnatomy (activity above the answer, payload below it)", () => {
+  const recallPart: EveMessagePart = {
+    type: "dynamic-tool",
+    toolCallId: "call-recall",
+    toolName: "get_person_context",
+    state: "output-available",
+    input: {},
+    output: {
+      found: true,
+      person: { id: "person-1", displayName: "Priya Shah" },
+      approvedMemories: [{ id: "mem-1", content: "Allergic to shellfish" }],
+      sourceRecords: [
+        { id: "src-1", content: "Coffee" },
+        { id: "src-2", content: "Call" },
+        { id: "src-3", content: "Lunch" },
+      ],
+      suggestedMemories: [],
+      snapshotStatus: "fresh",
+    },
+  };
+
+  const savePart: EveMessagePart = {
+    type: "dynamic-tool",
+    toolCallId: "call-save",
+    toolName: "capture_memory",
+    state: "output-available",
+    input: {},
+    output: {
+      memory: { id: "mem-2", content: "Plays weekend soccer.", sourceRecordId: null },
+      person: { id: "person-1", displayName: "Priya Shah" },
+    },
+  };
+
+  it("puts the ambient lookups in the activity and the durable saves below the answer", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [recallPart, savePart],
+    };
+
+    const anatomy = messageTurnAnatomy(message, false);
+
+    expect(anatomy.activity).toEqual([
+      {
+        description: "Priya Shah · 1 confirmed · 3 logged",
+        label: "Recalled what you know",
+        status: "complete",
+        toolCallId: "call-recall",
+      },
+    ]);
+    expect(anatomy.cards).toHaveLength(1);
+    expect(anatomy.cards[0]?.type).toBe("single");
+  });
+
+  it("names a running call in the present tense and marks it active", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-1",
+          toolName: "search_people",
+          state: "input-available",
+          input: {},
+        },
+      ],
+    };
+
+    expect(messageTurnAnatomy(message, true).activity).toEqual([
+      {
+        description: null,
+        label: "Searching people…",
+        status: "active",
+        toolCallId: "call-1",
+      },
+    ]);
+  });
+
+  it("never lets a raw tool name reach the activity", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-1",
+          toolName: "search_people",
+          state: "output-available",
+          input: {},
+          output: { people: [] },
+        },
+      ],
+    };
+
+    const [step] = messageTurnAnatomy(message, false).activity;
+    expect(step?.label).toBe("Searched people");
+    expect(step?.label).not.toContain("_");
+  });
+
+  it("keeps a parked approval below the answer, where it can be acted on", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-1",
+          toolName: "capture_memory",
+          state: "approval-requested",
+          approval: { id: "req-1" },
+          input: { content: "Allergic to shellfish.", personId: "person-1" },
+          toolMetadata: {
+            eve: {
+              kind: "tool-call",
+              name: "capture_memory",
+              inputRequest: {
+                kind: "tool-approval",
+                requestId: "req-1",
+                prompt: "Approve tool call: capture_memory",
+                display: "confirmation",
+                allowFreeform: false,
+                options: [
+                  { id: "approve", label: "Approve" },
+                  { id: "cancel", label: "Cancel" },
+                ],
+              },
+            },
+          },
+        },
+      ],
+    };
+
+    const anatomy = messageTurnAnatomy(message, false);
+    expect(anatomy.activity).toEqual([]);
+    expect(anatomy.cards.map((unit) => unit.type)).toEqual(["request"]);
+  });
+
+  it("surfaces the sign-in challenge that used to render as nothing at all", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [
+        {
+          type: "authorization",
+          name: "google-calendar",
+          displayName: "Google Calendar",
+          description: "Sign in to read your calendar.",
+          state: "required",
+          stepIndex: 0,
+          turnId: "turn-1",
+          authorization: { url: "https://example.com/connect", userCode: "ABCD-1234" },
+        },
+      ],
+    };
+
+    expect(messageAuthorizations(message)).toHaveLength(1);
+    expect(messageTurnAnatomy(message, false).authorizations).toHaveLength(1);
+  });
+
+  it("surfaces the files carried by a message of the owner's own", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "user",
+      parts: [{ type: "file", mediaType: "image/png", filename: "chart.png", url: "blob:x" }],
+    };
+
+    expect(messageFiles(message)).toEqual([
+      { type: "file", mediaType: "image/png", filename: "chart.png", url: "blob:x" },
+    ]);
+  });
+
+  /**
+   * eve only resolves a `url` for what the user sent; a `file` part on an
+   * assistant message would render as an attachment chip with nothing behind it.
+   */
+  it("does not claim an assistant turn attached a file", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [{ type: "file", mediaType: "image/png", filename: "chart.png", url: "blob:x" }],
+    };
+
+    expect(messageFiles(message)).toEqual([]);
   });
 });

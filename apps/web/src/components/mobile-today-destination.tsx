@@ -142,14 +142,14 @@ function TodayEveComposer({
             try {
               requestLocalEveDraftSubmission(window.localStorage, ownerUserId, draft.value);
             } catch {
-              // Storage is best effort; the focused Eve surface still opens.
+              // Storage is best effort; the focused assistant surface still opens.
             }
           }
           onOpenEve(submitButton.current ?? event.currentTarget);
         }}
       >
         <Label className="sr-only" htmlFor="today-eve-composer">
-          Ask Eve anything
+          Ask the assistant anything
         </Label>
         {/* The bordered form is the field; the control inside it stays chromeless
             so there is one box, not a box inside a box. It grows with the
@@ -158,7 +158,7 @@ function TodayEveComposer({
           className="max-h-40 min-h-12 resize-none rounded-none border-0 bg-transparent p-0 focus-visible:ring-0 md:text-base dark:bg-transparent"
           id="today-eve-composer"
           onChange={(event) => draft.setValue(event.target.value)}
-          placeholder="Ask Eve anything…"
+          placeholder="Ask the assistant anything…"
           value={draft.value}
         />
         <span className="flex items-center justify-between gap-4">
@@ -166,7 +166,7 @@ function TodayEveComposer({
             Questions stay conversational unless you ask to save.
           </span>
           <Button
-            aria-label={draft.value.trim() ? "Send to Eve" : "Open Eve"}
+            aria-label={draft.value.trim() ? "Send to the assistant" : "Open the assistant"}
             className="size-11"
             data-mobile-flow-trigger="eve"
             ref={submitButton}

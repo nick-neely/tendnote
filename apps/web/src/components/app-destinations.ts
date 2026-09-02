@@ -9,6 +9,7 @@ import {
   GiftIcon,
   HomeIcon,
   ListChecksIcon,
+  NotebookPenIcon,
   UsersRoundIcon,
 } from "@/components/icons";
 
@@ -25,6 +26,7 @@ export type AppDestinationId =
   | "actions"
   | "asset"
   | "assets"
+  | "assistant"
   | "gift-plan"
   | "gift-plans"
   | "household"
@@ -141,10 +143,35 @@ export const appDestinations = [
   },
   {
     /**
+     * The Assistant as a destination rather than a column: the full-page
+     * transcript with its own conversation list (ADR 0238).
+     *
+     * It sits beside Today because it is the other thing a member opens the app
+     * to do. Today is what is waiting for you; the Assistant is where you write
+     * something down or ask about someone, and on the dashboard the two are
+     * already side by side. It owns no data collection of its own - threads are
+     * titles over Eve sessions and every durable record a conversation produces
+     * lives in the collection that owns it (ADR 0029) - so nothing here
+     * invalidates on an assistant write.
+     *
+     * `/assistant/[sessionId]` deliberately has no row: `routeMatches` treats
+     * `/assistant` as the parent of every thread URL, so one destination marks
+     * the link current on both.
+     */
+    id: "assistant",
+    route: "/assistant",
+    label: "Assistant",
+    icon: NotebookPenIcon,
+    groups: ["desktop-primary", "menu"],
+    reserve: { heading: "Assistant", shape: "detail" },
+    scopes: [],
+  },
+  {
+    /**
      * The shared coordination surface: what we are jointly working on, as
      * against Today's what is relevant to me now.
      *
-     * It sits next to Today because those two are the same question asked of
+     * It sits near Today because those two are the same question asked of
      * two different subjects, and a member reads them together. Its own row
      * rather than a tab inside Today, because a collective "Household Today"
      * is precisely what the shared-home decision refuses.

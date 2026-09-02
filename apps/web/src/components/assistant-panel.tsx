@@ -2,8 +2,9 @@
 
 import type { PromptNudge } from "@tendnote/domain";
 import type { ChatStatus } from "ai";
-import { type EveMessage, useEveAgent } from "eve/react";
-import { useEffect, useRef, useState } from "react";
+import type { EveMessage } from "eve/react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -11,67 +12,108 @@ import {
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
-  PromptInput,
-  PromptInputBody,
-  PromptInputFooter,
   type PromptInputMessage,
   PromptInputProvider,
-  PromptInputSubmit,
-  PromptInputTextarea,
-  PromptInputTools,
   usePromptInputController,
 } from "@/components/ai-elements/prompt-input";
-import { AssistantCaptureMenu } from "@/components/assistant-capture-menu";
-import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
-import { AssistantEvidenceCapture } from "@/components/assistant-evidence-capture";
+import { Suggestion } from "@/components/ai-elements/suggestion";
+import { AssistantAuthorizationCard } from "@/components/assistant-authorization-card";
+import { AssistantComposerForm } from "@/components/assistant-composer";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { sendNudgeToAgent } from "@/components/assistant-nudge";
 import {
   AssistantComposerShell,
   AssistantEmptyCapture,
+  AssistantEndedNotice,
+  AssistantPageGreeting,
   AssistantPanelHeader,
   AssistantPanelShell,
-  AssistantPrivateChip,
-  assistantChipClass,
+  AssistantResumeSkeleton,
+  type AssistantSurface,
   assistantSubtitleFor,
 } from "@/components/assistant-panel-chrome";
 import { AssistantPromptNudges } from "@/components/assistant-prompt-nudges";
 import { AssistantRespondProvider } from "@/components/assistant-respond-context";
+import { AssistantSendQueue } from "@/components/assistant-send-queue";
+import { AssistantTurnActivity } from "@/components/assistant-turn-activity";
+import {
+  AssistantTurnActions,
+  AssistantTurnFiles,
+  AssistantTurnSources,
+  AssistantUserTurnActions,
+} from "@/components/assistant-turn-chrome";
 import { AssistantTurnUnitView } from "@/components/assistant-turn-unit";
-import { BugIcon } from "@/components/icons";
+import { DropOverlay } from "@/components/drop-overlay";
+import { ArrowUpRightIcon } from "@/components/icons";
+import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ui/shimmer";
-import { Toggle } from "@/components/ui/toggle";
+import { ASSISTANT_CONVERSATION_STARTERS } from "@/lib/assistant/starters";
+import { EVIDENCE_DROP_ACCEPT, type EvidencePick, useEvidencePick } from "@/lib/eve/evidence-pick";
+import { followUpSuggestions } from "@/lib/eve/follow-up-suggestions";
 import {
   isTurnInFlight,
+  messageFiles,
+  messageProposedFollowUps,
   messageText,
   messageTextSegments,
-  messageTurnUnits,
+  messageToolViews,
+  messageTurnAnatomy,
 } from "@/lib/eve/message-views";
-import {
-  type SelectedPersonContext,
-  selectedPersonClientContext,
-} from "@/lib/eve/selected-person-context";
+import type { SelectedPersonContext } from "@/lib/eve/selected-person-context";
+import { turnSources } from "@/lib/eve/sources";
+import { turnTiming } from "@/lib/eve/turn-timing";
 import { turnUnitKey } from "@/lib/eve/turn-unit-key";
 import {
-  consumeLocalEveDraftSubmission,
-  loadLocalComposerDraft,
-  saveLocalComposerDraft,
-} from "@/lib/local-composer-draft";
+  type AssistantAgentStatus,
+  type AssistantResumeSettled,
+  type SendPrompt,
+  useAssistantSession,
+  useResumedSession,
+} from "@/lib/eve/use-assistant-session";
+import { type AssistantSendQueueControls, useSendQueue } from "@/lib/eve/use-send-queue";
+import { useFileDropZone } from "@/lib/use-file-drop-zone";
 import { cn } from "@/lib/utils";
 
-export type AssistantPersonContext = SelectedPersonContext;
+type AssistantPersonContext = SelectedPersonContext;
 
-type AgentStatus = ReturnType<typeof useEveAgent>["status"];
+type AgentStatus = AssistantAgentStatus;
 
-export function AssistantPanel({
-  context,
-  ownerUserId,
-  nudges = [],
-  suggestPersonName = null,
-}: {
+/**
+ * The transcript region's padding, by where the panel is standing. A lookup
+ * rather than three `&&`s inside one `cn`, so adding a surface is a row here.
+ */
+const TRANSCRIPT_PADDING: Record<AssistantSurface, string> = {
+  // The phone's flow owns its gutter; the page column owns its own, so the
+  // scroller there only opens the distance to the header and the composer.
+  bleed: "px-gutter py-4",
+  page: "py-6",
+  panel: "p-4 sm:p-5",
+};
+
+type AssistantPanelProps = {
   context?: AssistantPersonContext;
+  /**
+   * A prior Eve session to reopen instead of starting a fresh one.
+   *
+   * Read exactly once, on mount: `useEveAgent` builds its store the first time
+   * it runs and ignores every later config change, so a caller switching threads
+   * must remount this component with a new `key` (eve's own guidance). Passing a
+   * different id into a mounted panel does nothing, which is deliberately the
+   * safe direction — it can never detach a session mid-turn.
+   */
+  initialSessionId?: string;
+  /**
+   * Announces the session id the moment Eve mints one for a *new* conversation,
+   * with the message that started it.
+   *
+   * Eve has no session index (ADR 0238), so the browser is the first thing that
+   * knows a thread exists and the only thing that can tell Tendnote before the
+   * first reply lands. Fires once per panel, and never for a resumed thread —
+   * that row already exists.
+   */
+  onSessionStarted?: (sessionId: string, firstMessage: string) => void;
   ownerUserId: string;
-  /** Calendar-derived prompt nudges; clicking one sends its text to Eve (#114). */
+  /** Calendar-derived prompt nudges; clicking one sends its text as a turn (#114). */
   nudges?: PromptNudge[];
   /**
    * A real person from the owner's notebook, used only to make the unscoped
@@ -79,168 +121,443 @@ export function AssistantPanel({
    * placeholder stays generic rather than naming someone who doesn't exist.
    */
   suggestPersonName?: string | null;
-}) {
-  // A turn that fails does not reject. Eve's store catches the network or stream
-  // error itself, parks it on `status: "error"`, and *resolves* `send` - so the
-  // composer's restore-on-rejection contract would never fire and the message
-  // would be gone with nothing to show for it. `onError` is the store's only
-  // signal that the turn it just settled actually failed; we hold the failure
-  // here so `handleSubmit` can rethrow it and put the text back.
-  const turnFailure = useRef<Error | null>(null);
+  surface?: AssistantSurface;
+};
 
-  // Stream turns directly from the same-origin Eve mount (withEve). The hook owns
-  // the durable Eve session, so follow-up turns continue the same conversation
-  // without a Tendnote chat transcript (ADR 0030). Durable product state still
-  // lives in source records, memories, and follow-ups (ADR 0029).
-  const agent = useEveAgent({
-    onError: (error) => {
-      turnFailure.current = error;
-    },
-  });
+/**
+ * The conversation surface, once it knows which conversation it is standing in.
+ *
+ * A reopened thread's durable stream is read *before* the session opens, because
+ * `useEveAgent` reads its configuration once and the difference between "follow
+ * this stream" and "this stream is finished" is the difference between a usable
+ * composer and a fifteen-second wait (see `use-assistant-session.ts`). The read
+ * takes about a third of a second and runs behind the same turn-shaped geometry
+ * the transcript would have shown anyway, so nothing is spent on it.
+ */
+export function AssistantPanel(props: AssistantPanelProps) {
+  const resumed = useResumedSession(props.initialSessionId);
 
-  // Toggles the Eve turn trace surface (see assistant-debug-trace.tsx) — a
-  // developer diagnostic for tool calls and the raw stream, off by default.
-  const [showDebug, setShowDebug] = useState(false);
-
-  const messages = agent.data.messages;
-
-  async function handleSubmit(message: PromptInputMessage) {
-    const text = message.text.trim();
-
-    if (!text) {
-      return;
-    }
-
-    // The composer clears optimistically the moment it hands a message off, and
-    // only a rejection puts the text back. So a refusal has to reject: resolving
-    // here would silently eat the user's words. Eve's own store throws the same
-    // way when a turn is already in flight - and only then. `error` is the last
-    // turn's verdict, not a busy signal, so refusing on it would wedge the
-    // composer after one failure with no way to retry.
-    if (isTurnInFlight(agent.status)) {
-      throw new Error("Eve is still finishing the previous turn.");
-    }
-
-    // A failure belongs to the turn that produced it. Clearing it as this send
-    // starts is what keeps a stale verdict from rejecting the next message; the
-    // store retires its own `error` at the same moment.
-    turnFailure.current = null;
-
-    await agent.send(text, { clientContext: selectedPersonClientContext(context) });
-
-    // `send` resolved, which says nothing about whether the turn worked. If it
-    // failed, `onError` already ran - the store calls it before settling - so
-    // anything parked here is this submission's failure, not an older one.
-    const failure = turnFailure.current;
-    if (failure) {
-      turnFailure.current = null;
-      throw failure;
-    }
+  if (resumed.kind === "pending") {
+    return <AssistantPanelReserve context={props.context} surface={props.surface ?? "panel"} />;
   }
 
-  // A prompt nudge starts a conversational turn by sending its text to Eve — it
-  // never mutates product state or accepts/dismisses a suggestion (#114).
+  return <AssistantConversationPanel {...props} resumed={resumed} />;
+}
+
+/**
+ * A reopened thread in the moment before its stream has been read: the panel's
+ * real chrome around turn-shaped geometry, so the transcript lands into a column
+ * that is already the right shape (DESIGN.md §Loading). The composer is a well
+ * rather than a box, because one that cannot yet take a message is worse than
+ * one that is plainly not ready.
+ */
+function AssistantPanelReserve({
+  context,
+  surface,
+}: {
+  context?: AssistantPersonContext;
+  surface: AssistantSurface;
+}) {
+  return (
+    <AssistantPanelShell
+      aria-busy="true"
+      aria-label="Loading the conversation"
+      id="assistant"
+      surface={surface}
+    >
+      <AssistantHeader context={context} surface={surface} />
+      <div className={cn("min-h-0 flex-1 overflow-hidden", TRANSCRIPT_PADDING[surface])}>
+        <AssistantResumeSkeleton />
+      </div>
+      <AssistantComposerShell surface={surface}>
+        {/* The live composer's own well: a `min-h-16` textarea above a 46px
+            control row inside a 1px border, 7rem in total. */}
+        <div aria-hidden className="min-h-28 w-full rounded-lg border border-input" />
+      </AssistantComposerShell>
+    </AssistantPanelShell>
+  );
+}
+
+function AssistantConversationPanel({
+  context,
+  onSessionStarted,
+  ownerUserId,
+  nudges = [],
+  resumed,
+  suggestPersonName = null,
+  surface = "panel",
+}: AssistantPanelProps & { resumed: AssistantResumeSettled }) {
+  // One Eve session, and the only honest way to send into it: `deliver` rethrows
+  // the failure eve announces out of band, and `ended` is the one failure the
+  // reader must never be invited to retry (see `useAssistantSession`).
+  const { agent, deliver, ended } = useAssistantSession({
+    context,
+    onSessionStarted,
+    resumed,
+  });
+
+  // Messages typed while a turn was running. Eve has no queue of its own, so this
+  // is the app's - it owns the drain, the ordering, and the steer.
+  const queue = useSendQueue({ deliver, ownerUserId, status: agent.status });
+
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const messages = agent.data.messages;
+
+  const handleSubmit = useCallback(
+    (message: PromptInputMessage) => queue.submit(message.text),
+    [queue.submit],
+  );
+
+  /** A conversational turn started by something other than the composer. */
+  const sendPrompt = useCallback<SendPrompt>(
+    async (text, options) => {
+      await deliver(text, options).catch(() => {
+        // The transcript already says what happened: a failed turn leaves its
+        // message as "Not sent" and the status line names the outage.
+      });
+    },
+    [deliver],
+  );
+
+  // A prompt nudge starts a conversational turn by sending its text — it never
+  // mutates product state or accepts/dismisses a suggestion (#114).
   function sendNudge(prompt: string) {
     sendNudgeToAgent({ status: agent.status, send: agent.send }, context, prompt);
   }
 
-  return (
-    <AssistantPanelShell id="assistant">
-      <AssistantHeader
-        context={context}
-        onToggleDebug={() => setShowDebug((on) => !on)}
-        showDebug={showDebug}
-      />
+  // Reattaching to a turn that is still running server-side, with nothing of it
+  // on screen yet. It says nothing about the *transcript*, which the pre-read
+  // already seeded: only a thread with no replayed messages at all is still
+  // waiting for its history, and only that one holds turn-shaped geometry rather
+  // than the conversation. `undefined` rather than `false`, because
+  // `aria-busy="false"` is a claim of its own.
+  const resuming = agent.status === "resuming";
+  const replaying = (resuming && messages.length === 0) || undefined;
 
-      {/* The leading flex-1 spacer (in AssistantConversation) anchors a short
+  // A page-scale conversation with nothing in it yet: the greeting and composer
+  // rise together to the middle of the column, and settle to the bottom on the
+  // first message. Only `page` does this — the dashboard column and the phone
+  // sheet are both too short for the move to read as anything but a jump.
+  const centeredComposer =
+    surface === "page" && !resuming && messages.length === 0 && agent.status === "ready";
+
+  // The whole conversation surface is a drop target, not just the composer box:
+  // a file dragged over the transcript is aimed at this panel, and a target the
+  // size of one input is a target the user has to find. The drop lands in the
+  // same evidence capture the "+" menu opens (ADR 0185) — the state lives here
+  // because the target and the composer are two different elements. An ended
+  // thread has no composer at all, and so nowhere to render a capture: it takes
+  // no drops, exactly as it offers no "+" menu.
+  const surfaceRef = useRef<HTMLElement>(null);
+  const evidence = useEvidencePick();
+  const dragging = useFileDropZone(surfaceRef, {
+    accept: EVIDENCE_DROP_ACCEPT,
+    enabled: !ended,
+    onFiles: evidence.takeDrop,
+  });
+
+  return (
+    <PromptInputProvider key={ownerUserId}>
+      <AssistantPanelShell className="relative" id="assistant" ref={surfaceRef} surface={surface}>
+        <AssistantHeader context={context} sessionId={agent.session?.sessionId} surface={surface} />
+
+        {/* The leading flex-1 spacer (in AssistantConversation) anchors a short
           conversation to the bottom; it collapses once messages overflow so the
           transcript scrolls normally. Do NOT use `justify-end` here — with
           overflow it traps the top of the transcript out of scroll range. */}
-      {/* A turn that parks on an approval is resumed by `respond`, which only this
+        {/* A turn that parks on an approval is resumed by `respond`, which only this
           session can do - there is exactly one `useEveAgent` in the app. The cards
           read it from here rather than opening a session of their own, which would
           answer a turn nobody is waiting on. `ready` is false while any turn is in
           flight, which is also what serializes the cards: eve refuses a response
           then, so answering one pending request disables every other one until it
           settles. */}
-      <AssistantRespondProvider ready={agent.status === "ready"} respond={agent.respond}>
-        <Conversation className="min-h-0 flex-1">
-          <ConversationContent className="min-h-full gap-4 p-4 sm:p-5">
-            <AssistantConversation messages={messages} status={agent.status} />
-          </ConversationContent>
-          <ConversationScrollButton />
-        </Conversation>
-      </AssistantRespondProvider>
+        <AssistantRespondProvider ready={agent.status === "ready"} respond={agent.respond}>
+          <Conversation aria-busy={replaying} className="min-h-0 flex-1">
+            <ConversationContent className={cn("min-h-full gap-4", TRANSCRIPT_PADDING[surface])}>
+              <AssistantConversation
+                busy={isTurnInFlight(agent.status)}
+                composerRef={composerRef}
+                events={agent.events}
+                messages={messages}
+                nudges={nudges}
+                onSend={sendPrompt}
+                onSendNudge={sendNudge}
+                status={agent.status}
+                surface={surface}
+              />
+            </ConversationContent>
+            <ConversationScrollButton />
+          </Conversation>
+        </AssistantRespondProvider>
 
-      {/* Eve turn trace; toggled from the header. */}
-      {showDebug ? (
-        <div className="max-h-80 overflow-auto">
-          <AssistantDebugTrace
-            error={agent.error}
-            events={agent.events}
-            messages={messages}
-            status={agent.status}
+        <AssistantComposerRegion
+          centered={centeredComposer}
+          context={context}
+          ended={ended}
+          evidence={evidence}
+          nudges={nudges}
+          onStop={() => void agent.cancel()}
+          onSend={sendPrompt}
+          onSendNudge={sendNudge}
+          onSubmit={handleSubmit}
+          ownerUserId={ownerUserId}
+          queue={queue}
+          status={submitStatus(agent.status)}
+          suggestPersonName={suggestPersonName}
+          surface={surface}
+          textareaRef={composerRef}
+        />
+
+        <AssistantSettleSpacer grow={centeredComposer} surface={surface} />
+
+        {dragging ? (
+          <DropOverlay
+            hint="Kept as evidence for your review, never read by the assistant."
+            title="Drop to attach"
           />
-        </div>
-      ) : null}
-
-      {/* Calendar prompt nudges sit just above the composer on the idle assistant,
-          so they invite a conversation without crowding an active transcript (#114). */}
-      {messages.length === 0 ? (
-        <div className="px-4 pt-2 sm:px-5">
-          <AssistantPromptNudges
-            disabled={agent.status !== "ready"}
-            nudges={nudges}
-            onSelect={sendNudge}
-          />
-        </div>
-      ) : null}
-
-      <AssistantComposer
-        context={context}
-        onSubmit={handleSubmit}
-        ownerUserId={ownerUserId}
-        status={agent.status}
-        suggestPersonName={suggestPersonName}
-      />
-    </AssistantPanelShell>
+        ) : null}
+      </AssistantPanelShell>
+    </PromptInputProvider>
   );
 }
 
+/**
+ * The one authored move on this page. The greeting and composer sit between the
+ * transcript region and this spacer, both growing; taking the spacer's growth
+ * away on the first message slides them down to the bottom of the column instead
+ * of teleporting them there. Reduced motion keeps the same two positions and
+ * drops the travel.
+ */
+function AssistantSettleSpacer({ grow, surface }: { grow: boolean; surface: AssistantSurface }) {
+  if (surface !== "page") {
+    return null;
+  }
+
+  return (
+    <div
+      aria-hidden
+      className="shrink-0 basis-0 transition-[flex-grow] duration-200 ease-(--motion-ease-out) motion-reduce:transition-none"
+      style={{ flexGrow: grow ? 1 : 0 }}
+    />
+  );
+}
+
+/**
+ * Everything below the transcript: what is still queued, the box itself, and —
+ * before a first turn exists — the greeting and starters that ride with it.
+ *
+ * The greeting is here rather than at the foot of the transcript because this is
+ * the group the page centres. The queue is *outside* the ended branch for the
+ * opposite reason: a composer that cannot send is worse than no composer (Eve's
+ * session lifetime is absolute, and a follow-up to an expired one is refused at
+ * the door — ADR 0238), but words the ending overtook were never sent, and
+ * taking them off screen along with the box would quietly delete them.
+ */
+function AssistantComposerRegion({
+  centered,
+  context,
+  ended,
+  evidence,
+  nudges,
+  onSend,
+  onSendNudge,
+  onStop,
+  onSubmit,
+  ownerUserId,
+  queue,
+  status,
+  suggestPersonName,
+  surface,
+  textareaRef,
+}: {
+  centered: boolean;
+  context?: AssistantPersonContext;
+  ended: boolean;
+  evidence: EvidencePick;
+  nudges: PromptNudge[];
+  onSend: SendPrompt;
+  onSendNudge: (prompt: string) => void;
+  onStop: () => void;
+  onSubmit: (message: PromptInputMessage) => Promise<void>;
+  ownerUserId: string;
+  queue: AssistantSendQueueControls;
+  status: ChatStatus;
+  suggestPersonName: string | null;
+  surface: AssistantSurface;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+}) {
+  // On an ended thread the strip is a record rather than a queue: nothing can be
+  // sent, so Send now goes and the list says why it is still here.
+  const queueNote = ended ? "These weren't sent." : undefined;
+  const onSendNow = ended ? null : queue.sendNow;
+
+  return (
+    <>
+      {centered ? <AssistantPageGreeting /> : null}
+      <AssistantComposerShell surface={surface}>
+        <AssistantSendQueue
+          items={queue.items}
+          note={queueNote}
+          onRemove={queue.remove}
+          onSendNow={onSendNow}
+        />
+        {ended ? (
+          <AssistantEndedNotice>
+            <Button asChild className="shrink-0" size="sm">
+              <Link href="/assistant">Start a new conversation</Link>
+            </Button>
+          </AssistantEndedNotice>
+        ) : (
+          <AssistantLiveComposer
+            centered={centered}
+            context={context}
+            evidence={evidence}
+            nudges={nudges}
+            onSend={onSend}
+            onSendNudge={onSendNudge}
+            onStop={onStop}
+            onSubmit={onSubmit}
+            ownerUserId={ownerUserId}
+            status={status}
+            suggestPersonName={suggestPersonName}
+            textareaRef={textareaRef}
+          />
+        )}
+      </AssistantComposerShell>
+    </>
+  );
+}
+
+/** The box itself, and — before a first turn — the starters that sit under it. */
+function AssistantLiveComposer({
+  centered,
+  context,
+  evidence,
+  nudges,
+  onSend,
+  onSendNudge,
+  onStop,
+  onSubmit,
+  ownerUserId,
+  status,
+  suggestPersonName,
+  textareaRef,
+}: {
+  centered: boolean;
+  context?: AssistantPersonContext;
+  evidence: EvidencePick;
+  nudges: PromptNudge[];
+  onSend: SendPrompt;
+  onSendNudge: (prompt: string) => void;
+  onStop: () => void;
+  onSubmit: (message: PromptInputMessage) => Promise<void>;
+  ownerUserId: string;
+  status: ChatStatus;
+  suggestPersonName: string | null;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+}) {
+  return (
+    <>
+      <AssistantComposerForm
+        context={context}
+        evidence={evidence}
+        onStop={onStop}
+        onSubmit={onSubmit}
+        ownerUserId={ownerUserId}
+        status={status}
+        suggestPersonName={suggestPersonName}
+        textareaRef={textareaRef}
+      />
+      {centered ? (
+        <div className="pt-3">
+          <AssistantConversationStarters
+            nudges={nudges}
+            onSend={onSend}
+            onSendNudge={onSendNudge}
+          />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * What a brand-new page conversation offers to start with: the calendar's own
+ * suggestions where there are any, and three plain openings where there are not.
+ *
+ * The calendar wins because it knows something — a real meeting this week beats
+ * any general prompt — and the fallback exists so an empty week still shows the
+ * three things this notebook is for rather than a bare box.
+ */
+function AssistantConversationStarters({
+  nudges,
+  onSend,
+  onSendNudge,
+}: {
+  nudges: PromptNudge[];
+  onSend: SendPrompt;
+  onSendNudge: (prompt: string) => void;
+}) {
+  if (nudges.length > 0) {
+    return <AssistantPromptNudges nudges={nudges} onSelect={onSendNudge} />;
+  }
+
+  // Wrapped and centred rather than in the `Suggestions` scroller: three full
+  // sentences overflow a 44rem column, and a chip clipped at the column edge
+  // reads as broken rather than as scrollable. The chips themselves are the
+  // same primitive the nudges use.
+  return (
+    <div className="flex flex-wrap justify-center gap-2">
+      {ASSISTANT_CONVERSATION_STARTERS.map((starter) => (
+        <Suggestion key={starter} onClick={(text) => void onSend(text)} suggestion={starter} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The dashboard column's own header. The other two surfaces have a header above
+ * the panel already — a second one inside it would be the nested chrome
+ * DESIGN.md rules out — so the surface gate lives here rather than at the call
+ * site, where it was a ternary six JSX levels deep.
+ */
 function AssistantHeader({
   context,
-  showDebug,
-  onToggleDebug,
+  sessionId,
+  surface,
 }: {
   context?: AssistantPersonContext;
-  showDebug: boolean;
-  onToggleDebug: () => void;
+  /** The live thread, so "Open" lands in *this* conversation rather than a new one. */
+  sessionId?: string;
+  surface: AssistantSurface;
 }) {
+  if (surface !== "panel") {
+    return null;
+  }
+
+  // One affordance, and it is the only one that does anything for the reader.
+  // The "Private" chip said in a badge what the subtitle underneath it already
+  // says in a sentence, and the Debug toggle was a developer's control sitting
+  // permanently in the owner's header.
   return (
     <AssistantPanelHeader
       actions={
-        <>
-          {/* Developer trace toggle for the Eve turn (tool calls + raw stream).
-              Both `aria-pressed:` and `data-[state=on]:` are spelled out so the
-              pressed fill beats the Toggle base's own rule for each - they land
-              at equal specificity, so leaving either to source order is a coin
-              flip. */}
-          <Toggle
-            aria-label="Toggle debug trace"
-            className={cn(
-              assistantChipClass,
-              "h-auto min-w-0 bg-secondary text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
-              "aria-pressed:bg-foreground aria-pressed:text-background data-[state=on]:bg-foreground data-[state=on]:text-background",
-              "data-[state=on]:hover:bg-foreground data-[state=on]:hover:text-background",
-            )}
-            onPressedChange={onToggleDebug}
-            pressed={showDebug}
-          >
-            <BugIcon aria-hidden className="size-3" />
-            Debug
-          </Toggle>
-          <AssistantPrivateChip />
-        </>
+        <Button
+          aria-label={
+            sessionId ? "Open this conversation on the Assistant page" : "Open the Assistant page"
+          }
+          asChild
+          className="text-muted-foreground hover:text-primary"
+          size="icon-sm"
+          variant="ghost"
+        >
+          {/* A conversation already under way follows the owner to the page
+              rather than being abandoned for a blank one. */}
+          <Link href={sessionId ? `/assistant/${encodeURIComponent(sessionId)}` : "/assistant"}>
+            <ArrowUpRightIcon aria-hidden />
+          </Link>
+        </Button>
       }
       subtitle={assistantSubtitleFor(context?.personName)}
     />
@@ -249,50 +566,176 @@ function AssistantHeader({
 
 /** The live conversation, or the empty state before a first turn exists. */
 function AssistantConversation({
+  busy,
+  composerRef,
+  events,
   messages,
+  nudges,
+  onSend,
+  onSendNudge,
   status,
+  surface,
 }: {
+  busy: boolean;
+  composerRef: React.RefObject<HTMLTextAreaElement | null>;
+  events: readonly unknown[];
   messages: readonly EveMessage[];
+  nudges: PromptNudge[];
+  onSend: SendPrompt;
+  onSendNudge: (prompt: string) => void;
   status: AgentStatus;
+  surface: AssistantSurface;
 }) {
-  // The empty state means "nothing has happened yet" - so it yields as soon as
-  // anything has, including a turn that failed before producing a message. An
-  // error the panel silently replaced with "Start your notebook" would be the
-  // worst of both: no answer and no explanation.
-  if (messages.length === 0 && status === "ready") {
-    return <AssistantEmptyCapture />;
+  // Everything the reader has already asked in this thread. A follow-up chip
+  // offering a question they typed two turns ago is the conversation forgetting
+  // itself, so the whole thread is what the chips are filtered against.
+  const asked = useMemo(
+    () => messages.filter((message) => message.role === "user").map(messageText),
+    [messages],
+  );
+
+  // A thread with history that has not arrived yet gets turn-shaped geometry
+  // rather than a spinner or, worse, the "nothing has happened yet" greeting
+  // (DESIGN.md §Loading). Once *any* of it has arrived the transcript is the
+  // better thing to look at, even while eve is still following a live turn — a
+  // conversation the reader can already read is never worth hiding behind its
+  // own skeleton.
+  if (status === "resuming" && messages.length === 0) {
+    return <AssistantResumeSkeleton />;
   }
 
-  // Only the last message can be the one Eve is still writing, so it is the only
-  // one allowed to show working lines - and only while the turn is live. Every
-  // earlier turn is finished history, however its tool parts happened to end.
+  // The empty state means "nothing has happened yet" - so it yields as soon as
+  // anything has, including a turn that failed before producing a message. An
+  // error the panel silently replaced with a greeting would be the worst of both:
+  // no answer and no explanation.
+  if (messages.length === 0 && status === "ready") {
+    // On the page the greeting, the composer, and the starters are one group that
+    // the panel centres as a unit, so none of it is in here - this region is
+    // simply empty, and its growth is half of what centres that group. Everywhere
+    // else the whole invitation is centred inside the panel itself.
+    return surface === "page" ? null : (
+      <AssistantEmptyCapture>
+        <AssistantPromptNudges nudges={nudges} onSelect={onSendNudge} />
+      </AssistantEmptyCapture>
+    );
+  }
+
+  // Only the last message can be the one the assistant is still writing, so it is
+  // the only one allowed to show work in progress - and only while the turn is
+  // live. Every earlier turn is finished history, however its tool parts happened
+  // to end.
   const liveIndex = isTurnInFlight(status) ? messages.length - 1 : -1;
+
+  // Whether the live turn has an assistant message yet. Once it does, that turn's
+  // own activity disclosure carries the "Working…" indicator, and the standalone
+  // status line below the transcript must stand down or the two would say the
+  // same thing twice, one under the other (see {@link TurnStatus}).
+  const liveTurn = liveIndex >= 0 && messages[liveIndex]?.role === "assistant";
 
   return (
     <>
       <div aria-hidden className="min-h-0 flex-1" />
       {messages.map((message, index) => (
-        <MessageTurn key={message.id} live={index === liveIndex} message={message} />
+        <MessageTurn
+          asked={asked}
+          busy={busy}
+          composerRef={composerRef}
+          events={events}
+          key={message.id}
+          live={index === liveIndex}
+          message={message}
+          onSend={onSend}
+          // Follow-ups belong to the turn that just finished and nothing else. A
+          // chip under an older turn would offer a next step the conversation has
+          // already moved past.
+          showFollowUps={index === messages.length - 1 && status === "ready"}
+          userPrompt={precedingUserPrompt(messages, index)}
+        />
       ))}
-      <TurnStatus status={status} />
+      <TurnStatus liveTurn={liveTurn} status={status} />
     </>
   );
 }
 
-/** One conversation turn: the user prompt, or assistant text plus tool activity. */
-function MessageTurn({ live, message }: { live: boolean; message: EveMessage }) {
-  if (message.role === "user") {
-    // A submission that never reached Eve stays in the transcript looking exactly
-    // like one that landed, which quietly lies about what happened. Name it: the
-    // bubble trades its sage fill for a dashed hairline - the same "provisional,
-    // nothing here yet" language the empty states use - and carries a plain "Not
-    // sent" line. No destructive red: nothing broke in the notebook, and the
-    // words are already back in the composer to send again. The fill has to go
-    // to transparent rather than to a neutral one; `muted`, `secondary`, and
-    // `panel` are one value, so a neutral bubble would vanish into the panel.
-    const notSent = message.metadata?.status === "failed";
+/** The message that started this assistant turn, for Retry. */
+function precedingUserPrompt(messages: readonly EveMessage[], index: number): string | null {
+  for (let at = index - 1; at >= 0; at -= 1) {
+    const message = messages[at];
+    if (message?.role === "user") {
+      const text = messageText(message).trim();
+      return text.length > 0 ? text : null;
+    }
+  }
+  return null;
+}
 
-    return (
+/** One conversation turn: the user prompt, or the assistant's whole anatomy. */
+function MessageTurn({
+  asked,
+  busy,
+  composerRef,
+  events,
+  live,
+  message,
+  onSend,
+  showFollowUps,
+  userPrompt,
+}: {
+  asked: readonly string[];
+  busy: boolean;
+  composerRef: React.RefObject<HTMLTextAreaElement | null>;
+  events: readonly unknown[];
+  live: boolean;
+  message: EveMessage;
+  onSend: SendPrompt;
+  showFollowUps: boolean;
+  userPrompt: string | null;
+}) {
+  if (message.role === "user") {
+    return <UserTurn composerRef={composerRef} message={message} />;
+  }
+
+  return (
+    <AssistantTurn
+      asked={asked}
+      busy={busy}
+      events={events}
+      live={live}
+      message={message}
+      onSend={onSend}
+      showFollowUps={showFollowUps}
+      userPrompt={userPrompt}
+    />
+  );
+}
+
+function UserTurn({
+  composerRef,
+  message,
+}: {
+  composerRef: React.RefObject<HTMLTextAreaElement | null>;
+  message: EveMessage;
+}) {
+  const controller = usePromptInputController();
+  const text = messageText(message);
+
+  // A submission that never reached Eve stays in the transcript looking exactly
+  // like one that landed, which quietly lies about what happened. Name it: the
+  // bubble trades its sage fill for a dashed hairline - the same "provisional,
+  // nothing here yet" language the empty states use - and carries a plain "Not
+  // sent" line. No destructive red: nothing broke in the notebook, and the
+  // words are already back in the composer to send again. The fill has to go
+  // to transparent rather than to a neutral one; `muted`, `secondary`, and
+  // `panel` are one value, so a neutral bubble would vanish into the panel.
+  const notSent = message.metadata?.status === "failed";
+
+  // eve resolves a `url` only for files carried by a message of the owner's own,
+  // so this is where an attachment can actually be rendered rather than claimed.
+  const files = messageFiles(message);
+
+  return (
+    <div className="group/turn flex flex-col gap-1">
+      <AssistantTurnFiles files={files} />
       <Message from="user">
         <MessageContent
           className={cn(
@@ -300,7 +743,7 @@ function MessageTurn({ live, message }: { live: boolean; message: EveMessage }) 
               "group-[.is-user]:border group-[.is-user]:border-border group-[.is-user]:border-dashed group-[.is-user]:bg-transparent group-[.is-user]:text-muted-foreground",
           )}
         >
-          {messageText(message)}
+          {text}
         </MessageContent>
         {notSent ? (
           <span className="ml-auto text-[length:var(--text-caption)] text-muted-foreground">
@@ -308,61 +751,167 @@ function MessageTurn({ live, message }: { live: boolean; message: EveMessage }) 
           </span>
         ) : null}
       </Message>
-    );
-  }
+      {text.trim() ? (
+        <AssistantUserTurnActions
+          onEdit={() => {
+            controller.textInput.setInput(text);
+            composerRef.current?.focus();
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
 
+/**
+ * One assistant turn, in anatomical order: what it was doing, what it said, what
+ * it produced, what it read, what you can do with it, and where to go next.
+ *
+ * The order is the point. Tool activity used to trail *below* the answer as bare
+ * lines, so a reply ended on housekeeping; now it is a collapsed disclosure above
+ * the text, and only durable results stay underneath as the payload.
+ */
+function AssistantTurn({
+  asked,
+  busy,
+  events,
+  live,
+  message,
+  onSend,
+  showFollowUps,
+  userPrompt,
+}: {
+  asked: readonly string[];
+  busy: boolean;
+  events: readonly unknown[];
+  live: boolean;
+  message: EveMessage;
+  onSend: SendPrompt;
+  showFollowUps: boolean;
+  userPrompt: string | null;
+}) {
   // Each agent step contributes its own text part, so a turn that stops to run
   // tools says several separate things. Render them as separate blocks - running
   // them into one string is what produced "…about Jordan Rivera.Found them!".
   const segments = messageTextSegments(message);
-  // Everything the turn did with tools, in the order it happened: results, calls
-  // parked on the owner's approval, settled approvals, and working lines all sit in
-  // the slot their tool call occupies. Runs of same-kind durable saves still fold
-  // into one collapsed group so a busy capture turn ("added a person, then saved six
-  // things about them") reads as a short summary by default.
-  const units = messageTurnUnits(message, live);
+  const anatomy = messageTurnAnatomy(message, live);
+  const sources = useMemo(() => turnSources(message), [message]);
+  // The model's own proposals win where it made any, because it read the answer
+  // it just wrote; the kind-derived list is the fallback for the turns where it
+  // said nothing (see `follow-up-suggestions.ts`).
+  const suggestions = useMemo(
+    () =>
+      showFollowUps
+        ? followUpSuggestions({
+            asked,
+            proposed: messageProposedFollowUps(message),
+            views: messageToolViews(message).map((it) => it.view),
+          })
+        : [],
+    [asked, message, showFollowUps],
+  );
+  // Durable, replay-stable durations. `null` while the turn is still running, and
+  // the disclosure falls back to its own clock until the stream says otherwise.
+  const timing = useMemo(
+    () => turnTiming(events, message.metadata?.turnId),
+    [events, message.metadata?.turnId],
+  );
+
+  const answer = segments.map((segment) => segment.text).join("\n\n");
 
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="group/turn flex flex-col gap-2.5">
+      <AssistantTurnActivity
+        durationSeconds={timing.turnSeconds}
+        reasoning={anatomy.reasoning}
+        steps={anatomy.activity}
+        streaming={live}
+      />
       {segments.length > 0 ? (
         <Message from="assistant">
           {/* gap-3 matches the paragraph rhythm inside a segment, so one long
               answer and several short ones breathe the same way. */}
           <MessageContent className="gap-3">
             {segments.map((segment) => (
-              <AssistantMarkdown key={segment.key}>{segment.text}</AssistantMarkdown>
+              // The pages the turn actually read, so a link to one of them
+              // renders as a numbered citation rather than a bare link. The
+              // reasoning body deliberately gets none: a citation number in an
+              // aside would compete with the answer's own numbering.
+              <AssistantMarkdown key={segment.key} sources={sources}>
+                {segment.text}
+              </AssistantMarkdown>
             ))}
           </MessageContent>
         </Message>
       ) : null}
-      {units.map((unit) =>
-        // The working line is the one unit the card registry does not own: it is the
-        // same transient chrome the composer's own "Thinking…" shimmer uses.
-        unit.type === "active" ? (
-          <WorkingLine key={turnUnitKey(message.id, unit)} label={unit.active.label} />
-        ) : (
-          <AssistantTurnUnitView key={turnUnitKey(message.id, unit)} unit={unit} />
-        ),
-      )}
+      {/* Everything the turn produced that carries durable state, in the order it
+          happened: result cards, calls parked on the owner's approval, and settled
+          approvals. Runs of same-kind durable saves still fold into one collapsed
+          group so a busy capture turn reads as a short summary by default. */}
+      {anatomy.cards.map((unit) => (
+        <AssistantTurnUnitView key={turnUnitKey(message.id, unit)} unit={unit} />
+      ))}
+      {/* A turn stopped for a sign-in the owner has to complete elsewhere. These
+          used to render as nothing at all, so the turn simply looked broken. */}
+      {anatomy.authorizations.map((part) => (
+        <AssistantAuthorizationCard
+          isNew
+          key={`${part.name}:${part.stepIndex}:${part.state}`}
+          part={part}
+        />
+      ))}
+      <AssistantTurnSources sources={sources} />
+      {!live && (answer || userPrompt) ? (
+        <AssistantTurnActions
+          answer={answer}
+          onRetry={userPrompt ? () => void onSend(userPrompt) : null}
+          retryDisabled={busy}
+        />
+      ) : null}
+      {/* Wrapped rather than in the `Suggestions` scroller, for the reason the
+          starters give: its scrollbar is hidden, so at 390px the second chip is
+          cut at the column edge with nothing to say it scrolls. Three chips wrap
+          cleanly. */}
+      {suggestions.length > 0 ? (
+        <div className="flex flex-wrap gap-2 pt-0.5">
+          {suggestions.map((suggestion) => (
+            <Suggestion
+              key={suggestion}
+              onClick={(text) => void onSend(text)}
+              suggestion={suggestion}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-/** Transient shimmer line for an in-flight tool call or the pre-token wait. */
-function WorkingLine({ label }: { label: string }) {
+/**
+ * The turn's indicator before it has a message of its own to hang it on.
+ *
+ * Deliberately identical to the activity disclosure's trigger — the same sage
+ * dot, the same `Shimmer`, the same word — because the two are one continuous
+ * indicator handing off to each other, and any difference between them would
+ * read as two things happening rather than one thing continuing.
+ */
+function WorkingLine() {
   return (
     <p className="flex items-center gap-1.5 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-      <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
-      <Shimmer>{label}</Shimmer>
+      <span
+        aria-hidden
+        className="size-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-pulse"
+      />
+      <Shimmer>Working…</Shimmer>
     </p>
   );
 }
 
 /**
  * Defers a transient flag so it only shows after `delay` and, once shown, stays
- * for at least `minVisible`. Eve often answers in under a beat; without this the
- * "Thinking…" shimmer flickers on and off in a blink. A fast turn never trips
- * `delay`, so the shimmer simply never appears; a slower one shows steadily.
+ * for at least `minVisible`. The assistant often answers in under a beat; without
+ * `delay` the "Working…" shimmer flickers on and off in a blink. A fast turn never
+ * trips it, so the shimmer simply never appears; a slower one shows steadily.
  */
 function useDeferredFlag(active: boolean, { delay = 350, minVisible = 450 } = {}): boolean {
   const [show, setShow] = useState(false);
@@ -389,9 +938,30 @@ function useDeferredFlag(active: boolean, { delay = 350, minVisible = 450 } = {}
   return show;
 }
 
-/** Live turn status: a shimmer while a turn spins up, or a reach error. */
-function TurnStatus({ status }: { status: AgentStatus }) {
-  const thinking = useDeferredFlag(status === "submitted");
+/**
+ * Live turn status: the working indicator while a turn spins up, or a reach error.
+ *
+ * This line and the live turn's activity disclosure are two halves of *one*
+ * indicator, and the whole point is that the reader never sees a seam between
+ * them. It covers the stretch before the assistant message exists; the disclosure
+ * covers everything after, from the same position, with the same dot and the same
+ * word. So `liveTurn` retires this line the instant the disclosure can take over,
+ * and `minVisible: 0` is what makes that instant: the anti-flicker floor exists to
+ * stop a shimmer blinking in and out, and with a successor already on screen it
+ * could only ever produce half a second of the same line twice over. The flash it
+ * guarded against is still covered by `delay`, which nothing under 350ms trips.
+ *
+ * `liveTurn` is then read a second time at the return, which is not redundant:
+ * the deferred flag can only ever retire this line an effect later, and one frame
+ * of both saying "Working…" one under the other is the one failure the hand-off
+ * has left. Reading it in the render makes the two impossible to co-exist, since
+ * the same commit that first renders the disclosure is the one that drops this.
+ */
+function TurnStatus({ liveTurn, status }: { liveTurn: boolean; status: AgentStatus }) {
+  const working = useDeferredFlag(isTurnInFlight(status) && !liveTurn, {
+    delay: 350,
+    minVisible: 0,
+  });
 
   if (status === "error") {
     return (
@@ -399,204 +969,20 @@ function TurnStatus({ status }: { status: AgentStatus }) {
         className="text-[length:var(--text-small)] text-destructive leading-[var(--text-small-line)]"
         role="alert"
       >
-        Eve is unavailable. Your records are safe, and your question wasn't saved. Try again in a
-        moment.
+        The assistant is unavailable. Your records are safe, and your question wasn't saved. Try
+        again in a moment.
       </p>
     );
   }
 
-  return thinking ? <WorkingLine label="Thinking…" /> : null;
-}
-
-function AssistantComposer({
-  context,
-  ownerUserId,
-  status,
-  onSubmit,
-  suggestPersonName = null,
-}: {
-  context?: AssistantPersonContext;
-  ownerUserId: string;
-  status: AgentStatus;
-  onSubmit: (message: PromptInputMessage) => Promise<void>;
-  suggestPersonName?: string | null;
-}) {
-  // A plus-menu pick opens the Asset Evidence capture panel above the composer
-  // (#201). Evidence routes through the shared capture server actions — never
-  // into the Eve turn — so chat gets no attachment model of its own. The menu
-  // stays disabled while a capture is open so a second pick can't discard a
-  // half-filled form.
-  return (
-    <PromptInputProvider key={ownerUserId}>
-      <AssistantComposerForm
-        context={context}
-        onSubmit={onSubmit}
-        ownerUserId={ownerUserId}
-        status={status}
-        suggestPersonName={suggestPersonName}
-      />
-    </PromptInputProvider>
-  );
+  return working && !liveTurn ? <WorkingLine /> : null;
 }
 
 /**
- * Composer placeholder, most specific first: the person this panel is scoped to,
- * then a real name suggested by the caller, then a generic prompt. It never
- * invents a name, so an empty notebook is never told about someone it has no
- * record of.
- */
-function composerPlaceholder(
-  context: AssistantPersonContext | undefined,
-  suggestPersonName: string | null,
-) {
-  if (context) {
-    return `Note something about ${context.personName}…`;
-  }
-
-  return suggestPersonName
-    ? `Remember something about ${suggestPersonName}…`
-    : "Remember something from a conversation today…";
-}
-
-/**
- * Eve's turn status narrowed to what the submit button renders. Its `resuming`
+ * The turn status narrowed to what the submit button renders. Its `resuming`
  * state (reattaching to a turn already running server-side) has no button of its
  * own and is live work, so it shows the same spinner as a freshly sent turn.
  */
 function submitStatus(status: AgentStatus): ChatStatus {
   return status === "resuming" ? "submitted" : status;
-}
-
-function AssistantComposerForm({
-  context,
-  ownerUserId,
-  status,
-  onSubmit,
-  suggestPersonName = null,
-}: {
-  context?: AssistantPersonContext;
-  ownerUserId: string;
-  status: AgentStatus;
-  onSubmit: (message: PromptInputMessage) => Promise<void>;
-  suggestPersonName?: string | null;
-}) {
-  const [captureFile, setCaptureFile] = useState<File | null>(null);
-
-  return (
-    <AssistantComposerShell>
-      <EveDraftPersistence onSubmit={onSubmit} ownerUserId={ownerUserId} status={status} />
-      {captureFile ? (
-        <div className="pb-3">
-          <AssistantEvidenceCapture file={captureFile} onClose={() => setCaptureFile(null)} />
-        </div>
-      ) : null}
-      <PromptInput onSubmit={onSubmit}>
-        <PromptInputBody>
-          <PromptInputTextarea placeholder={composerPlaceholder(context, suggestPersonName)} />
-        </PromptInputBody>
-        <PromptInputFooter>
-          <PromptInputTools>
-            <AssistantCaptureMenu disabled={captureFile !== null} onPick={setCaptureFile} />
-            <span className="text-[length:var(--text-caption)] text-muted-foreground">
-              Enter to save · Shift + Enter for a new line
-            </span>
-          </PromptInputTools>
-          {/* Deliberately never `disabled`: InputGroup fades to 50% around any
-              disabled descendant, and the textarea stays usable during a turn,
-              so a dimmed composer would misread as "you can't type here". A send
-              Eve can't take is refused by handleSubmit, which restores the text. */}
-          <PromptInputSubmit status={submitStatus(status)} />
-        </PromptInputFooter>
-      </PromptInput>
-    </AssistantComposerShell>
-  );
-}
-
-function EveDraftPersistence({
-  onSubmit,
-  ownerUserId,
-  status,
-}: {
-  onSubmit: (message: PromptInputMessage) => Promise<void>;
-  ownerUserId: string;
-  status: AgentStatus;
-}) {
-  const controller = usePromptInputController();
-  const [hydratedOwner, setHydratedOwner] = useState<string | null>(null);
-  const [pendingSubmission, setPendingSubmission] = useState<string | null>(null);
-  const [restored, setRestored] = useState(false);
-  const autoSubmitting = useRef(false);
-  const loadedOwner = useRef<string | null>(null);
-
-  // fallow-ignore-next-line complexity -- Owner hydration atomically loads, consumes the one-shot handoff, and always closes the hydration gate.
-  useEffect(() => {
-    if (loadedOwner.current === ownerUserId) return;
-    loadedOwner.current = ownerUserId;
-    try {
-      const draft = loadLocalComposerDraft(window.localStorage, ownerUserId, "eve");
-      const submissionRequested = consumeLocalEveDraftSubmission(window.localStorage, ownerUserId);
-      if (draft.restored && !controller.textInput.value) {
-        controller.textInput.setInput(draft.value);
-        setRestored(true);
-        if (submissionRequested) {
-          setPendingSubmission(draft.value);
-        }
-      }
-    } finally {
-      setHydratedOwner(ownerUserId);
-    }
-  }, [controller.textInput, ownerUserId]);
-
-  // The handed-off draft leaves the input - and, through the mirror effect
-  // below, local storage - the instant it is sent, on the same optimistic
-  // contract as a typed submission: only a rejected send puts it back. Waiting
-  // for the turn to finish would leave a sent message sitting in the composer
-  // under a "Discard Eve draft" affordance for the whole stream.
-  useEffect(() => {
-    if (!pendingSubmission || status !== "ready" || autoSubmitting.current) return;
-    autoSubmitting.current = true;
-    controller.textInput.clear();
-    void onSubmit({ files: [], text: pendingSubmission })
-      .catch(() => controller.textInput.restore(pendingSubmission))
-      .finally(() => {
-        setPendingSubmission(null);
-        autoSubmitting.current = false;
-      });
-  }, [controller.textInput, onSubmit, pendingSubmission, status]);
-
-  // The mirror tracks the composer, and the composer only ever holds *unsent*
-  // text: a submission empties it optimistically, which lands here as an empty
-  // value and clears the stored draft in the same commit. That is what keeps the
-  // discard affordance below off an in-flight message - a draft is something the
-  // user has not sent yet, never something Eve is already answering. A rejected
-  // send restores the input, and this effect writes the draft back with it.
-  useEffect(() => {
-    if (hydratedOwner !== ownerUserId) return;
-    try {
-      saveLocalComposerDraft(window.localStorage, ownerUserId, "eve", controller.textInput.value);
-    } catch {
-      // A blocked local store never changes Eve's network-required behavior.
-    }
-    if (!controller.textInput.value) setRestored(false);
-  }, [controller.textInput.value, hydratedOwner, ownerUserId]);
-
-  if (!controller.textInput.value) return null;
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
-      {restored ? (
-        <p className="text-muted-foreground text-xs" role="status">
-          Unsaved Eve draft restored on this device.
-        </p>
-      ) : (
-        <span />
-      )}
-      <button
-        className="min-h-11 text-muted-foreground text-xs underline-offset-4 hover:underline"
-        onClick={controller.textInput.clear}
-        type="button"
-      >
-        Discard Eve draft
-      </button>
-    </div>
-  );
 }

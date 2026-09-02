@@ -9,7 +9,7 @@ export type MobileFailureKind =
   | "capture_change"
   | "capture_save"
   | "capture_undo"
-  | "eve"
+  | "assistant"
   | "cache_mismatch";
 
 const FAILURE_COPY: Record<MobileFailureKind, { action: string; body: string; heading: string }> = {
@@ -43,10 +43,10 @@ const FAILURE_COPY: Record<MobileFailureKind, { action: string; body: string; he
     body: "Tendnote couldn't confirm the undo. Trying again is safe.",
     heading: "Undo wasn't confirmed",
   },
-  eve: {
-    action: "Try Eve again",
+  assistant: {
+    action: "Try again",
     body: "Your records are safe. Your question is unsaved, so you can retry or copy it.",
-    heading: "Eve is unavailable",
+    heading: "The assistant is unavailable",
   },
   cache_mismatch: {
     action: "Refresh",

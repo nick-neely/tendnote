@@ -214,6 +214,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     const primary = within(screen.getByRole("navigation", { name: "Primary" }));
     expect(primary.getAllByRole("link").map((link) => link.textContent)).toEqual([
       "Today",
+      "Assistant",
       "People",
       "Actions",
       "Assets",
@@ -548,8 +549,8 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
     expect(screen.getByRole("heading", { name: "Today" })).toBeDefined();
     expect(screen.getByTestId("today-orientation-band").className).toContain("bg-panel");
-    expect(screen.getByRole("textbox", { name: "Ask Eve anything" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Open Eve" })).toBeDefined();
+    expect(screen.getByRole("textbox", { name: "Ask the assistant anything" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Open the assistant" })).toBeDefined();
     expect(screen.getByRole("region", { name: "Today shortlist" })).toBeDefined();
     expect(screen.getByText("Nothing needs your attention today.")).toBeDefined();
   });
@@ -558,9 +559,12 @@ describe("AppShell Phase Seven mobile navigation", () => {
     const user = userEvent.setup();
     render(<AppShell ownerUserId="owner-1">{mobileTodayDestination()}</AppShell>);
 
-    await user.type(screen.getByRole("textbox", { name: "Ask Eve anything" }), "What is due?");
-    await user.click(screen.getByRole("button", { name: "Send to Eve" }));
-    expect(await screen.findByRole("dialog", { name: "Eve" })).toBeDefined();
+    await user.type(
+      screen.getByRole("textbox", { name: "Ask the assistant anything" }),
+      "What is due?",
+    );
+    await user.click(screen.getByRole("button", { name: "Send to the assistant" }));
+    expect(await screen.findByRole("dialog", { name: "Assistant" })).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.getByDisplayValue("What is due?")).toBeDefined();
   });

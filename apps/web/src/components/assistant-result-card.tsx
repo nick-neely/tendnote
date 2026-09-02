@@ -37,10 +37,11 @@ export const CARD_TONE: Record<
 
 /**
  * What a card is a card *of*, stamped on `data-tool-view`. Almost always a persisted
- * result kind; `input_request` is the one non-result card — a tool call parked on the
- * owner's approval, which has no output yet and so has no result kind to name.
+ * result kind; the two exceptions are calls that have no output to name — a tool call
+ * parked on the owner's approval (`input_request`), and a turn stopped for a sign-in
+ * the owner has to complete outside the app (`authorization`).
  */
-export type ResultCardKind = AssistantToolView["kind"] | "input_request";
+export type ResultCardKind = AssistantToolView["kind"] | "input_request" | "authorization";
 
 export function ResultCard({
   tone,

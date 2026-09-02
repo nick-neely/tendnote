@@ -17,6 +17,8 @@ describe("app destinations", () => {
   it("uses explicit navigation groups instead of positional row meaning", () => {
     expect(destinationsInGroup("desktop-primary").map(({ id }) => id)).toEqual([
       "today",
+      // Beside Today: the other thing the app is opened to do.
+      "assistant",
       "people",
       "actions",
       "assets",
@@ -24,6 +26,7 @@ describe("app destinations", () => {
       "account",
     ]);
     expect(destinationsInGroup("menu").map(({ id }) => id)).toEqual([
+      "assistant",
       "people",
       "actions",
       "assets",
@@ -39,7 +42,8 @@ describe("app destinations", () => {
 
     expect(destinationsInGroup("desktop-primary", viewer).map(({ id }) => id)).toEqual([
       "today",
-      // Beside Today: the same question, asked of the household.
+      "assistant",
+      // Near Today: the same question, asked of the household.
       "household",
       "people",
       "actions",
@@ -48,6 +52,7 @@ describe("app destinations", () => {
       "account",
     ]);
     expect(destinationsInGroup("menu", viewer).map(({ id }) => id)).toEqual([
+      "assistant",
       "household",
       "people",
       "actions",

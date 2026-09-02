@@ -45,6 +45,11 @@ describe("semantic retrieval product-route boundaries", () => {
       "actions/today",
       "assets",
       "assets/[assetId]",
+      // The Assistant destination and one resumable thread (ADR 0238). Threads
+      // are Tendnote-owned titles over Eve sessions and hold no transcript, so
+      // neither route is a semantic-search surface.
+      "assistant",
+      "assistant/[sessionId]",
       "forgot-password",
       // Phase 8 Gift Plans and one plan's own page (#389). They read through the
       // Gift Plan seam's own proved search, never semantic retrieval — a Gift

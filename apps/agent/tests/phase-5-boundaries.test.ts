@@ -327,7 +327,31 @@ const REGISTRATION_ONLY_TOOL_FILES = NON_EXECUTING_TOOL_FILES.filter(
 // framework executor. It is not a Tendnote store adapter and therefore cannot
 // satisfy the owner-scoped registration rule below; its default executor and
 // bounded model projection have their own focused contract test.
+//
+// It now wraps that executor rather than re-exporting it - it awaits the
+// framework result and attaches a citation - so it also lands in the executing
+// list. The store-error rule still does not apply to it for the same reason it
+// never did: it reaches no store. The assertion below pins that, so the
+// exemption cannot come to cover a file that grew one.
 const FRAMEWORK_TOOL_REGISTRATION_FILES = ["apps/agent/agent/tools/web_fetch.ts"];
+
+/**
+ * Tools whose executor reaches no store of any kind.
+ *
+ * `suggest_next_steps` is the Assistant's chip strip: it filters its own input to
+ * the three suggestions that fit a chip and hands them back, so there is no query
+ * to curate a failure from. Exempting it by name rather than by "has no
+ * `@tendnote/db` import" keeps the scan's default fail-closed - a tool that grows a
+ * store call has to be removed from this list on purpose - and the assertion below
+ * holds the exemption to the same proof `web_fetch` gets.
+ */
+const STORELESS_TOOL_FILES = ["apps/agent/agent/tools/suggest_next_steps.ts"];
+
+/** The executing tool files the store-error rule has nothing to say about. */
+const STORE_ERROR_EXEMPT_TOOL_FILES = [
+  ...FRAMEWORK_TOOL_REGISTRATION_FILES,
+  ...STORELESS_TOOL_FILES,
+];
 
 const ACTIONS_PATH_SOURCES = [
   ...walk("packages/db/src/queries/general-actions", isSource),
@@ -556,7 +580,17 @@ describe("Phase 5 boundary — Eve exposes a bounded, single-record General Acti
     for (const path of DYNAMIC_TOOL_RESOLVER_FILES) {
       expect(read(path), `${path} calls no store`).not.toContain("@tendnote/db");
     }
-    for (const path of EXECUTING_TOOL_FILES) {
+    for (const path of STORE_ERROR_EXEMPT_TOOL_FILES) {
+      expect(read(path), `${path} calls no store`).not.toContain("@tendnote/db");
+    }
+    // Every exemption has to name a file that is actually in the scan; otherwise a
+    // renamed tool would leave a line here covering nothing and be scanned by no one.
+    for (const path of STORELESS_TOOL_FILES) {
+      expect(EXECUTING_TOOL_FILES, `${path} is exempted but not scanned`).toContain(path);
+    }
+    for (const path of EXECUTING_TOOL_FILES.filter(
+      (path) => !STORE_ERROR_EXEMPT_TOOL_FILES.includes(path),
+    )) {
       expect(stripComments(read(path)), `${path} wraps its store calls`).toMatch(
         /withModelSafeStoreErrors/,
       );

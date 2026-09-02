@@ -15,6 +15,7 @@ import { turnUnitKey } from "./turn-unit-key";
 function entry(toolCallId: string, memoryId = "mem-1"): AssistantToolEntry {
   return {
     toolCallId,
+    toolName: "capture_memory",
     view: {
       kind: "saved_memory",
       memoryId,

@@ -547,6 +547,13 @@
       "when": 1788231334107,
       "tag": "0077_eve_session_owners",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1788359938684,
+      "tag": "0078_assistant_conversations",
+      "breakpoints": true
     }
   ]
 }

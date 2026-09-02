@@ -187,6 +187,7 @@ export const draftProposalModule = defineModule<"draft_proposal">({
     },
   },
   tier: (view) => (view.proposal ? "card" : "line"),
+  summary: (view) => (view.proposal ? null : labelDraftProposalSkip(view.skippedReason)),
   key: (view) => (view.proposal ? `draft-proposal:${view.proposal.id}` : `draft-proposal:skipped`),
   render: (view, isNew) => {
     if (!view.proposal) {

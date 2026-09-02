@@ -39,7 +39,7 @@ export type AssistantRespondValue = {
  * than crashing the transcript — and cannot answer, because `ready` is false.
  */
 const DISCONNECTED: AssistantRespondValue = {
-  respond: () => Promise.reject(new Error("No live Eve session is connected to this panel.")),
+  respond: () => Promise.reject(new Error("No live assistant session is connected to this panel.")),
   ready: false,
 };
 

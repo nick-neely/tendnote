@@ -8,6 +8,8 @@
     "./access": "./src/access.ts",
     "./admission": "./src/admission.ts",
     "./assets": "./src/assets.ts",
+    "./assistant-conversations": "./src/assistant-conversations.ts",
+    "./assistant-sources": "./src/assistant-sources.ts",
     "./audit-retention": "./src/audit-retention.ts",
     "./brief-schedules": "./src/brief-schedules.ts",
     "./brief-summary": "./src/brief-summary.ts",

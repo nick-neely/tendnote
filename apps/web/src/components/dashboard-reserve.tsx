@@ -4,8 +4,6 @@ import {
   AssistantEmptyCapture,
   AssistantPanelHeader,
   AssistantPanelShell,
-  AssistantPrivateChip,
-  assistantChipClass,
 } from "@/components/assistant-panel-chrome";
 import { cn } from "@/lib/utils";
 
@@ -50,15 +48,10 @@ export function DashboardAssistantReserve() {
   return (
     <AssistantPanelShell aria-busy="true" aria-label="Loading the assistant">
       <AssistantPanelHeader
-        actions={
-          <>
-            <span aria-hidden className={cn(assistantChipClass, "bg-secondary text-transparent")}>
-              <span className="size-3" />
-              Debug
-            </span>
-            <AssistantPrivateChip />
-          </>
-        }
+        // The header's one affordance is the "Open" link, which is geometry
+        // rather than content: it reserves as blank space of the same width
+        // rather than as a control that cannot yet be pressed.
+        actions={<span aria-hidden className="size-7" />}
         subtitle={ASSISTANT_UNSCOPED_SUBTITLE}
       />
       <AssistantEmptyCapture />

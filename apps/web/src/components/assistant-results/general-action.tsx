@@ -322,6 +322,7 @@ export const generalActionListModule = defineModule<"general_action_list">({
     note: "Nothing on your list",
   },
   tier: (view) => (view.actions.length > 0 ? "disclosure" : "line"),
+  summary: (view) => (view.actions.length > 0 ? null : labelEmptyGeneralActionList(view.ledger)),
   key: (view) =>
     `general-action-list:${view.actions.map((action) => action.generalActionId).join(":")}`,
   render: (view, isNew) => {

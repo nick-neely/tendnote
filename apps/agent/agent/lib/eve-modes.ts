@@ -104,6 +104,7 @@ export const EVE_TOOL_NAMES = [
   "search_relationship_context",
   "search_semantic_context",
   "suggest_general_action",
+  "suggest_next_steps",
   "undo_saved_item_capture",
   "update_followup_status",
   "update_general_action_status",

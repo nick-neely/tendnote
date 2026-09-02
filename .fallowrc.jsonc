@@ -82,11 +82,24 @@
       // thresholds, so the score was measuring the absence of unit coverage that
       // the file exists specifically to do without. Same reason as the line above:
       // a verification utility, not runtime product code.
-      "packages/db/src/household-purge-live-check.ts"
+      "packages/db/src/household-purge-live-check.ts",
+      // Same shape, same reason: the Assistant conversation owner-scoping live
+      // check (`pnpm --filter @tendnote/db db:assistant-conversations:check`)
+      // proves against a real Postgres that a pre-claimed session id resists the
+      // other account's writes. Deliberately not in the suite; its CRAP score is
+      // the absence of unit coverage the file exists to do without.
+      "packages/db/src/assistant-conversations-live-check.ts"
     ]
   },
   "audit": {
     "gate": "new-only",
+    // Styling analytics are off for the audit: they re-report every pre-existing
+    // finding in a stylesheet the moment any line of it changes (there is no
+    // base run to diff against for CSS), and their dead-surface check cannot see
+    // Tailwind utilities (`animate-accordion-down`) or classes composed in
+    // components (`tn-shimmer-*`). Run `fallow audit --css-deep` by hand when
+    // reviewing a stylesheet change.
+    "css": false,
     // A baseline records the state accepted at the end of a delivered epic, so the
     // cumulative PR gate reports regressions introduced *after* the per-ticket
     // reviews rather than the whole standing backlog. Phase Seven set the first
