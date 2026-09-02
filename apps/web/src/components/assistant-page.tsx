@@ -4,15 +4,10 @@ import type { PromptNudge } from "@tendnote/domain";
 import { placeholderConversationTitle } from "@tendnote/domain/assistant-conversations";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { useEffect, useRef, useState } from "react";
 import {
   type AssistantConversationView,
-  archiveAssistantConversationAction,
-  listAssistantConversationsAction,
   recordAssistantConversationAction,
-  renameAssistantConversationAction,
-  unarchiveAssistantConversationAction,
 } from "@/app/actions/assistant-conversations";
 import { AssistantConversationRail } from "@/components/assistant-conversation-rail";
 import { AssistantPageTranscriptReserve } from "@/components/assistant-page-reserve";
@@ -30,7 +25,7 @@ import {
   loadAssistantRailCollapsed,
   saveAssistantRailCollapsed,
 } from "@/lib/assistant/rail-preference";
-import type { OwnerActionResult } from "@/lib/owner-action-result";
+import { useConversationRailState } from "@/lib/assistant/use-conversation-rail-state";
 import { cn } from "@/lib/utils";
 
 /**
@@ -96,7 +91,7 @@ export function AssistantPage({
   sessionId,
   suggestPersonName,
 }: AssistantPageProps) {
-  const [conversations, setConversations] = useState(serverConversations);
+  const list = useConversationRailState(serverConversations);
   const [thread, setThread] = useState<Thread>(() => ({
     key: sessionId ?? "new",
     resumeSessionId: sessionId,
@@ -118,30 +113,6 @@ export function AssistantPage({
   useEffect(() => {
     setRailCollapsed(loadAssistantRailCollapsed(globalThis.localStorage));
   }, []);
-
-  // The list is authoritative on the server, so a re-read replaces it outright
-  // rather than merging: every local change here already went through an
-  // owner-scoped action, so there is no local edit for the server to clobber.
-  const refreshConversations = useCallback(async () => {
-    try {
-      const result = await listAssistantConversationsAction({ includeArchived: true });
-      if (result.ok) setConversations(result.view);
-    } catch {
-      // A list that failed to refresh is a stale title, not a lost conversation.
-    }
-  }, []);
-
-  const active = useMemo(
-    () => conversations.filter((conversation) => !conversation.archived),
-    [conversations],
-  );
-  const archived = useMemo(
-    () => conversations.filter((conversation) => conversation.archived),
-    [conversations],
-  );
-  const currentTitle =
-    conversations.find((conversation) => conversation.sessionId === currentSessionId)?.title ??
-    null;
 
   /**
    * A genuine navigation landed: a rail link, the back button, or a pasted URL.
@@ -181,95 +152,44 @@ export function AssistantPage({
    */
   function claimSession(newSessionId: string, firstMessage: string) {
     setCurrentSessionId(newSessionId);
-    setConversations((current) => [
-      {
-        sessionId: newSessionId,
-        // The placeholder the server is writing at this same moment, from the
-        // same shared rule, so the two can never visibly disagree. Showing the
-        // owner's own words now, and the model's title when it lands, is the
-        // whole two-step ladder (ADR 0238) seen from the rail.
-        title: placeholderConversationTitle(firstMessage),
-        lastActivityAt: new Date(),
-        archived: false,
-      },
-      ...current.filter((conversation) => conversation.sessionId !== newSessionId),
-    ]);
+    list.prepend({
+      archived: false,
+      lastActivityAt: new Date(),
+      sessionId: newSessionId,
+      // The placeholder the server is writing at this same moment, from the
+      // same shared rule, so the two can never visibly disagree. Showing the
+      // owner's own words now, and the model's title when it lands, is the
+      // whole two-step ladder (ADR 0238) seen from the rail.
+      title: placeholderConversationTitle(firstMessage),
+    });
     window.history.replaceState(null, "", `/assistant/${encodeURIComponent(newSessionId)}`);
 
     void recordAssistantConversationAction({ sessionId: newSessionId, firstMessage })
       // Immediately, so the server's own row — with whatever the agent hook has
       // already written into it — replaces the optimistic guess above.
-      .then(refreshConversations)
+      .then(list.refresh)
       // Then once more, because the model title is written by the agent hook as
       // the first turn completes and the rail is the only place it shows.
       // Missing it costs a refresh, never the thread.
       .then(() => new Promise((resolve) => setTimeout(resolve, TITLE_SETTLE_MS)))
-      .then(refreshConversations)
+      .then(list.refresh)
       .catch(() => {
         // The agent hook writes the same row from inside the session, so a failed
         // claim from the browser loses nothing durable.
       });
   }
 
-  /**
-   * A rail mutation, applied to the list only once the server has agreed to it.
-   *
-   * `runOwnerAction` answers a refusal as *data* — a rate limit reached, a
-   * malformed title — so an unchecked `await` reads as success and leaves the
-   * rail asserting a rename or an archive that never happened. `ok` with a
-   * `null` view is the second no: the owner-scoped query matched no row, so the
-   * thread is gone or was never theirs, and the honest repair is to re-read the
-   * list rather than to edit a row the server does not have.
-   *
-   * The stored row is what gets applied, not the change that was asked for, so
-   * the rail always shows what was actually saved. A refusal is spoken once as a
-   * toast because the rail has nowhere of its own to say it, and its `run`
-   * wrapper does not catch — throwing from here would be an unhandled rejection.
-   */
-  async function applyThreadChange(
-    pending: Promise<OwnerActionResult<AssistantConversationView | null>>,
-  ): Promise<void> {
-    let result: OwnerActionResult<AssistantConversationView | null>;
-    try {
-      result = await pending;
-    } catch {
-      toast.error(MUTATION_FAILED_MESSAGE);
-      return;
-    }
-
-    if (!result.ok) {
-      toast.error(result.error);
-      return;
-    }
-    if (!result.view) {
-      toast.error("That conversation is no longer here.");
-      await refreshConversations();
-      return;
-    }
-
-    const saved = result.view;
-    setConversations((current) =>
-      current.map((conversation) =>
-        conversation.sessionId === saved.sessionId ? saved : conversation,
-      ),
-    );
-  }
-
   const rail = (
     <AssistantConversationRail
-      archived={archived}
-      conversations={active}
+      archived={list.archived}
+      conversations={list.active}
       currentSessionId={currentSessionId}
       now={now}
-      onArchive={(id) => applyThreadChange(archiveAssistantConversationAction({ sessionId: id }))}
+      onArchive={list.archive}
       onNavigate={() => setRailSheetOpen(false)}
       onNewConversation={startNewConversation}
-      onRename={(id, title) =>
-        applyThreadChange(renameAssistantConversationAction({ sessionId: id, title }))
-      }
-      onUnarchive={(id) =>
-        applyThreadChange(unarchiveAssistantConversationAction({ sessionId: id }))
-      }
+      onRename={list.rename}
+      onUnarchive={list.unarchive}
     />
   );
 
@@ -307,7 +227,7 @@ export function AssistantPage({
           }}
           railCollapsed={railCollapsed}
           showDebug={showDebug}
-          title={currentTitle}
+          title={list.titleOf(currentSessionId)}
         />
         <div className="mx-auto flex min-h-0 w-full max-w-[44rem] flex-1 flex-col px-gutter sm:px-6">
           <AssistantPanel
@@ -356,9 +276,6 @@ export function AssistantPage({
  * appears on the next visit; a thread is never blocked on having one.
  */
 const TITLE_SETTLE_MS = 12_000;
-
-/** For the failures that carry no owner-facing sentence of their own. */
-const MUTATION_FAILED_MESSAGE = "That did not save. Try again in a moment.";
 
 /**
  * One header for the destination: who is talking, which thread, and the standing
