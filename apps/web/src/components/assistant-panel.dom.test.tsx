@@ -2,6 +2,7 @@
 import type { EveMessage } from "eve/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { AssistantTurnCardUnit } from "@/lib/eve/message-views";
+import { loadLocalComposerDraft } from "@/lib/local-composer-draft";
 import { act, render, screen, userEvent, waitFor } from "@/test/dom";
 
 /**
@@ -323,6 +324,55 @@ it("drains the queue one message at a time, in the order they were typed", async
 
   await settleTurn();
   await waitFor(() => expect(eve.sent).toEqual(["First", "Second", "Third"]));
+});
+
+/**
+ * `/assistant` remounts the panel with a fresh `key` on every thread switch,
+ * which discards this component's local state - including whatever the queue
+ * was still holding. The queue's own contract says a message held invisibly is
+ * a message the user believes they sent, so it has to land somewhere durable
+ * before the remount, and the composer's own draft mechanism is already that
+ * somewhere.
+ */
+it("hands still-queued messages to the draft store when the panel unmounts", async () => {
+  const view = render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await sendMessage("Mara adopted a cat");
+  await sendMessage("And she moved to Lisbon");
+  await waitFor(() => expect(screen.getByText("And she moved to Lisbon")).toBeDefined());
+
+  view.unmount();
+
+  expect(loadLocalComposerDraft(window.localStorage, "owner-1", "eve")).toEqual({
+    restored: true,
+    value: "And she moved to Lisbon",
+  });
+});
+
+/**
+ * A message still being typed - never submitted, so never queued - is already
+ * mirrored to the draft store on every keystroke by `AssistantDraftPersistence`.
+ * That unsent thought is not this queue's to overwrite, so it lands above the
+ * queued items rather than being replaced by them.
+ */
+it("appends queued messages below an unsent draft instead of clobbering it", async () => {
+  const view = render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await sendMessage("Mara adopted a cat");
+  await sendMessage("And she moved to Lisbon");
+  await waitFor(() => expect(screen.getByText("And she moved to Lisbon")).toBeDefined());
+  await userEvent.type(composer(), "Something else I'm about to say");
+  await waitFor(() =>
+    expect(loadLocalComposerDraft(window.localStorage, "owner-1", "eve").value).toBe(
+      "Something else I'm about to say",
+    ),
+  );
+
+  view.unmount();
+
+  expect(loadLocalComposerDraft(window.localStorage, "owner-1", "eve").value).toBe(
+    "Something else I'm about to say\n\nAnd she moved to Lisbon",
+  );
 });
 
 it("takes a queued message back out when it is removed", async () => {

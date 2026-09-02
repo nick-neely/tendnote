@@ -6,9 +6,11 @@ import {
   EMPTY_SEND_QUEUE,
   nextQueuedMessage,
   type QueuedMessage,
+  queueToDraft,
   sendQueueReducer,
 } from "@/lib/eve/send-queue";
 import type { AssistantAgentStatus, SendPrompt } from "@/lib/eve/use-assistant-session";
+import { loadLocalComposerDraft, saveLocalComposerDraft } from "@/lib/local-composer-draft";
 
 /**
  * The composer's hand-off, queue and all.
@@ -33,13 +35,27 @@ export type AssistantSendQueueControls = {
 
 export function useSendQueue({
   deliver,
+  ownerUserId,
   status,
 }: {
   deliver: SendPrompt;
+  /**
+   * Whose device-local draft absorbs anything still queued when this hook goes
+   * away. Optional only so a caller with no owner yet (there is none today) is
+   * not forced to invent one; without it, a queue torn down mid-line is simply
+   * lost, same as before this existed.
+   */
+  ownerUserId?: string;
   status: AssistantAgentStatus;
 }): AssistantSendQueueControls {
   const [queue, dispatch] = useReducer(sendQueueReducer, EMPTY_SEND_QUEUE);
   const nextId = useRef(0);
+  // Read only from the unmount effect below, so it sees the queue as it stood
+  // the instant this hook went away rather than the queue at whatever render
+  // last committed the effect - the point of this ref is precisely to avoid
+  // re-running that effect on every dispatch.
+  const queueAtUnmount = useRef(queue);
+  queueAtUnmount.current = queue;
 
   /**
    * A message typed while a turn is running is *queued* rather than refused: it
@@ -91,6 +107,36 @@ export function useSendQueue({
       .catch(() => dispatch({ type: "pause" }))
       .finally(() => dispatch({ id: next.id, type: "settle" }));
   }, [deliver, queue, status]);
+
+  // A queue that still has items when this hook is torn down - most often the
+  // panel remounting on a thread switch - would otherwise vanish silently, which
+  // is exactly the promise `send-queue.ts` says the queue exists to keep: a
+  // message held invisibly is a message the user believes they sent. There is
+  // nowhere left to render the queue strip once this hook is gone, so the items
+  // move into the composer's own device-local draft instead, where the panel that
+  // mounts next already knows how to hand them back ("Unsaved draft restored on
+  // this device."). Runs once, on unmount only - `queueAtUnmount` is what lets it
+  // skip re-running on every dispatch in between.
+  useEffect(() => {
+    if (!ownerUserId) {
+      return;
+    }
+    const owner = ownerUserId;
+    return () => {
+      const items = queueAtUnmount.current.items;
+      if (items.length === 0) {
+        return;
+      }
+      try {
+        const existing = loadLocalComposerDraft(window.localStorage, owner, "eve");
+        const merged = queueToDraft(existing.value, items);
+        saveLocalComposerDraft(window.localStorage, owner, "eve", merged);
+      } catch {
+        // Best effort: a blocked or full local store must never block the
+        // unmount it is running inside of.
+      }
+    };
+  }, [ownerUserId]);
 
   return { items: queue.items, remove, sendNow, submit };
 }

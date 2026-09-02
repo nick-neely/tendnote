@@ -167,7 +167,7 @@ export function AssistantPanel({
 
   // Messages typed while a turn was running. Eve has no queue of its own, so this
   // is the app's - it owns the drain, the ordering, and the steer.
-  const queue = useSendQueue({ deliver, status: agent.status });
+  const queue = useSendQueue({ deliver, ownerUserId, status: agent.status });
 
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messages = agent.data.messages;

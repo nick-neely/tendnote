@@ -91,3 +91,28 @@ export function nextQueuedMessage(state: SendQueueState): QueuedMessage | null {
   }
   return state.items[0] ?? null;
 }
+
+/**
+ * What the composer's draft should read after a queue with still-unsent items is
+ * torn down (a thread switch, or leaving the page) without a place left to show
+ * them.
+ *
+ * Never clobbers a draft that is already there: an unsent thought the user typed
+ * before the queue existed is not this queue's to overwrite, so the items are
+ * appended below it rather than replacing it. An item whose text is already the
+ * draft is dropped rather than duplicated - the queue and the draft can each
+ * independently hold the same words (e.g. "Send now" failed and also left the
+ * draft populated) without doubling them up here.
+ */
+export function queueToDraft(
+  existingDraft: string | null,
+  items: readonly Pick<QueuedMessage, "text">[],
+): string {
+  const draft = existingDraft ?? "";
+  const additions = items.map((item) => item.text).filter((text) => text !== draft);
+  if (additions.length === 0) {
+    return draft;
+  }
+  const joined = additions.join("\n\n");
+  return draft ? `${draft}\n\n${joined}` : joined;
+}

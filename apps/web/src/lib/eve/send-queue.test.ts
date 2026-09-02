@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_SEND_QUEUE,
   nextQueuedMessage,
+  queueToDraft,
   type SendQueueAction,
   type SendQueueState,
   sendQueueReducer,
@@ -84,5 +85,35 @@ describe("sendQueueReducer", () => {
 
     expect(sendQueueReducer(state, { id: "missing", type: "remove" })).toBe(state);
     expect(sendQueueReducer(state, { id: "missing", type: "settle" })).toBe(state);
+  });
+});
+
+/**
+ * What a torn-down queue leaves behind for the draft it becomes. This is the
+ * merge rule only - `use-send-queue.ts` is what actually reads and writes the
+ * device-local draft on unmount.
+ */
+describe("queueToDraft", () => {
+  it("leaves an existing draft alone when the queue is empty", () => {
+    expect(queueToDraft("Already typed this", [])).toBe("Already typed this");
+    expect(queueToDraft(null, [])).toBe("");
+  });
+
+  it("becomes the joined items when there was no draft", () => {
+    expect(queueToDraft(null, [{ text: "First" }, { text: "Second" }])).toBe("First\n\nSecond");
+    expect(queueToDraft("", [{ text: "First" }, { text: "Second" }])).toBe("First\n\nSecond");
+  });
+
+  it("appends below an existing draft rather than replacing it", () => {
+    expect(queueToDraft("Something typed before any of this", [{ text: "Queued thought" }])).toBe(
+      "Something typed before any of this\n\nQueued thought",
+    );
+  });
+
+  it("drops an item that is already the draft instead of duplicating it", () => {
+    expect(queueToDraft("Same words", [{ text: "Same words" }])).toBe("Same words");
+    expect(queueToDraft("Same words", [{ text: "Same words" }, { text: "New one" }])).toBe(
+      "Same words\n\nNew one",
+    );
   });
 });
