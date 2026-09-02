@@ -22,9 +22,27 @@
  * shell meant suspending `<main>` on `useSearchParams`, which rendered the whole
  * route twice — once in the fallback and once resolved — and shifted the layout
  * between the two. Desktop padding is deliberately outside the query.
+ *
+ * ## Why the marker has to be a *visible* child
+ *
+ * `:not([style*="display: none"])` here and in the rule below is load-bearing,
+ * and both fail visibly without it.
+ *
+ * Next's client router does not unmount the segment you navigate away from: it
+ * keeps the last few of them mounted inside a hidden `<Activity>` so that going
+ * back restores their state instead of rebuilding it. React hides an Activity
+ * subtree by writing `display: none !important` onto its root nodes, which
+ * leaves them in the document — so one step after `/assistant`, the shell's one
+ * `<main>` still has the assistant's root among its children.
+ *
+ * `:has()` reads the DOM, not layout, so the bare selector went on matching
+ * that invisible node: the dashboard came back from `/assistant` with no
+ * measure and no gutters, and only a reload put them back. Asking whether the
+ * marker still carries React's own hiding declaration is how a stylesheet asks
+ * which of the mounted segments is the one on screen.
  */
 @media (width < 64rem) {
-  main:has(> [data-mobile-bleed]) {
+  main:has(> [data-mobile-bleed]:not([style*="display: none"])) {
     max-width: none;
     padding: 0;
     gap: 0;
@@ -42,8 +60,10 @@
  * A route-level attribute rather than a second shell, for the reason above: the
  * shell must not have to know which URL it is rendering. A destination that
  * takes the window says so, and pays for its own gutters and vertical rhythm.
+ *
+ * The hidden-segment guard is the same one the mobile rule above explains.
  */
-main:has(> [data-full-bleed]) {
+main:has(> [data-full-bleed]:not([style*="display: none"])) {
   max-width: none;
   padding: 0;
   gap: 0;
