@@ -145,7 +145,7 @@ const UNTRUSTED_CONTENT_GUIDANCE =
  * source part of any kind. So the citation lives on `source`, outside the
  * projection: the UI gets a real link, the model's context stays exactly as
  * narrow as it was, and no tokens are spent saying where a page came from.
- * `agent/lib/sources.ts` is the reader.
+ * `@tendnote/domain/assistant-sources` (`sourcesFromToolOutput`) is the reader.
  */
 export default defineTool({
   ...webFetch,
