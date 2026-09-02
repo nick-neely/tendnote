@@ -14,7 +14,7 @@
  * plain numbers out - no React, no clock.
  *
  * Events are typed `readonly unknown[]` on purpose: the panel already treats the
- * raw stream that way (see `assistant-debug-trace.tsx`), and a projection that
+ * raw stream that way (the raw `agent.events` stream), and a projection that
  * narrows defensively keeps a protocol version bump from throwing inside a
  * render. Anything that does not match the expected shape is simply not counted.
  */

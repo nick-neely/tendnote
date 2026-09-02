@@ -90,14 +90,6 @@ const TRANSCRIPT_PADDING: Record<AssistantSurface, string> = {
 type AssistantPanelProps = {
   context?: AssistantPersonContext;
   /**
-   * @deprecated The dev-only turn trace no longer has a control in the panel or
-   * on the Assistant page. Still accepted so the page can keep passing it while
-   * its own header is cleaned up; the panel ignores both.
-   */
-  debugOpen?: boolean;
-  /** @deprecated See {@link AssistantPanelProps.debugOpen}. Accepted and ignored. */
-  onToggleDebug?: () => void;
-  /**
    * A prior Eve session to reopen instead of starting a fresh one.
    *
    * Read exactly once, on mount: `useEveAgent` builds its store the first time

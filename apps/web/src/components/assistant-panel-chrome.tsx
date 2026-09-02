@@ -1,6 +1,4 @@
 import type { ReactNode } from "react";
-import { BugIcon, LockIcon } from "@/components/icons";
-import { Toggle } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
 
 /**
@@ -46,10 +44,6 @@ export function assistantSubtitleFor(personName?: string): string {
     ? `About ${personName}. Nothing is saved without your review.`
     : ASSISTANT_UNSCOPED_SUBTITLE;
 }
-
-/** Shared chip geometry for the header's right-hand affordances. */
-export const assistantChipClass =
-  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium text-[length:var(--text-caption)]";
 
 export function AssistantPanelShell({
   children,
@@ -101,21 +95,6 @@ export function AssistantPanelHeader({
       </div>
       <div className="flex shrink-0 items-center gap-1.5">{actions}</div>
     </header>
-  );
-}
-
-/**
- * @deprecated No longer rendered anywhere. The header's subtitle already says
- * "Nothing is saved without your review.", which is the substance; the chip said
- * "Private" a second time in a badge next to it. Kept only until the last import
- * is gone.
- */
-export function AssistantPrivateChip() {
-  return (
-    <span className={cn(assistantChipClass, "bg-secondary text-muted-foreground")}>
-      <LockIcon aria-hidden className="size-3" />
-      Private
-    </span>
   );
 }
 
@@ -241,51 +220,5 @@ export function AssistantEndedNotice({ children }: { children: ReactNode }) {
       </p>
       {children}
     </div>
-  );
-}
-
-/**
- * The turn trace is a developer diagnostic, not a product affordance: it is
- * absent from production builds entirely rather than hidden behind a flag.
- *
- * @deprecated The trace has no control on any surface any more. Kept only until
- * the last import is gone.
- */
-export const ASSISTANT_DEBUG_AVAILABLE = process.env.NODE_ENV !== "production";
-
-/**
- * The trace toggle, shared by the dashboard panel's header and the Assistant
- * page's, so the two cannot drift into two different-looking dev controls.
- *
- * Both `aria-pressed:` and `data-[state=on]:` are spelled out so the pressed
- * fill beats the Toggle base's own rule for each - they land at equal
- * specificity, so leaving either to source order is a coin flip.
- *
- * @deprecated No longer rendered: a developer's toggle does not belong in the
- * owner's header, in dev builds or anywhere else. Kept only until the last import
- * is gone.
- */
-export function AssistantDebugToggle({
-  onPressedChange,
-  pressed,
-}: {
-  onPressedChange: () => void;
-  pressed: boolean;
-}) {
-  return (
-    <Toggle
-      aria-label="Toggle debug trace"
-      className={cn(
-        assistantChipClass,
-        "h-auto min-w-0 bg-secondary text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
-        "aria-pressed:bg-foreground aria-pressed:text-background data-[state=on]:bg-foreground data-[state=on]:text-background",
-        "data-[state=on]:hover:bg-foreground data-[state=on]:hover:text-background",
-      )}
-      onPressedChange={onPressedChange}
-      pressed={pressed}
-    >
-      <BugIcon aria-hidden className="size-3" />
-      Debug
-    </Toggle>
   );
 }
