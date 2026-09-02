@@ -120,6 +120,7 @@ describe("MenuFlow", () => {
       screen.getByRole("navigation", { name: "Menu destinations" }),
     ).getAllByRole("link");
     expect(destinations.map((link) => link.textContent)).toEqual([
+      "Assistant",
       "People",
       "Actions",
       "Assets",

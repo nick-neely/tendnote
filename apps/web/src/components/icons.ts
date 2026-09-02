@@ -108,6 +108,7 @@ export {
   ReceiptIcon as ReceiptTextIcon,
   RepeatIcon,
   ShieldCheckIcon,
+  SidebarSimpleIcon as PanelLeftIcon,
   SignOutIcon as LogOutIcon,
   SkipForwardIcon,
   SlidersHorizontalIcon,

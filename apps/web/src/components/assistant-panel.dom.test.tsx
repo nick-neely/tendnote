@@ -24,7 +24,7 @@ import { act, render, screen, userEvent, waitFor } from "@/test/dom";
  * settles, exactly as the real store orders it.
  */
 const { eve } = vi.hoisted(() => {
-  type Status = "error" | "ready" | "streaming" | "submitted";
+  type Status = "error" | "ready" | "resuming" | "streaming" | "submitted";
   type Snapshot = {
     data: { messages: readonly EveMessage[] };
     error: Error | undefined;
@@ -44,8 +44,10 @@ const { eve } = vi.hoisted(() => {
   const listeners = new Set<() => void>();
   const sent: string[] = [];
   const responded: unknown[][] = [];
+  const resumed: unknown[] = [];
   let snapshot: Snapshot = initial;
   let onError: ((error: Error) => void) | undefined;
+  let onSessionChange: ((session: { sessionId: string } | undefined) => void) | undefined;
   let settleTurn: ((failure?: Error) => void) | null = null;
 
   function publish(next: Partial<Snapshot>): void {
@@ -66,8 +68,31 @@ const { eve } = vi.hoisted(() => {
           listeners.delete(listener);
         };
       },
-      registerOnError: (handler?: (error: Error) => void): void => {
-        onError = handler;
+      resumed,
+      registerCallbacks: (options?: {
+        initialSession?: unknown;
+        onError?: (error: Error) => void;
+        onSessionChange?: (session: { sessionId: string } | undefined) => void;
+        resume?: boolean;
+      }): void => {
+        onError = options?.onError;
+        onSessionChange = options?.onSessionChange;
+        if (options?.resume && !resumed.includes(options.initialSession)) {
+          resumed.push(options.initialSession);
+        }
+      },
+      /** The server has minted (or reattached to) a session id. */
+      nameSession: (sessionId: string): void => {
+        publish({ session: { sessionId } });
+        onSessionChange?.({ sessionId });
+      },
+      /** The failure eve reports for a follow-up to an expired session. */
+      failWith: (error: Error): void => {
+        onError?.(error);
+        publish({ error, status: "error" });
+      },
+      setStatus: (status: Status): void => {
+        publish({ status });
       },
       /** eve's Stop: it settles the turn in flight without failing it. */
       cancel: (): Promise<void> => {
@@ -109,6 +134,7 @@ const { eve } = vi.hoisted(() => {
       reset: (): void => {
         sent.length = 0;
         responded.length = 0;
+        resumed.length = 0;
         settleTurn = null;
         snapshot = initial;
       },
@@ -119,9 +145,15 @@ const { eve } = vi.hoisted(() => {
 vi.mock("eve/react", async () => {
   const { useSyncExternalStore } = await import("react");
   return {
-    useEveAgent: (options?: { onError?: (error: Error) => void }) => {
-      // The real hook re-registers its callbacks on every render.
-      eve.registerOnError(options?.onError);
+    useEveAgent: (options?: {
+      initialSession?: unknown;
+      onError?: (error: Error) => void;
+      onSessionChange?: (session: { sessionId: string } | undefined) => void;
+      resume?: boolean;
+    }) => {
+      // The real hook re-registers its callbacks on every render, and reads
+      // `initialSession` / `resume` exactly once when it builds its store.
+      eve.registerCallbacks(options);
       const snapshot = useSyncExternalStore(eve.subscribe, eve.getSnapshot, eve.getSnapshot);
       return {
         ...snapshot,
@@ -567,4 +599,176 @@ it("never says Eve to the reader", async () => {
   });
 
   expect(document.body.textContent).not.toMatch(/\bEve\b/);
+});
+
+/**
+ * The page surface: one panel, two layouts.
+ *
+ * `/assistant` opens with the composer risen to the middle of the column under a
+ * greeting, and settles it to the bottom on the first message. The two positions
+ * are one flex column with a spacer below the composer whose growth is animated
+ * away, so what these assert is the state that drives the move rather than the
+ * pixels — jsdom computes no layout.
+ */
+it("opens a page conversation with the greeting and starters, and drops them on the first message", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" surface="page" />);
+
+  expect(screen.getByRole("heading", { name: "What do you want to remember?" })).toBeDefined();
+  expect(
+    screen.getByRole("button", { name: "Who should I reach out to this week?" }),
+  ).toBeDefined();
+
+  await sendMessage("Mara adopted a cat");
+  await act(async () => {
+    eve.showTurn(
+      [
+        {
+          id: "turn_0:user",
+          role: "user",
+          parts: [{ type: "text", text: "Mara adopted a cat", state: "done" }],
+        },
+      ] as readonly EveMessage[],
+      "streaming",
+    );
+  });
+
+  // The invitation has done its job and the transcript owns the column.
+  expect(screen.queryByRole("heading", { name: "What do you want to remember?" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Who should I reach out to this week?" })).toBeNull();
+  expect(screen.getByRole("textbox")).toBeDefined();
+});
+
+/** The dashboard column is too short for the move to read as anything but a jump. */
+it("keeps the dashboard panel's own centred empty state instead of the page's", () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  expect(screen.getByText("What do you want to remember?")).toBeDefined();
+  expect(screen.queryByRole("heading", { name: "What do you want to remember?" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Who should I reach out to this week?" })).toBeNull();
+});
+
+it("reopens a prior session by resuming it, not by starting a new one", () => {
+  render(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" />);
+
+  expect(eve.resumed).toEqual([{ sessionId: "wrun_A", streamIndex: 0 }]);
+});
+
+it("holds turn-shaped space while a reopened thread replays", async () => {
+  render(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" surface="page" />);
+
+  await act(async () => {
+    eve.setStatus("resuming");
+  });
+
+  // Neither the greeting (nothing has happened yet is a lie about a thread with
+  // history) nor a spinner - the shape of what is about to land.
+  expect(screen.queryByRole("heading", { name: "What do you want to remember?" })).toBeNull();
+  expect(screen.getByRole("log").getAttribute("aria-busy")).toBe("true");
+});
+
+/**
+ * Eve mints the session id and forgets it, so the browser is the only thing that
+ * can tell Tendnote a thread exists before the first reply lands (ADR 0238).
+ */
+it("announces a new session with the message that started it", async () => {
+  const started: [string, string][] = [];
+  render(
+    <AssistantPanel
+      onSessionStarted={(sessionId, firstMessage) => started.push([sessionId, firstMessage])}
+      ownerUserId="owner-1"
+    />,
+  );
+
+  await sendMessage("Mara adopted a cat");
+  await act(async () => {
+    eve.nameSession("wrun_new");
+  });
+
+  expect(started).toEqual([["wrun_new", "Mara adopted a cat"]]);
+});
+
+it("never announces a thread it was handed, because that row already exists", async () => {
+  const started: string[] = [];
+  render(
+    <AssistantPanel
+      initialSessionId="wrun_A"
+      onSessionStarted={(sessionId) => started.push(sessionId)}
+      ownerUserId="owner-1"
+    />,
+  );
+
+  await act(async () => {
+    eve.nameSession("wrun_A");
+  });
+
+  expect(started).toEqual([]);
+});
+
+/**
+ * Eve sessions expire on an absolute clock. The transcript stays readable and
+ * the composer must go: one that will refuse every message is worse than none.
+ */
+it("closes the composer and offers a way forward when the session has ended", async () => {
+  render(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" surface="page" />);
+
+  await act(async () => {
+    eve.showTurn(
+      [
+        {
+          id: "turn_0:assistant",
+          role: "assistant",
+          parts: [{ type: "text", text: "Priya Shah works at a bakery.", state: "done" }],
+        },
+      ] as readonly EveMessage[],
+      "ready",
+    );
+  });
+
+  await act(async () => {
+    eve.failWith(
+      Object.assign(new Error("The session is no longer active."), {
+        code: "session_not_active",
+        status: 409,
+      }),
+    );
+  });
+
+  await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+  expect(screen.getByText(/This conversation has ended/)).toBeDefined();
+  expect(screen.getByRole("link", { name: "Start a new conversation" }).getAttribute("href")).toBe(
+    "/assistant",
+  );
+  // The history is the point: it is still all there to read.
+  expect(screen.getByText("Priya Shah works at a bakery.")).toBeDefined();
+});
+
+/** An outage is not an ending: the composer stays, because the next try may work. */
+it("keeps the composer when the failure is an ordinary outage", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" surface="page" />);
+
+  await sendMessage("Mara adopted a cat");
+  await settleTurn(new Error("stream closed"));
+
+  await waitFor(() => expect(screen.getByRole("alert")).toBeDefined());
+  expect(screen.getByRole("textbox")).toBeDefined();
+  expect(screen.queryByText(/This conversation has ended/)).toBeNull();
+});
+
+/** A live conversation follows the owner to the page rather than being left behind. */
+it("points the dashboard's Open link at the conversation already under way", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  expect(screen.getByRole("link", { name: "Open the Assistant page" }).getAttribute("href")).toBe(
+    "/assistant",
+  );
+
+  await act(async () => {
+    eve.nameSession("wrun_new");
+  });
+
+  expect(
+    screen
+      .getByRole("link", { name: "Open this conversation on the Assistant page" })
+      .getAttribute("href"),
+  ).toBe("/assistant/wrun_new");
 });

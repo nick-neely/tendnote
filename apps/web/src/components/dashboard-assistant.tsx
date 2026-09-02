@@ -2,6 +2,7 @@
 
 import type { PromptNudge } from "@tendnote/domain";
 import dynamic from "next/dynamic";
+import { recordAssistantConversationAction } from "@/app/actions/assistant-conversations";
 import { DashboardAssistantReserve } from "@/components/dashboard-reserve";
 import { useWideViewport } from "@/lib/use-wide-viewport";
 
@@ -49,6 +50,15 @@ export function DashboardAssistant({
   return (
     <AssistantPanel
       nudges={nudges}
+      // A conversation started here is the same kind of thing as one started on
+      // the Assistant page, and has to be findable again from the same list -
+      // otherwise the dashboard would be the one surface whose threads quietly
+      // vanish (ADR 0238). There is no rail here to update, so the claim is
+      // fire-and-forget; the agent hook writes the same row from inside the
+      // session, so a failure here loses nothing durable.
+      onSessionStarted={(sessionId, firstMessage) => {
+        void recordAssistantConversationAction({ firstMessage, sessionId }).catch(() => {});
+      }}
       ownerUserId={ownerUserId}
       suggestPersonName={suggestPersonName}
     />

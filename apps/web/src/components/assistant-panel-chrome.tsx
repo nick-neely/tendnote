@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { LockIcon } from "@/components/icons";
+import { BugIcon, LockIcon } from "@/components/icons";
+import { Toggle } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
 
 /**
@@ -22,15 +23,26 @@ import { cn } from "@/lib/utils";
  * and gutter of its own — a bordered card inside it was a card inside a sheet
  * under two stacked titles, which is the nesting DESIGN.md rules out. In bleed
  * the panel drops its own header and border and simply fills what it is given.
+ * `page` is `/assistant`, where the transcript *is* the canvas: it sits on the
+ * page background rather than on `panel` (the conversation rail beside it is the
+ * panel), owns no header of its own — the page holds one — and its composer is
+ * pinned to the bottom of a column that is already the right width.
  */
-export type AssistantSurface = "bleed" | "panel";
+export type AssistantSurface = "bleed" | "page" | "panel";
 
-export const ASSISTANT_UNSCOPED_SUBTITLE = "Private, and reviewed before anything is saved.";
+/**
+ * The reassurance line under "Assistant".
+ *
+ * Two short sentences rather than one long clause: "Private, and reviewed before
+ * anything is saved" made the reader work out what "reviewed" attached to. The
+ * promise is two separate facts and now reads as two.
+ */
+export const ASSISTANT_UNSCOPED_SUBTITLE = "Private. Nothing is saved without your review.";
 
 /** Header copy, most specific first: the person this panel is scoped to, else the notebook. */
 export function assistantSubtitleFor(personName?: string): string {
   return personName
-    ? `About ${personName}. Reviewed before anything is saved.`
+    ? `About ${personName}. Nothing is saved without your review.`
     : ASSISTANT_UNSCOPED_SUBTITLE;
 }
 
@@ -47,7 +59,8 @@ export function AssistantPanelShell({
   return (
     <section
       className={cn(
-        "flex h-full min-h-0 flex-col bg-panel",
+        "flex h-full min-h-0 flex-col",
+        surface === "page" ? "bg-transparent" : "bg-panel",
         surface === "panel" && "min-h-[30rem] rounded-xl border lg:min-h-0",
         className,
       )}
@@ -110,12 +123,18 @@ export function AssistantComposerShell({
   return (
     <div
       className={cn(
-        "border-t",
-        surface === "panel"
-          ? "p-3 sm:p-4"
-          : // The phone's flow owns the gutter; the composer owns the distance to
-            // the home indicator, which no ancestor can know for it.
-            "px-gutter pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]",
+        surface === "panel" && "border-t p-3 sm:p-4",
+        // The phone's flow owns the gutter; the composer owns the distance to
+        // the home indicator, which no ancestor can know for it.
+        surface === "bleed" &&
+          "border-t px-gutter pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]",
+        // On the page the composer is not a footer under a rule: it is the last
+        // thing in a column that already has edges, and a hairline across the
+        // canvas there would cut the transcript off from the box the reader is
+        // about to type into. The column owns the horizontal inset, and — unlike
+        // the phone sheet — the page's own height already stops above the mobile
+        // bottom bar, which is what holds the safe area open.
+        surface === "page" && "pt-2 pb-4",
       )}
     >
       {children}
@@ -142,5 +161,113 @@ export function AssistantEmptyCapture({ children }: { children?: ReactNode }) {
       </div>
       {children}
     </div>
+  );
+}
+
+/**
+ * The same invitation at page scale, sitting directly above the composer rather
+ * than centred in a panel.
+ *
+ * The question is an `<h2>` here because on `/assistant` it is the first real
+ * heading under the destination's own title, and it is the largest type on the
+ * screen for the same reason the composer is the widest control: before a
+ * conversation exists there is nothing else to look at. It hugs the composer
+ * (`justify-end`) instead of centring in the transcript region, so the greeting
+ * and the box the reader is about to type into read as one group.
+ */
+export function AssistantPageGreeting() {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-end gap-2 pb-5 text-center">
+      <h2 className="font-semibold text-[length:var(--text-h2)] leading-[var(--text-h2-line)]">
+        What do you want to remember?
+      </h2>
+      <p className="max-w-[52ch] text-balance text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+        Who you talked to, what's going on with them, or something to follow up on.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * A resumed thread while its durable stream replays.
+ *
+ * Shaped like the two turns that are about to land — a short user bubble on the
+ * right, an activity line and three text lines on the left — rather than a
+ * spinner, so the transcript arrives into geometry that is already there
+ * (DESIGN.md §Loading). It is `aria-hidden` and announced by the region's own
+ * `aria-busy`: the shapes mean nothing read aloud.
+ */
+export function AssistantResumeSkeleton() {
+  return (
+    <div aria-hidden className="flex flex-col gap-6 py-2">
+      <div className="flex justify-end">
+        <div className="h-9 w-2/5 animate-pulse rounded-xl bg-muted" />
+      </div>
+      <div className="flex flex-col gap-2.5">
+        <div className="h-4 w-[11ch] animate-pulse rounded bg-muted" />
+        <div className="h-4 w-full animate-pulse rounded bg-muted" />
+        <div className="h-4 w-11/12 animate-pulse rounded bg-muted" />
+        <div className="h-4 w-3/5 animate-pulse rounded bg-muted" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A thread whose Eve session has ended, in place of the composer.
+ *
+ * A plain fact and a way forward, not an error: nothing broke, the transcript
+ * above is still entirely readable, and the only thing that is gone is the
+ * ability to add to it. No destructive colour, no alert role — this is the
+ * expected end of a 30-day session (ADR 0238), and the one thing it must never
+ * do is leave a composer on screen that would fail on submit.
+ */
+export function AssistantEndedNotice({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-col items-start gap-3 rounded-xl border border-border border-dashed p-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+        This conversation has ended. Older threads stay readable but can't be continued.
+      </p>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The turn trace is a developer diagnostic, not a product affordance: it is
+ * absent from production builds entirely rather than hidden behind a flag.
+ */
+export const ASSISTANT_DEBUG_AVAILABLE = process.env.NODE_ENV !== "production";
+
+/**
+ * The trace toggle, shared by the dashboard panel's header and the Assistant
+ * page's, so the two cannot drift into two different-looking dev controls.
+ *
+ * Both `aria-pressed:` and `data-[state=on]:` are spelled out so the pressed
+ * fill beats the Toggle base's own rule for each - they land at equal
+ * specificity, so leaving either to source order is a coin flip.
+ */
+export function AssistantDebugToggle({
+  onPressedChange,
+  pressed,
+}: {
+  onPressedChange: () => void;
+  pressed: boolean;
+}) {
+  return (
+    <Toggle
+      aria-label="Toggle debug trace"
+      className={cn(
+        assistantChipClass,
+        "h-auto min-w-0 bg-secondary text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
+        "aria-pressed:bg-foreground aria-pressed:text-background data-[state=on]:bg-foreground data-[state=on]:text-background",
+        "data-[state=on]:hover:bg-foreground data-[state=on]:hover:text-background",
+      )}
+      onPressedChange={onPressedChange}
+      pressed={pressed}
+    >
+      <BugIcon aria-hidden className="size-3" />
+      Debug
+    </Toggle>
   );
 }

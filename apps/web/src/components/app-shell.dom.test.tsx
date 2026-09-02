@@ -214,6 +214,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     const primary = within(screen.getByRole("navigation", { name: "Primary" }));
     expect(primary.getAllByRole("link").map((link) => link.textContent)).toEqual([
       "Today",
+      "Assistant",
       "People",
       "Actions",
       "Assets",

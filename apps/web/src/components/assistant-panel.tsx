@@ -39,13 +39,17 @@ import { AssistantEvidenceCapture } from "@/components/assistant-evidence-captur
 import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { sendNudgeToAgent } from "@/components/assistant-nudge";
 import {
+  ASSISTANT_DEBUG_AVAILABLE,
   AssistantComposerShell,
+  AssistantDebugToggle,
   AssistantEmptyCapture,
+  AssistantEndedNotice,
+  AssistantPageGreeting,
   AssistantPanelHeader,
   AssistantPanelShell,
   AssistantPrivateChip,
+  AssistantResumeSkeleton,
   type AssistantSurface,
-  assistantChipClass,
   assistantSubtitleFor,
 } from "@/components/assistant-panel-chrome";
 import { AssistantPromptNudges } from "@/components/assistant-prompt-nudges";
@@ -59,10 +63,11 @@ import {
   AssistantUserTurnActions,
 } from "@/components/assistant-turn-chrome";
 import { AssistantTurnUnitView } from "@/components/assistant-turn-unit";
-import { ArrowUpRightIcon, BugIcon } from "@/components/icons";
+import { ArrowUpRightIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ui/shimmer";
-import { Toggle } from "@/components/ui/toggle";
+import { isSessionNotActive } from "@/lib/assistant/session-errors";
+import { ASSISTANT_CONVERSATION_STARTERS } from "@/lib/assistant/starters";
 import { followUpSuggestions } from "@/lib/eve/follow-up-suggestions";
 import {
   isTurnInFlight,
@@ -93,17 +98,47 @@ type AgentStatus = ReturnType<typeof useEveAgent>["status"];
 /** Sends one message as a turn, or refuses. Everything the transcript can do to the session. */
 type SendPrompt = (text: string, options?: { steer?: boolean }) => Promise<void>;
 
-/** The trace toggle is a developer diagnostic, not a product affordance. */
-const SHOW_DEBUG_TOGGLE = process.env.NODE_ENV !== "production";
-
 export function AssistantPanel({
   context,
+  debugOpen,
+  initialSessionId,
+  onSessionStarted,
+  onToggleDebug,
   ownerUserId,
   nudges = [],
   suggestPersonName = null,
   surface = "panel",
 }: {
   context?: AssistantPersonContext;
+  /**
+   * The dev-only turn trace, when a surface outside the panel owns its control.
+   *
+   * The dashboard panel holds its own header and therefore its own toggle; the
+   * Assistant page's header sits above the panel, so it holds the state and
+   * hands it down. Uncontrolled unless both of these are supplied.
+   */
+  debugOpen?: boolean;
+  onToggleDebug?: () => void;
+  /**
+   * A prior Eve session to reopen instead of starting a fresh one.
+   *
+   * Read exactly once, on mount: `useEveAgent` builds its store the first time
+   * it runs and ignores every later config change, so a caller switching threads
+   * must remount this component with a new `key` (eve's own guidance). Passing a
+   * different id into a mounted panel does nothing, which is deliberately the
+   * safe direction — it can never detach a session mid-turn.
+   */
+  initialSessionId?: string;
+  /**
+   * Announces the session id the moment Eve mints one for a *new* conversation,
+   * with the message that started it.
+   *
+   * Eve has no session index (ADR 0238), so the browser is the first thing that
+   * knows a thread exists and the only thing that can tell Tendnote before the
+   * first reply lands. Fires once per panel, and never for a resumed thread —
+   * that row already exists.
+   */
+  onSessionStarted?: (sessionId: string, firstMessage: string) => void;
   ownerUserId: string;
   /** Calendar-derived prompt nudges; clicking one sends its text as a turn (#114). */
   nudges?: PromptNudge[];
@@ -123,20 +158,48 @@ export function AssistantPanel({
   // here so `handleSubmit` can rethrow it and put the text back.
   const turnFailure = useRef<Error | null>(null);
 
+  // The words that opened this conversation, held until Eve names the session
+  // they started. `onSessionChange` carries the id and nothing else, and the
+  // title ladder needs the message (ADR 0238).
+  const openingMessage = useRef<string | null>(null);
+  // The session already announced. Seeded with a resumed id so reattaching to an
+  // existing thread never re-announces it as new.
+  const announcedSession = useRef<string | undefined>(initialSessionId);
+
+  // A conversation whose Eve session has expired. Its transcript stays readable;
+  // its composer must not — see `isSessionNotActive`.
+  const [ended, setEnded] = useState(false);
+
   // Stream turns directly from the same-origin Eve mount (withEve). The hook owns
   // the durable Eve session, so follow-up turns continue the same conversation
   // without a Tendnote chat transcript (ADR 0030). Durable product state still
-  // lives in source records, memories, and follow-ups (ADR 0029).
+  // lives in source records, memories, and follow-ups (ADR 0029). A thread the
+  // owner reopened rewinds that same durable stream from event 0 rather than
+  // replaying a Tendnote copy, which is why resume needs only the id.
   const agent = useEveAgent({
+    ...(initialSessionId
+      ? { initialSession: { sessionId: initialSessionId, streamIndex: 0 }, resume: true }
+      : {}),
     onError: (error) => {
       turnFailure.current = error;
+      if (isSessionNotActive(error)) setEnded(true);
+    },
+    // Re-registered on every render by the hook, so this closure is always the
+    // current one and needs no ref of its own.
+    onSessionChange: (session) => {
+      const sessionId = session?.sessionId;
+      if (!sessionId || announcedSession.current === sessionId) return;
+      announcedSession.current = sessionId;
+      onSessionStarted?.(sessionId, openingMessage.current ?? "");
     },
   });
 
   // Toggles the turn trace surface (see assistant-debug-trace.tsx) — a developer
   // diagnostic for tool calls and the raw stream, off by default and absent from
   // production builds entirely.
-  const [showDebug, setShowDebug] = useState(false);
+  const [ownDebug, setOwnDebug] = useState(false);
+  const showDebug = debugOpen ?? ownDebug;
+  const toggleDebug = onToggleDebug ?? (() => setOwnDebug((on) => !on));
 
   // Messages typed while a turn was running. Eve has no queue of its own, so this
   // is the app's (see lib/eve/send-queue.ts); the effect below drains it.
@@ -161,6 +224,7 @@ export function AssistantPanel({
       // starts is what keeps a stale verdict from rejecting the next message; the
       // store retires its own `error` at the same moment.
       turnFailure.current = null;
+      openingMessage.current ??= text;
 
       await send(text, {
         clientContext: selectedPersonClientContext(context),
@@ -230,13 +294,26 @@ export function AssistantPanel({
     sendNudgeToAgent({ status: agent.status, send: agent.send }, context, prompt);
   }
 
+  // Reattaching to a thread's durable stream. It is live work with nothing on
+  // screen yet, so the transcript region holds turn-shaped geometry rather than
+  // a spinner or, worse, the "nothing has happened yet" greeting.
+  const resuming = agent.status === "resuming";
+
+  // A page-scale conversation with nothing in it yet: the composer rises to the
+  // middle of the column under a greeting, and settles to the bottom on the
+  // first message. Only `page` does this — the dashboard column and the phone
+  // sheet are both too short for the move to read as anything but a jump.
+  const centeredComposer =
+    surface === "page" && !resuming && messages.length === 0 && agent.status === "ready";
+
   return (
     <PromptInputProvider key={ownerUserId}>
       <AssistantPanelShell id="assistant" surface={surface}>
         {surface === "panel" ? (
           <AssistantHeader
             context={context}
-            onToggleDebug={() => setShowDebug((on) => !on)}
+            onToggleDebug={toggleDebug}
+            sessionId={agent.session?.sessionId}
             showDebug={showDebug}
           />
         ) : null}
@@ -253,30 +330,39 @@ export function AssistantPanel({
           then, so answering one pending request disables every other one until it
           settles. */}
         <AssistantRespondProvider ready={agent.status === "ready"} respond={agent.respond}>
-          <Conversation className="min-h-0 flex-1">
+          <Conversation aria-busy={resuming || undefined} className="min-h-0 flex-1">
             <ConversationContent
               className={cn(
                 "min-h-full gap-4",
-                surface === "panel" ? "p-4 sm:p-5" : "px-gutter py-4",
+                surface === "panel" && "p-4 sm:p-5",
+                surface === "bleed" && "px-gutter py-4",
+                // The page column owns its own gutter, so the scroller only
+                // opens the distance to the header and the composer.
+                surface === "page" && "py-6",
               )}
             >
-              <AssistantConversation
-                busy={isTurnInFlight(agent.status)}
-                composerRef={composerRef}
-                events={agent.events}
-                messages={messages}
-                nudges={nudges}
-                onSend={sendPrompt}
-                onSendNudge={sendNudge}
-                status={agent.status}
-              />
+              {resuming ? (
+                <AssistantResumeSkeleton />
+              ) : (
+                <AssistantConversation
+                  busy={isTurnInFlight(agent.status)}
+                  composerRef={composerRef}
+                  events={agent.events}
+                  messages={messages}
+                  nudges={nudges}
+                  onSend={sendPrompt}
+                  onSendNudge={sendNudge}
+                  status={agent.status}
+                  surface={surface}
+                />
+              )}
             </ConversationContent>
             <ConversationScrollButton />
           </Conversation>
         </AssistantRespondProvider>
 
         {/* Turn trace; toggled from the header, dev builds only. */}
-        {SHOW_DEBUG_TOGGLE && showDebug ? (
+        {ASSISTANT_DEBUG_AVAILABLE && showDebug ? (
           <div className="max-h-80 overflow-auto">
             <AssistantDebugTrace
               error={agent.error}
@@ -288,37 +374,110 @@ export function AssistantPanel({
         ) : null}
 
         <AssistantComposerShell surface={surface}>
-          <AssistantSendQueue
-            items={queue.items}
-            onRemove={(id) => dispatchQueue({ id, type: "remove" })}
-            onSendNow={(id) => {
-              const item = queue.items.find((queued) => queued.id === id);
-              if (!item) return;
-              dispatchQueue({ id, type: "remove" });
-              void sendPrompt(item.text, { steer: true });
-            }}
-          />
-          <AssistantComposerForm
-            context={context}
-            onStop={() => void agent.cancel()}
-            onSubmit={handleSubmit}
-            ownerUserId={ownerUserId}
-            status={agent.status}
-            suggestPersonName={suggestPersonName}
-            textareaRef={composerRef}
-          />
+          {/* A composer that cannot send is worse than no composer: Eve's session
+              lifetime is absolute, and a follow-up to an expired one is refused
+              at the door (ADR 0238). The transcript above stays exactly as
+              readable as it was. */}
+          {ended ? (
+            <AssistantEndedNotice>
+              <Button asChild className="shrink-0" size="sm">
+                <Link href="/assistant">Start a new conversation</Link>
+              </Button>
+            </AssistantEndedNotice>
+          ) : (
+            <>
+              <AssistantSendQueue
+                items={queue.items}
+                onRemove={(id) => dispatchQueue({ id, type: "remove" })}
+                onSendNow={(id) => {
+                  const item = queue.items.find((queued) => queued.id === id);
+                  if (!item) return;
+                  dispatchQueue({ id, type: "remove" });
+                  void sendPrompt(item.text, { steer: true });
+                }}
+              />
+              <AssistantComposerForm
+                context={context}
+                onStop={() => void agent.cancel()}
+                onSubmit={handleSubmit}
+                ownerUserId={ownerUserId}
+                status={agent.status}
+                suggestPersonName={suggestPersonName}
+                textareaRef={composerRef}
+              />
+              {centeredComposer ? (
+                <div className="pt-3">
+                  <AssistantConversationStarters
+                    nudges={nudges}
+                    onSend={sendPrompt}
+                    onSendNudge={sendNudge}
+                  />
+                </div>
+              ) : null}
+            </>
+          )}
         </AssistantComposerShell>
+
+        {/* The one authored move on this page. The composer sits between the
+            transcript region and this spacer, both growing; taking the spacer's
+            growth away on the first message slides the composer down to the
+            bottom of the column instead of teleporting it there. Reduced motion
+            keeps the same two positions and drops the travel. */}
+        {surface === "page" ? (
+          <div
+            aria-hidden
+            className="shrink-0 basis-0 transition-[flex-grow] duration-200 ease-(--motion-ease-out) motion-reduce:transition-none"
+            style={{ flexGrow: centeredComposer ? 1 : 0 }}
+          />
+        ) : null}
       </AssistantPanelShell>
     </PromptInputProvider>
   );
 }
 
+/**
+ * What a brand-new page conversation offers to start with: the calendar's own
+ * suggestions where there are any, and three plain openings where there are not.
+ *
+ * The calendar wins because it knows something — a real meeting this week beats
+ * any general prompt — and the fallback exists so an empty week still shows the
+ * three things this notebook is for rather than a bare box.
+ */
+function AssistantConversationStarters({
+  nudges,
+  onSend,
+  onSendNudge,
+}: {
+  nudges: PromptNudge[];
+  onSend: SendPrompt;
+  onSendNudge: (prompt: string) => void;
+}) {
+  if (nudges.length > 0) {
+    return <AssistantPromptNudges nudges={nudges} onSelect={onSendNudge} />;
+  }
+
+  // Wrapped and centred rather than in the `Suggestions` scroller: three full
+  // sentences overflow a 44rem column, and a chip clipped at the column edge
+  // reads as broken rather than as scrollable. The chips themselves are the
+  // same primitive the nudges use.
+  return (
+    <div className="flex flex-wrap justify-center gap-2">
+      {ASSISTANT_CONVERSATION_STARTERS.map((starter) => (
+        <Suggestion key={starter} onClick={(text) => void onSend(text)} suggestion={starter} />
+      ))}
+    </div>
+  );
+}
+
 function AssistantHeader({
   context,
+  sessionId,
   showDebug,
   onToggleDebug,
 }: {
   context?: AssistantPersonContext;
+  /** The live thread, so "Open" lands in *this* conversation rather than a new one. */
+  sessionId?: string;
   showDebug: boolean;
   onToggleDebug: () => void;
 }) {
@@ -327,35 +486,22 @@ function AssistantHeader({
       actions={
         <>
           <AssistantPrivateChip />
-          {/* Developer trace toggle for the turn (tool calls + raw stream).
-              Both `aria-pressed:` and `data-[state=on]:` are spelled out so the
-              pressed fill beats the Toggle base's own rule for each - they land
-              at equal specificity, so leaving either to source order is a coin
-              flip. */}
-          {SHOW_DEBUG_TOGGLE ? (
-            <Toggle
-              aria-label="Toggle debug trace"
-              className={cn(
-                assistantChipClass,
-                "h-auto min-w-0 bg-secondary text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
-                "aria-pressed:bg-foreground aria-pressed:text-background data-[state=on]:bg-foreground data-[state=on]:text-background",
-                "data-[state=on]:hover:bg-foreground data-[state=on]:hover:text-background",
-              )}
-              onPressedChange={onToggleDebug}
-              pressed={showDebug}
-            >
-              <BugIcon aria-hidden className="size-3" />
-              Debug
-            </Toggle>
+          {/* Developer trace toggle for the turn (tool calls + raw stream). */}
+          {ASSISTANT_DEBUG_AVAILABLE ? (
+            <AssistantDebugToggle onPressedChange={onToggleDebug} pressed={showDebug} />
           ) : null}
           <Button
-            aria-label="Open the Assistant page"
+            aria-label={
+              sessionId ? "Open this conversation on the Assistant page" : "Open the Assistant page"
+            }
             asChild
             className="text-muted-foreground hover:text-primary"
             size="icon-sm"
             variant="ghost"
           >
-            <Link href="/assistant">
+            {/* A conversation already under way follows the owner to the page
+                rather than being abandoned for a blank one. */}
+            <Link href={sessionId ? `/assistant/${encodeURIComponent(sessionId)}` : "/assistant"}>
               <ArrowUpRightIcon aria-hidden />
             </Link>
           </Button>
@@ -376,6 +522,7 @@ function AssistantConversation({
   onSend,
   onSendNudge,
   status,
+  surface,
 }: {
   busy: boolean;
   composerRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -385,13 +532,19 @@ function AssistantConversation({
   onSend: SendPrompt;
   onSendNudge: (prompt: string) => void;
   status: AgentStatus;
+  surface: AssistantSurface;
 }) {
   // The empty state means "nothing has happened yet" - so it yields as soon as
   // anything has, including a turn that failed before producing a message. An
   // error the panel silently replaced with a greeting would be the worst of both:
   // no answer and no explanation.
   if (messages.length === 0 && status === "ready") {
-    return (
+    // On the page the greeting hugs a composer that has risen to meet it, and the
+    // starters sit below that composer - so this half of the empty state is only
+    // the words. Everywhere else the whole invitation is centred in the panel.
+    return surface === "page" ? (
+      <AssistantPageGreeting />
+    ) : (
       <AssistantEmptyCapture>
         <AssistantPromptNudges nudges={nudges} onSelect={onSendNudge} />
       </AssistantEmptyCapture>

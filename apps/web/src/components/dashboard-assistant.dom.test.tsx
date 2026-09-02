@@ -4,6 +4,13 @@ import { render, screen, setMatchMedia, waitFor } from "@/test/dom";
 
 const { mounted } = vi.hoisted(() => ({ mounted: vi.fn() }));
 
+// The column claims its Eve session as a listable thread (ADR 0238), which puts
+// the server-action module in this client component's import graph. Vitest
+// resolves it for real, `server-only` and all, so it stands aside here.
+vi.mock("@/app/actions/assistant-conversations", () => ({
+  recordAssistantConversationAction: vi.fn(async () => ({ ok: true })),
+}));
+
 vi.mock("@/components/assistant-panel", () => ({
   AssistantPanel: ({ suggestPersonName }: { suggestPersonName: string | null }) => {
     mounted();
@@ -70,7 +77,7 @@ it("reserves the assistant with the panel's own copy, not a generic skeleton", (
   const reserve = screen.getByRole("region", { name: "Loading the assistant" });
   expect(reserve.getAttribute("aria-busy")).toBe("true");
   expect(screen.getByRole("heading", { name: "Assistant" })).toBeDefined();
-  expect(screen.getByText(/reviewed before anything is saved/i)).toBeDefined();
+  expect(screen.getByText(/nothing is saved without your review/i)).toBeDefined();
   expect(screen.getByText("What do you want to remember?")).toBeDefined();
   expect(screen.getByText("Private")).toBeDefined();
 });
