@@ -8,7 +8,7 @@ import {
   toAssistantToolView,
   toolViewTier,
 } from "@/components/assistant-results/registry";
-import { activeToolLabel } from "./active-tool-label";
+import { activeToolLabel, completedToolLabel } from "./active-tool-label";
 
 describe("toAssistantToolView (Eve tool output → renderable view)", () => {
   it("renders a capture_source_record result as logged context with its persisted id", () => {
@@ -1746,6 +1746,19 @@ describe("activeToolLabel (in-flight tool → working copy)", () => {
 
   it("humanizes unknown tools with a trailing ellipsis", () => {
     expect(activeToolLabel("some_future_tool")).toBe("some future tool…");
+  });
+
+  /**
+   * Eve's own built-ins are namespaced, and `eve:load-skill` reached the
+   * transcript as "Eve:load-skill" - the framework naming itself to a reader,
+   * which is the one thing the product never does. The label is the fix; the
+   * namespace-stripping fallback is the floor under whatever eve adds next.
+   */
+  it("never lets the framework name itself, labelled or not", () => {
+    expect(activeToolLabel("eve:load-skill")).toBe("Getting up to speed…");
+    expect(completedToolLabel("eve:load-skill")).toBe("Got up to speed");
+    expect(activeToolLabel("eve:some-future-builtin")).toBe("some future builtin…");
+    expect(completedToolLabel("eve:some-future-builtin")).toBe("Some future builtin");
   });
 
   it("has an explicit working label for every rendered tool in the shared contract", () => {

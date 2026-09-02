@@ -29,7 +29,7 @@ const savedMemory: AssistantToolView = {
 
 describe("followUpSuggestions", () => {
   it("offers the two things you can actually do with a person you just recalled", () => {
-    expect(followUpSuggestions([personContext])).toEqual([
+    expect(followUpSuggestions({ views: [personContext] })).toEqual([
       "Draft a check-in to Priya Shah",
       "Add a follow-up for Priya Shah",
     ]);
@@ -45,17 +45,19 @@ describe("followUpSuggestions", () => {
       status: "draft",
     };
 
-    expect(followUpSuggestions([draft])).toEqual(["Make it shorter", "Make it warmer"]);
+    expect(followUpSuggestions({ views: [draft] })).toEqual(["Make it shorter", "Make it warmer"]);
   });
 
   it("asks what else is known after something was written down", () => {
-    expect(followUpSuggestions([savedMemory])).toEqual(["What else do I know about Priya Shah?"]);
+    expect(followUpSuggestions({ views: [savedMemory] })).toEqual([
+      "What else do I know about Priya Shah?",
+    ]);
   });
 
   it("says nothing when the turn never named a person", () => {
     const nameless: AssistantToolView = { ...savedMemory, personName: null };
 
-    expect(followUpSuggestions([nameless])).toEqual([]);
+    expect(followUpSuggestions({ views: [nameless] })).toEqual([]);
   });
 
   it("names whoever the turn named first, across result kinds", () => {
@@ -66,7 +68,7 @@ describe("followUpSuggestions", () => {
       relationshipType: null,
     };
 
-    expect(followUpSuggestions([added, { ...savedMemory, personName: null }])).toEqual([
+    expect(followUpSuggestions({ views: [added, { ...savedMemory, personName: null }] })).toEqual([
       "What else do I know about Jordan Rivera?",
     ]);
   });
@@ -74,22 +76,95 @@ describe("followUpSuggestions", () => {
   it("offers nothing for a turn that just looked something up", () => {
     const search: AssistantToolView = { kind: "relationship_context_search", results: [] };
 
-    expect(followUpSuggestions([search])).toEqual([]);
-    expect(followUpSuggestions([])).toEqual([]);
+    expect(followUpSuggestions({ views: [search] })).toEqual([]);
+    expect(followUpSuggestions({ views: [] })).toEqual([]);
   });
 
   it("never offers more than three, and never the same one twice", () => {
-    const suggestions = followUpSuggestions([
-      personContext,
-      savedMemory,
-      { candidates: [], kind: "relationship_agenda", window: null },
-      savedMemory,
-    ]);
+    const suggestions = followUpSuggestions({
+      views: [
+        personContext,
+        savedMemory,
+        { candidates: [], kind: "relationship_agenda", window: null },
+        savedMemory,
+      ],
+    });
 
     expect(suggestions).toEqual([
       "Draft a check-in to Priya Shah",
       "Add a follow-up for Priya Shah",
       "What else do I know about Priya Shah?",
     ]);
+  });
+});
+
+/**
+ * The model reads the answer it just wrote, so where it has an opinion about
+ * what comes next it is the better one. The rules that matter are which source
+ * wins, and that neither source is allowed to offer the reader their own words
+ * back.
+ */
+describe("followUpSuggestions (the model's own proposals)", () => {
+  it("prefers what the model proposed over what the results imply", () => {
+    expect(
+      followUpSuggestions({
+        proposed: ["Tell me about her sister", "When did we last talk?"],
+        views: [personContext],
+      }),
+    ).toEqual(["Tell me about her sister", "When did we last talk?"]);
+  });
+
+  it("falls back to the derived list only when the tool never ran", () => {
+    expect(followUpSuggestions({ proposed: null, views: [personContext] })).toEqual([
+      "Draft a check-in to Priya Shah",
+      "Add a follow-up for Priya Shah",
+    ]);
+  });
+
+  /**
+   * An empty array is the model saying "nothing useful comes next", which is an
+   * answer. Falling through to the derived chips there would overrule it with a
+   * guess.
+   */
+  it("shows nothing when the model looked and had nothing to offer", () => {
+    expect(followUpSuggestions({ proposed: [], views: [personContext] })).toEqual([]);
+  });
+
+  it("trims, drops blanks, deduplicates, and never offers more than three", () => {
+    expect(
+      followUpSuggestions({
+        proposed: ["  Draft it  ", "", "   ", "Draft it", "Second", "Third", "Fourth"],
+        views: [],
+      }),
+    ).toEqual(["Draft it", "Second", "Third"]);
+  });
+
+  it("never offers back a question the reader already asked in this thread", () => {
+    expect(
+      followUpSuggestions({
+        asked: ["What about Priya?", "  when did we LAST talk??  "],
+        proposed: ["When did we last talk?", "What about Priya", "Tell me about her sister"],
+        views: [],
+      }),
+    ).toEqual(["Tell me about her sister"]);
+  });
+
+  it("never offers back one of the starters that opened the conversation", () => {
+    expect(
+      followUpSuggestions({
+        proposed: ["Who should I reach out to this week?", "Draft a check-in to Priya"],
+        views: [],
+      }),
+    ).toEqual(["Draft a check-in to Priya"]);
+  });
+
+  /** The same filter has to reach the derived chips, which can repeat too. */
+  it("strikes an already-asked question out of the derived list as well", () => {
+    expect(
+      followUpSuggestions({
+        asked: ["Draft a check-in to Priya Shah"],
+        views: [personContext],
+      }),
+    ).toEqual(["Add a follow-up for Priya Shah"]);
   });
 });

@@ -104,6 +104,12 @@ export function AssistantPanelHeader({
   );
 }
 
+/**
+ * @deprecated No longer rendered anywhere. The header's subtitle already says
+ * "Nothing is saved without your review.", which is the substance; the chip said
+ * "Private" a second time in a badge next to it. Kept only until the last import
+ * is gone.
+ */
 export function AssistantPrivateChip() {
   return (
     <span className={cn(assistantChipClass, "bg-secondary text-muted-foreground")}>
@@ -241,6 +247,9 @@ export function AssistantEndedNotice({ children }: { children: ReactNode }) {
 /**
  * The turn trace is a developer diagnostic, not a product affordance: it is
  * absent from production builds entirely rather than hidden behind a flag.
+ *
+ * @deprecated The trace has no control on any surface any more. Kept only until
+ * the last import is gone.
  */
 export const ASSISTANT_DEBUG_AVAILABLE = process.env.NODE_ENV !== "production";
 
@@ -251,6 +260,10 @@ export const ASSISTANT_DEBUG_AVAILABLE = process.env.NODE_ENV !== "production";
  * Both `aria-pressed:` and `data-[state=on]:` are spelled out so the pressed
  * fill beats the Toggle base's own rule for each - they land at equal
  * specificity, so leaving either to source order is a coin flip.
+ *
+ * @deprecated No longer rendered: a developer's toggle does not belong in the
+ * owner's header, in dev builds or anywhere else. Kept only until the last import
+ * is gone.
  */
 export function AssistantDebugToggle({
   onPressedChange,

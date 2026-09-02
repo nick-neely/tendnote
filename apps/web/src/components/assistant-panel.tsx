@@ -19,19 +19,15 @@ import {
 import { Suggestion } from "@/components/ai-elements/suggestion";
 import { AssistantAuthorizationCard } from "@/components/assistant-authorization-card";
 import { AssistantComposerForm } from "@/components/assistant-composer";
-import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { sendNudgeToAgent } from "@/components/assistant-nudge";
 import {
-  ASSISTANT_DEBUG_AVAILABLE,
   AssistantComposerShell,
-  AssistantDebugToggle,
   AssistantEmptyCapture,
   AssistantEndedNotice,
   AssistantPageGreeting,
   AssistantPanelHeader,
   AssistantPanelShell,
-  AssistantPrivateChip,
   AssistantResumeSkeleton,
   type AssistantSurface,
   assistantSubtitleFor,
@@ -55,6 +51,7 @@ import { followUpSuggestions } from "@/lib/eve/follow-up-suggestions";
 import {
   isTurnInFlight,
   messageFiles,
+  messageProposedFollowUps,
   messageText,
   messageTextSegments,
   messageToolViews,
@@ -65,10 +62,11 @@ import { turnSources } from "@/lib/eve/sources";
 import { turnTiming } from "@/lib/eve/turn-timing";
 import { turnUnitKey } from "@/lib/eve/turn-unit-key";
 import {
-  type AssistantAgent,
   type AssistantAgentStatus,
+  type AssistantResumeSettled,
   type SendPrompt,
   useAssistantSession,
+  useResumedSession,
 } from "@/lib/eve/use-assistant-session";
 import { type AssistantSendQueueControls, useSendQueue } from "@/lib/eve/use-send-queue";
 import { cn } from "@/lib/utils";
@@ -89,39 +87,15 @@ const TRANSCRIPT_PADDING: Record<AssistantSurface, string> = {
   panel: "p-4 sm:p-5",
 };
 
-/**
- * The dev-only trace's open state: the caller's when a surface outside the panel
- * owns the control, else the panel's own.
- */
-function useDebugTrace(
-  open: boolean | undefined,
-  onToggle: (() => void) | undefined,
-): { showDebug: boolean; toggleDebug: () => void } {
-  const [own, setOwn] = useState(false);
-  const toggleOwn = useCallback(() => setOwn((on) => !on), []);
-  return { showDebug: open ?? own, toggleDebug: onToggle ?? toggleOwn };
-}
-
-export function AssistantPanel({
-  context,
-  debugOpen,
-  initialSessionId,
-  onSessionStarted,
-  onToggleDebug,
-  ownerUserId,
-  nudges = [],
-  suggestPersonName = null,
-  surface = "panel",
-}: {
+type AssistantPanelProps = {
   context?: AssistantPersonContext;
   /**
-   * The dev-only turn trace, when a surface outside the panel owns its control.
-   *
-   * The dashboard panel holds its own header and therefore its own toggle; the
-   * Assistant page's header sits above the panel, so it holds the state and
-   * hands it down. Uncontrolled unless both of these are supplied.
+   * @deprecated The dev-only turn trace no longer has a control in the panel or
+   * on the Assistant page. Still accepted so the page can keep passing it while
+   * its own header is cleaned up; the panel ignores both.
    */
   debugOpen?: boolean;
+  /** @deprecated See {@link AssistantPanelProps.debugOpen}. Accepted and ignored. */
   onToggleDebug?: () => void;
   /**
    * A prior Eve session to reopen instead of starting a fresh one.
@@ -153,17 +127,79 @@ export function AssistantPanel({
    */
   suggestPersonName?: string | null;
   surface?: AssistantSurface;
+};
+
+/**
+ * The conversation surface, once it knows which conversation it is standing in.
+ *
+ * A reopened thread's durable stream is read *before* the session opens, because
+ * `useEveAgent` reads its configuration once and the difference between "follow
+ * this stream" and "this stream is finished" is the difference between a usable
+ * composer and a fifteen-second wait (see `use-assistant-session.ts`). The read
+ * takes about a third of a second and runs behind the same turn-shaped geometry
+ * the transcript would have shown anyway, so nothing is spent on it.
+ */
+export function AssistantPanel(props: AssistantPanelProps) {
+  const resumed = useResumedSession(props.initialSessionId);
+
+  if (resumed.kind === "pending") {
+    return <AssistantPanelReserve context={props.context} surface={props.surface ?? "panel"} />;
+  }
+
+  return <AssistantConversationPanel {...props} resumed={resumed} />;
+}
+
+/**
+ * A reopened thread in the moment before its stream has been read: the panel's
+ * real chrome around turn-shaped geometry, so the transcript lands into a column
+ * that is already the right shape (DESIGN.md §Loading). The composer is a well
+ * rather than a box, because one that cannot yet take a message is worse than
+ * one that is plainly not ready.
+ */
+function AssistantPanelReserve({
+  context,
+  surface,
+}: {
+  context?: AssistantPersonContext;
+  surface: AssistantSurface;
 }) {
+  return (
+    <AssistantPanelShell
+      aria-busy="true"
+      aria-label="Loading the conversation"
+      id="assistant"
+      surface={surface}
+    >
+      <AssistantHeader context={context} surface={surface} />
+      <div className={cn("min-h-0 flex-1 overflow-hidden", TRANSCRIPT_PADDING[surface])}>
+        <AssistantResumeSkeleton />
+      </div>
+      <AssistantComposerShell surface={surface}>
+        {/* The live composer's own well: a `min-h-16` textarea above a 46px
+            control row inside a 1px border, 7rem in total. */}
+        <div aria-hidden className="min-h-28 w-full rounded-lg border border-input" />
+      </AssistantComposerShell>
+    </AssistantPanelShell>
+  );
+}
+
+function AssistantConversationPanel({
+  context,
+  onSessionStarted,
+  ownerUserId,
+  nudges = [],
+  resumed,
+  suggestPersonName = null,
+  surface = "panel",
+}: AssistantPanelProps & { resumed: AssistantResumeSettled }) {
   // One Eve session, and the only honest way to send into it: `deliver` rethrows
   // the failure eve announces out of band, and `ended` is the one failure the
   // reader must never be invited to retry (see `useAssistantSession`).
   const { agent, deliver, ended } = useAssistantSession({
     context,
-    initialSessionId,
     onSessionStarted,
+    resumed,
   });
-
-  const { showDebug, toggleDebug } = useDebugTrace(debugOpen, onToggleDebug);
 
   // Messages typed while a turn was running. Eve has no queue of its own, so this
   // is the app's - it owns the drain, the ordering, and the steer.
@@ -194,12 +230,14 @@ export function AssistantPanel({
     sendNudgeToAgent({ status: agent.status, send: agent.send }, context, prompt);
   }
 
-  // Reattaching to a thread's durable stream. It is live work with nothing on
-  // screen yet, so the transcript region holds turn-shaped geometry rather than
-  // a spinner or, worse, the "nothing has happened yet" greeting. `undefined`
-  // rather than `false`, because `aria-busy="false"` is a claim of its own.
+  // Reattaching to a turn that is still running server-side, with nothing of it
+  // on screen yet. It says nothing about the *transcript*, which the pre-read
+  // already seeded: only a thread with no replayed messages at all is still
+  // waiting for its history, and only that one holds turn-shaped geometry rather
+  // than the conversation. `undefined` rather than `false`, because
+  // `aria-busy="false"` is a claim of its own.
   const resuming = agent.status === "resuming";
-  const replaying = resuming || undefined;
+  const replaying = (resuming && messages.length === 0) || undefined;
 
   // A page-scale conversation with nothing in it yet: the greeting and composer
   // rise together to the middle of the column, and settle to the bottom on the
@@ -211,13 +249,7 @@ export function AssistantPanel({
   return (
     <PromptInputProvider key={ownerUserId}>
       <AssistantPanelShell id="assistant" surface={surface}>
-        <AssistantHeader
-          context={context}
-          onToggleDebug={toggleDebug}
-          sessionId={agent.session?.sessionId}
-          showDebug={showDebug}
-          surface={surface}
-        />
+        <AssistantHeader context={context} sessionId={agent.session?.sessionId} surface={surface} />
 
         {/* The leading flex-1 spacer (in AssistantConversation) anchors a short
           conversation to the bottom; it collapses once messages overflow so the
@@ -248,8 +280,6 @@ export function AssistantPanel({
             <ConversationScrollButton />
           </Conversation>
         </AssistantRespondProvider>
-
-        <AssistantTraceRegion agent={agent} showDebug={showDebug} />
 
         <AssistantComposerRegion
           centered={centeredComposer}
@@ -292,24 +322,6 @@ function AssistantSettleSpacer({ grow, surface }: { grow: boolean; surface: Assi
       className="shrink-0 basis-0 transition-[flex-grow] duration-200 ease-(--motion-ease-out) motion-reduce:transition-none"
       style={{ flexGrow: grow ? 1 : 0 }}
     />
-  );
-}
-
-/** The dev-only turn trace (tool calls + raw stream), absent from production builds. */
-function AssistantTraceRegion({ agent, showDebug }: { agent: AssistantAgent; showDebug: boolean }) {
-  if (!ASSISTANT_DEBUG_AVAILABLE || !showDebug) {
-    return null;
-  }
-
-  return (
-    <div className="max-h-80 overflow-auto">
-      <AssistantDebugTrace
-        error={agent.error}
-        events={agent.events}
-        messages={agent.data.messages}
-        status={agent.status}
-      />
-    </div>
   );
 }
 
@@ -489,46 +501,39 @@ function AssistantConversationStarters({
 function AssistantHeader({
   context,
   sessionId,
-  showDebug,
-  onToggleDebug,
   surface,
 }: {
   context?: AssistantPersonContext;
   /** The live thread, so "Open" lands in *this* conversation rather than a new one. */
   sessionId?: string;
-  showDebug: boolean;
-  onToggleDebug: () => void;
   surface: AssistantSurface;
 }) {
   if (surface !== "panel") {
     return null;
   }
 
+  // One affordance, and it is the only one that does anything for the reader.
+  // The "Private" chip said in a badge what the subtitle underneath it already
+  // says in a sentence, and the Debug toggle was a developer's control sitting
+  // permanently in the owner's header.
   return (
     <AssistantPanelHeader
       actions={
-        <>
-          <AssistantPrivateChip />
-          {/* Developer trace toggle for the turn (tool calls + raw stream). */}
-          {ASSISTANT_DEBUG_AVAILABLE ? (
-            <AssistantDebugToggle onPressedChange={onToggleDebug} pressed={showDebug} />
-          ) : null}
-          <Button
-            aria-label={
-              sessionId ? "Open this conversation on the Assistant page" : "Open the Assistant page"
-            }
-            asChild
-            className="text-muted-foreground hover:text-primary"
-            size="icon-sm"
-            variant="ghost"
-          >
-            {/* A conversation already under way follows the owner to the page
-                rather than being abandoned for a blank one. */}
-            <Link href={sessionId ? `/assistant/${encodeURIComponent(sessionId)}` : "/assistant"}>
-              <ArrowUpRightIcon aria-hidden />
-            </Link>
-          </Button>
-        </>
+        <Button
+          aria-label={
+            sessionId ? "Open this conversation on the Assistant page" : "Open the Assistant page"
+          }
+          asChild
+          className="text-muted-foreground hover:text-primary"
+          size="icon-sm"
+          variant="ghost"
+        >
+          {/* A conversation already under way follows the owner to the page
+              rather than being abandoned for a blank one. */}
+          <Link href={sessionId ? `/assistant/${encodeURIComponent(sessionId)}` : "/assistant"}>
+            <ArrowUpRightIcon aria-hidden />
+          </Link>
+        </Button>
       }
       subtitle={assistantSubtitleFor(context?.personName)}
     />
@@ -557,10 +562,21 @@ function AssistantConversation({
   status: AgentStatus;
   surface: AssistantSurface;
 }) {
-  // A thread whose durable stream is still replaying has history that simply has
-  // not arrived; it gets turn-shaped geometry rather than a spinner or, worse,
-  // the "nothing has happened yet" greeting (DESIGN.md §Loading).
-  if (status === "resuming") {
+  // Everything the reader has already asked in this thread. A follow-up chip
+  // offering a question they typed two turns ago is the conversation forgetting
+  // itself, so the whole thread is what the chips are filtered against.
+  const asked = useMemo(
+    () => messages.filter((message) => message.role === "user").map(messageText),
+    [messages],
+  );
+
+  // A thread with history that has not arrived yet gets turn-shaped geometry
+  // rather than a spinner or, worse, the "nothing has happened yet" greeting
+  // (DESIGN.md §Loading). Once *any* of it has arrived the transcript is the
+  // better thing to look at, even while eve is still following a live turn — a
+  // conversation the reader can already read is never worth hiding behind its
+  // own skeleton.
+  if (status === "resuming" && messages.length === 0) {
     return <AssistantResumeSkeleton />;
   }
 
@@ -586,11 +602,18 @@ function AssistantConversation({
   // to end.
   const liveIndex = isTurnInFlight(status) ? messages.length - 1 : -1;
 
+  // Whether the live turn has an assistant message yet. Once it does, that turn's
+  // own activity disclosure carries the "Working…" indicator, and the standalone
+  // status line below the transcript must stand down or the two would say the
+  // same thing twice, one under the other (see {@link TurnStatus}).
+  const liveTurn = liveIndex >= 0 && messages[liveIndex]?.role === "assistant";
+
   return (
     <>
       <div aria-hidden className="min-h-0 flex-1" />
       {messages.map((message, index) => (
         <MessageTurn
+          asked={asked}
           busy={busy}
           composerRef={composerRef}
           events={events}
@@ -605,7 +628,7 @@ function AssistantConversation({
           userPrompt={precedingUserPrompt(messages, index)}
         />
       ))}
-      <TurnStatus status={status} />
+      <TurnStatus liveTurn={liveTurn} status={status} />
     </>
   );
 }
@@ -624,6 +647,7 @@ function precedingUserPrompt(messages: readonly EveMessage[], index: number): st
 
 /** One conversation turn: the user prompt, or the assistant's whole anatomy. */
 function MessageTurn({
+  asked,
   busy,
   composerRef,
   events,
@@ -633,6 +657,7 @@ function MessageTurn({
   showFollowUps,
   userPrompt,
 }: {
+  asked: readonly string[];
   busy: boolean;
   composerRef: React.RefObject<HTMLTextAreaElement | null>;
   events: readonly unknown[];
@@ -648,6 +673,7 @@ function MessageTurn({
 
   return (
     <AssistantTurn
+      asked={asked}
       busy={busy}
       events={events}
       live={live}
@@ -722,6 +748,7 @@ function UserTurn({
  * the text, and only durable results stay underneath as the payload.
  */
 function AssistantTurn({
+  asked,
   busy,
   events,
   live,
@@ -730,6 +757,7 @@ function AssistantTurn({
   showFollowUps,
   userPrompt,
 }: {
+  asked: readonly string[];
   busy: boolean;
   events: readonly unknown[];
   live: boolean;
@@ -744,10 +772,19 @@ function AssistantTurn({
   const segments = messageTextSegments(message);
   const anatomy = messageTurnAnatomy(message, live);
   const sources = useMemo(() => turnSources(message), [message]);
+  // The model's own proposals win where it made any, because it read the answer
+  // it just wrote; the kind-derived list is the fallback for the turns where it
+  // said nothing (see `follow-up-suggestions.ts`).
   const suggestions = useMemo(
     () =>
-      showFollowUps ? followUpSuggestions(messageToolViews(message).map((it) => it.view)) : [],
-    [message, showFollowUps],
+      showFollowUps
+        ? followUpSuggestions({
+            asked,
+            proposed: messageProposedFollowUps(message),
+            views: messageToolViews(message).map((it) => it.view),
+          })
+        : [],
+    [asked, message, showFollowUps],
   );
   // Durable, replay-stable durations. `null` while the turn is still running, and
   // the disclosure falls back to its own clock until the stream says otherwise.
@@ -772,7 +809,13 @@ function AssistantTurn({
               answer and several short ones breathe the same way. */}
           <MessageContent className="gap-3">
             {segments.map((segment) => (
-              <AssistantMarkdown key={segment.key}>{segment.text}</AssistantMarkdown>
+              // The pages the turn actually read, so a link to one of them
+              // renders as a numbered citation rather than a bare link. The
+              // reasoning body deliberately gets none: a citation number in an
+              // aside would compete with the answer's own numbering.
+              <AssistantMarkdown key={segment.key} sources={sources}>
+                {segment.text}
+              </AssistantMarkdown>
             ))}
           </MessageContent>
         </Message>
@@ -820,15 +863,22 @@ function AssistantTurn({
   );
 }
 
-/** Transient shimmer line for the pre-token wait. */
-function WorkingLine({ label }: { label: string }) {
+/**
+ * The turn's indicator before it has a message of its own to hang it on.
+ *
+ * Deliberately identical to the activity disclosure's trigger — the same sage
+ * dot, the same `Shimmer`, the same word — because the two are one continuous
+ * indicator handing off to each other, and any difference between them would
+ * read as two things happening rather than one thing continuing.
+ */
+function WorkingLine() {
   return (
     <p className="flex items-center gap-1.5 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
       <span
         aria-hidden
         className="size-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-pulse"
       />
-      <Shimmer>{label}</Shimmer>
+      <Shimmer>Working…</Shimmer>
     </p>
   );
 }
@@ -836,8 +886,8 @@ function WorkingLine({ label }: { label: string }) {
 /**
  * Defers a transient flag so it only shows after `delay` and, once shown, stays
  * for at least `minVisible`. The assistant often answers in under a beat; without
- * this the "Thinking…" shimmer flickers on and off in a blink. A fast turn never
- * trips `delay`, so the shimmer simply never appears; a slower one shows steadily.
+ * `delay` the "Working…" shimmer flickers on and off in a blink. A fast turn never
+ * trips it, so the shimmer simply never appears; a slower one shows steadily.
  */
 function useDeferredFlag(active: boolean, { delay = 350, minVisible = 450 } = {}): boolean {
   const [show, setShow] = useState(false);
@@ -864,9 +914,30 @@ function useDeferredFlag(active: boolean, { delay = 350, minVisible = 450 } = {}
   return show;
 }
 
-/** Live turn status: a shimmer while a turn spins up, or a reach error. */
-function TurnStatus({ status }: { status: AgentStatus }) {
-  const thinking = useDeferredFlag(status === "submitted");
+/**
+ * Live turn status: the working indicator while a turn spins up, or a reach error.
+ *
+ * This line and the live turn's activity disclosure are two halves of *one*
+ * indicator, and the whole point is that the reader never sees a seam between
+ * them. It covers the stretch before the assistant message exists; the disclosure
+ * covers everything after, from the same position, with the same dot and the same
+ * word. So `liveTurn` retires this line the instant the disclosure can take over,
+ * and `minVisible: 0` is what makes that instant: the anti-flicker floor exists to
+ * stop a shimmer blinking in and out, and with a successor already on screen it
+ * could only ever produce half a second of the same line twice over. The flash it
+ * guarded against is still covered by `delay`, which nothing under 350ms trips.
+ *
+ * `liveTurn` is then read a second time at the return, which is not redundant:
+ * the deferred flag can only ever retire this line an effect later, and one frame
+ * of both saying "Working…" one under the other is the one failure the hand-off
+ * has left. Reading it in the render makes the two impossible to co-exist, since
+ * the same commit that first renders the disclosure is the one that drops this.
+ */
+function TurnStatus({ liveTurn, status }: { liveTurn: boolean; status: AgentStatus }) {
+  const working = useDeferredFlag(isTurnInFlight(status) && !liveTurn, {
+    delay: 350,
+    minVisible: 0,
+  });
 
   if (status === "error") {
     return (
@@ -880,7 +951,7 @@ function TurnStatus({ status }: { status: AgentStatus }) {
     );
   }
 
-  return thinking ? <WorkingLine label="Thinking…" /> : null;
+  return working && !liveTurn ? <WorkingLine /> : null;
 }
 
 /**

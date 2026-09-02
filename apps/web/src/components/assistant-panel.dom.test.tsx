@@ -46,6 +46,9 @@ const { eve } = vi.hoisted(() => {
   const sent: string[] = [];
   const responded: unknown[][] = [];
   const resumed: unknown[] = [];
+  const mounted: { initialEvents?: unknown; initialSession?: unknown; resume?: boolean }[] = [];
+  /** What the panel's own pre-read of a reopened thread's stream finds. */
+  let prefix: { events: readonly { type: string }[] } | { failure: Error } = { events: [] };
   let snapshot: Snapshot = initial;
   let onError: ((error: Error) => void) | undefined;
   let onSessionChange: ((session: { sessionId: string } | undefined) => void) | undefined;
@@ -70,7 +73,21 @@ const { eve } = vi.hoisted(() => {
         };
       },
       resumed,
+      mounted,
+      /** The events the reopened thread's stream hands back to the pre-read. */
+      holds: (events: readonly { type: string }[]): void => {
+        prefix = { events };
+      },
+      /** The pre-read's stream open is refused (the mount's opaque 404, an outage). */
+      refuses: (failure: Error): void => {
+        prefix = { failure };
+      },
+      readPrefix: (): readonly { type: string }[] => {
+        if ("failure" in prefix) throw prefix.failure;
+        return prefix.events;
+      },
       registerCallbacks: (options?: {
+        initialEvents?: unknown;
         initialSession?: unknown;
         onError?: (error: Error) => void;
         onSessionChange?: (session: { sessionId: string } | undefined) => void;
@@ -78,6 +95,13 @@ const { eve } = vi.hoisted(() => {
       }): void => {
         onError = options?.onError;
         onSessionChange = options?.onSessionChange;
+        if (mounted.length === 0) {
+          mounted.push({
+            initialEvents: options?.initialEvents,
+            initialSession: options?.initialSession,
+            resume: options?.resume,
+          });
+        }
         if (options?.resume && !resumed.includes(options.initialSession)) {
           resumed.push(options.initialSession);
         }
@@ -136,6 +160,8 @@ const { eve } = vi.hoisted(() => {
         sent.length = 0;
         responded.length = 0;
         resumed.length = 0;
+        mounted.length = 0;
+        prefix = { events: [] };
         settleTurn = null;
         snapshot = initial;
       },
@@ -143,17 +169,39 @@ const { eve } = vi.hoisted(() => {
   };
 });
 
+/**
+ * The panel reads a reopened thread's durable stream itself, before any session
+ * exists, so it can tell a thread with a turn still running from one that is
+ * simply finished (`use-assistant-session.ts`). Only the shape matters here: one
+ * bounded pass that yields events or throws.
+ */
+vi.mock("eve/client", () => ({
+  Client: class {
+    sessions = {
+      attach: () => ({
+        stream: async function* () {
+          for (const event of eve.readPrefix()) {
+            yield event;
+          }
+        },
+      }),
+    };
+  },
+}));
+
 vi.mock("eve/react", async () => {
   const { useSyncExternalStore } = await import("react");
   return {
     useEveAgent: (options?: {
+      initialEvents?: unknown;
       initialSession?: unknown;
       onError?: (error: Error) => void;
       onSessionChange?: (session: { sessionId: string } | undefined) => void;
       resume?: boolean;
     }) => {
       // The real hook re-registers its callbacks on every render, and reads
-      // `initialSession` / `resume` exactly once when it builds its store.
+      // `initialEvents` / `initialSession` / `resume` exactly once when it builds
+      // its store.
       eve.registerCallbacks(options);
       const snapshot = useSyncExternalStore(eve.subscribe, eve.getSnapshot, eve.getSnapshot);
       return {
@@ -237,6 +285,17 @@ async function settleTurn(failure?: Error): Promise<void> {
   await act(async () => {
     eve.settle(failure);
   });
+}
+
+/**
+ * Opens a reopened thread and waits out the panel's pre-read of its stream. Until
+ * that read settles the panel holds turn-shaped geometry rather than a session,
+ * because `useEveAgent` reads its configuration once and the read is what decides
+ * what to tell it.
+ */
+async function openThread(element: React.ReactElement): Promise<void> {
+  render(element);
+  await waitFor(() => expect(eve.mounted.length).toBe(1));
 }
 
 it("puts the message back when the turn fails, even though eve resolves the send", async () => {
@@ -697,14 +756,60 @@ it("keeps the dashboard panel's own centred empty state instead of the page's", 
   expect(screen.queryByRole("button", { name: "Who should I reach out to this week?" })).toBeNull();
 });
 
-it("reopens a prior session by resuming it, not by starting a new one", () => {
-  render(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" />);
+/**
+ * A thread whose last durable event is `session.waiting` is finished: nothing is
+ * running in it and nothing ever will until someone sends a message. Asking eve
+ * to resume it means following a stream with nothing left to say, which ends only
+ * at the client's fifteen-second idle timeout - fifteen seconds during which the
+ * status is `resuming` and the composer refuses every message. So the panel reads
+ * the stream first, hands the events over as the session's starting state, and
+ * asks for a follow only when one is warranted.
+ */
+it("reopens a settled thread with its transcript and no follow at all", async () => {
+  eve.holds([{ type: "message.received" }, { type: "session.waiting" }]);
 
-  expect(eve.resumed).toEqual([{ sessionId: "wrun_A", streamIndex: 0 }]);
+  await openThread(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" />);
+
+  expect(eve.mounted[0]).toEqual({
+    initialEvents: [{ type: "message.received" }, { type: "session.waiting" }],
+    initialSession: { sessionId: "wrun_A", streamIndex: 2 },
+    resume: false,
+  });
+  expect(eve.resumed).toEqual([]);
+  // And the composer is live immediately, rather than after the timeout.
+  expect((composer() as HTMLTextAreaElement).disabled).toBe(false);
 });
 
-it("holds turn-shaped space while a reopened thread replays", async () => {
-  render(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" surface="page" />);
+/** A turn genuinely still in flight is exactly what `resume` is for. */
+it("follows a thread whose last turn is still running", async () => {
+  eve.holds([{ type: "session.waiting" }, { type: "step.started" }]);
+
+  await openThread(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" />);
+
+  expect(eve.resumed).toEqual([{ sessionId: "wrun_A", streamIndex: 2 }]);
+});
+
+/**
+ * An outage while reading the prefix is not an answer about the thread. Falling
+ * back to eve's own resume is slower on a settled thread but never wrong, which
+ * is the direction to be wrong in.
+ */
+it("falls back to eve's own resume when the stream cannot be read", async () => {
+  eve.refuses(new Error("network down"));
+
+  await openThread(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" />);
+
+  expect(eve.mounted[0]).toEqual({
+    initialEvents: [],
+    initialSession: { sessionId: "wrun_A", streamIndex: 0 },
+    resume: true,
+  });
+});
+
+it("holds turn-shaped space while a reopened thread has nothing on screen yet", async () => {
+  await openThread(
+    <AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" surface="page" />,
+  );
 
   await act(async () => {
     eve.setStatus("resuming");
@@ -714,6 +819,33 @@ it("holds turn-shaped space while a reopened thread replays", async () => {
   // history) nor a spinner - the shape of what is about to land.
   expect(screen.queryByRole("heading", { name: "What do you want to remember?" })).toBeNull();
   expect(screen.getByRole("log").getAttribute("aria-busy")).toBe("true");
+});
+
+/**
+ * Replayed messages are the thread. Once any of them are on screen, holding the
+ * skeleton over them because eve is still following a live turn hides a
+ * conversation the reader could already be reading.
+ */
+it("shows the transcript as soon as it has one, even while a turn is still resuming", async () => {
+  await openThread(
+    <AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" surface="page" />,
+  );
+
+  await act(async () => {
+    eve.showTurn(
+      [
+        {
+          id: "turn_0:assistant",
+          role: "assistant",
+          parts: [{ type: "text", text: "Priya Shah works at a bakery.", state: "done" }],
+        },
+      ] as readonly EveMessage[],
+      "resuming",
+    );
+  });
+
+  expect(screen.getByText("Priya Shah works at a bakery.")).toBeDefined();
+  expect(screen.getByRole("log").getAttribute("aria-busy")).toBeNull();
 });
 
 /**
@@ -739,7 +871,7 @@ it("announces a new session with the message that started it", async () => {
 
 it("never announces a thread it was handed, because that row already exists", async () => {
   const started: string[] = [];
-  render(
+  await openThread(
     <AssistantPanel
       initialSessionId="wrun_A"
       onSessionStarted={(sessionId) => started.push(sessionId)}
@@ -759,7 +891,9 @@ it("never announces a thread it was handed, because that row already exists", as
  * the composer must go: one that will refuse every message is worse than none.
  */
 it("closes the composer and offers a way forward when the session has ended", async () => {
-  render(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" surface="page" />);
+  await openThread(
+    <AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" surface="page" />,
+  );
 
   await act(async () => {
     eve.showTurn(
@@ -798,7 +932,9 @@ it("closes the composer and offers a way forward when the session has ended", as
  * user believes they are pending.
  */
 it("keeps queued messages visible, and read-only, when the session ends", async () => {
-  render(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" surface="page" />);
+  await openThread(
+    <AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" surface="page" />,
+  );
 
   await sendMessage("Mara adopted a cat");
   await sendMessage("And she moved to Lisbon");
@@ -826,26 +962,32 @@ it("keeps queued messages visible, and read-only, when the session ends", async 
 });
 
 /**
- * Reopening a thread the mount will not hand back ends it too. Eve retries the
- * 404 for ~30s first, so by the time it arrives the answer is final - and a live
- * composer over a session that can never take a message is the exact thing
- * DESIGN.md §5 rules out.
+ * Reopening a thread the mount will not hand back ends it too. That refusal now
+ * arrives on the pre-read rather than after eve has spent ~30s retrying it, so
+ * the composer is never on screen at all - which is the point, because one over a
+ * session that can never take a message is what DESIGN.md §5 rules out.
  */
-it("closes the composer when a resumed thread's stream is finally refused", async () => {
-  render(<AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" surface="page" />);
+it("closes the composer when a reopened thread's stream is refused", async () => {
+  eve.refuses(
+    Object.assign(new Error("Session not found."), {
+      name: "ClientError",
+      status: 404,
+      body: '{"error":"Session not found.","ok":false}',
+    }),
+  );
 
-  await act(async () => {
-    eve.failWith(
-      Object.assign(new Error("Session not found."), {
-        name: "ClientError",
-        status: 404,
-        body: '{"error":"Session not found.","ok":false}',
-      }),
-    );
+  await openThread(
+    <AssistantPanel initialSessionId="wrun_A" ownerUserId="owner-1" surface="page" />,
+  );
+
+  await waitFor(() => expect(screen.getByText(/This conversation has ended/)).toBeDefined());
+  expect(screen.queryByRole("textbox")).toBeNull();
+  // Nothing to replay and nothing to follow: the stream is closed to us.
+  expect(eve.mounted[0]).toEqual({
+    initialEvents: undefined,
+    initialSession: { sessionId: "wrun_A", streamIndex: 0 },
+    resume: undefined,
   });
-
-  await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
-  expect(screen.getByText(/This conversation has ended/)).toBeDefined();
 });
 
 /** An outage is not an ending: the composer stays, because the next try may work. */
@@ -877,4 +1019,137 @@ it("points the dashboard's Open link at the conversation already under way", asy
       .getByRole("link", { name: "Open this conversation on the Assistant page" })
       .getAttribute("href"),
   ).toBe("/assistant/wrun_new");
+});
+
+/**
+ * The gap this closes: a turn used to say "Thinking…" for half a second, then go
+ * blank for another half second, then say "Working…" - two indicators for one
+ * wait, with nothing between them. There is one indicator now, and the moment the
+ * turn has a message of its own the disclosure carries it. What has to hold is
+ * that they never both say it and never both stop saying it.
+ */
+it("hands the working indicator to the live turn instead of doubling it", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  // A live turn that has not produced a thought or a tool call yet: no reasoning,
+  // no steps, nothing to fold - and still an indicator, because it is working.
+  await act(async () => {
+    eve.showTurn(
+      [
+        { id: "turn_0:user", role: "user", parts: [{ type: "text", text: "What about Priya?" }] },
+        { id: "turn_0:assistant", role: "assistant", parts: [] },
+      ] as readonly EveMessage[],
+      "streaming",
+    );
+  });
+
+  // One indicator, not two. (`Shimmer` stacks a readable base under a decorative
+  // aria-hidden band, so the base layer is what counts the indicators.)
+  expect(screen.getAllByText("Working…", { selector: ".tn-shimmer-base" })).toHaveLength(1);
+  // And it is the turn's own disclosure carrying it, not the standalone line.
+  expect(screen.getByRole("button", { name: "Working…" })).toBeDefined();
+});
+
+/** The word is gone: a turn is working, not thinking, until it says how long it thought. */
+it("never says Thinking", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await sendMessage("Mara adopted a cat");
+  await act(async () => {
+    eve.showTurn(
+      [{ id: "turn_0:assistant", role: "assistant", parts: [] }] as readonly EveMessage[],
+      "streaming",
+    );
+  });
+
+  expect(document.body.textContent).not.toMatch(/Thinking/);
+});
+
+/** A turn that is over and did nothing worth folding has no disclosure at all. */
+it("shows no disclosure for a settled turn that only answered", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await act(async () => {
+    eve.showTurn(
+      [
+        {
+          id: "turn_0:assistant",
+          role: "assistant",
+          parts: [{ type: "text", text: "Priya Shah works at a bakery.", state: "done" }],
+        },
+      ] as readonly EveMessage[],
+      "ready",
+    );
+  });
+
+  expect(screen.queryByRole("button", { name: /Worked|Thought|Working/ })).toBeNull();
+});
+
+/**
+ * The disclosure auto-opens while a turn streams, which is right - and used to be
+ * impossible to undo, because the shell's auto-open effect re-ran on every commit
+ * and reopened it the instant the reader closed it. A reader who wants a noisy
+ * turn out of the way gets it out of the way, and it stays out of the way for the
+ * rest of the stream.
+ */
+it("lets the reader collapse the activity while the turn is still streaming", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await act(async () => {
+    eve.showTurn(turnWithReasoningAndLookup, "streaming");
+  });
+
+  // Auto-opened: the reasoning is on screen without anyone asking.
+  expect(screen.getByText("They want the notebook, not the web.")).toBeDefined();
+
+  await userEvent.click(screen.getByRole("button", { name: "Working…" }));
+  await waitFor(() =>
+    expect(screen.queryByText("They want the notebook, not the web.")).toBeNull(),
+  );
+
+  // More of the same turn arrives; the reader's decision survives it.
+  await act(async () => {
+    eve.showTurn(turnWithReasoningAndLookup, "streaming");
+  });
+
+  expect(screen.queryByText("They want the notebook, not the web.")).toBeNull();
+});
+
+/**
+ * The model calls `suggest_next_steps` to write the follow-up chips. It is the
+ * app talking to itself, so it must not appear as a step in the activity, as a
+ * card, or as a line - the reader sees only the chips it produced.
+ */
+const turnWithProposedFollowUps: readonly EveMessage[] = [
+  { id: "turn_1:user", role: "user", parts: [{ type: "text", text: "What about Priya?" }] },
+  {
+    id: "turn_1:assistant",
+    role: "assistant",
+    parts: [
+      { type: "text", text: "Priya Shah works at a bakery.", state: "done", stepIndex: 0 },
+      {
+        type: "dynamic-tool",
+        toolCallId: "call-1",
+        toolName: "suggest_next_steps",
+        state: "output-available",
+        input: {},
+        output: { suggestions: ["Tell me about her sister", "What about Priya?"] },
+      },
+    ],
+  },
+];
+
+it("offers the model's own follow-ups without ever naming the tool that wrote them", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  await act(async () => {
+    eve.showTurn(turnWithProposedFollowUps, "ready");
+  });
+
+  expect(screen.getByRole("button", { name: "Tell me about her sister" })).toBeDefined();
+  // Already asked this turn - offering it back is the conversation forgetting itself.
+  expect(screen.queryByRole("button", { name: "What about Priya?" })).toBeNull();
+  // The call left no trace: no activity disclosure, no line, no card.
+  expect(screen.queryByRole("button", { name: /Worked|Thought/ })).toBeNull();
+  expect(document.body.textContent).not.toMatch(/suggest.next.steps/i);
 });

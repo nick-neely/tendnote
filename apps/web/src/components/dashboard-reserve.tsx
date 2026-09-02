@@ -4,8 +4,6 @@ import {
   AssistantEmptyCapture,
   AssistantPanelHeader,
   AssistantPanelShell,
-  AssistantPrivateChip,
-  assistantChipClass,
 } from "@/components/assistant-panel-chrome";
 import { cn } from "@/lib/utils";
 
@@ -50,23 +48,10 @@ export function DashboardAssistantReserve() {
   return (
     <AssistantPanelShell aria-busy="true" aria-label="Loading the assistant">
       <AssistantPanelHeader
-        actions={
-          <>
-            <AssistantPrivateChip />
-            {/* The live header's remaining affordances — the dev-only Debug toggle
-                and the "Open" link — are geometry, not content, so they reserve as
-                blank space of the same width rather than as controls that cannot
-                yet be pressed. The Debug toggle is absent from production builds,
-                so its reserve has to be too or the swap would shift the header. */}
-            {process.env.NODE_ENV === "production" ? null : (
-              <span aria-hidden className={cn(assistantChipClass, "bg-secondary text-transparent")}>
-                <span className="size-3" />
-                Debug
-              </span>
-            )}
-            <span aria-hidden className="size-7" />
-          </>
-        }
+        // The header's one affordance is the "Open" link, which is geometry
+        // rather than content: it reserves as blank space of the same width
+        // rather than as a control that cannot yet be pressed.
+        actions={<span aria-hidden className="size-7" />}
         subtitle={ASSISTANT_UNSCOPED_SUBTITLE}
       />
       <AssistantEmptyCapture />

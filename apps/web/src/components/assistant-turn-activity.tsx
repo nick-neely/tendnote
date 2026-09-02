@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChainOfThought, ChainOfThoughtStep } from "@/components/ai-elements/chain-of-thought";
 import { Reasoning, ReasoningTrigger, useReasoning } from "@/components/ai-elements/reasoning";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
@@ -108,8 +108,17 @@ function secondsLabel(seconds: number): string {
  * The trigger's own copy, read from the disclosure's context so the elapsed time
  * is whichever of the two sources is available: the durable stream timing the
  * panel passes down, or the component's own clock when the stream did not say.
+ *
+ * While the turn is live this says exactly what the pre-message status line says,
+ * in exactly the same shapes, because the two are one indicator: the line covers
+ * the moment before the turn has a message, this covers everything after, and a
+ * reader must not be able to tell where one became the other.
+ *
+ * `openable` is false for the stretch at the start of a turn when there is
+ * genuinely nothing folded away yet. The chevron is what promises something is
+ * under there, so it waits until something is.
  */
-function ActivityTriggerLabel({ thought }: { thought: boolean }) {
+function ActivityTriggerLabel({ openable, thought }: { openable: boolean; thought: boolean }) {
   const { duration, isOpen, isStreaming } = useReasoning();
 
   const settled = thought
@@ -130,15 +139,78 @@ function ActivityTriggerLabel({ thought }: { thought: boolean }) {
         )}
       />
       {isStreaming ? <Shimmer>Working…</Shimmer> : <span>{settled}</span>}
-      <ChevronDownIcon
-        aria-hidden
-        className={cn(
-          "size-3.5 shrink-0 transition-transform duration-200 ease-(--motion-ease-out) motion-reduce:transition-none",
-          isOpen ? "rotate-180" : "rotate-0",
-        )}
-      />
+      {openable ? (
+        <ChevronDownIcon
+          aria-hidden
+          className={cn(
+            "size-3.5 shrink-0 transition-transform duration-200 ease-(--motion-ease-out) motion-reduce:transition-none",
+            isOpen ? "rotate-180" : "rotate-0",
+          )}
+        />
+      ) : null}
     </>
   );
+}
+
+/**
+ * The disclosure's open state, owned here rather than by the registry shell.
+ *
+ * AI Elements' `Reasoning` opens itself while a turn streams, and its effect is
+ * level-triggered rather than edge-triggered - it re-runs on every `isOpen`
+ * change, so a reader who collapsed a noisy turn had it reopened on the next
+ * commit and could not close it at all until the stream ended. Passing
+ * `defaultOpen={false}` switches that behavior off (the shell reads it as "the
+ * caller has an opinion") and `open`/`onOpenChange` hand the state to us, so the
+ * one edge that should open it is the one we act on: the moment work *starts*.
+ *
+ * The shell keeps its post-stream auto-close, which is the behavior worth having
+ * - a finished turn folds itself away about a second later - but it arrives here
+ * as an ordinary change request and is refused once the reader has touched the
+ * disclosure during this stretch of work. Their toggle is the whole point; taking
+ * it back a second after the stream ends would make it look like it never landed.
+ */
+function useActivityDisclosure(streaming: boolean): {
+  onOpenChange: (open: boolean) => void;
+  onTriggerClick: () => void;
+  open: boolean;
+} {
+  const [open, setOpen] = useState(streaming);
+  const wasStreaming = useRef(streaming);
+  // Set by the trigger's own click, which Radix composes ahead of its toggle, so
+  // by the time the change arrives we know whether a person asked for it.
+  const clicking = useRef(false);
+  const readerDecided = useRef(false);
+
+  useEffect(() => {
+    const previous = wasStreaming.current;
+    wasStreaming.current = streaming;
+    // A new stretch of work: nobody has had an opinion about *this* one yet.
+    if (streaming && !previous) {
+      readerDecided.current = false;
+      setOpen(true);
+    }
+  }, [streaming]);
+
+  const onTriggerClick = useCallback(() => {
+    clicking.current = true;
+  }, []);
+
+  const onOpenChange = useCallback((next: boolean) => {
+    if (clicking.current) {
+      clicking.current = false;
+      readerDecided.current = true;
+      setOpen(next);
+      return;
+    }
+    // Not the reader: the shell's own auto-close, one second after the stream
+    // ended. It is right unless the reader has already said otherwise.
+    if (readerDecided.current) {
+      return;
+    }
+    setOpen(next);
+  }, []);
+
+  return { onOpenChange, onTriggerClick, open };
 }
 
 /**
@@ -146,6 +218,15 @@ function ActivityTriggerLabel({ thought }: { thought: boolean }) {
  * answered. `streaming` is the *turn's* liveness rather than any one part's: a
  * disclosure that reopened and reclosed between every tool call would be four
  * animations where the turn deserves one.
+ *
+ * A live turn always renders, even before it has produced a thought or a tool
+ * call. That gap - between the stream opening and the first part landing - used
+ * to be blank, because this returned `null` until there was something to fold and
+ * the pre-message status line had already given up by then. So the reader watched
+ * their message land, saw "Working…" for half a second, then saw nothing at all
+ * for another half second before the disclosure appeared saying the same word.
+ * The indicator is continuous or it is not an indicator: the shell exists from
+ * the moment the turn is live, and it simply has nothing inside it for a beat.
  */
 export function AssistantTurnActivity({
   durationSeconds,
@@ -162,19 +243,38 @@ export function AssistantTurnActivity({
   const reasoningText = reasoning?.text ?? "";
   const reasoningRef = useRef<HTMLDivElement>(null);
   useStickToBottom(reasoningRef, streaming, reasoningText);
+  const { onOpenChange, onTriggerClick, open } = useActivityDisclosure(streaming);
 
-  if (!reasoning && steps.length === 0) {
+  // Whether there is anything to fold. A live turn keeps its trigger either way;
+  // a settled one with nothing in it was never activity at all.
+  const hasBody = Boolean(reasoning?.text) || steps.length > 0;
+
+  if (!streaming && !reasoning && steps.length === 0) {
     return null;
   }
 
   return (
-    <Reasoning className="mb-0" duration={durationSeconds ?? undefined} isStreaming={streaming}>
-      <ReasoningTrigger className="w-fit gap-1.5 text-[length:var(--text-small)] leading-[var(--text-small-line)]">
-        <ActivityTriggerLabel thought={thought} />
+    <Reasoning
+      className="mb-0"
+      defaultOpen={false}
+      duration={durationSeconds ?? undefined}
+      isStreaming={streaming}
+      onOpenChange={onOpenChange}
+      open={open}
+    >
+      <ReasoningTrigger
+        className="w-fit gap-1.5 text-[length:var(--text-small)] leading-[var(--text-small-line)]"
+        onClick={onTriggerClick}
+      >
+        <ActivityTriggerLabel openable={hasBody} thought={thought} />
       </ReasoningTrigger>
       <CollapsibleContent
         className={cn(
-          "mt-2 flex flex-col gap-3 border-border border-l pl-3 text-[length:var(--text-small)] text-muted-foreground",
+          "flex flex-col gap-3 text-[length:var(--text-small)] text-muted-foreground",
+          // The rule and the indent belong to content, not to the empty beat
+          // before it: a bordered gap under "Working…" would read as a container
+          // that failed to fill rather than as work about to be described.
+          hasBody && "mt-2 border-border border-l pl-3",
           "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
         )}
       >

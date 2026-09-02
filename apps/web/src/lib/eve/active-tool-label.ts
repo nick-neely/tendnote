@@ -19,6 +19,12 @@ import { humanizeToolName } from "./tool-name";
  * nobody has written copy for yet.
  */
 const TOOL_LABELS: Record<string, readonly [active: string, done: string]> = {
+  // Eve's own namespaced built-in, which loads the instructions for the kind of
+  // task at hand. It reached the transcript as "Eve:load-skill" — the framework
+  // naming itself to a reader, which the product never does — and the copy says
+  // what it is *for* rather than what it loads, because the reader has no model
+  // of a "skill" and does not need one.
+  "eve:load-skill": ["Getting up to speed…", "Got up to speed"],
   web_search: ["Searching the web…", "Searched the web"],
   web_fetch: ["Looking that up on the web…", "Read a web page"],
   search_people: ["Searching people…", "Searched people"],
@@ -115,6 +121,12 @@ const TOOL_LABELS: Record<string, readonly [active: string, done: string]> = {
   undo_saved_item_capture: ["Undoing that…", "Undid that"],
   list_saved_items: ["Checking what you saved…", "Checked what you saved"],
   list_message_drafts: ["Checking your drafts…", "Checked your drafts"],
+  // Never rendered: `suggest_next_steps` is a silent UI tool, filtered out of the
+  // turn's activity, cards, and lines by `message-views.ts`. The entry exists so
+  // the table stays exhaustive over the agent's authoring surface — if the tool
+  // ever stopped being silent, the fallback would put "suggest next steps…" in
+  // front of a reader, and the test that walks `agent/tools` is what catches that.
+  suggest_next_steps: ["Thinking about what's next…", "Thought about what's next"],
   search_gift_plans: ["Checking your gift plans…", "Checked your gift plans"],
   get_gift_plan: ["Opening the gift plan…", "Opened the gift plan"],
   add_gift_idea: ["Adding the idea to the plan…", "Added the idea to the plan"],

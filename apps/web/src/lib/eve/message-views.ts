@@ -31,6 +31,23 @@ function isTextPart(part: EveMessagePart): part is Extract<EveMessagePart, { typ
   return part.type === "text";
 }
 
+/**
+ * Tools the model calls to steer the interface rather than to do anything the
+ * reader asked for. Their whole output is chrome — `suggest_next_steps` is the
+ * follow-up chips and nothing else — so surfacing the call as an activity step, a
+ * result card, or a line would narrate the app talking to itself. They are
+ * filtered at the projection seam rather than at each renderer, so a silent tool
+ * is silent everywhere by construction.
+ */
+const SILENT_TOOL_NAMES: ReadonlySet<string> = new Set(["suggest_next_steps"]);
+
+/** The tool whose result the model uses to propose the turn's follow-up chips. */
+const SUGGEST_NEXT_STEPS_TOOL = "suggest_next_steps";
+
+function isRenderedToolPart(part: EveMessagePart): boolean {
+  return part.type !== "dynamic-tool" || !SILENT_TOOL_NAMES.has(part.toolName);
+}
+
 /** Only terminal `output-available` tool parts carry a persisted payload. */
 function isCompletedToolPart(
   part: EveMessagePart,
@@ -110,11 +127,50 @@ export function messageToolViews(message: EveMessage): AssistantToolEntry[] {
     return [];
   }
 
-  return message.parts.filter(isCompletedToolPart).map((part) => ({
-    toolCallId: part.toolCallId,
-    toolName: part.toolName,
-    view: toAssistantToolView({ toolName: part.toolName, output: part.output }),
-  }));
+  return message.parts
+    .filter(isRenderedToolPart)
+    .filter(isCompletedToolPart)
+    .map((part) => ({
+      toolCallId: part.toolCallId,
+      toolName: part.toolName,
+      view: toAssistantToolView({ toolName: part.toolName, output: part.output }),
+    }));
+}
+
+/**
+ * The follow-up prompts the model itself proposed for this turn, or `null` when
+ * it proposed none.
+ *
+ * The distinction matters: `null` means the tool never ran, and the app falls
+ * back to what it can derive from the turn's results; an *empty* array means the
+ * model looked at its own answer and decided there was no useful next step, which
+ * is an answer, not an absence. Only the last call counts — a turn that revised
+ * its mind mid-stream meant the revision.
+ */
+export function messageProposedFollowUps(message: EveMessage): readonly string[] | null {
+  if (message.role !== "assistant") {
+    return null;
+  }
+
+  let proposed: readonly string[] | null = null;
+  for (const part of message.parts) {
+    if (
+      part.type !== "dynamic-tool" ||
+      part.toolName !== SUGGEST_NEXT_STEPS_TOOL ||
+      part.state !== "output-available"
+    ) {
+      continue;
+    }
+    const output = part.output;
+    if (typeof output !== "object" || output === null) {
+      continue;
+    }
+    const suggestions = (output as { suggestions?: unknown }).suggestions;
+    if (Array.isArray(suggestions)) {
+      proposed = suggestions.filter((item): item is string => typeof item === "string");
+    }
+  }
+  return proposed;
 }
 
 /** One in-flight tool call, surfaced as a transient "working" shimmer line. */
@@ -157,10 +213,13 @@ export function messageActiveToolViews(
     return [];
   }
 
-  return message.parts.filter(isActiveToolPart).map((part) => ({
-    toolCallId: part.toolCallId,
-    label: activeToolLabel(part.toolName),
-  }));
+  return message.parts
+    .filter(isRenderedToolPart)
+    .filter(isActiveToolPart)
+    .map((part) => ({
+      toolCallId: part.toolCallId,
+      label: activeToolLabel(part.toolName),
+    }));
 }
 
 /**
@@ -280,7 +339,9 @@ export function messageTurnUnits(message: EveMessage, turnInFlight: boolean): As
   const results: { at: number; entry: AssistantToolEntry }[] = [];
 
   message.parts.forEach((part, at) => {
-    if (part.type !== "dynamic-tool") {
+    // A silent tool contributes no unit in any state: not a working line while it
+    // runs, not a card when it lands.
+    if (part.type !== "dynamic-tool" || !isRenderedToolPart(part)) {
       return;
     }
 

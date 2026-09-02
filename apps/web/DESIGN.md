@@ -277,10 +277,16 @@ header (never a card inside a sheet).
    capped to a scrolling five-line viewport with a fade at the top so the answer
    is not pushed off the panel; the cap comes off once the turn settles. When
    done the trigger reads "Thought for Ns" or "Worked for Ns", with N derived
-   from the durable stream timestamps so it survives reload and resume. The app
-   never prints a raw tool name outside the dev-only debug trace — the model's
-   own reasoning text may name one, which is the model talking, not the chrome —
-   and line-tier tool results live only here, so nothing trails under the answer.
+   from the durable stream timestamps so it survives reload and resume. **One
+   continuous indicator:** "Working…" appears once, from the moment the turn is
+   live to the moment it has something to say — as a plain line until the turn has
+   a message of its own, then as this trigger, same dot, same word, no gap and no
+   second copy. The word "Thinking" appears nowhere. The disclosure opens itself
+   when work starts and folds itself away a second after it ends, but the reader's
+   toggle always wins: collapse a noisy turn mid-stream and it stays collapsed.
+   The app never prints a raw tool name — the model's own reasoning text may name
+   one, which is the model talking, not the chrome — and line-tier tool results
+   live only here, so nothing trails under the answer.
 2. **Answer** — markdown prose, one block per model step.
 3. **Result cards** — the trust-weighted cards (saved memory = sage/confirmed,
    logged context = neutral, tentative suggestion = clay) and the interactive
@@ -300,8 +306,12 @@ header (never a card inside a sheet).
    visible on coarse pointers): Copy, Retry. User turns get Edit, which loads the
    text back into the composer. No thumbs, share, or download.
 6. **Follow-up suggestions** — at most three chips under the latest completed
-   turn, derived by the app from what the turn produced (ADR 0027), gone as soon
-   as the user sends anything.
+   turn, gone as soon as the user sends anything. The model proposes them where it
+   has an opinion (it has just read its own answer); where it says nothing the app
+   derives them from what the turn produced (ADR 0027). Either way a chip is only
+   ever a message sent back into the same conversation, and anything the reader
+   has already said in this thread — or one of the starters that opened it — is
+   struck out.
 
 Authorization challenges (a connection needing sign-in) render as a tentative
 card with the sign-in link and code; file parts render as attachment thumbnails.

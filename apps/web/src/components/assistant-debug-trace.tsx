@@ -310,6 +310,10 @@ function RawEvents({ events }: { events: readonly unknown[] }) {
   );
 }
 
+/**
+ * @deprecated No longer mounted anywhere: the toggle that opened it has been
+ * taken out of the Assistant's headers. Kept only until the last import is gone.
+ */
 export function AssistantDebugTrace({
   messages,
   events,

@@ -79,5 +79,7 @@ it("reserves the assistant with the panel's own copy, not a generic skeleton", (
   expect(screen.getByRole("heading", { name: "Assistant" })).toBeDefined();
   expect(screen.getByText(/nothing is saved without your review/i)).toBeDefined();
   expect(screen.getByText("What do you want to remember?")).toBeDefined();
-  expect(screen.getByText("Private")).toBeDefined();
+  // The header's reassurance is the subtitle and nothing else: the "Private" chip
+  // beside it said the same thing a second time and is gone from both.
+  expect(screen.queryByText("Private")).toBeNull();
 });
