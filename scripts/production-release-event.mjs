@@ -18,81 +18,88 @@ const VERCEL_PROJECT_ID_PATTERN = /^prj_[A-Za-z0-9]+$/;
  * @returns {{ kind: "release" | "ignore" | "invalid"; message: string }}
  */
 export function classifyProductionReleaseEvent(input) {
-  if (!input.environment) {
-    return {
-      kind: "invalid",
-      message: "Malformed Vercel deployment event: missing client_payload.environment.",
-    };
+  return (
+    classifyEnvironment(input.environment) ??
+    classifyRef(input.ref) ??
+    classifyState(input.state) ??
+    classifyProject(input.projectId, input.expectedProjectId)
+  );
+}
+
+function invalidEvent(message) {
+  return { kind: "invalid", message };
+}
+
+function ignoredEvent(message) {
+  return { kind: "ignore", message };
+}
+
+function classifyEnvironment(environment) {
+  if (!environment) {
+    return invalidEvent("Malformed Vercel deployment event: missing client_payload.environment.");
   }
 
-  if (input.environment !== "production") {
-    return {
-      kind: "ignore",
-      message: `Ignoring ${input.environment} deployment; production migrations only run for production.`,
-    };
+  if (environment !== "production") {
+    return ignoredEvent(
+      `Ignoring ${environment} deployment; production migrations only run for production.`,
+    );
   }
 
-  if (!input.ref) {
-    return {
-      kind: "invalid",
-      message: "Malformed Vercel deployment event: missing client_payload.git.ref.",
-    };
+  return null;
+}
+
+function classifyRef(ref) {
+  if (!ref) {
+    return invalidEvent("Malformed Vercel deployment event: missing client_payload.git.ref.");
   }
 
-  if (input.ref !== "main") {
-    return {
-      kind: "ignore",
-      message: `Ignoring deployment from ${input.ref}; production migrations only run for main.`,
-    };
+  if (ref !== "main") {
+    return ignoredEvent(
+      `Ignoring deployment from ${ref}; production migrations only run for main.`,
+    );
   }
 
-  if (!input.state) {
-    return {
-      kind: "invalid",
-      message: "Malformed Vercel deployment event: missing client_payload.state.type.",
-    };
+  return null;
+}
+
+function classifyState(state) {
+  if (!state) {
+    return invalidEvent("Malformed Vercel deployment event: missing client_payload.state.type.");
   }
 
-  if (input.state !== "ready") {
-    return {
-      kind: "ignore",
-      message: `Ignoring deployment in ${input.state} state; migrations wait for ready.`,
-    };
+  if (state !== "ready") {
+    return ignoredEvent(`Ignoring deployment in ${state} state; migrations wait for ready.`);
   }
 
-  if (!input.projectId) {
-    return {
-      kind: "invalid",
-      message: "Malformed Vercel deployment event: missing client_payload.project.id.",
-    };
+  return null;
+}
+
+function classifyProject(projectId, expectedProjectId) {
+  if (!projectId) {
+    return invalidEvent("Malformed Vercel deployment event: missing client_payload.project.id.");
   }
 
-  if (!input.expectedProjectId) {
-    return {
-      kind: "invalid",
-      message:
-        "Production migration gate is not configured: set the repository variable VERCEL_PROJECT_ID to this Vercel project's project id.",
-    };
+  if (!expectedProjectId) {
+    return invalidEvent(
+      "Production migration gate is not configured: set the repository variable VERCEL_PROJECT_ID to this Vercel project's project id.",
+    );
   }
 
-  if (!VERCEL_PROJECT_ID_PATTERN.test(input.expectedProjectId)) {
-    return {
-      kind: "invalid",
-      message:
-        "Production migration gate is misconfigured: VERCEL_PROJECT_ID must start with prj_.",
-    };
+  if (!VERCEL_PROJECT_ID_PATTERN.test(expectedProjectId)) {
+    return invalidEvent(
+      "Production migration gate is misconfigured: VERCEL_PROJECT_ID must start with prj_.",
+    );
   }
 
-  if (input.projectId !== input.expectedProjectId) {
-    return {
-      kind: "invalid",
-      message: `Production migration gate project mismatch: event project ${input.projectId} does not match configured project ${input.expectedProjectId}.`,
-    };
+  if (projectId !== expectedProjectId) {
+    return invalidEvent(
+      `Production migration gate project mismatch: event project ${projectId} does not match configured project ${expectedProjectId}.`,
+    );
   }
 
   return {
     kind: "release",
-    message: `Running production migrations for Vercel project ${input.projectId}.`,
+    message: `Running production migrations for Vercel project ${projectId}.`,
   };
 }
 
