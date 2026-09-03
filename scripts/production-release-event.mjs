@@ -18,19 +18,10 @@ const VERCEL_PROJECT_ID_PATTERN = /^prj_[A-Za-z0-9]+$/;
  * @returns {{ kind: "release" | "ignore" | "invalid"; message: string }}
  */
 export function classifyProductionReleaseEvent(input) {
-  const missing = Object.entries({
-    "client_payload.environment": input.environment,
-    "client_payload.project.id": input.projectId,
-    "client_payload.git.ref": input.ref,
-    "client_payload.state.type": input.state,
-  })
-    .filter(([, value]) => !value)
-    .map(([name]) => name);
-
-  if (missing.length > 0) {
+  if (!input.environment) {
     return {
       kind: "invalid",
-      message: `Malformed Vercel deployment event: missing ${missing.join(", ")}.`,
+      message: "Malformed Vercel deployment event: missing client_payload.environment.",
     };
   }
 
@@ -41,6 +32,13 @@ export function classifyProductionReleaseEvent(input) {
     };
   }
 
+  if (!input.ref) {
+    return {
+      kind: "invalid",
+      message: "Malformed Vercel deployment event: missing client_payload.git.ref.",
+    };
+  }
+
   if (input.ref !== "main") {
     return {
       kind: "ignore",
@@ -48,10 +46,24 @@ export function classifyProductionReleaseEvent(input) {
     };
   }
 
+  if (!input.state) {
+    return {
+      kind: "invalid",
+      message: "Malformed Vercel deployment event: missing client_payload.state.type.",
+    };
+  }
+
   if (input.state !== "ready") {
     return {
       kind: "ignore",
       message: `Ignoring deployment in ${input.state} state; migrations wait for ready.`,
+    };
+  }
+
+  if (!input.projectId) {
+    return {
+      kind: "invalid",
+      message: "Malformed Vercel deployment event: missing client_payload.project.id.",
     };
   }
 

@@ -60,6 +60,26 @@ describe("production release event classifier", () => {
     });
   });
 
+  it.each([
+    [
+      "incomplete preview deployment",
+      { environment: "preview", projectId: undefined, ref: undefined, state: undefined },
+    ],
+    [
+      "incomplete non-main deployment",
+      {
+        environment: "production",
+        projectId: undefined,
+        ref: "feature/assistant",
+        state: undefined,
+      },
+    ],
+  ])("ignores an %s before inspecting target-only fields", (_name, change) => {
+    expect(classifyProductionReleaseEvent({ ...baseEvent, ...change })).toMatchObject({
+      kind: "ignore",
+    });
+  });
+
   it("fails a target-like event for a different Vercel project", () => {
     // Keep the deployment revision identical: project scoping must reject the
     // event before any commit-status path can treat it as this deployment.
@@ -72,6 +92,12 @@ describe("production release event classifier", () => {
 
   it("fails when the dispatch payload is incomplete", () => {
     expect(classifyProductionReleaseEvent({ ...baseEvent, projectId: undefined })).toMatchObject({
+      kind: "invalid",
+    });
+  });
+
+  it("fails when a production event omits its branch", () => {
+    expect(classifyProductionReleaseEvent({ ...baseEvent, ref: undefined })).toMatchObject({
       kind: "invalid",
     });
   });
