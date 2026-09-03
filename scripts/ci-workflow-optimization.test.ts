@@ -310,21 +310,47 @@ describe("CI workflow optimization contract", () => {
   it("releases ready Vercel deployments through an event-driven migration check", () => {
     const workflow = read(".github/workflows/production-migrations.yml");
     const vercel = JSON.parse(read("apps/web/vercel.json"));
+    const validation = jobBlock(workflow, "validate");
+    const release = jobBlock(workflow, "release");
 
     expect(workflow).not.toContain("uses: ./.github/workflows/reusable-verify.yml");
     expect(workflow).toContain("repository_dispatch:");
     expect(workflow).toContain("- vercel.deployment.ready");
+    expect(jobIds(workflow)).toEqual(["validate", "report_invalid", "release"]);
+    expect(validation).toContain("name: Validate production release event");
+    expect(validation).toContain("runner=light");
+    expect(validation).toContain("uses: runs-on/action@");
+    expect(validation).not.toMatch(/^ {4}if:/m);
+    expect(validation).toContain("id: validate");
+    expect(validation).toContain("run: node scripts/production-release-event.mjs");
+    expect(validation).toContain("VERCEL_EXPECTED_PROJECT_ID: $" + "{{ vars.VERCEL_PROJECT_ID }}");
+    const invalid = jobBlock(workflow, "report_invalid");
+    expect(invalid).toContain("needs: validate");
+    expect(invalid).toContain("always() && needs.validate.result == 'failure'");
+    expect(invalid).not.toContain("vercel/repository-dispatch/actions/status@");
+    expect(invalid).toContain("keys the commit");
+    expect(invalid).toContain("exit 1");
+    expect(release).toContain("needs: validate");
+    expect(release).toContain("if: needs.validate.outputs.should_release == 'true'");
     expect(workflow).toContain("actions: read");
     expect(workflow).toContain("statuses: write");
     // Pinned to a full commit SHA (with a `# v1` comment); assert the SHA shape so
     // a revert to a mutable `@v1` tag still fails this contract.
     expect(workflow).toMatch(/vercel\/repository-dispatch\/actions\/status@[0-9a-f]{40}\b/);
     expect(workflow).toMatch(/vercel\/repository-dispatch\/actions\/checkout@[0-9a-f]{40}\b/);
-    expect(workflow).toContain("github.event.client_payload.environment == 'production'");
-    expect(workflow).toContain("github.event.client_payload.project.id == vars.VERCEL_PROJECT_ID");
-    expect(workflow).not.toMatch(/github\.event\.client_payload\.project\.id\s*==\s*'prj_/);
-    expect(workflow).toContain("github.event.client_payload.git.ref == 'main'");
-    expect(workflow).toContain("github.event.client_payload.state.type == 'ready'");
+    expect(workflow).toContain(
+      "VERCEL_EVENT_ENVIRONMENT: $" + "{{ github.event.client_payload.environment }}",
+    );
+    expect(workflow).toContain(
+      "VERCEL_EVENT_PROJECT_ID: $" + "{{ github.event.client_payload.project.id }}",
+    );
+    expect(workflow).toContain("VERCEL_EVENT_REF: $" + "{{ github.event.client_payload.git.ref }}");
+    expect(workflow).toContain(
+      "VERCEL_EVENT_STATE: $" + "{{ github.event.client_payload.state.type }}",
+    );
+    expect(read("scripts/production-release-event.mjs")).toContain(
+      "Production migration gate is not configured",
+    );
     expect(workflow).toContain("pnpm install --frozen-lockfile --filter @tendnote/db...");
     expect(workflow).toContain("pnpm db:migrate");
     expect(workflow).not.toContain("git diff --quiet");
