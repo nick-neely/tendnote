@@ -327,7 +327,8 @@ describe("CI workflow optimization contract", () => {
     const invalid = jobBlock(workflow, "report_invalid");
     expect(invalid).toContain("needs: validate");
     expect(invalid).toContain("always() && needs.validate.result == 'failure'");
-    expect(invalid).toContain("uses: vercel/repository-dispatch/actions/status@");
+    expect(invalid).not.toContain("vercel/repository-dispatch/actions/status@");
+    expect(invalid).toContain("keys the commit");
     expect(invalid).toContain("exit 1");
     expect(release).toContain("needs: validate");
     expect(release).toContain("if: needs.validate.outputs.should_release == 'true'");

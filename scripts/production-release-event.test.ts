@@ -61,6 +61,8 @@ describe("production release event classifier", () => {
   });
 
   it("fails a target-like event for a different Vercel project", () => {
+    // Keep the deployment revision identical: project scoping must reject the
+    // event before any commit-status path can treat it as this deployment.
     expect(
       classifyProductionReleaseEvent({ ...baseEvent, projectId: otherProjectId }),
     ).toMatchObject({
