@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
-import { TendnoteLogo } from "@/components/tendnote-logo";
+import type { ViewerStandings } from "@/components/app-destinations";
+import { AppSidebar } from "@/components/app-sidebar";
+import { CanvasNavigationRail } from "@/components/canvas-navigation-rail";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 
 /**
@@ -19,10 +20,11 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
  *
  * `/assistant` already owns its own provider for the conversation rail, and it
  * is already the one destination that takes the whole window (`data-full-bleed`
- * in `globals.css`). So the shell yields there: the navigation rail is not
- * mounted, the conversation rail is the only rail, and `Cmd+B` has exactly one
- * meaning on every route. The way back is the wordmark, which the header carries
- * on precisely the routes where the rail is not there to carry it.
+ * in `globals.css`). So the shell's provider yields there. What it does not
+ * yield is navigation: the same destinations stay on screen as a fixed icon rail
+ * that is no provider at all (`canvas-navigation-rail`), so `Cmd+B` still has
+ * exactly one meaning on every route and every destination is still one click
+ * away from the Assistant.
  *
  * Which shape a route gets is a `canvas` prop from its layout — the `(canvas)`
  * route group — rather than a pathname read here. `usePathname` is a dynamic
@@ -43,14 +45,14 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 export function AppShellFrame({
   canvas = false,
   children,
-  sidebar,
+  standings,
   tools,
 }: {
   /** This route brings its own rail; the shell mounts no provider. See above. */
   canvas?: boolean;
   children: ReactNode;
-  /** The navigation rail, mounted on every route the shell does not yield. */
-  sidebar: ReactNode;
+  /** The viewer's conditional destinations, unwrapped inside whichever rail. */
+  standings: Promise<ViewerStandings>;
   /** Search and appearance: tools, not destinations, so they sit in the header. */
   tools: ReactNode;
 }) {
@@ -61,17 +63,23 @@ export function AppShellFrame({
   }, []);
 
   if (canvas) {
+    // The same two columns as below, with a rail that cannot fold in place of
+    // the one that can. `min-h-dvh` is what gives the rail the window's height,
+    // the way the provider's own wrapper does for the foldable one.
     return (
-      <>
-        <ShellHeader lead={<WordmarkHome />} tools={tools} />
-        {children}
-      </>
+      <div className="flex min-h-dvh w-full">
+        <CanvasNavigationRail standings={standings} />
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          <ShellHeader tools={tools} />
+          {children}
+        </div>
+      </div>
     );
   }
 
   return (
     <SidebarProvider onOpenChange={setOpen} open={open}>
-      {sidebar}
+      <AppSidebar standings={standings} />
       {/* Not `SidebarInset`: that renders a `<main>`, and the phone shell below
           already renders the one `<main>` every destination paints into. Two
           landmarks, and `main:has(> [data-full-bleed])` matching the outer one,
@@ -97,8 +105,8 @@ const SIDEBAR_COOKIE_NAME = "sidebar_state";
 /**
  * Whether the member left a rail folded, from the cookie the primitive writes.
  *
- * One preference for both rails, deliberately: they are never on screen at the
- * same time, and "I keep the left rail folded" is one habit rather than two.
+ * One preference for both rails, deliberately: they are never both foldable at
+ * once, and "I keep the left rail folded" is one habit rather than two.
  */
 function readFoldedPreference(): boolean {
   return document.cookie.split("; ").some((entry) => entry === `${SIDEBAR_COOKIE_NAME}=false`);
@@ -109,8 +117,12 @@ function readFoldedPreference(): boolean {
  *
  * Its height is load-bearing — the Assistant sizes its non-scrolling canvas
  * against `3.5rem` plus this border — so a change here is a change there.
+ *
+ * There is no lead on a canvas route, because there is no fold there and the
+ * wordmark it used to carry is back at the head of the rail beside it, which is
+ * where the wordmark is on every other route too.
  */
-function ShellHeader({ lead, tools }: { lead: ReactNode; tools: ReactNode }) {
+function ShellHeader({ lead, tools }: { lead?: ReactNode; tools: ReactNode }) {
   return (
     <header className="sticky top-0 z-10 hidden border-b bg-background/95 backdrop-blur lg:block">
       <div className="flex h-14 items-center gap-2 px-4 sm:px-6">
@@ -118,16 +130,5 @@ function ShellHeader({ lead, tools }: { lead: ReactNode; tools: ReactNode }) {
         <div className="flex flex-1 items-center justify-end gap-1">{tools}</div>
       </div>
     </header>
-  );
-}
-
-function WordmarkHome() {
-  return (
-    <Link
-      className="flex w-fit items-center rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-      href="/"
-    >
-      <TendnoteLogo size="header" />
-    </Link>
   );
 }

@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { renderInBrowser } from "@/test/browser";
 import { AppShell } from "./app-shell";
+import { AssistantConversationRail } from "./assistant-conversation-rail";
+import { SidebarProvider } from "./ui/sidebar";
+import { TooltipProvider } from "./ui/tooltip";
 
 /**
  * The bleed escape hatches, against the router's back/forward cache.
@@ -100,6 +103,53 @@ describe("the shell's measure across a hidden segment", () => {
     // Out of the measure's padding, and not one pixel past the rail.
     expect(bled.left).toBeLessThan(measure.left + 24);
     expect(bled.left).toBeGreaterThanOrEqual(railEdge);
+  });
+
+  /**
+   * The canvas shell (ADR 0239): the navigation rail that cannot fold, beside
+   * the rail the route brings with it. The conversation rail is `position:
+   * fixed` against the window, so nothing about the flow moves it — it is told
+   * where the navigation rail ends (`--tn-canvas-rail`), and if that ever stops
+   * being true it slides underneath rather than beside, silently. The narrowest
+   * desktop is where two rails and a transcript are tightest, so it is the width
+   * worth pinning.
+   */
+  it("stands the conversation rail beside the canvas navigation rail, not under it", async () => {
+    await page.viewport(1280, 900);
+    const rendered = await renderInBrowser(
+      <AppShell canvas ownerUserId="owner-1" searchHandler={vi.fn()}>
+        {/* The root layout's, which the Assistant's rail rows expect. */}
+        <TooltipProvider>
+          <SidebarProvider data-full-bleed>
+            <AssistantConversationRail
+              archived={[]}
+              conversations={[]}
+              currentSessionId={null}
+              now={new Date()}
+              onArchive={vi.fn()}
+              onNewConversation={vi.fn()}
+              onRename={vi.fn()}
+              onUnarchive={vi.fn()}
+            />
+            <div className="flex-1">a transcript</div>
+          </SidebarProvider>
+        </TooltipProvider>
+      </AppShell>,
+    );
+    cleanups.push(rendered.unmount);
+
+    const navigationRail = rendered.container.querySelector(
+      'nav[aria-label="Primary"]',
+    )?.parentElement;
+    const conversationRail = rendered.container.querySelector('[data-slot="sidebar-container"]');
+    if (!navigationRail || !conversationRail)
+      throw new Error("the canvas rendered one rail, not two");
+
+    const navigationEdge = navigationRail.getBoundingClientRect().right;
+    expect(navigationEdge).toBeCloseTo(48, 0);
+    expect(conversationRail.getBoundingClientRect().left).toBeCloseTo(navigationEdge, 0);
+    // Both rails and the transcript, inside the window rather than past it.
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(1280);
   });
 
   it("does the same for the phone canvas, whose rule is the same shape inside the narrow query", async () => {

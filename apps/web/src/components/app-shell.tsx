@@ -9,7 +9,6 @@ import {
 import { globalRecallAction } from "@/app/actions/global-recall";
 import { NO_VIEWER_STANDINGS_RESOLVED, type ViewerStandings } from "@/components/app-destinations";
 import { AppShellFrame } from "@/components/app-shell-frame";
-import { AppSidebar } from "@/components/app-sidebar";
 import type { CaptureHandlers, GlobalRecallHandler } from "@/components/mobile-focused-flows";
 import { MobileShell } from "@/components/mobile-shell";
 import { SearchPalette } from "@/components/search-palette";
@@ -39,8 +38,9 @@ export function AppShell({
   viewerStandings = NO_VIEWER_STANDINGS_RESOLVED,
 }: {
   /**
-   * This route brings its own rail, so the shell mounts none (ADR 0239). Set by
-   * the `(canvas)` layout, never guessed from the URL.
+   * This route brings its own rail, so the shell mounts no sidebar provider and
+   * shows its navigation as a fixed icon rail instead (ADR 0239). Set by the
+   * `(canvas)` layout, never guessed from the URL.
    */
   canvas?: boolean;
   captureHandlers?: CaptureHandlers;
@@ -53,7 +53,7 @@ export function AppShell({
     <div className="min-h-dvh overflow-x-clip bg-background text-foreground">
       <AppShellFrame
         canvas={canvas}
-        sidebar={<AppSidebar standings={viewerStandings} />}
+        standings={viewerStandings}
         tools={
           <>
             {/* Search and appearance are tools, not destinations, so they stay

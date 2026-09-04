@@ -173,8 +173,10 @@ product patterns over invented affordances.
   that disappears. The fold is `Cmd/Ctrl+B`, the header control, or the drag
   edge, and it is remembered per device. Above it the header keeps only the fold
   control and the two tools, search and appearance — tools are not destinations.
-  Exactly one sidebar provider is mounted at a time, so `/assistant`, which
-  brings its own rail, does not also carry this one (ADR-0239).
+  Exactly one sidebar provider is mounted at a time (ADR-0239), so on a canvas
+  route that brings its own rail — `/assistant` — this one is present but fixed
+  to icons: same destinations, same sage on the current one, same labels as
+  tooltips, and no fold, because the fold is what the second provider would be.
 - **Phone** (below `lg`): unchanged, and the rail is not rendered at all. The
   five-slot bottom bar plus the full-screen Menu dialog own navigation there.
 - **Dashboard**: two columns on desktop — the assistant (capture/recall chat) as
@@ -186,10 +188,11 @@ product patterns over invented affordances.
 - **Assistant page** (`/assistant`, `/assistant/[sessionId]`): the one place the
   assistant is a destination, and the one route that opts out of the shell's
   1280px measure — it declares `data-full-bleed` (`globals.css`) so the rail
-  meets the left edge of the window and the transcript centres in what is left.
-  It is also the one route the shell's own navigation rail yields to, so this
-  rail is the only rail on screen (ADR-0239); the header keeps the wordmark as
-  the way back.
+  meets the icon rail beside it and the transcript centres in what is left.
+  It is also the one route where the shell's own rail is fixed to icons rather
+  than foldable, so exactly one of the two rails on screen is a sidebar provider
+  (ADR-0239); the wordmark stays at the head of that icon rail, which is where
+  it is on every other route too.
   Desktop is the shadcn Sidebar (`collapsible="icon"`, cookie-persisted fold,
   `--sidebar-*` mapped onto Tendnote's own tokens so it is the same `panel`
   surface, hairline, and sage as everything else): "New conversation" in the

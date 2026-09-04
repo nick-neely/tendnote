@@ -210,8 +210,10 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
   /**
    * The rail's reserve, while the membership read is still in flight. It holds
-   * the destinations every viewer has and marks none of them current, so the
-   * geometry never moves and a Household row never appears and vanishes.
+   * the destinations every viewer has and marks none of them current, so a
+   * member without a household never sees a Household row appear and vanish.
+   * A member with one gains a row when the read lands, which is the honest
+   * direction for a reserve to be wrong in.
    */
   it("keeps the complete navigation rail present before standings resolve", () => {
     render(
@@ -267,20 +269,45 @@ describe("AppShell Phase Seven mobile navigation", () => {
    * The one-provider rule (ADR 0239). `/assistant` brings its own
    * `SidebarProvider` for the conversation rail, and the shadcn primitive binds
    * `Cmd+B` and writes `sidebar_state` once per provider — so the shell yields
-   * its rail there rather than mounting a second one, and hands the way home to
-   * the wordmark instead. Its layout says so (the `(canvas)` route group); the
-   * shell never reads the URL to find out.
+   * its *provider* there rather than mounting a second one. Its layout says so
+   * (the `(canvas)` route group); the shell never reads the URL to find out.
+   *
+   * What it must not yield is navigation. Every destination stays one click away
+   * as a fixed icon rail that is no provider at all: same table, same groups,
+   * same current row, labels as tooltips, and the wordmark still at its head.
    */
-  it("yields the rail to the Assistant's own, and keeps a way back", () => {
+  it("keeps every destination on a canvas route, as a rail that is not a provider", () => {
+    navigationState.pathname = "/assistant/thread-1";
     render(
       <AppShell canvas ownerUserId="owner-1">
         <p>Conversation</p>
       </AppShell>,
     );
 
-    expect(screen.queryByRole("navigation", { name: "Primary" })).toBeNull();
+    // No second provider, and so nothing that folds and nothing that writes the
+    // cookie: queried through the DOM because "no sidebar" has no role.
+    expect(document.querySelector('[data-slot="sidebar"]')).toBeNull();
     expect(screen.queryByRole("button", { name: "Navigation" })).toBeNull();
     expect(screen.getByRole("link", { name: "Tendnote" }).getAttribute("href")).toBe("/");
+
+    const primary = within(screen.getByRole("navigation", { name: "Primary" }));
+    expect(primary.getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Today",
+      "Assistant",
+      "People",
+      "Actions",
+      "Assets",
+      "Saved Items",
+    ]);
+    expect(
+      within(screen.getByRole("navigation", { name: "Secondary" }))
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["Gift plans", "Account"]);
+    // A thread URL is still the Assistant, so the rail says where you are.
+    expect(primary.getByRole("link", { name: "Assistant" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
   });
 
   /**
@@ -294,7 +321,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
    * true at runtime rather than only in the tree — pinned here because the
    * decision (ADR 0239) rests on it.
    */
-  it("leaves a parked shell inert while the canvas shell is the live one", () => {
+  it("leaves a parked shell inert while the canvas shell is the live one", async () => {
     render(
       <>
         <Activity mode="hidden">
@@ -308,15 +335,21 @@ describe("AppShell Phase Seven mobile navigation", () => {
       </>,
     );
 
-    // Queried through the DOM, not by role: a hidden Activity subtree is out of
-    // the accessibility tree, which is the point of it.
-    const parked = document.querySelector('[data-slot="sidebar"]');
-    expect(parked?.getAttribute("data-state")).toBe("expanded");
-    expect(screen.queryByRole("navigation", { name: "Primary" })).toBeNull();
+    // Queried through the DOM and awaited, not read by role: React renders a
+    // hidden Activity subtree at its own priority and keeps it out of the
+    // accessibility tree, which is the point of it. The one Primary nav a
+    // reader can reach is the canvas rail's.
+    const parked = await waitFor(() => {
+      const sidebar = document.querySelector('[data-slot="sidebar"]');
+      if (!sidebar) throw new Error("the parked shell has not rendered yet");
+      return sidebar;
+    });
+    expect(parked.getAttribute("data-state")).toBe("expanded");
+    expect(screen.getAllByRole("navigation", { name: "Primary" })).toHaveLength(1);
 
     fireEvent.keyDown(window, { key: "b", ctrlKey: true });
 
-    expect(parked?.getAttribute("data-state")).toBe("expanded");
+    expect(parked.getAttribute("data-state")).toBe("expanded");
   });
 
   it("remounts owner-keyed mobile flow state when the admitted session rotates", async () => {

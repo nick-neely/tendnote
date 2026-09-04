@@ -1,15 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, use } from "react";
-import {
-  type AppDestination,
-  type DestinationGroup,
-  destinationsInGroup,
-  isDestinationCurrentInGroup,
-  type ViewerStandings,
-} from "@/components/app-destinations";
+import type { ViewerStandings } from "@/components/app-destinations";
+import { AppNavigation, type AppNavigationRow } from "@/components/app-navigation";
 import { TendnoteLogo } from "@/components/tendnote-logo";
 import {
   Sidebar,
@@ -36,10 +29,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
  * same screen. Folded it is an icon rail, not a rail that disappears, and each
  * row keeps its label as a tooltip.
  *
- * Rows come from `app-destinations` and nowhere else, so the rail, the phone
- * Menu, and the command palette cannot drift into offering different sets. The
- * split between the standing group and the shelf at the foot is the table's own
- * `sidebar-primary` / `sidebar-secondary`, not a slice of one list here.
+ * Rows come from `app-navigation` and so from `app-destinations` and nowhere
+ * else, which is also what keeps this rail and the canvas icon rail beside the
+ * Assistant offering one set. The split between the standing group and the shelf
+ * at the foot is the table's own `sidebar-primary` / `sidebar-secondary`, not a
+ * slice of one list here.
  *
  * Below `lg` this whole subtree is `display: none` and the phone shell's bottom
  * bar and Menu own navigation — see `app-shell-frame`, which is also where the
@@ -75,16 +69,49 @@ export function AppSidebar({ standings }: { standings: Promise<ViewerStandings> 
             </Link>
           </SidebarHeader>
 
-          {/*
-           * One boundary over both groups, because both need the same two facts:
-           * whether the viewer still holds a household, and where they are. The
-           * reserve renders the destinations every viewer has and marks none of
-           * them current, so a member without a household never sees a Household
-           * row appear and vanish, and the rail's geometry never moves.
-           */}
-          <Suspense fallback={<AppSidebarBody />}>
-            <AppSidebarBodyForViewer standings={standings} />
-          </Suspense>
+          <AppNavigation standings={standings}>
+            {({ primary, secondary }) => (
+              <>
+                <SidebarContent>
+                  <nav aria-label="Primary">
+                    <SidebarGroup className="py-1">
+                      <SidebarGroupContent>
+                        <SidebarMenu>
+                          {primary.map((row) => (
+                            <AppSidebarDestination key={row.destination.id} row={row} />
+                          ))}
+                        </SidebarMenu>
+                      </SidebarGroupContent>
+                    </SidebarGroup>
+                  </nav>
+                </SidebarContent>
+
+                {/* `pb-2` so the last row clears the window edge by the same
+                    8px the wordmark clears the top by. */}
+                <SidebarFooter className="gap-0 p-0 pb-2">
+                  {/* `data-horizontal:w-auto` is load-bearing and fails as an
+                      8px hairline poking out of the rail's right edge. The
+                      primitive asks for `w-auto` in a plain class, and the
+                      `Separator` beneath it sets `data-horizontal:w-full` in a
+                      variant one — same specificity, variant emitted later, so
+                      the plain class silently loses. Answering in the same
+                      variant is what settles it. */}
+                  <SidebarSeparator className="mx-2 data-horizontal:w-auto" />
+                  <nav aria-label="Secondary">
+                    <SidebarGroup className="py-1">
+                      <SidebarGroupContent>
+                        <SidebarMenu>
+                          {secondary.map((row) => (
+                            <AppSidebarDestination key={row.destination.id} row={row} />
+                          ))}
+                        </SidebarMenu>
+                      </SidebarGroupContent>
+                    </SidebarGroup>
+                  </nav>
+                </SidebarFooter>
+              </>
+            )}
+          </AppNavigation>
 
           {/* The drag/click edge for the fold. `aria-hidden` because it is a
             second control with the same name as the header trigger and the same
@@ -96,87 +123,12 @@ export function AppSidebar({ standings }: { standings: Promise<ViewerStandings> 
   );
 }
 
-function AppSidebarBodyForViewer({ standings }: { standings: Promise<ViewerStandings> }) {
-  const householdMember = use(standings).householdMember;
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  return <AppSidebarBody householdMember={householdMember} location={{ pathname, searchParams }} />;
-}
-
-type Location = { pathname: string; searchParams: Pick<URLSearchParams, "get"> };
-
-function AppSidebarBody({
-  householdMember = false,
-  location,
-}: {
-  householdMember?: boolean;
-  location?: Location;
-}) {
-  const viewer = { householdMember };
-  const current = (destination: AppDestination, group: DestinationGroup) =>
-    location !== undefined &&
-    isDestinationCurrentInGroup(
-      destination.id,
-      group,
-      location.pathname,
-      location.searchParams,
-      viewer,
-    );
-
-  return (
-    <>
-      <SidebarContent>
-        <nav aria-label="Primary">
-          <SidebarGroup className="py-1">
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {destinationsInGroup("sidebar-primary", viewer).map((destination) => (
-                  <AppSidebarDestination
-                    current={current(destination, "sidebar-primary")}
-                    destination={destination}
-                    key={destination.id}
-                  />
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </nav>
-      </SidebarContent>
-
-      <SidebarFooter className="gap-0 p-0">
-        <SidebarSeparator className="mx-2" />
-        <nav aria-label="Secondary">
-          <SidebarGroup className="py-1">
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {destinationsInGroup("sidebar-secondary", viewer).map((destination) => (
-                  <AppSidebarDestination
-                    current={current(destination, "sidebar-secondary")}
-                    destination={destination}
-                    key={destination.id}
-                  />
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </nav>
-      </SidebarFooter>
-    </>
-  );
-}
-
 /**
  * One row. Sage marks the current destination and nothing else — hover is the
  * neutral `muted` the conversation rail already uses — and the tooltip is the
  * label the icon rail no longer has room to print.
  */
-function AppSidebarDestination({
-  current,
-  destination,
-}: {
-  current: boolean;
-  destination: AppDestination;
-}) {
+function AppSidebarDestination({ row: { current, destination } }: { row: AppNavigationRow }) {
   const Icon = destination.icon;
   return (
     <SidebarMenuItem>

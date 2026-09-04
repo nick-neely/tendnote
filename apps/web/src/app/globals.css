@@ -181,6 +181,15 @@ main:has(> [data-full-bleed]:not([style*="display: none"])) {
   color-scheme: light;
   /* Consumed by the `px-gutter` / `mx-bleed` utilities above. */
   --tn-gutter: 1.25rem;
+  /*
+   * The shell's navigation rail on a canvas route, where it cannot fold
+   * (`canvas-navigation-rail`, ADR 0239). One number because two elements have
+   * to agree on it: the rail itself, and the Assistant's conversation rail,
+   * which is `position: fixed` against the window and so has to be told where
+   * the window effectively starts. It is the shadcn Sidebar's own icon width,
+   * so a canvas rail and a folded rail are the same rail.
+   */
+  --tn-canvas-rail: 3rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.18 0.018 145);
   --surface: oklch(0.975 0 0);
