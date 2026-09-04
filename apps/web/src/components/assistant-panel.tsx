@@ -17,6 +17,10 @@ import {
   usePromptInputController,
 } from "@/components/ai-elements/prompt-input";
 import { Suggestion } from "@/components/ai-elements/suggestion";
+import {
+  AssistantApprovalPolicyProvider,
+  type EveApprovalMode,
+} from "@/components/assistant-approval-policy-context";
 import { AssistantAuthorizationCard } from "@/components/assistant-authorization-card";
 import { AssistantComposerForm } from "@/components/assistant-composer";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
@@ -45,9 +49,12 @@ import {
 import { AssistantTurnUnitView } from "@/components/assistant-turn-unit";
 import { DropOverlay } from "@/components/drop-overlay";
 import { ArrowUpRightIcon } from "@/components/icons";
+import { SessionToolTrustProvider } from "@/components/session-tool-trust-context";
 import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ui/shimmer";
 import { ASSISTANT_CONVERSATION_STARTERS } from "@/lib/assistant/starters";
+import { pendingApprovalRequests, typedApprovalAnswer } from "@/lib/eve/approval-answers";
+import { webTaintedToolCallIds } from "@/lib/eve/conversation-taint";
 import { EVIDENCE_DROP_ACCEPT, type EvidencePick, useEvidencePick } from "@/lib/eve/evidence-pick";
 import { followUpSuggestions } from "@/lib/eve/follow-up-suggestions";
 import {
@@ -91,6 +98,15 @@ const TRANSCRIPT_PADDING: Record<AssistantSurface, string> = {
 };
 
 type AssistantPanelProps = {
+  /**
+   * The owner's Approval Mode, for the one thing the browser does with it: explain
+   * why a card appeared in a conversation where web content was read. The agent's
+   * policy reads the mode from the database on every gated call, so nothing here is
+   * authoritative and a stale value can only produce a stale sentence.
+   *
+   * Defaults to the cautious mode, which is also the mode that says nothing extra.
+   */
+  approvalMode?: EveApprovalMode;
   context?: AssistantPersonContext;
   /**
    * A prior Eve session to reopen instead of starting a fresh one.
@@ -179,6 +195,7 @@ function AssistantPanelReserve({
 }
 
 function AssistantConversationPanel({
+  approvalMode = "ask",
   context,
   onSessionStarted,
   ownerUserId,
@@ -203,9 +220,54 @@ function AssistantConversationPanel({
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messages = agent.data.messages;
 
+  // Every tool approval still waiting on the owner, oldest first. Two things read
+  // it: the composer, which must not send the word "approve" as a message, and the
+  // line under the box that says what sending one would do.
+  const pendingApprovals = useMemo(() => pendingApprovalRequests(messages), [messages]);
+
+  /**
+   * A typed answer to the oldest waiting approval, if that is what this line is.
+   *
+   * The framework's own instruction to the model is never to ask anyone to type
+   * "approve", but people type it anyway — and eve clears the parked batch when an
+   * ordinary message arrives, so the word meant to allow the save is exactly what
+   * cancels it. So the composer answers with it instead, and only on an exact match
+   * against an option the request itself offers.
+   *
+   * Rejecting rather than swallowing a failure is deliberate: the composer restores
+   * the text it optimistically cleared on a rejection, so a refused response leaves
+   * the owner's word back in the box rather than nowhere.
+   */
+  const answerTypedApproval = useCallback(
+    async (text: string): Promise<boolean> => {
+      const oldest = pendingApprovals[0];
+      const optionId = oldest ? typedApprovalAnswer(oldest, text) : null;
+      if (!oldest || !optionId) {
+        return false;
+      }
+      await agent.respond([{ requestId: oldest.requestId, optionId }]);
+      return true;
+    },
+    [agent.respond, pendingApprovals],
+  );
+
   const handleSubmit = useCallback(
-    (message: PromptInputMessage) => queue.submit(message.text),
-    [queue.submit],
+    async (message: PromptInputMessage) => {
+      if (await answerTypedApproval(message.text)) {
+        return;
+      }
+      await queue.submit(message.text);
+    },
+    [answerTypedApproval, queue.submit],
+  );
+
+  // Which parked calls the transcript already read web content before. Explanatory
+  // only: the agent derives the same fact authoritatively, and the card uses this to
+  // decide whether to say a sentence, never what to send.
+  const taintedCallIds = useMemo(() => webTaintedToolCallIds(messages), [messages]);
+  const isTaintedBefore = useCallback(
+    (toolCallId: string) => taintedCallIds.has(toolCallId),
+    [taintedCallIds],
   );
 
   /** A conversational turn started by something other than the composer. */
@@ -273,25 +335,38 @@ function AssistantConversationPanel({
           then, so answering one pending request disables every other one until it
           settles. */}
         <AssistantRespondProvider ready={agent.status === "ready"} respond={agent.respond}>
-          <Conversation aria-busy={replaying} className="min-h-0 flex-1">
-            <ConversationContent className={cn("min-h-full gap-4", TRANSCRIPT_PADDING[surface])}>
-              <AssistantConversation
-                busy={isTurnInFlight(agent.status)}
-                composerRef={composerRef}
-                events={agent.events}
-                messages={messages}
-                nudges={nudges}
-                onSend={sendPrompt}
-                onSendNudge={sendNudge}
-                status={agent.status}
-                surface={surface}
-              />
-            </ConversationContent>
-            <ConversationScrollButton />
-          </Conversation>
+          {/* Why a card is asking, and where a "don't ask again" goes. Both are
+              conversation-wide facts the cards are several layers below, and neither
+              can change what a card sends. */}
+          <AssistantApprovalPolicyProvider
+            approvalMode={approvalMode}
+            isTaintedBefore={isTaintedBefore}
+          >
+            <SessionToolTrustProvider sessionId={agent.session?.sessionId ?? null}>
+              <Conversation aria-busy={replaying} className="min-h-0 flex-1">
+                <ConversationContent
+                  className={cn("min-h-full gap-4", TRANSCRIPT_PADDING[surface])}
+                >
+                  <AssistantConversation
+                    busy={isTurnInFlight(agent.status)}
+                    composerRef={composerRef}
+                    events={agent.events}
+                    messages={messages}
+                    nudges={nudges}
+                    onSend={sendPrompt}
+                    onSendNudge={sendNudge}
+                    status={agent.status}
+                    surface={surface}
+                  />
+                </ConversationContent>
+                <ConversationScrollButton />
+              </Conversation>
+            </SessionToolTrustProvider>
+          </AssistantApprovalPolicyProvider>
         </AssistantRespondProvider>
 
         <AssistantComposerRegion
+          approvalPending={pendingApprovals.length > 0}
           centered={centeredComposer}
           context={context}
           ended={ended}
@@ -355,6 +430,7 @@ function AssistantSettleSpacer({ grow, surface }: { grow: boolean; surface: Assi
  * taking them off screen along with the box would quietly delete them.
  */
 function AssistantComposerRegion({
+  approvalPending,
   centered,
   context,
   ended,
@@ -371,6 +447,8 @@ function AssistantComposerRegion({
   surface,
   textareaRef,
 }: {
+  /** Whether a card in the transcript is still waiting on the owner. */
+  approvalPending: boolean;
   centered: boolean;
   context?: AssistantPersonContext;
   ended: boolean;
@@ -396,6 +474,7 @@ function AssistantComposerRegion({
     <>
       {centered ? <AssistantPageGreeting /> : null}
       <AssistantComposerShell surface={surface}>
+        <PendingApprovalNote pending={approvalPending && !ended} />
         <AssistantSendQueue
           items={queue.items}
           note={queueNote}
@@ -426,6 +505,34 @@ function AssistantComposerRegion({
         )}
       </AssistantComposerShell>
     </>
+  );
+}
+
+/**
+ * What sending a message costs while a decision is waiting above.
+ *
+ * Eve clears the parked batch when an ordinary message arrives — that is the
+ * framework's own behaviour, not a rule this app could soften — so a follow-up
+ * thought typed into the box silently withdraws the approval. One line, stated
+ * plainly, so the owner is not surprised by it. It never blocks the box: sending is
+ * a legitimate thing to do, and a composer that argued with the reader would be
+ * pressing for the approval.
+ *
+ * `status` rather than `alert`: nothing is wrong, and it appears at the moment eve
+ * parks the turn, which is worth hearing once without interrupting.
+ */
+function PendingApprovalNote({ pending }: { pending: boolean }) {
+  if (!pending) {
+    return null;
+  }
+
+  return (
+    <p
+      className="pb-2 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]"
+      role="status"
+    >
+      Sending a message cancels the approval waiting above.
+    </p>
   );
 }
 

@@ -484,6 +484,114 @@ describe("messageTurnUnits (a turn's tool activity, in the order it happened)", 
   });
 
   /**
+   * One `input.requested` can park several calls at once, and eve holds the turn
+   * while any of them wait — so every approval still parked in a turn came from the
+   * same batch. Three cards stacked down the transcript is how an interruption stops
+   * being read, so they project as one.
+   */
+  it("folds several calls parked in one breath into a single card", () => {
+    const message: EveMessage = {
+      id: "turn_0:assistant",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-1",
+          toolName: "capture_memory",
+          state: "approval-requested",
+          approval: { id: "req-1" },
+          input: { content: "Allergic to shellfish." },
+          toolMetadata: {
+            eve: { kind: "tool-call", name: "capture_memory", inputRequest: saveRequest },
+          },
+        },
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-2",
+          toolName: "create_followup",
+          state: "approval-requested",
+          approval: { id: "req-2" },
+          input: { reason: "Check in about the move" },
+          toolMetadata: {
+            eve: {
+              kind: "tool-call",
+              name: "create_followup",
+              inputRequest: { ...saveRequest, requestId: "req-2" },
+            },
+          },
+        },
+      ],
+    };
+
+    const units = messageTurnUnits(message, false);
+    expect(types(units)).toEqual(["request-batch"]);
+    expect(
+      units[0]?.type === "request-batch" && units[0].requests.map((it) => it.toolCallId),
+    ).toEqual(["call-1", "call-2"]);
+  });
+
+  /**
+   * A question is the model's own words to one person, with its own options. It is
+   * never one line item among several authorizations.
+   */
+  it("keeps a question out of the batch", () => {
+    const message: EveMessage = {
+      id: "turn_0:assistant",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-1",
+          toolName: "ask_question",
+          state: "approval-requested",
+          approval: { id: "req-0" },
+          input: { question: "Which Mara did you mean?" },
+          toolMetadata: {
+            eve: {
+              kind: "tool-call",
+              name: "ask_question",
+              inputRequest: {
+                ...saveRequest,
+                kind: "question",
+                requestId: "req-0",
+                prompt: "Which Mara did you mean?",
+              },
+            },
+          },
+        },
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-2",
+          toolName: "capture_memory",
+          state: "approval-requested",
+          approval: { id: "req-1" },
+          input: { content: "Allergic to shellfish." },
+          toolMetadata: {
+            eve: { kind: "tool-call", name: "capture_memory", inputRequest: saveRequest },
+          },
+        },
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-3",
+          toolName: "create_followup",
+          state: "approval-requested",
+          approval: { id: "req-2" },
+          input: { reason: "Check in about the move" },
+          toolMetadata: {
+            eve: {
+              kind: "tool-call",
+              name: "create_followup",
+              inputRequest: { ...saveRequest, requestId: "req-2" },
+            },
+          },
+        },
+      ],
+    };
+
+    expect(types(messageTurnUnits(message, false))).toEqual(["request", "request-batch"]);
+  });
+
+  /**
    * A parked turn is durably waiting on a person, not working, so its stream has
    * already ended and `turnInFlight` is false. The card has to outlive that or the
    * decision would vanish the moment it was asked for.

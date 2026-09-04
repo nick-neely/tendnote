@@ -62,6 +62,7 @@ const { eve } = vi.hoisted(() => {
   let onError: ((error: Error) => void) | undefined;
   let onSessionChange: ((session: { sessionId: string } | undefined) => void) | undefined;
   let settleTurn: ((failure?: Error) => void) | null = null;
+  let respondFailure: Error | null = null;
 
   function publish(next: Partial<Snapshot>): void {
     snapshot = { ...snapshot, ...next };
@@ -163,8 +164,15 @@ const { eve } = vi.hoisted(() => {
        * only in recording the call, not in taking the session.
        */
       respond: (responses: readonly unknown[]): Promise<void> => {
+        if (respondFailure) {
+          return Promise.reject(respondFailure);
+        }
         responded.push([...responses]);
         return Promise.resolve();
+      },
+      /** eve refusing a response: the stream closed under the parked turn. */
+      refuseResponses: (failure: Error): void => {
+        respondFailure = failure;
       },
       /** Settle the in-flight turn the way eve does: never by rejecting. */
       settle: (failure?: Error): void => {
@@ -179,6 +187,7 @@ const { eve } = vi.hoisted(() => {
         resumed.length = 0;
         mounted.length = 0;
         prefix = { events: [] };
+        respondFailure = null;
         settleTurn = null;
         snapshot = initial;
       },
@@ -1277,4 +1286,119 @@ it("takes no drops on an ended thread, where there is nowhere to put a file", as
   // the composer that would hold one is gone with the session.
   expect(screen.queryByText("Drop to attach")).toBeNull();
   expect(screen.queryByRole("region", { name: "Attach asset evidence" })).toBeNull();
+});
+
+/**
+ * The composer while a decision is waiting above it.
+ *
+ * eve clears the parked batch as soon as an ordinary message arrives, which makes
+ * the composer dangerous in one narrow way: an owner who types the word "approve"
+ * cancels the very save they meant to allow. So an exact `approve` or `cancel`
+ * answers the oldest waiting item instead of being sent, and everything else is sent
+ * with the cost of doing so stated in one line.
+ */
+
+/** Two calls parked in one `input.requested`; `req-1` is the older of them. */
+const turnAwaitingTwoApprovals: readonly EveMessage[] = [
+  {
+    id: "turn_0:assistant",
+    role: "assistant",
+    parts: [
+      ...(turnAwaitingApproval[0]?.parts ?? []),
+      {
+        type: "dynamic-tool",
+        toolCallId: "call-2",
+        toolName: "create_followup",
+        state: "approval-requested",
+        approval: { id: "req-2" },
+        input: { reason: "Check in about the move" },
+        toolMetadata: {
+          eve: {
+            kind: "tool-call",
+            name: "create_followup",
+            inputRequest: {
+              kind: "tool-approval",
+              requestId: "req-2",
+              prompt: "Approve tool call: create_followup",
+              display: "confirmation",
+              allowFreeform: false,
+              options: [
+                { id: "approve", label: "Approve" },
+                { id: "cancel", label: "Cancel" },
+              ],
+            },
+          },
+        },
+      },
+    ],
+  },
+];
+
+async function showParkedTurn(messages: readonly EveMessage[]): Promise<void> {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+  await act(async () => {
+    eve.showTurn(messages, "ready");
+  });
+}
+
+it.each(["approve", "Cancel", "  approve  "])(
+  "answers the parked approval when the composer says exactly %s, and sends nothing",
+  async (typed) => {
+    await showParkedTurn(turnAwaitingApproval);
+
+    await sendMessage(typed);
+
+    await waitFor(() =>
+      expect(eve.responded).toEqual([
+        [{ requestId: "req-1", optionId: typed.trim().toLowerCase() }],
+      ]),
+    );
+    expect(eve.sent).toEqual([]);
+    expect(composer().value).toBe("");
+  },
+);
+
+it("answers the oldest waiting item when a batch is parked", async () => {
+  await showParkedTurn(turnAwaitingTwoApprovals);
+
+  await sendMessage("approve");
+
+  await waitFor(() =>
+    expect(eve.responded).toEqual([[{ requestId: "req-1", optionId: "approve" }]]),
+  );
+});
+
+it("sends anything else as a message, and says what sending one costs", async () => {
+  await showParkedTurn(turnAwaitingApproval);
+
+  expect(screen.getByText("Sending a message cancels the approval waiting above.")).toBeDefined();
+  await sendMessage("Actually, hold off on that");
+
+  await waitFor(() => expect(eve.sent).toEqual(["Actually, hold off on that"]));
+  expect(eve.responded).toEqual([]);
+});
+
+it("intercepts nothing, and warns about nothing, when no decision is waiting", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" />);
+
+  expect(screen.queryByText(/cancels the approval waiting above/)).toBeNull();
+  await sendMessage("approve");
+
+  await waitFor(() => expect(eve.sent).toEqual(["approve"]));
+  expect(eve.responded).toEqual([]);
+});
+
+/**
+ * The composer clears optimistically on hand-off and restores on a rejection, which
+ * is the contract a refused response has to keep: the owner's word goes back in the
+ * box rather than nowhere.
+ */
+it("puts the typed answer back when the response does not go through", async () => {
+  await showParkedTurn(turnAwaitingApproval);
+  eve.refuseResponses(new Error("stream closed"));
+
+  await sendMessage("approve");
+
+  await waitFor(() => expect(composer().value).toBe("approve"));
+  expect(eve.sent).toEqual([]);
 });

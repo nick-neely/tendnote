@@ -1,15 +1,20 @@
 "use client";
 
 import { useId, useState } from "react";
+import { useAssistantApprovalPolicy } from "@/components/assistant-approval-policy-context";
 import { useAssistantRespond } from "@/components/assistant-respond-context";
 import { Body, Caption, ResultCard } from "@/components/assistant-result-card";
 import { ToolActivityLine } from "@/components/assistant-results/shells";
 import { CheckIcon, CircleSlashIcon, TriangleAlertIcon } from "@/components/icons";
+import { useSessionToolTrust } from "@/components/session-tool-trust-context";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { useApprovalSubject, useApprovalSubjectTitle } from "@/components/use-approval-subject";
 import type { ApprovalSubjectState } from "@/lib/approval-subject-cache";
+import { APPROVE_OPTION_ID, approveOptionId } from "@/lib/eve/approval-answers";
 import type {
   AssistantInputField,
   AssistantInputOption,
@@ -17,6 +22,7 @@ import type {
   AssistantInputResolutionView,
 } from "@/lib/eve/input-request-view";
 import { humanizeToolName } from "@/lib/eve/tool-name";
+import { cn } from "@/lib/utils";
 
 /**
  * The in-chat decision for a tool call Eve parked on the owner.
@@ -62,10 +68,18 @@ import { humanizeToolName } from "@/lib/eve/tool-name";
  * own. The standing "nothing happens until you choose" footer is gone with it; the chip
  * says that, and two live buttons say it better. Only the round trip still gets words,
  * and only while it is in flight.
+ *
+ * That size rule is also why a batch of calls parked in one breath is one card
+ * ({@link ChatApprovalBatchCard}) rather than five stacked surfaces. It shares the
+ * chrome and nothing else: each item keeps its own subject, its own frozen input, and
+ * its own two buttons, because each is a separate authorization.
  */
 
 /** Identity for the freeform answer in `sending`; no option id can collide with it. */
 const FREEFORM_KEY = " freeform";
+
+/** Identity for the batch card's own control, which belongs to no single item. */
+const APPROVE_ALL_KEY = " approve-all";
 
 /** How many input rows show before the card offers to expand. */
 const PREVIEW_FIELDS = 3;
@@ -73,8 +87,134 @@ const PREVIEW_FIELDS = 3;
 /** The one thing the card says when the owner-scoped lookup found no record. */
 const NO_SUCH_RECORD = "This record isn't available to you.";
 
-/** How the card posts one answer back: the control's key, and eve's own payload. */
-type AnswerHandler = (key: string, response: { optionId?: string; text?: string }) => Promise<void>;
+/**
+ * Why an owner in `trusted` Approval Mode is being asked at all.
+ *
+ * Reading a page or a search result makes this a Tainted Conversation, and from
+ * that point the policy behaves as `ask` whatever the owner chose. Without a word
+ * about it the card looks like the setting was ignored. The sentence is derived
+ * client-side and is *only* a sentence: it never touches which options the card
+ * offers or what it sends.
+ *
+ * "The assistant", not "Eve": the framework is never named in owner-facing copy
+ * (DESIGN.md §6).
+ */
+const TAINT_EXPLANATION =
+  "The assistant asked because web content was read in this conversation. Start a new conversation to resume automatic saves.";
+
+/** The Session Tool Trust offer, in the owner's own words rather than the policy's. */
+const REMEMBER_TOOL_LABEL = "Don't ask again for this in this conversation";
+
+/** One answer, kept beside the request it answers so the card can settle both. */
+type ApprovalSubmission = {
+  readonly request: AssistantInputRequestView;
+  readonly response: { optionId?: string; text?: string };
+};
+
+/** How one item's control posts an answer back: the control's own key, and eve's payload. */
+type ItemAnswerHandler = (
+  control: string,
+  response: { optionId?: string; text?: string },
+) => Promise<void>;
+
+/**
+ * Everything a card holds while its decisions are being made, shared by every item
+ * on it.
+ *
+ * It is card-scoped rather than item-scoped because eve is: a response takes the
+ * whole session, so exactly one answer can be on the wire at a time and a batch that
+ * let two items send at once would simply produce an error on the second. One
+ * `sending` key, one failure line, and one lock is the honest model of that.
+ *
+ * `answered` is the card's own short memory of what it just sent. The reducer flips a
+ * part to `approval-responded` a moment later and the item leaves the batch on its
+ * own, but until it does, an item whose answer already went out must not offer to
+ * send a second one — and "Approve all" must not re-answer it.
+ */
+type ApprovalDecisions = {
+  readonly answer: (key: string, submissions: readonly ApprovalSubmission[]) => Promise<void>;
+  /** Call ids this card has already answered, before the stream has caught up. */
+  readonly answered: ReadonlySet<string>;
+  readonly failure: string | null;
+  readonly locked: boolean;
+  /** Call ids whose Session Tool Trust checkbox is ticked. */
+  readonly remembered: ReadonlySet<string>;
+  /** The key of the control whose answer is on the wire, or null. */
+  readonly sending: string | null;
+  readonly setRemembered: (toolCallId: string, remember: boolean) => void;
+};
+
+function useApprovalDecisions(): ApprovalDecisions {
+  const { ready, respond } = useAssistantRespond();
+  const { recordSessionToolTrust, sessionId } = useSessionToolTrust();
+  const [sending, setSending] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [answered, setAnswered] = useState<ReadonlySet<string>>(() => new Set());
+  const [remembered, setRemembered] = useState<ReadonlySet<string>>(() => new Set());
+
+  /**
+   * The trust the owner ticked, recorded only once the approval it rode on actually
+   * went through — and only for the affirmative option, looked up on the request
+   * rather than assumed. Best effort by construction: the decision is already made,
+   * so a failed write costs a convenience and never an approval.
+   */
+  function recordTicketedTrust(submissions: readonly ApprovalSubmission[]): void {
+    if (sessionId === null) {
+      return;
+    }
+    for (const { request, response } of submissions) {
+      if (response.optionId !== APPROVE_OPTION_ID || !remembered.has(request.toolCallId)) {
+        continue;
+      }
+      void recordSessionToolTrust({ sessionId, toolName: request.toolName }).catch(() => {});
+    }
+  }
+
+  async function answer(key: string, submissions: readonly ApprovalSubmission[]): Promise<void> {
+    setSending(key);
+    setFailure(null);
+    try {
+      // One `respond`, whether that is one item's button or the whole batch: eve
+      // settles the parked requests it names together.
+      await respond(
+        submissions.map(({ request, response }) => ({
+          requestId: request.requestId,
+          ...response,
+        })),
+      );
+      setAnswered(
+        (prior) => new Set([...prior, ...submissions.map((it) => it.request.toolCallId)]),
+      );
+      recordTicketedTrust(submissions);
+    } catch {
+      setFailure("That didn't go through. Try again, or answer in the message box below.");
+    } finally {
+      setSending(null);
+    }
+  }
+
+  return {
+    answer,
+    answered,
+    failure,
+    // Answering takes the whole session — eve refuses a response while any turn is in
+    // flight — so a second pending card in the transcript is disabled by `ready` until
+    // this one settles, rather than racing it into an error.
+    locked: sending !== null || !ready,
+    remembered,
+    sending,
+    setRemembered: (toolCallId, remember) =>
+      setRemembered((prior) => {
+        const next = new Set(prior);
+        if (remember) {
+          next.add(toolCallId);
+        } else {
+          next.delete(toolCallId);
+        }
+        return next;
+      }),
+  };
+}
 
 export function ChatApprovalCard({
   request,
@@ -83,7 +223,138 @@ export function ChatApprovalCard({
   request: AssistantInputRequestView;
   isNew?: boolean;
 }) {
-  const { ready, respond } = useAssistantRespond();
+  const decisions = useApprovalDecisions();
+
+  return (
+    <ResultCard isNew={isNew} kind="input_request" tone="tentative">
+      {/* One child, so this card sets its own rhythm rather than the shell's uniform
+          gap: the state chip, the heading and the record it names are one thought and
+          sit tight together, and only the decision is held apart from them. */}
+      <div className="flex flex-col gap-2">
+        <ApprovalRequestItem
+          chip
+          decisions={decisions}
+          explanation={<ApprovalTaintNote requests={[request]} />}
+          request={request}
+        />
+        <ApprovalDecisionStatus decisions={decisions} sending={approvalCopySending(request.kind)} />
+      </div>
+    </ResultCard>
+  );
+}
+
+/**
+ * One `input.requested` batch: several calls Eve parked in the same breath, on one
+ * card.
+ *
+ * A card each would be right if they were separate decisions, but they are not —
+ * they are one moment of the turn, and stacking five identical bordered surfaces
+ * down the transcript is how a gate stops being read (see rule 4 above). So the
+ * chrome is paid for once: one state chip, one round-trip line, one failure line,
+ * and one hairline between items instead of a border around each.
+ *
+ * What is *not* shared is the decision. Every item keeps its own subject lookup, its
+ * own frozen input, and its own Approve and Cancel, because each is a distinct
+ * authorization and a card that answered them together by default would be exactly
+ * the standing permission the gate exists to refuse. "Approve all" is offered, once,
+ * at the same weight as everything else and with no "Cancel all" beside it: refusing
+ * in bulk is not a thing a person needs to do quickly.
+ */
+export function ChatApprovalBatchCard({
+  isNew = false,
+  requests,
+}: {
+  isNew?: boolean;
+  requests: readonly AssistantInputRequestView[];
+}) {
+  const decisions = useApprovalDecisions();
+
+  // Every item still waiting that offers eve's own affirmative option. Nothing here
+  // invents an id: a request without an `approve` option simply is not part of what
+  // "Approve all" answers, and the control retires when fewer than two are left.
+  const approveAll = requests.flatMap((request) => {
+    const optionId = decisions.answered.has(request.toolCallId) ? null : approveOptionId(request);
+    return optionId ? [{ request, response: { optionId } }] : [];
+  });
+
+  return (
+    <ResultCard isNew={isNew} kind="input_request" tone="tentative">
+      <div className="flex flex-col gap-2.5">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1" data-slot="approval-header">
+          <ApprovalStateChip>Needs your approval</ApprovalStateChip>
+          <Body>{`${requests.length} decisions are waiting for you.`}</Body>
+        </div>
+
+        <ApprovalTaintNote requests={requests} />
+
+        {requests.map((request, index) => (
+          // A hairline between items rather than a border around each: the card is
+          // already a surface, and nested cards are the one thing the system rules
+          // out outright (DESIGN.md §6).
+          <div
+            className={cn("flex flex-col gap-2", index > 0 && "border-accent/20 border-t pt-2.5")}
+            key={request.toolCallId}
+          >
+            <ApprovalRequestItem decisions={decisions} request={request} />
+          </div>
+        ))}
+
+        {approveAll.length > 1 ? (
+          <div
+            className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5 border-accent/20 border-t pt-2.5"
+            data-slot="approval-batch-decision"
+          >
+            <Button
+              disabled={decisions.locked}
+              onClick={() => void decisions.answer(APPROVE_ALL_KEY, approveAll)}
+              size="sm"
+              type="button"
+              // Never `default`: the shortcut through a batch must not be the sage
+              // button the eye lands on first.
+              variant="outline"
+            >
+              {/* Decorative: the card's own status line announces the round trip. */}
+              {decisions.sending === APPROVE_ALL_KEY ? <Spinner aria-hidden /> : null}
+              Approve all
+            </Button>
+          </div>
+        ) : null}
+
+        <ApprovalDecisionStatus decisions={decisions} sending="Sending your decision…" />
+      </div>
+    </ResultCard>
+  );
+}
+
+/**
+ * One parked call on a card: what it is, what it is frozen with, and the two answers
+ * to it.
+ *
+ * A fragment rather than a wrapper, so the single card's own `gap-2` column still
+ * spaces the header, the input, and the decision exactly as it did before batching
+ * existed, and the batch card can put its own container (and hairline) around it.
+ *
+ * `chip` belongs to the card, not the item: on a single card the state chip labels
+ * the one heading there is, and on a batch the card's header already carries it once
+ * for all of them.
+ */
+function ApprovalRequestItem({
+  chip = false,
+  decisions,
+  explanation = null,
+  request,
+}: {
+  chip?: boolean;
+  decisions: ApprovalDecisions;
+  /**
+   * Why this card is asking, when that is not obvious. It rides with the heading
+   * rather than sitting at the foot: a reason that arrives after the buttons is a
+   * reason the owner reads once they have already decided. A batch says it once for
+   * all of its items and passes nothing here.
+   */
+  explanation?: React.ReactNode;
+  request: AssistantInputRequestView;
+}) {
   /**
    * What this call is *about*, resolved server-side inside the owner's own scope.
    * An id-referenced write shows a bare UUID otherwise, and a UUID is not something
@@ -91,9 +362,6 @@ export function ChatApprovalCard({
    * is an aid to the decision, never a replacement for it.
    */
   const subject = useApprovalSubject(request);
-  /** The answer currently on the wire, identified so its own control shows the wait. */
-  const [sending, setSending] = useState<string | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
   /**
    * Whether the frozen input is unfolded. It lives here rather than beside the list
    * because its control does not: the disclosure shares the decision row with the
@@ -102,94 +370,181 @@ export function ChatApprovalCard({
   const [showInput, setShowInput] = useState(false);
   const describedById = useId();
 
-  // Answering takes the whole session — eve refuses a response while any turn is in
-  // flight — so a second pending card in the transcript is disabled by `ready` until
-  // this one settles, rather than racing it into an error.
-  const locked = sending !== null || !ready;
   const isApproval = request.kind === "tool-approval";
   const copy = approvalCopy(request, subject);
-
-  async function answer(
-    key: string,
-    response: { optionId?: string; text?: string },
-  ): Promise<void> {
-    setSending(key);
-    setFailure(null);
-    try {
-      await respond([{ requestId: request.requestId, ...response }]);
-    } catch {
-      setFailure("That didn't go through. Try again, or answer in the message box below.");
-    } finally {
-      setSending(null);
-    }
-  }
-
   const input = visibleApprovalFields(request.fields, subject.status === "described", showInput);
+  // An answer already sent from this card retires its own controls, so a batch item
+  // cannot be answered twice in the moment before the stream replaces it.
+  const locked = decisions.locked || decisions.answered.has(request.toolCallId);
+
+  const control = (name: string) => `${request.toolCallId}:${name}`;
+  const onAnswer: ItemAnswerHandler = (name, response) =>
+    decisions.answer(control(name), [{ request, response }]);
 
   return (
-    <ResultCard isNew={isNew} kind="input_request" tone="tentative">
-      {/* One child, so this card sets its own rhythm rather than the shell's uniform
-          gap: the state chip, the heading and the record it names are one thought and
-          sit tight together, and only the decision is held apart from them. */}
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-col gap-1">
-          {/* The chip labels the heading, so it sits on the heading's line while both
-              fit and drops above it when they do not — one structure, no breakpoint. */}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1" data-slot="approval-header">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
-              <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-              {copy.chip}
-            </span>
+    <>
+      <div className="flex flex-col gap-1">
+        {/* The chip labels the heading, so it sits on the heading's line while both
+            fit and drops above it when they do not — one structure, no breakpoint. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1" data-slot="approval-header">
+          {chip ? <ApprovalStateChip>{copy.chip}</ApprovalStateChip> : null}
 
-            <Body className="whitespace-pre-line" id={describedById}>
-              {copy.heading}
-            </Body>
-          </div>
-
-          {isApproval ? <ApprovalSubjectDetail subject={subject} /> : null}
+          <Body className="whitespace-pre-line" id={describedById}>
+            {copy.heading}
+          </Body>
         </div>
 
-        {/* The arguments the call is frozen with. Once the record itself has a heading
-            and detail lines, the ids and flags behind it are the second thing to read
-            rather than the first — but they are never summarized away, because what
-            executes is this input and not the sentence describing it. */}
-        {input.shown.length > 0 ? (
-          <ApprovalInputFields expanded={showInput} fields={input.shown} />
-        ) : null}
-
-        <ApprovalAnswerControls
-          describedById={describedById}
-          disclosure={
-            input.collapsible ? (
-              <ApprovalInputToggle
-                expanded={showInput}
-                onToggle={() => setShowInput((open) => !open)}
-              />
-            ) : null
-          }
-          locked={locked}
-          onAnswer={answer}
-          request={request}
-          sending={sending}
-        />
-
-        {/* The card's resting state says "nothing has happened yet" through the chip and
-            the two live buttons; only the round trip needs words, and only while it
-            lasts. Announced, because the visible sign of it is a spinner in a button
-            the owner has already stopped looking at. */}
-        {sending !== null ? (
-          <p className="text-[length:var(--text-caption)] text-muted-foreground" role="status">
-            {copy.sending}
-          </p>
-        ) : null}
-
-        {failure ? (
-          <p className="text-[length:var(--text-small)] text-destructive" role="alert">
-            {failure}
-          </p>
-        ) : null}
+        {isApproval ? <ApprovalSubjectDetail subject={subject} /> : null}
+        {explanation}
       </div>
-    </ResultCard>
+
+      {/* The arguments the call is frozen with. Once the record itself has a heading
+          and detail lines, the ids and flags behind it are the second thing to read
+          rather than the first — but they are never summarized away, because what
+          executes is this input and not the sentence describing it. */}
+      {input.shown.length > 0 ? (
+        <ApprovalInputFields expanded={showInput} fields={input.shown} />
+      ) : null}
+
+      {/* Above the buttons, because it changes what Approve means and a keyboard
+          reaching Approve first would pass it by. */}
+      <ApprovalTrustCheckbox decisions={decisions} locked={locked} request={request} />
+
+      <ApprovalAnswerControls
+        describedById={describedById}
+        disclosure={
+          input.collapsible ? (
+            <ApprovalInputToggle
+              expanded={showInput}
+              onToggle={() => setShowInput((open) => !open)}
+            />
+          ) : null
+        }
+        isSending={(name) => decisions.sending === control(name)}
+        locked={locked}
+        onAnswer={onAnswer}
+        request={request}
+      />
+    </>
+  );
+}
+
+/** The card's state chip: what is being asked of the owner, before anything else. */
+function ApprovalStateChip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
+      <span aria-hidden className="size-1.5 rounded-full bg-accent" />
+      {children}
+    </span>
+  );
+}
+
+/**
+ * The card's live state, in the two lines it is worth spending.
+ *
+ * The card's resting state says "nothing has happened yet" through the chip and
+ * the two live buttons; only the round trip needs words, and only while it lasts.
+ * Announced, because the visible sign of it is a spinner in a button the owner has
+ * already stopped looking at.
+ */
+function ApprovalDecisionStatus({
+  decisions,
+  sending,
+}: {
+  decisions: ApprovalDecisions;
+  /** What to call the answer on the wire; a question is answered, a call decided. */
+  sending: string;
+}) {
+  return (
+    <>
+      {decisions.sending !== null ? (
+        <p className="text-[length:var(--text-caption)] text-muted-foreground" role="status">
+          {sending}
+        </p>
+      ) : null}
+
+      {decisions.failure ? (
+        <p className="text-[length:var(--text-small)] text-destructive" role="alert">
+          {decisions.failure}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Why this card exists at all, when the owner already chose `trusted`.
+ *
+ * Shown only when both halves hold: the owner's Approval Mode is `trusted`, and web
+ * content was read in this conversation before the call being asked about. Both are
+ * client-side readings of what the agent decided authoritatively, so this is an
+ * explanation and never a claim about what will happen — the options, the payload,
+ * and the answer are identical with or without it.
+ */
+function ApprovalTaintNote({ requests }: { requests: readonly AssistantInputRequestView[] }) {
+  const { approvalMode, isTaintedBefore } = useAssistantApprovalPolicy();
+
+  const explains =
+    approvalMode === "trusted" &&
+    requests.some(
+      (request) => request.kind === "tool-approval" && isTaintedBefore(request.toolCallId),
+    );
+
+  return explains ? (
+    <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+      {TAINT_EXPLANATION}
+    </p>
+  ) : null;
+}
+
+/**
+ * The offer to stop asking about this one tool for the rest of this conversation.
+ *
+ * Unticked by default and never remembered across conversations: a Session Tool
+ * Trust is scoped to the session and the tool name, and it is not an approval — the
+ * click beside it still is. It is withheld in three cases, each because the trust
+ * could not be honoured anyway: a question authorizes nothing, a Tainted Conversation
+ * makes the agent ignore every trust in it, and a request with no affirmative option
+ * has no approval to ride on.
+ */
+function ApprovalTrustCheckbox({
+  decisions,
+  locked,
+  request,
+}: {
+  decisions: ApprovalDecisions;
+  locked: boolean;
+  request: AssistantInputRequestView;
+}) {
+  const { isTaintedBefore } = useAssistantApprovalPolicy();
+  const { sessionId } = useSessionToolTrust();
+  const inputId = useId();
+
+  const offered =
+    request.kind === "tool-approval" &&
+    sessionId !== null &&
+    approveOptionId(request) !== null &&
+    !isTaintedBefore(request.toolCallId);
+
+  if (!offered) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Checkbox
+        checked={decisions.remembered.has(request.toolCallId)}
+        disabled={locked}
+        id={inputId}
+        onCheckedChange={(checked) => decisions.setRemembered(request.toolCallId, checked === true)}
+      />
+      <Label
+        className="font-normal text-[length:var(--text-caption)] text-muted-foreground"
+        htmlFor={inputId}
+      >
+        {REMEMBER_TOOL_LABEL}
+      </Label>
+    </div>
   );
 }
 
@@ -209,13 +564,9 @@ export function ChatApprovalCard({
 function approvalCopy(
   request: AssistantInputRequestView,
   subject: ApprovalSubjectState,
-): { chip: string; heading: string; sending: string } {
+): { chip: string; heading: string } {
   if (request.kind !== "tool-approval") {
-    return {
-      chip: "A question for you",
-      heading: request.prompt,
-      sending: "Sending your answer…",
-    };
+    return { chip: "A question for you", heading: request.prompt };
   }
 
   return {
@@ -224,9 +575,13 @@ function approvalCopy(
       subject.status === "described"
         ? subject.subject.title
         : `The assistant wants to run ${humanizeToolName(request.toolName)}.`,
-    // Neither "approval" nor "refusal": the owner may have just pressed Cancel.
-    sending: "Sending your decision…",
   };
+}
+
+/** What the round trip is called. Neither "approval" nor "refusal": the owner may
+ * have just pressed Cancel. */
+function approvalCopySending(kind: AssistantInputRequestView["kind"]): string {
+  return kind === "tool-approval" ? "Sending your decision…" : "Sending your answer…";
 }
 
 /**
@@ -248,19 +603,19 @@ function approvalCopy(
 function ApprovalAnswerControls({
   describedById,
   disclosure,
+  isSending,
   locked,
   onAnswer,
   request,
-  sending,
 }: {
   describedById: string;
   /** The frozen input's show/hide control, when there is anything folded away. */
   disclosure: React.ReactNode;
+  /** Whether this item's named control is the one whose answer is on the wire. */
+  isSending: (control: string) => boolean;
   locked: boolean;
-  onAnswer: AnswerHandler;
+  onAnswer: ItemAnswerHandler;
   request: AssistantInputRequestView;
-  /** The key of the control whose answer is on the wire, or null. */
-  sending: string | null;
 }) {
   const hasOptions = request.options.length > 0;
   const note =
@@ -286,7 +641,7 @@ function ApprovalAnswerControls({
                   key={option.id}
                   onChoose={() => void onAnswer(option.id, { optionId: option.id })}
                   option={option}
-                  sending={sending === option.id}
+                  sending={isSending(option.id)}
                 />
               ))}
             </div>
@@ -299,7 +654,7 @@ function ApprovalAnswerControls({
           describedById={describedById}
           locked={locked}
           onAnswer={onAnswer}
-          sending={sending === FREEFORM_KEY}
+          sending={isSending(FREEFORM_KEY)}
         />
       ) : null}
     </>
@@ -319,7 +674,7 @@ function ApprovalFreeformField({
 }: {
   describedById: string;
   locked: boolean;
-  onAnswer: AnswerHandler;
+  onAnswer: ItemAnswerHandler;
   sending: boolean;
 }) {
   const [draft, setDraft] = useState("");

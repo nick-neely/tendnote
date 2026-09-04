@@ -6,7 +6,11 @@ import type {
 } from "@/components/assistant-results/registry";
 import { AssistantToolGroup } from "@/components/assistant-tool-group";
 import { AssistantToolResult } from "@/components/assistant-tool-result";
-import { ChatApprovalCard, ChatApprovalStatus } from "@/components/chat-approval-card";
+import {
+  ChatApprovalBatchCard,
+  ChatApprovalCard,
+  ChatApprovalStatus,
+} from "@/components/chat-approval-card";
 import { ChatAssetReviewCard } from "@/components/chat-asset-review-card";
 import { ChatDraftCard } from "@/components/chat-draft-card";
 import {
@@ -85,6 +89,10 @@ export function AssistantTurnUnitView({ unit }: { unit: AssistantTurnCardUnit })
     // `respond` from the panel's session through context, not a server action.
     case "request":
       return <ChatApprovalCard isNew request={unit.request} />;
+    // Several calls parked in the same breath: one card, one set of chrome, and a
+    // separate decision for each of them.
+    case "request-batch":
+      return <ChatApprovalBatchCard isNew requests={unit.requests} />;
     case "resolution":
       return <ChatApprovalStatus isNew resolution={unit.resolution} />;
     default:
