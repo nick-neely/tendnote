@@ -175,6 +175,7 @@ export function messageProposedFollowUps(message: EveMessage): readonly string[]
 
 /** One in-flight tool call, surfaced as a transient "working" shimmer line. */
 export type AssistantActiveTool = {
+  readonly specialist?: string;
   readonly toolCallId: string;
   readonly label: string;
 };
@@ -219,6 +220,7 @@ export function messageActiveToolViews(
     .map((part) => ({
       toolCallId: part.toolCallId,
       label: activeToolLabel(part.toolName),
+      ...(part.toolName.startsWith("subagent:") ? { specialist: part.toolName.slice(9) } : {}),
     }));
 }
 
@@ -374,7 +376,13 @@ export function messageTurnUnits(message: EveMessage, turnInFlight: boolean): As
         at,
         unit: {
           type: "active",
-          active: { toolCallId: part.toolCallId, label: activeToolLabel(part.toolName) },
+          active: {
+            toolCallId: part.toolCallId,
+            label: activeToolLabel(part.toolName),
+            ...(part.toolName.startsWith("subagent:")
+              ? { specialist: part.toolName.slice(9) }
+              : {}),
+          },
         },
       });
     }
@@ -407,6 +415,7 @@ export type AssistantTurnReasoning = {
 
 /** One tool call as the activity disclosure lists it. */
 export type AssistantActivityStep = {
+  readonly specialist?: string;
   readonly toolCallId: string;
   /** Present-continuous while it runs, past tense once it settled. */
   readonly label: string;
@@ -518,6 +527,7 @@ function partitionTurnUnits(units: readonly AssistantTurnUnit[]): {
     if (unit.type === "active") {
       activity.push({
         description: null,
+        ...(unit.active.specialist ? { specialist: unit.active.specialist } : {}),
         label: unit.active.label,
         status: "active",
         toolCallId: unit.active.toolCallId,
@@ -528,6 +538,9 @@ function partitionTurnUnits(units: readonly AssistantTurnUnit[]): {
     if (unit.type === "single" && toolViewTier(unit.entry.view) === "line") {
       activity.push({
         description: resultViewSummary(unit.entry.view),
+        ...(unit.entry.toolName.startsWith("subagent:")
+          ? { specialist: unit.entry.toolName.slice(9) }
+          : {}),
         label: completedToolLabel(unit.entry.toolName),
         status: "complete",
         toolCallId: unit.entry.toolCallId,

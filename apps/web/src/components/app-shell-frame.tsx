@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useLayoutEffect, useState } from "react";
 import type { ViewerStandings } from "@/components/app-destinations";
 import { AppSidebar } from "@/components/app-sidebar";
 import { CanvasNavigationRail } from "@/components/canvas-navigation-rail";
@@ -32,15 +32,11 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
  * shell behind a Suspense boundary under `cacheComponents`, which is the
  * partial-prefetching frame the admitted layout exists to prerender.
  *
- * ## Why the fold is corrected on the client
+ * ## Restoring the fold
  *
- * shadcn reads `sidebar_state` in the layout and hands it down as `defaultOpen`.
- * The admitted layout cannot: it is prerendered owner-neutral for partial
- * prefetching, and under `cacheComponents` a `cookies()` read there would make
- * the whole frame dynamic. So the frame renders open, reads the cookie once on
- * mount, and folds if that is what the member left. The admitted frame is
- * `display: none` until the admission marker streams (`globals.css`), so the
- * correction lands behind that gate rather than in front of the reader.
+ * The frame prerenders without reading request cookies. Restore the local fold
+ * before paint on mount or Activity reactivation, since navigation between the
+ * ledger and canvas shares admission and no longer hides that correction.
  */
 export function AppShellFrame({
   canvas = false,
@@ -58,8 +54,8 @@ export function AppShellFrame({
 }) {
   const [open, setOpen] = useState(true);
 
-  useEffect(() => {
-    if (readFoldedPreference()) setOpen(false);
+  useLayoutEffect(() => {
+    setOpen(!readFoldedPreference());
   }, []);
 
   if (canvas) {

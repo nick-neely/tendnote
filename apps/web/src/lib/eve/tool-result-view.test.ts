@@ -1754,6 +1754,14 @@ describe("activeToolLabel (in-flight tool → working copy)", () => {
    * which is the one thing the product never does. The label is the fix; the
    * namespace-stripping fallback is the floor under whatever eve adds next.
    */
+  it("names the specialist without exposing its namespace", () => {
+    expect(activeToolLabel("subagent:message_drafter")).toBe("Message drafter is helping…");
+    expect(completedToolLabel("subagent:relationship_strategist")).toBe(
+      "Relationship strategist finished",
+    );
+    expect(activeToolLabel("subagent:future_helper")).toBe("Future helper is helping…");
+  });
+
   it("never lets the framework name itself, labelled or not", () => {
     expect(activeToolLabel("eve:load-skill")).toBe("Getting up to speed…");
     expect(completedToolLabel("eve:load-skill")).toBe("Got up to speed");
