@@ -159,9 +159,26 @@ Rules:
 
 ## 5. Layout System
 
-The app shell uses a simple top bar and constrained workspace. Prefer obvious
+The app shell is a navigation rail beside a constrained workspace. Prefer obvious
 product patterns over invented affordances.
 
+- **Navigation rail** (`lg` and up): the shadcn Sidebar, same primitive and same
+  `--sidebar-*` palette as the Assistant's conversation rail, so both read as one
+  panel surface with hairline structure. The wordmark sits at its head; the
+  standing destinations (`sidebar-primary` in `app-destinations`) fill it; Gift
+  plans and Account sit on a ruled shelf at its foot (`sidebar-secondary`). Sage
+  marks the current row and nothing else — hover is neutral `muted`, and there
+  are no counts or badges. `collapsible="icon"`: folded it is a 3rem icon rail
+  keeping every destination reachable with its label as a tooltip, never a rail
+  that disappears. The fold is `Cmd/Ctrl+B`, the header control, or the drag
+  edge, and it is remembered per device. Above it the header keeps only the fold
+  control and the two tools, search and appearance — tools are not destinations.
+  Exactly one sidebar provider is mounted at a time (ADR-0239), so on a canvas
+  route that brings its own rail — `/assistant` — this one is present but fixed
+  to icons: same destinations, same sage on the current one, same labels as
+  tooltips, and no fold, because the fold is what the second provider would be.
+- **Phone** (below `lg`): unchanged, and the rail is not rendered at all. The
+  five-slot bottom bar plus the full-screen Menu dialog own navigation there.
 - **Dashboard**: two columns on desktop — the assistant (capture/recall chat) as
   the working column on the left, and a quiet right rail holding Today, **Needs
   review**, and People. On mobile the assistant leads at the top, directly under
@@ -171,7 +188,11 @@ product patterns over invented affordances.
 - **Assistant page** (`/assistant`, `/assistant/[sessionId]`): the one place the
   assistant is a destination, and the one route that opts out of the shell's
   1280px measure — it declares `data-full-bleed` (`globals.css`) so the rail
-  meets the left edge of the window and the transcript centres in what is left.
+  meets the icon rail beside it and the transcript centres in what is left.
+  It is also the one route where the shell's own rail is fixed to icons rather
+  than foldable, so exactly one of the two rails on screen is a sidebar provider
+  (ADR-0239); the wordmark stays at the head of that icon rail, which is where
+  it is on every other route too.
   Desktop is the shadcn Sidebar (`collapsible="icon"`, cookie-persisted fold,
   `--sidebar-*` mapped onto Tendnote's own tokens so it is the same `panel`
   surface, hairline, and sage as everything else): "New conversation" in the

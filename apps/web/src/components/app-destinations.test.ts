@@ -15,7 +15,7 @@ import {
 
 describe("app destinations", () => {
   it("uses explicit navigation groups instead of positional row meaning", () => {
-    expect(destinationsInGroup("desktop-primary").map(({ id }) => id)).toEqual([
+    expect(destinationsInGroup("sidebar-primary").map(({ id }) => id)).toEqual([
       "today",
       // Beside Today: the other thing the app is opened to do.
       "assistant",
@@ -23,6 +23,11 @@ describe("app destinations", () => {
       "actions",
       "assets",
       "saved-items",
+    ]);
+    // The quiet shelf at the foot of the same rail: reached on purpose, not in
+    // passing, and a group of its own so the split survives a reordering.
+    expect(destinationsInGroup("sidebar-secondary").map(({ id }) => id)).toEqual([
+      "gift-plans",
       "account",
     ]);
     expect(destinationsInGroup("menu").map(({ id }) => id)).toEqual([
@@ -40,7 +45,7 @@ describe("app destinations", () => {
   it("adds the shared coordination destination for an active household member", () => {
     const viewer = { householdMember: true };
 
-    expect(destinationsInGroup("desktop-primary", viewer).map(({ id }) => id)).toEqual([
+    expect(destinationsInGroup("sidebar-primary", viewer).map(({ id }) => id)).toEqual([
       "today",
       "assistant",
       // Near Today: the same question, asked of the household.
@@ -49,7 +54,6 @@ describe("app destinations", () => {
       "actions",
       "assets",
       "saved-items",
-      "account",
     ]);
     expect(destinationsInGroup("menu", viewer).map(({ id }) => id)).toEqual([
       "assistant",
@@ -64,7 +68,7 @@ describe("app destinations", () => {
   });
 
   it("keeps household governance out of navigation, where Account owns it", () => {
-    for (const group of ["desktop-primary", "menu"] as const) {
+    for (const group of ["sidebar-primary", "sidebar-secondary", "menu"] as const) {
       const ids = destinationsInGroup(group, { householdMember: true }).map(({ id }) => id);
       expect(ids).not.toContain("account-household");
       expect(ids).not.toContain("account-household-context");
@@ -76,19 +80,25 @@ describe("app destinations", () => {
     const none = new URLSearchParams();
 
     expect(
-      isDestinationCurrentInGroup("household", "desktop-primary", "/household", none, viewer),
+      isDestinationCurrentInGroup("household", "sidebar-primary", "/household", none, viewer),
     ).toBe(true);
     expect(
       isDestinationCurrentInGroup(
         "household",
-        "desktop-primary",
+        "sidebar-primary",
         "/account/household",
         none,
         viewer,
       ),
     ).toBe(false);
     expect(
-      isDestinationCurrentInGroup("account", "desktop-primary", "/account/household", none, viewer),
+      isDestinationCurrentInGroup(
+        "account",
+        "sidebar-secondary",
+        "/account/household",
+        none,
+        viewer,
+      ),
     ).toBe(true);
   });
 
@@ -122,7 +132,7 @@ describe("app destinations", () => {
     expect(
       isDestinationCurrentInGroup(
         "people",
-        "desktop-primary",
+        "sidebar-primary",
         "/people/person-1",
         new URLSearchParams(),
       ),
@@ -130,7 +140,7 @@ describe("app destinations", () => {
     expect(
       isDestinationCurrentInGroup(
         "today",
-        "desktop-primary",
+        "sidebar-primary",
         "/",
         new URLSearchParams("tab=review"),
       ),

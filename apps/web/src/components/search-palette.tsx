@@ -881,8 +881,15 @@ function paletteCommandGroups({
        * standings, and a shortcut to a destination that may have ended reads
        * worse than one that is simply absent. The rail and the phone Menu carry
        * it, and Global Recall still returns the household's own records.
+       *
+       * Both rail groups, in rail order: the palette is a way to reach a
+       * destination without the rail, so the quiet shelf at its foot - Gift
+       * plans, Account - belongs here as much as the standing rows do.
        */
-      commands: destinationsInGroup("desktop-primary").map((destination) => ({
+      commands: [
+        ...destinationsInGroup("sidebar-primary"),
+        ...destinationsInGroup("sidebar-secondary"),
+      ].map((destination) => ({
         id: `go-to-${destination.id}`,
         label: destination.label,
         icon: destination.icon,

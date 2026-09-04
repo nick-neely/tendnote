@@ -143,11 +143,18 @@ export function AssistantConversationRail({
   return (
     <Sidebar
       // The registry sidebar is a whole-window element (`fixed inset-y-0
-      // h-svh`), and this one lives under Tendnote's own chrome: the app header
-      // above `lg`, the phone's bottom bar below it. Pinning the two edges here
-      // rather than editing the primitive keeps the file verbatim and keeps the
-      // arithmetic where the shell it belongs to can be read next to it.
-      className="top-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] h-auto lg:top-[calc(3.5rem+1px)] lg:bottom-0"
+      // h-svh`), and this one lives inside Tendnote's own chrome: the app header
+      // above `lg`, the phone's bottom bar below it, and above `lg` the shell's
+      // canvas navigation rail to its left (`--tn-canvas-rail`, ADR 0239).
+      // Pinning the three edges here rather than editing the primitive keeps
+      // that file verbatim and keeps the arithmetic where the shell it belongs
+      // to can be read next to it.
+      //
+      // The left edge answers in the same variant it is arguing with: the
+      // primitive's own `data-[side=left]:left-0` carries an attribute selector,
+      // so a plain `lg:left-*` would lose on specificity and slide this rail
+      // under the navigation one.
+      className="top-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] h-auto lg:top-[calc(3.5rem+1px)] lg:bottom-0 lg:data-[side=left]:left-(--tn-canvas-rail)"
       collapsible="icon"
     >
       {/* The sheet is edge-to-edge on a phone, so this is the only thing between
