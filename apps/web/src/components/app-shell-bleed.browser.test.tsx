@@ -70,6 +70,38 @@ describe("the shell's measure across a hidden segment", () => {
     expect(getComputedStyle(main).paddingLeft).not.toBe("0px");
   });
 
+  /**
+   * The ledger toolbars (person, asset) bleed out of the reading measure to
+   * reach the edges of the canvas. With the navigation rail beside them (#552)
+   * "the edges of the canvas" is the rail's inset, not the window: a bar that
+   * kept measuring against the window would slide under the rail.
+   */
+  it("bleeds a ledger toolbar to the edges of the rail's inset, and no further", async () => {
+    await page.viewport(1440, 900);
+    const rendered = await renderInBrowser(
+      <AppShell ownerUserId="owner-1" searchHandler={vi.fn()}>
+        <div className="mx-bleed px-gutter sm:-mx-6 sm:px-6" data-testid="ledger-toolbar">
+          a sticky ledger toolbar
+        </div>
+      </AppShell>,
+    );
+    cleanups.push(rendered.unmount);
+
+    const rail = document.querySelector('[data-slot="sidebar-container"]');
+    const main = rendered.container.querySelector("main");
+    const toolbar = rendered.container.querySelector('[data-testid="ledger-toolbar"]');
+    if (!rail || !main || !toolbar) throw new Error("the shell rendered no rail, main, or toolbar");
+
+    const railEdge = rail.getBoundingClientRect().right;
+    const measure = main.getBoundingClientRect();
+    const bled = toolbar.getBoundingClientRect();
+
+    expect(railEdge).toBeCloseTo(256, 0);
+    // Out of the measure's padding, and not one pixel past the rail.
+    expect(bled.left).toBeLessThan(measure.left + 24);
+    expect(bled.left).toBeGreaterThanOrEqual(railEdge);
+  });
+
   it("does the same for the phone canvas, whose rule is the same shape inside the narrow query", async () => {
     await page.viewport(390, 844);
     const { Harness, navigateToPlain } = mountTwoSegments(

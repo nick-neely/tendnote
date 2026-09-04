@@ -39,7 +39,17 @@ export type AppDestinationId =
   | "today";
 
 export type HomePanel = "review" | "today";
-export type DestinationGroup = "desktop-primary" | "menu";
+/**
+ * Where a destination appears.
+ *
+ * `sidebar-primary` is the shell's standing rail: the destinations a member
+ * moves between many times a day. `sidebar-secondary` is the quieter shelf at
+ * the foot of the same rail - occasional destinations and the account - kept a
+ * separate group rather than a position within one, so the split survives a
+ * reordering. `menu` is the phone's Menu dialog, which is one flat list because
+ * a full-screen sheet has the room the rail does not.
+ */
+export type DestinationGroup = "sidebar-primary" | "sidebar-secondary" | "menu";
 export type DestinationReserveShape = "detail" | "ledger";
 
 /**
@@ -128,7 +138,7 @@ export const appDestinations = [
     route: "/",
     label: "Today",
     icon: HomeIcon,
-    groups: ["desktop-primary"],
+    groups: ["sidebar-primary"],
     reserve: { heading: "Today", shape: "ledger" },
     scopes: [owner("today"), owner("briefs")],
   },
@@ -162,7 +172,7 @@ export const appDestinations = [
     route: "/assistant",
     label: "Assistant",
     icon: NotebookPenIcon,
-    groups: ["desktop-primary", "menu"],
+    groups: ["sidebar-primary", "menu"],
     reserve: { heading: "Assistant", shape: "detail" },
     scopes: [],
   },
@@ -185,7 +195,7 @@ export const appDestinations = [
     route: "/household",
     label: "Household",
     icon: UsersRoundIcon,
-    groups: ["desktop-primary", "menu"],
+    groups: ["sidebar-primary", "menu"],
     availability: "household-member",
     reserve: { heading: "Household", shape: "ledger" },
     scopes: [viewer("general-actions")],
@@ -195,7 +205,7 @@ export const appDestinations = [
     route: "/people",
     label: "People",
     icon: BookUserIcon,
-    groups: ["desktop-primary", "menu"],
+    groups: ["sidebar-primary", "menu"],
     reserve: { heading: "People", shape: "ledger" },
     scopes: [owner("people")],
   },
@@ -213,7 +223,7 @@ export const appDestinations = [
     route: "/actions",
     label: "Actions",
     icon: CircleDotIcon,
-    groups: ["desktop-primary", "menu"],
+    groups: ["sidebar-primary", "menu"],
     reserve: { heading: "Actions", shape: "ledger" },
     scopes: [viewer("general-actions")],
   },
@@ -231,7 +241,7 @@ export const appDestinations = [
     route: "/assets",
     label: "Assets",
     icon: BoxIcon,
-    groups: ["desktop-primary", "menu"],
+    groups: ["sidebar-primary", "menu"],
     reserve: { heading: "Assets", shape: "ledger" },
     scopes: [owner("assets")],
   },
@@ -250,11 +260,11 @@ export const appDestinations = [
     label: "Gift plans",
     icon: GiftIcon,
     /**
-     * Menu only. Gift planning is occasional and deliberate — a few times a
-     * year, not several times a day — so it does not earn a place in the
-     * always-visible rail beside People, Today, and capture.
+     * Secondary. Gift planning is occasional and deliberate — a few times a
+     * year, not several times a day — so it sits on the rail's quiet shelf
+     * rather than beside People, Today, and the Assistant.
      */
-    groups: ["menu"],
+    groups: ["sidebar-secondary", "menu"],
     reserve: { heading: "Gift plans", shape: "ledger" },
     scopes: [owner("gift-plans"), viewer("gift-plans")],
   },
@@ -272,7 +282,7 @@ export const appDestinations = [
     route: "/saved-items",
     label: "Saved Items",
     icon: BookmarkIcon,
-    groups: ["desktop-primary", "menu"],
+    groups: ["sidebar-primary", "menu"],
     reserve: { heading: "Saved Items", shape: "ledger" },
     scopes: [owner("saved-items"), viewer("saved-items")],
   },
@@ -281,7 +291,12 @@ export const appDestinations = [
     route: "/account",
     label: "Account",
     icon: CircleUserRoundIcon,
-    groups: ["desktop-primary", "menu"],
+    /**
+     * Secondary. Account is where a member goes to change something about the
+     * app rather than to do the work the app is for, so it sits at the foot of
+     * the rail with Gift plans instead of among the standing destinations.
+     */
+    groups: ["sidebar-secondary", "menu"],
     reserve: { heading: "Account", shape: "ledger" },
     scopes: [owner("account")],
   },

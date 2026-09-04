@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { Activity } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, userEvent, waitFor, within } from "@/test/dom";
 
@@ -63,7 +64,6 @@ vi.mock("@/lib/auth/client", () => ({
 
 import { AppShell } from "./app-shell";
 import { AppShellEffects } from "./app-shell-effects";
-import { DesktopAppNavigationFallback } from "./desktop-app-navigation";
 import { MobileHomeReserve } from "./mobile-home-reserve";
 import { MobileTodayDestination } from "./mobile-today-destination";
 
@@ -208,8 +208,17 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(screen.getAllByRole("navigation", { name: "Mobile primary" })).toHaveLength(1);
   });
 
-  it("keeps the complete primary navigation present before current state resolves", () => {
-    render(<DesktopAppNavigationFallback />);
+  /**
+   * The rail's reserve, while the membership read is still in flight. It holds
+   * the destinations every viewer has and marks none of them current, so the
+   * geometry never moves and a Household row never appears and vanishes.
+   */
+  it("keeps the complete navigation rail present before standings resolve", () => {
+    render(
+      <AppShell ownerUserId="owner-1" viewerStandings={new Promise<never>(() => {})}>
+        <p>Destination</p>
+      </AppShell>,
+    );
 
     const primary = within(screen.getByRole("navigation", { name: "Primary" }));
     expect(primary.getAllByRole("link").map((link) => link.textContent)).toEqual([
@@ -219,11 +228,95 @@ describe("AppShell Phase Seven mobile navigation", () => {
       "Actions",
       "Assets",
       "Saved Items",
+    ]);
+    const secondary = within(screen.getByRole("navigation", { name: "Secondary" }));
+    expect(secondary.getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Gift plans",
       "Account",
     ]);
-    for (const link of primary.getAllByRole("link")) {
+    for (const link of [...primary.getAllByRole("link"), ...secondary.getAllByRole("link")]) {
       expect(link.getAttribute("aria-current")).toBeNull();
     }
+  });
+
+  it("folds the rail to icons and remembers the fold, without hiding a destination", async () => {
+    const user = userEvent.setup();
+    render(
+      <AppShell ownerUserId="owner-1">
+        <p>Destination</p>
+      </AppShell>,
+    );
+
+    const rail = screen.getByRole("navigation", { name: "Primary" }).closest("[data-state]");
+    expect(rail?.getAttribute("data-state")).toBe("expanded");
+
+    await user.click(screen.getByRole("button", { name: "Navigation" }));
+
+    expect(rail?.getAttribute("data-state")).toBe("collapsed");
+    expect(document.cookie).toContain("sidebar_state=false");
+    // Folded is an icon rail, not a rail that disappears: every destination is
+    // still a reachable link, its label carried by the tooltip.
+    expect(
+      within(screen.getByRole("navigation", { name: "Primary" })).getByRole("link", {
+        name: "People",
+      }),
+    ).toBeDefined();
+  });
+
+  /**
+   * The one-provider rule (ADR 0239). `/assistant` brings its own
+   * `SidebarProvider` for the conversation rail, and the shadcn primitive binds
+   * `Cmd+B` and writes `sidebar_state` once per provider — so the shell yields
+   * its rail there rather than mounting a second one, and hands the way home to
+   * the wordmark instead. Its layout says so (the `(canvas)` route group); the
+   * shell never reads the URL to find out.
+   */
+  it("yields the rail to the Assistant's own, and keeps a way back", () => {
+    render(
+      <AppShell canvas ownerUserId="owner-1">
+        <p>Conversation</p>
+      </AppShell>,
+    );
+
+    expect(screen.queryByRole("navigation", { name: "Primary" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Navigation" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Tendnote" }).getAttribute("href")).toBe("/");
+  });
+
+  /**
+   * The other half of the one-provider rule, and the half a router can break.
+   *
+   * Next does not unmount the route you navigate away from: it parks it in a
+   * hidden `<Activity>`. So the rail shell really is still in the document while
+   * the Assistant is on screen, and if its provider were still live there would
+   * be two `Cmd+B` listeners and two writers of `sidebar_state` again. React
+   * destroys effects in a hidden Activity subtree, which is what makes the rule
+   * true at runtime rather than only in the tree — pinned here because the
+   * decision (ADR 0239) rests on it.
+   */
+  it("leaves a parked shell inert while the canvas shell is the live one", () => {
+    render(
+      <>
+        <Activity mode="hidden">
+          <AppShell ownerUserId="owner-1">
+            <p>Parked destination</p>
+          </AppShell>
+        </Activity>
+        <AppShell canvas ownerUserId="owner-1">
+          <p>Conversation</p>
+        </AppShell>
+      </>,
+    );
+
+    // Queried through the DOM, not by role: a hidden Activity subtree is out of
+    // the accessibility tree, which is the point of it.
+    const parked = document.querySelector('[data-slot="sidebar"]');
+    expect(parked?.getAttribute("data-state")).toBe("expanded");
+    expect(screen.queryByRole("navigation", { name: "Primary" })).toBeNull();
+
+    fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+
+    expect(parked?.getAttribute("data-state")).toBe("expanded");
   });
 
   it("remounts owner-keyed mobile flow state when the admitted session rotates", async () => {
