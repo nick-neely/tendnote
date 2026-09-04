@@ -8,6 +8,10 @@ export default defineConfig({
     noDiscovery: true,
     include: [
       "@testing-library/dom",
+      "@tiptap/react",
+      "@tiptap/core",
+      "@tiptap/starter-kit",
+      "tiptap-markdown",
       "class-variance-authority",
       "clsx",
       "@phosphor-icons/react/dist/ssr",
@@ -21,6 +25,8 @@ export default defineConfig({
       "radix-ui",
       "react",
       "react-dom/client",
+      // Tiptap imports the package root as well as the client entry.
+      "react-dom",
       "react/jsx-dev-runtime",
       // The dev runtime alone is not enough. Our own JSX compiles to `jsxDEV`, but a
       // prebuilt dependency ships compiled for production and imports `jsx` - and

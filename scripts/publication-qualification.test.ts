@@ -1,6 +1,15 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -326,7 +335,7 @@ function writeBundle(root: string, sourceCommit = CANDIDATE) {
 
 describe("publication evidence adapters", () => {
   it("accepts the canonical packager-shaped clean bundle and rejects stale source", () => {
-    const root = mkdtempSync(join("/tmp", "tendnote-qualification-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "tendnote-qualification-"));
     writeBundle(root);
     const clean = verifyDeterministicEvidenceBundle({
       root,
@@ -350,7 +359,7 @@ describe("publication evidence adapters", () => {
   });
 
   it("rejects legacy raw names, retry artifacts, and non-completed statuses", () => {
-    const root = mkdtempSync(join("/tmp", "tendnote-qualification-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "tendnote-qualification-"));
     const bundle = writeBundle(root);
     writeFileSync(join(bundle, "raw", "retry-1-results.jsonl"), "retry\n");
     const result = verifyDeterministicEvidenceBundle({
@@ -361,7 +370,7 @@ describe("publication evidence adapters", () => {
     expect(result.status).toBe("blocked");
     expect(result.blockers.join(" ")).toMatch(/retry artifact/i);
 
-    const legacyRoot = mkdtempSync(join("/tmp", "tendnote-qualification-"));
+    const legacyRoot = mkdtempSync(join(realpathSync(tmpdir()), "tendnote-qualification-"));
     const legacyBundle = writeBundle(legacyRoot);
     const initial = readFileSync(join(legacyBundle, "raw", "initial-results.jsonl"), "utf8");
     writeFileSync(join(legacyBundle, "raw", "results.jsonl"), initial);
@@ -373,7 +382,7 @@ describe("publication evidence adapters", () => {
       }).status,
     ).toBe("blocked");
 
-    const waitingRoot = mkdtempSync(join("/tmp", "tendnote-qualification-"));
+    const waitingRoot = mkdtempSync(join(realpathSync(tmpdir()), "tendnote-qualification-"));
     const waitingBundle = writeBundle(waitingRoot);
     const rowsPath = join(waitingBundle, "raw", "initial-results.jsonl");
     writeFileSync(rowsPath, initial.replaceAll('"completed"', '"waiting"'));
@@ -387,7 +396,7 @@ describe("publication evidence adapters", () => {
   });
 
   it("rejects duplicate or missing eval IDs across metadata, summary, and JSONL", () => {
-    const root = mkdtempSync(join("/tmp", "tendnote-qualification-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "tendnote-qualification-"));
     const bundle = writeBundle(root);
     const metadataPath = join(bundle, "metadata.json");
     const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
@@ -428,7 +437,7 @@ describe("publication evidence adapters", () => {
   });
 
   it("structurally rejects multiple suites and inconsistent outcome elements", () => {
-    const root = mkdtempSync(join("/tmp", "tendnote-qualification-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "tendnote-qualification-"));
     const bundle = writeBundle(root);
     const junitPath = join(bundle, "junit.xml");
     writeFileSync(
@@ -469,7 +478,7 @@ describe("publication evidence adapters", () => {
   });
 
   it("blocks waiting evidence even when the counts look complete", () => {
-    const root = mkdtempSync(join("/tmp", "tendnote-qualification-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "tendnote-qualification-"));
     const bundle = writeBundle(root);
     const metadataPath = join(bundle, "metadata.json");
     const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
@@ -486,7 +495,7 @@ describe("publication evidence adapters", () => {
   });
 
   it("requires a complete raw summary object and exact JUnit agreement", () => {
-    const root = mkdtempSync(join("/tmp", "tendnote-qualification-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "tendnote-qualification-"));
     const bundle = writeBundle(root);
     const summaryPath = join(bundle, "raw", "initial-summary.json");
     const summary = JSON.parse(readFileSync(summaryPath, "utf8"));
@@ -594,7 +603,11 @@ describe("publication evidence adapters", () => {
       cwd: root,
       encoding: "utf8",
     }).trim();
-    const outside = join("/tmp", `tendnote-qualification-outside-${process.pid}`, "report.json");
+    const outside = join(
+      realpathSync(tmpdir()),
+      `tendnote-qualification-outside-${process.pid}`,
+      "report.json",
+    );
     const outputRoot = join(root, "evidence", "qualification", `symlink-${process.pid}`);
     const link = join(outputRoot, "link");
     mkdirSync(outputRoot, { recursive: true });

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -24,7 +24,7 @@ import {
 const roots: string[] = [];
 
 function scratch(): string {
-  const root = mkdtempSync(join(tmpdir(), "tendnote-qual-modules-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "tendnote-qual-modules-"));
   roots.push(root);
   return root;
 }

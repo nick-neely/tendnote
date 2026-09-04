@@ -232,8 +232,8 @@ describe("fresh-clone publication gate", () => {
       "1126322e2cc8d165adc4c792eeb195717de2bcc7b39be1ce77959d78e87ef685",
     );
     expect(notices).toContain("pbakaus/impeccable");
-    expect(notices).toContain("skill-v4.0.2");
-    expect(notices).toMatch(/Retrieved:\*\*? 2026-08-19/);
+    expect(notices).toContain("skill-v4.2.0");
+    expect(notices).toMatch(/Retrieved:\*\*? 2026-09-04/);
     expect(notices).toContain("Copyright 2025 Paul Bakaus");
     expect(notices).toContain("NOTICE.md");
     expect(notices).toContain("LICENSES/Impeccable-NOTICE.md");
@@ -252,7 +252,7 @@ describe("fresh-clone publication gate", () => {
     }
     for (const variant of [".agents/skills/impeccable/", ".claude/skills/impeccable/"]) {
       expect(existsSync(resolve(root, variant, "SKILL.md"))).toBe(true);
-      expect(read(`${variant}SKILL.md`)).toContain("version: 4.0.2");
+      expect(read(`${variant}SKILL.md`)).toContain("version: 4.2.0");
     }
   });
 

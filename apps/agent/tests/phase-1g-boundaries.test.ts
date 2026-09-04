@@ -60,7 +60,7 @@ const PHASE_1G_FILES = [
 // is allowed; sending and other delivery providers are not).
 const PHASE_2D_GMAIL_SURFACES = [
   "apps/web/src/components/person-drafts.tsx",
-  "apps/web/src/app/(admitted)/people/[personId]/page.tsx",
+  "apps/web/src/app/(member)/(admitted)/people/[personId]/page.tsx",
 ];
 
 // External delivery / provider modules that must never be imported by Phase 1G

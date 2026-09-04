@@ -10,11 +10,8 @@ import {
   recordAssistantConversationAction,
 } from "@/app/actions/assistant-conversations";
 import { AssistantConversationRail } from "@/components/assistant-conversation-rail";
+import { AssistantPageHeader } from "@/components/assistant-page-header";
 import { AssistantPageTranscriptReserve } from "@/components/assistant-page-reserve";
-import { AssistantMark } from "@/components/assistant-panel-chrome";
-import { NotebookPenIcon } from "@/components/icons";
-import { Button } from "@/components/ui/button";
-import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useConversationRailState } from "@/lib/assistant/use-conversation-rail-state";
 import { cn } from "@/lib/utils";
 
@@ -65,6 +62,11 @@ const AssistantPanel = dynamic(
   { loading: () => <AssistantPageTranscriptReserve />, ssr: false },
 );
 
+const NewAssistantPanel = dynamic(
+  () => import("@/components/assistant-panel").then((mod) => mod.AssistantPanel),
+  { loading: () => <AssistantPageTranscriptReserve newConversation />, ssr: false },
+);
+
 /** One mounted conversation: what to resume, and what identity to key it on. */
 type Thread = {
   /** Changes only on a deliberate thread switch, so a URL update never remounts. */
@@ -77,10 +79,10 @@ export type AssistantPageProps = {
   /**
    * The owner's Approval Mode, read per request by the surface around this page.
    *
-   * It travels beside the surface model's props rather than out of it, for the
-   * same reason `railOpen` does: it is request state read from the owner's own
-   * account, not a judgment about which thread this URL names. Absent means the
-   * cautious mode, which is also the one the cards say nothing extra about.
+   * It travels beside the surface model's props rather than out of it because it
+   * is request state read from the owner's own account, not a judgment about
+   * which thread this URL names. Absent means the cautious mode, which is also
+   * the one the cards say nothing extra about.
    */
   approvalMode?: EveApprovalMode;
   /** Every thread the owner has, archived ones included; split for the rail here. */
@@ -88,14 +90,6 @@ export type AssistantPageProps = {
   /** Calendar-derived openings for a brand-new conversation (#114). */
   nudges: PromptNudge[];
   ownerUserId: string;
-  /**
-   * Whether the rail was left open, read from the sidebar cookie by the surface.
-   *
-   * Request state rather than a judgment about this URL, which is why it comes
-   * in beside the surface model's props rather than out of it. Absent (a first
-   * visit, or a render with no request behind it) means open.
-   */
-  railOpen?: boolean;
   /** The thread this URL names, or `null` on `/assistant`. */
   sessionId: string | null;
   suggestPersonName: string | null;
@@ -109,7 +103,6 @@ export function AssistantPage({
   conversations: serverConversations,
   nudges,
   ownerUserId,
-  railOpen = true,
   sessionId,
   suggestPersonName,
 }: AssistantPageProps) {
@@ -189,17 +182,10 @@ export function AssistantPage({
       });
   }
 
+  const Panel = thread.resumeSessionId ? AssistantPanel : NewAssistantPanel;
+
   return (
-    // A destination that does not scroll: the transcript scrolls inside its own
-    // column and the composer stays put. Below `lg` the shell's fixed bottom bar
-    // owns the last 4rem and the safe area with it; above it the shell's header
-    // and its rule own the first 3.5rem plus a pixel, and `data-full-bleed` has
-    // just taken back the padding the admitted main would otherwise add.
-    <SidebarProvider
-      className="h-[calc(100dvh-4rem-env(safe-area-inset-bottom))] min-h-0 lg:h-[calc(100dvh-3.5rem-2px)]"
-      data-full-bleed
-      defaultOpen={railOpen}
-    >
+    <>
       <AssistantConversationRail
         archived={list.archived}
         conversations={list.active}
@@ -217,7 +203,7 @@ export function AssistantPage({
           title={list.titleOf(currentSessionId)}
         />
         <div className={cn("flex min-h-0 flex-1 flex-col", columnClass)}>
-          <AssistantPanel
+          <Panel
             approvalMode={approvalMode}
             initialSessionId={thread.resumeSessionId ?? undefined}
             key={thread.key}
@@ -229,7 +215,7 @@ export function AssistantPage({
           />
         </div>
       </div>
-    </SidebarProvider>
+    </>
   );
 }
 
@@ -242,98 +228,3 @@ export function AssistantPage({
  * appears on the next visit; a thread is never blocked on having one.
  */
 const TITLE_SETTLE_MS = 12_000;
-
-/**
- * One header for the destination: who is talking, and which thread.
- *
- * It spans the full canvas rather than the transcript's measure. Once the rail
- * is against the left edge of the window, a header row that stopped where the
- * text column stops would leave the fold control floating in the middle of the
- * page instead of sitting at the corner of the thing it folds.
- *
- * Two things that used to live here are gone. The Private chip said the standing
- * promise twice — the empty state says it in a sentence — and the debug toggle
- * was development chrome sitting permanently in a product header.
- */
-function AssistantPageHeader({
-  onNewConversation,
-  title,
-}: {
-  onNewConversation: () => void;
-  title: string | null;
-}) {
-  const { isMobile, openMobile, state } = useSidebar();
-  // The rail carries this action wherever the rail is a list. It is a header
-  // control only where it is not: an icon-width rail, and a phone.
-  const railOffersNewConversation = !isMobile && state === "expanded";
-
-  /**
-   * Focus comes back here when the phone's rail sheet closes.
-   *
-   * Radix's modal dialog does not use its usual restore for this: it explicitly
-   * refocuses the `DialogTrigger`, and the sidebar's sheet is fully controlled
-   * with no trigger inside it, so the ref is null and focus falls to `<body>` —
-   * a keyboard or screen-reader owner who closes the rail loses their place
-   * entirely. This control is the thing that opened it, so it is where the
-   * place belongs, including after picking a thread: the transcript that
-   * arrives is a new subject, not a new page, and the header is the top of it.
-   */
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const sheetWasOpen = useRef(false);
-  useEffect(() => {
-    if (sheetWasOpen.current && !openMobile) triggerRef.current?.focus();
-    sheetWasOpen.current = openMobile;
-  }, [openMobile]);
-
-  return (
-    // The page's height already stops above the phone's bottom bar; the top
-    // inset has no such owner, so the header holds it and the transcript below
-    // simply gets that much less room.
-    <header className="shrink-0 border-b pt-[env(safe-area-inset-top)]">
-      <div className="flex min-h-14 w-full items-center gap-2 px-gutter sm:px-6">
-        {/* Named for what it reveals rather than for the fold state, so it is
-            never a control whose label changes under the pointer. */}
-        <SidebarTrigger
-          aria-label="Conversations"
-          className="-ml-1 shrink-0 text-muted-foreground"
-          ref={triggerRef}
-        />
-
-        <div className="flex min-w-0 flex-1 items-baseline gap-2">
-          <h1 className="flex shrink-0 items-center gap-2 font-semibold text-sm">
-            <AssistantMark />
-            Assistant
-          </h1>
-          {title ? (
-            <>
-              <span aria-hidden className="text-muted-foreground/60">
-                ·
-              </span>
-              {/* The full title stays reachable on hover for the ones the
-                  measure clips; the rail row it came from clips too. */}
-              <span
-                className="min-w-0 truncate text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]"
-                title={title}
-              >
-                {title}
-              </span>
-            </>
-          ) : null}
-        </div>
-
-        {railOffersNewConversation ? null : (
-          <Button
-            aria-label="New conversation"
-            className="shrink-0 text-muted-foreground"
-            onClick={onNewConversation}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <NotebookPenIcon aria-hidden />
-          </Button>
-        )}
-      </div>
-    </header>
-  );
-}

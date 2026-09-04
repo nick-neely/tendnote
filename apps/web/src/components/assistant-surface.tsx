@@ -3,7 +3,6 @@ import {
   getAssistantConversation,
   listAssistantConversations,
 } from "@tendnote/db/queries/assistant-conversations";
-import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { AssistantPage } from "@/components/assistant-page";
@@ -49,21 +48,5 @@ export async function AssistantSurfaceContent({ sessionId }: { sessionId: string
   const model = assistantSurfaceModel({ conversations, hints, ownerUserId, sessionId, thread });
   if (!model.found) notFound();
 
-  return <AssistantPage {...model.props} approvalMode={approvalMode} railOpen={await railOpen()} />;
-}
-
-/**
- * Whether the conversation rail was left open, from the sidebar's own cookie.
- *
- * The shadcn Sidebar writes `sidebar_state` whenever the fold changes and reads
- * nothing back on its own; handing it `defaultOpen` from the request is what
- * makes the fold survive a reload without the first client paint disagreeing
- * with the server's. It is a per-device preference, which a cookie is, and an
- * unreadable or absent one means open — the state that shows the owner their
- * threads.
- */
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
-
-async function railOpen(): Promise<boolean> {
-  return (await cookies()).get(SIDEBAR_COOKIE_NAME)?.value !== "false";
+  return <AssistantPage {...model.props} approvalMode={approvalMode} />;
 }

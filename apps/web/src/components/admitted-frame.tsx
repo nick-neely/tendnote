@@ -11,12 +11,10 @@ import { hasAdmittedShellAccess } from "@/lib/access/current-access";
  * keeping it invisible and inert until fresh request-bound admission resolves.
  * Destination content retains its own exact-return admission gate.
  *
- * It is a component rather than the body of one layout because two layouts need
- * it: the rail shell in `(admitted)`, and the canvas shell in `(canvas)` for the
- * one route that brings its own rail (ADR 0239). Which shell a route gets is
- * therefore a fact about where the route file lives, decided at build time —
- * not a pathname a client component reads, which would make this frame dynamic
- * under `cacheComponents` and cost every route its static shell.
+ * The shared `(member)` layout owns this boundary. Its ledger and canvas child
+ * layouts choose their navigation chrome without re-running admission merely
+ * because the owner moved between Today and Assistant. Every destination still
+ * checks its exact-return admission and ownership at the data boundary.
  */
 export function AdmittedFrame({ children }: { children: React.ReactNode }) {
   return (

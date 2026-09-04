@@ -140,10 +140,14 @@ function sentenceCase(text: string): string {
 
 /** Present-continuous label for an in-flight tool call (the shimmer line). */
 export function activeToolLabel(toolName: string): string {
+  if (toolName.startsWith("subagent:"))
+    return `${sentenceCase(humanizeToolName(toolName))} is helping…`;
   return TOOL_LABELS[toolName]?.[0] ?? `${humanizeToolName(toolName)}…`;
 }
 
 /** Past-tense label for a settled tool call (the activity disclosure's step). */
 export function completedToolLabel(toolName: string): string {
+  if (toolName.startsWith("subagent:"))
+    return `${sentenceCase(humanizeToolName(toolName))} finished`;
   return TOOL_LABELS[toolName]?.[1] ?? sentenceCase(humanizeToolName(toolName));
 }

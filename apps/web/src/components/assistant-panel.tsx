@@ -41,6 +41,7 @@ import {
 import { AssistantPromptNudges } from "@/components/assistant-prompt-nudges";
 import { AssistantRespondProvider } from "@/components/assistant-respond-context";
 import { AssistantSendQueue } from "@/components/assistant-send-queue";
+import { AssistantStarterChips } from "@/components/assistant-starter-chips";
 import { AssistantTurnActivity } from "@/components/assistant-turn-activity";
 import {
   AssistantTurnActions,
@@ -53,7 +54,6 @@ import { DropOverlay } from "@/components/drop-overlay";
 import { ArrowUpRightIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ui/shimmer";
-import { ASSISTANT_CONVERSATION_STARTERS } from "@/lib/assistant/starters";
 import { APPROVE_OPTION_ID, typedApprovalAnswer } from "@/lib/eve/approval-answers";
 import { EVIDENCE_DROP_ACCEPT, type EvidencePick, useEvidencePick } from "@/lib/eve/evidence-pick";
 import { followUpSuggestions } from "@/lib/eve/follow-up-suggestions";
@@ -608,17 +608,7 @@ function AssistantConversationStarters({
     return <AssistantPromptNudges nudges={nudges} onSelect={onSendNudge} />;
   }
 
-  // Wrapped and centred rather than in the `Suggestions` scroller: three full
-  // sentences overflow a 44rem column, and a chip clipped at the column edge
-  // reads as broken rather than as scrollable. The chips themselves are the
-  // same primitive the nudges use.
-  return (
-    <div className="flex flex-wrap justify-center gap-2">
-      {ASSISTANT_CONVERSATION_STARTERS.map((starter) => (
-        <Suggestion key={starter} onClick={(text) => void onSend(text)} suggestion={starter} />
-      ))}
-    </div>
-  );
+  return <AssistantStarterChips onSend={(text) => void onSend(text)} />;
 }
 
 /**

@@ -61,12 +61,12 @@
         "count": 6
       }
     },
-    "apps/web/src/app/(admitted)/assets/[assetId]/page.tsx": {
+    "apps/web/src/app/(member)/(admitted)/assets/[assetId]/page.tsx": {
       "crap_moderate": {
         "count": 2
       }
     },
-    "apps/web/src/app/(admitted)/people/[personId]/page.tsx": {
+    "apps/web/src/app/(member)/(admitted)/people/[personId]/page.tsx": {
       "complexity_critical": {
         "count": 1
       },
@@ -74,7 +74,7 @@
         "count": 1
       }
     },
-    "apps/web/src/app/(admitted)/shared/[recordKind]/[recordId]/page.tsx": {
+    "apps/web/src/app/(member)/(admitted)/shared/[recordKind]/[recordId]/page.tsx": {
       "crap_moderate": {
         "count": 1
       }
@@ -497,7 +497,7 @@
     "apps/web/src/lib/access/private-beta-flag.ts:dead code",
     "apps/web/src/components/general-action-create-form.tsx:complexity",
     "apps/web/src/lib/dashboard-brief.ts:high impact",
-    "apps/web/src/app/(admitted)/people/[personId]/page.tsx:complexity",
+    "apps/web/src/app/(member)/(admitted)/people/[personId]/page.tsx:complexity",
     "packages/db/src/queries/asset-snapshots/in-memory-store.ts:high impact",
     "apps/web/src/components/account/about-you-surface.tsx:complexity",
     "packages/db/src/queries/assets/in-memory-link-store.ts:high impact",

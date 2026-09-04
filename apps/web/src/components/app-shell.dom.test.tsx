@@ -85,6 +85,8 @@ beforeEach(() => {
   navigationState.pathname = "/";
   navigationState.searchParams = new URLSearchParams();
   navigationState.sessionOwnerUserId = "owner-1";
+  // biome-ignore lint/suspicious/noDocumentCookie: reset the sidebar cookie between tests.
+  document.cookie = "sidebar_state=true; path=/";
   sessionStorage.clear();
 });
 
@@ -239,6 +241,30 @@ describe("AppShell Phase Seven mobile navigation", () => {
     for (const link of [...primary.getAllByRole("link"), ...secondary.getAllByRole("link")]) {
       expect(link.getAttribute("aria-current")).toBeNull();
     }
+  });
+
+  it("leaves formatting shortcuts to editors and inputs", async () => {
+    render(
+      <AppShell ownerUserId="owner-1">
+        <div contentEditable suppressContentEditableWarning data-testid="editor">
+          <strong>Draft text</strong>
+        </div>
+        <textarea aria-label="Draft" />
+        <input aria-label="Title" />
+      </AppShell>,
+    );
+    const rail = screen.getByRole("navigation", { name: "Primary" }).closest("[data-state]");
+    for (const target of [
+      screen.getByText("Draft text"),
+      screen.getByRole("textbox", { name: "Draft" }),
+      screen.getByRole("textbox", { name: "Title" }),
+    ]) {
+      expect(fireEvent.keyDown(target, { key: "b", metaKey: true })).toBe(true);
+      expect(fireEvent.keyDown(target, { key: "b", ctrlKey: true })).toBe(true);
+      expect(rail?.getAttribute("data-state")).toBe("expanded");
+    }
+    fireEvent.keyDown(document.body, { key: "b", metaKey: true });
+    expect(rail?.getAttribute("data-state")).toBe("collapsed");
   });
 
   it("folds the rail to icons and remembers the fold, without hiding a destination", async () => {
