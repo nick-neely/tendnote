@@ -59,9 +59,12 @@ const UNTAINTED: ConversationTaint = Object.freeze({ tainted: false, source: nul
  *
  * `defineState` requires an active eve context (ALS scope). Every accessor below
  * is wrapped, because the readers include a policy that must never throw and the
- * writers include a tool that must not fail a fetch over an audit detail.
+ * writers include a tool that must not fail a fetch over an audit detail. The
+ * slot itself stays module-private for that reason: those wrapped accessors are
+ * the whole surface, and a caller reaching the raw slot would be the one that
+ * throws.
  */
-export const conversationTaint = defineState<ConversationTaint>(
+const conversationTaint = defineState<ConversationTaint>(
   "tendnote.conversation-taint",
   () => UNTAINTED,
 );

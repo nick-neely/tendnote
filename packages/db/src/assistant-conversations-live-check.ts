@@ -19,6 +19,13 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb } from "./client";
 import {
+  check,
+  DEMO_INTRUDER,
+  DEMO_OWNER,
+  reportLiveCheckResult,
+  requireDemoAccounts,
+} from "./live-check";
+import {
   archiveAssistantConversation,
   getAssistantConversation,
   listAssistantConversations,
@@ -28,30 +35,6 @@ import {
   upsertAssistantConversation,
 } from "./queries/assistant-conversations";
 import { assistantConversations } from "./schema";
-import { user } from "./schema/auth";
-
-/** The two seeded accounts. Either one stands in for "somebody else" here. */
-const OWNER = "demo-user";
-const INTRUDER = "demo-member";
-
-let failures = 0;
-function check(label: string, condition: boolean, detail?: unknown) {
-  if (condition) {
-    console.log(`  ok   ${label}`);
-  } else {
-    failures += 1;
-    console.error(`  FAIL ${label}`, detail ?? "");
-  }
-}
-
-async function requireDemoAccounts(): Promise<void> {
-  const rows = await getDb().select({ id: user.id }).from(user);
-  const ids = new Set(rows.map((row) => row.id));
-  if (ids.has(OWNER) && ids.has(INTRUDER)) return;
-
-  console.error(`missing ${OWNER} / ${INTRUDER}. Run: pnpm --filter @tendnote/db db:seed`);
-  process.exit(1);
-}
 
 async function main() {
   await requireDemoAccounts();
@@ -62,7 +45,7 @@ async function main() {
   try {
     console.log("\nthe intruder pre-claims a session id the owner is about to be given:");
     await upsertAssistantConversation({
-      ownerUserId: INTRUDER,
+      ownerUserId: DEMO_INTRUDER,
       sessionId,
       firstMessage: "A session id I do not own",
     });
@@ -72,13 +55,13 @@ async function main() {
       .where(eq(assistantConversations.sessionId, sessionId));
     check(
       "the pre-claim created exactly one row, owned by the intruder",
-      claimed?.ownerUserId === INTRUDER,
+      claimed?.ownerUserId === DEMO_INTRUDER,
       claimed,
     );
 
     console.log("\nthe owner's own writes never reach it:");
     await upsertAssistantConversation({
-      ownerUserId: OWNER,
+      ownerUserId: DEMO_OWNER,
       sessionId,
       firstMessage: "My conversation",
     });
@@ -88,7 +71,7 @@ async function main() {
       .where(eq(assistantConversations.sessionId, sessionId));
     check(
       "a conflicting upsert left the row's owner, title, and opening message alone",
-      afterUpsert?.ownerUserId === INTRUDER &&
+      afterUpsert?.ownerUserId === DEMO_INTRUDER &&
         afterUpsert?.title === claimed?.title &&
         afterUpsert?.firstMessage === claimed?.firstMessage,
       afterUpsert,
@@ -101,36 +84,36 @@ async function main() {
 
     check(
       "the owner cannot read it",
-      (await getAssistantConversation({ ownerUserId: OWNER, sessionId })) === null,
+      (await getAssistantConversation({ ownerUserId: DEMO_OWNER, sessionId })) === null,
     );
     check(
       "it is absent from the owner's list",
-      (await listAssistantConversations({ ownerUserId: OWNER, includeArchived: true })).every(
+      (await listAssistantConversations({ ownerUserId: DEMO_OWNER, includeArchived: true })).every(
         (conversation) => conversation.sessionId !== sessionId,
       ),
     );
     check(
       "the owner cannot rename it",
       (await renameAssistantConversation({
-        ownerUserId: OWNER,
+        ownerUserId: DEMO_OWNER,
         sessionId,
         title: "Renamed by a stranger",
       })) === null,
     );
     check(
       "the owner cannot archive it",
-      (await archiveAssistantConversation({ ownerUserId: OWNER, sessionId })) === null,
+      (await archiveAssistantConversation({ ownerUserId: DEMO_OWNER, sessionId })) === null,
     );
 
     console.log("\nand neither do the agent hook's writes, which run inside the session:");
     check(
       "touch finds nothing for the wrong owner",
-      (await touchAssistantConversation({ ownerUserId: OWNER, sessionId })) === null,
+      (await touchAssistantConversation({ ownerUserId: DEMO_OWNER, sessionId })) === null,
     );
     check(
       "the model title lands nowhere for the wrong owner",
       (await setAssistantConversationTitle({
-        ownerUserId: OWNER,
+        ownerUserId: DEMO_OWNER,
         sessionId,
         title: "Leaked model title",
         source: "model",
@@ -149,19 +132,19 @@ async function main() {
     console.log("\nand the same writes do land for the account that owns the row:");
     check(
       "touch answers for the real owner",
-      (await touchAssistantConversation({ ownerUserId: INTRUDER, sessionId })) !== null,
+      (await touchAssistantConversation({ ownerUserId: DEMO_INTRUDER, sessionId })) !== null,
     );
     check(
       "the model title lands for the real owner",
       (await setAssistantConversationTitle({
-        ownerUserId: INTRUDER,
+        ownerUserId: DEMO_INTRUDER,
         sessionId,
         title: "The real title",
         source: "model",
       })) === true,
     );
     const renamed = await renameAssistantConversation({
-      ownerUserId: INTRUDER,
+      ownerUserId: DEMO_INTRUDER,
       sessionId,
       title: "Named by hand",
     });
@@ -174,8 +157,7 @@ async function main() {
     await db.delete(assistantConversations).where(eq(assistantConversations.sessionId, sessionId));
   }
 
-  console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) FAILED`);
-  process.exit(failures === 0 ? 0 : 1);
+  reportLiveCheckResult();
 }
 
 void main();

@@ -19,22 +19,13 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb } from "./client";
+import { check, reportLiveCheckResult } from "./live-check";
 import {
   type EveApprovalDecisionInput,
   recordEveApprovalDecision,
   settleEveApprovalDecision,
 } from "./queries/eve-approval-decisions";
 import { eveApprovalDecisions } from "./schema";
-
-let failures = 0;
-function check(label: string, condition: boolean, detail?: unknown) {
-  if (condition) {
-    console.log(`  ok   ${label}`);
-  } else {
-    failures += 1;
-    console.error(`  FAIL ${label}`, detail ?? "");
-  }
-}
 
 async function decisionRows(sessionId: string) {
   return getDb()
@@ -43,6 +34,7 @@ async function decisionRows(sessionId: string) {
     .where(eq(eveApprovalDecisions.sessionId, sessionId));
 }
 
+// fallow-ignore-next-line complexity -- The whole point of this script is one uninterrupted narrative against a real Postgres: record, conflict, settle, replay. Its complexity is a run of independent assertions about the same row, and its CRAP score is the absence of the unit coverage the file exists to do without.
 async function main() {
   const sessionId = `wrun_live_${randomUUID()}`;
   const callId = `call_${randomUUID()}`;
@@ -153,8 +145,7 @@ async function main() {
     await db.delete(eveApprovalDecisions).where(eq(eveApprovalDecisions.sessionId, sessionId));
   }
 
-  console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) FAILED`);
-  process.exit(failures === 0 ? 0 : 1);
+  reportLiveCheckResult();
 }
 
 void main();

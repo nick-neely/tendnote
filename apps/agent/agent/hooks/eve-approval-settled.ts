@@ -1,7 +1,8 @@
 import { settleEveApprovalDecision } from "@tendnote/db/queries/eve-approval-decisions";
 import { defineHook } from "eve/hooks";
 import { APPROVAL_REQUEST_KIND } from "../lib/approval/contract";
-import { installProductionApprovalPolicyDependencies } from "../lib/approval/dependencies-production";
+import { registerApprovalPolicyDependencies } from "../lib/approval/dependencies";
+import { PRODUCTION_APPROVAL_POLICY_DEPENDENCIES } from "../lib/approval/dependencies-production";
 
 /**
  * Records how a parked Owner Approval ended, against the decision row the policy
@@ -36,8 +37,13 @@ import { installProductionApprovalPolicyDependencies } from "../lib/approval/dep
  * file for what a static import of the query layer costs `web_fetch`'s bundle
  * and the test suite. A tool called before this module loads is not stranded:
  * the seam falls back to a lazy import of the same queries.
+ *
+ * The registration is written out here rather than behind an installer in
+ * `dependencies-production.ts` because that module is what the lazy fallback
+ * imports: a call back into the seam from there would make the two a cycle. This
+ * file is the one place that may hold both halves.
  */
-installProductionApprovalPolicyDependencies();
+registerApprovalPolicyDependencies(PRODUCTION_APPROVAL_POLICY_DEPENDENCIES);
 
 /**
  * How many unanswered approval requests one process remembers.

@@ -5,7 +5,6 @@ import type { ChatStatus } from "ai";
 import type { EveMessage } from "eve/react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { recordSessionToolTrustAction } from "@/app/actions/eve-approvals";
 import {
   Conversation,
   ConversationContent,
@@ -18,14 +17,16 @@ import {
   usePromptInputController,
 } from "@/components/ai-elements/prompt-input";
 import { Suggestion } from "@/components/ai-elements/suggestion";
-import {
-  AssistantApprovalPolicyProvider,
-  type EveApprovalMode,
-} from "@/components/assistant-approval-policy-context";
+import type { EveApprovalMode } from "@/components/assistant-approval-policy-context";
 import { AssistantAuthorizationCard } from "@/components/assistant-authorization-card";
 import { AssistantComposerForm } from "@/components/assistant-composer";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { sendNudgeToAgent } from "@/components/assistant-nudge";
+import {
+  AssistantApprovalProviders,
+  type AssistantPanelApprovals,
+  useAssistantPanelApprovals,
+} from "@/components/assistant-panel-approvals";
 import {
   AssistantComposerShell,
   AssistantEmptyCapture,
@@ -50,19 +51,10 @@ import {
 import { AssistantTurnUnitView } from "@/components/assistant-turn-unit";
 import { DropOverlay } from "@/components/drop-overlay";
 import { ArrowUpRightIcon } from "@/components/icons";
-import {
-  type RecordSessionToolTrust,
-  SessionToolTrustProvider,
-} from "@/components/session-tool-trust-context";
 import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ui/shimmer";
 import { ASSISTANT_CONVERSATION_STARTERS } from "@/lib/assistant/starters";
-import {
-  APPROVE_OPTION_ID,
-  pendingApprovalRequests,
-  typedApprovalAnswer,
-} from "@/lib/eve/approval-answers";
-import { webTaintedToolCallIds } from "@/lib/eve/conversation-taint";
+import { APPROVE_OPTION_ID, typedApprovalAnswer } from "@/lib/eve/approval-answers";
 import { EVIDENCE_DROP_ACCEPT, type EvidencePick, useEvidencePick } from "@/lib/eve/evidence-pick";
 import { followUpSuggestions } from "@/lib/eve/follow-up-suggestions";
 import type { AssistantInputRequestView } from "@/lib/eve/input-request-view";
@@ -229,69 +221,14 @@ function AssistantConversationPanel({
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messages = agent.data.messages;
 
-  // Every tool approval still waiting on the owner, oldest first. Two things read
-  // it: the composer, which must not send the word "approve" as a message, and the
-  // line under the box that says what sending one would do.
-  const pendingApprovals = useMemo(() => pendingApprovalRequests(messages), [messages]);
-
-  /**
-   * A typed answer to the oldest waiting approval, if that is what this line is.
-   *
-   * The framework's own instruction to the model is never to ask anyone to type
-   * "approve", but people type it anyway - and eve clears the parked batch when an
-   * ordinary message arrives, so the word meant to allow the save is exactly what
-   * cancels it. So the composer answers with it instead, and only on an exact match
-   * against an option the request itself offers.
-   *
-   * Rejecting rather than swallowing a failure is deliberate: the composer restores
-   * the text it optimistically cleared on a rejection, so a refused response leaves
-   * the owner's word back in the box rather than nowhere.
-   */
-  const answerTypedApproval = useCallback(
-    async (text: string): Promise<boolean> => {
-      const oldest = pendingApprovals[0];
-      const optionId = oldest ? typedApprovalAnswer(oldest, text) : null;
-      if (!oldest || !optionId) {
-        return false;
-      }
-      await agent.respond([{ requestId: oldest.requestId, optionId }]);
-      return true;
-    },
-    [agent.respond, pendingApprovals],
-  );
-
-  const handleSubmit = useCallback(
-    async (message: PromptInputMessage) => {
-      if (await answerTypedApproval(message.text)) {
-        return;
-      }
-      await queue.submit(message.text);
-    },
-    [answerTypedApproval, queue.submit],
-  );
-
-  // Which parked calls the transcript already read web content before. Explanatory
-  // only: the agent derives the same fact authoritatively, and the card uses this to
-  // decide whether to say a sentence, never what to send.
-  const taintedCallIds = useMemo(() => webTaintedToolCallIds(messages), [messages]);
-  const isTaintedBefore = useCallback(
-    (toolCallId: string) => taintedCallIds.has(toolCallId),
-    [taintedCallIds],
-  );
-
-  /**
-   * Where a ticked "don't ask again" goes: the owner-scoped action, which writes
-   * only through the session-owner binding.
-   *
-   * Best effort by construction. It runs after an approval that already went
-   * through, so a rejected promise or a `recorded: false` costs a convenience and
-   * never a decision - and `false` is the same answer for a session that belongs
-   * to somebody else as for one that never existed (ADR 0219), so there is
-   * nothing here to tell the owner either way.
-   */
-  const recordSessionToolTrust = useCallback<RecordSessionToolTrust>(async (request) => {
-    await recordSessionToolTrustAction(request).catch(() => {});
-  }, []);
+  // What is waiting on the owner in this conversation, and the two writes that
+  // answer it. All four are derivations of the same transcript; the panel is only
+  // where they are read, because it holds the app's one `respond`.
+  const approvals = useAssistantPanelApprovals({
+    messages,
+    respond: agent.respond,
+    submit: queue.submit,
+  });
 
   /** A conversational turn started by something other than the composer. */
   const sendPrompt = useCallback<SendPrompt>(
@@ -310,21 +247,11 @@ function AssistantConversationPanel({
     sendNudgeToAgent({ status: agent.status, send: agent.send }, context, prompt);
   }
 
-  // Reattaching to a turn that is still running server-side, with nothing of it
-  // on screen yet. It says nothing about the *transcript*, which the pre-read
-  // already seeded: only a thread with no replayed messages at all is still
-  // waiting for its history, and only that one holds turn-shaped geometry rather
-  // than the conversation. `undefined` rather than `false`, because
-  // `aria-busy="false"` is a claim of its own.
-  const resuming = agent.status === "resuming";
-  const replaying = (resuming && messages.length === 0) || undefined;
-
-  // A page-scale conversation with nothing in it yet: the greeting and composer
-  // rise together to the middle of the column, and settle to the bottom on the
-  // first message. Only `page` does this — the dashboard column and the phone
-  // sheet are both too short for the move to read as anything but a jump.
-  const centeredComposer =
-    surface === "page" && !resuming && messages.length === 0 && agent.status === "ready";
+  const { centeredComposer, replaying } = panelGeometry({
+    messageCount: messages.length,
+    status: agent.status,
+    surface,
+  });
 
   // The whole conversation surface is a drop target, not just the composer box:
   // a file dragged over the transcript is aimed at this panel, and a target the
@@ -358,40 +285,33 @@ function AssistantConversationPanel({
           then, so answering one pending request disables every other one until it
           settles. */}
         <AssistantRespondProvider ready={agent.status === "ready"} respond={agent.respond}>
-          {/* Why a card is asking, and where a "don't ask again" goes. Both are
-              conversation-wide facts the cards are several layers below, and neither
-              can change what a card sends. */}
-          <AssistantApprovalPolicyProvider
+          {/* Why a card is asking, and where a "don't ask again" goes. */}
+          <AssistantApprovalProviders
             approvalMode={approvalMode}
-            isTaintedBefore={isTaintedBefore}
+            approvals={approvals}
+            sessionId={agent.session?.sessionId}
           >
-            <SessionToolTrustProvider
-              recordSessionToolTrust={recordSessionToolTrust}
-              sessionId={agent.session?.sessionId ?? null}
-            >
-              <Conversation aria-busy={replaying} className="min-h-0 flex-1">
-                <ConversationContent
-                  className={cn("min-h-full gap-4", TRANSCRIPT_PADDING[surface])}
-                >
-                  <AssistantConversation
-                    busy={isTurnInFlight(agent.status)}
-                    composerRef={composerRef}
-                    events={agent.events}
-                    messages={messages}
-                    nudges={nudges}
-                    onSend={sendPrompt}
-                    onSendNudge={sendNudge}
-                    status={agent.status}
-                    surface={surface}
-                  />
-                </ConversationContent>
-                <ConversationScrollButton />
-              </Conversation>
-            </SessionToolTrustProvider>
-          </AssistantApprovalPolicyProvider>
+            <Conversation aria-busy={replaying} className="min-h-0 flex-1">
+              <ConversationContent className={cn("min-h-full gap-4", TRANSCRIPT_PADDING[surface])}>
+                <AssistantConversation
+                  busy={isTurnInFlight(agent.status)}
+                  composerRef={composerRef}
+                  events={agent.events}
+                  messages={messages}
+                  nudges={nudges}
+                  onSend={sendPrompt}
+                  onSendNudge={sendNudge}
+                  status={agent.status}
+                  surface={surface}
+                />
+              </ConversationContent>
+              <ConversationScrollButton />
+            </Conversation>
+          </AssistantApprovalProviders>
         </AssistantRespondProvider>
 
         <AssistantComposerRegion
+          approvals={approvals}
           centered={centeredComposer}
           context={context}
           ended={ended}
@@ -400,9 +320,7 @@ function AssistantConversationPanel({
           onStop={() => void agent.cancel()}
           onSend={sendPrompt}
           onSendNudge={sendNudge}
-          onSubmit={handleSubmit}
           ownerUserId={ownerUserId}
-          pendingApproval={pendingApprovals[0] ?? null}
           queue={queue}
           status={submitStatus(agent.status)}
           suggestPersonName={suggestPersonName}
@@ -421,6 +339,40 @@ function AssistantConversationPanel({
       </AssistantPanelShell>
     </PromptInputProvider>
   );
+}
+
+/**
+ * The two things the panel's shape depends on, derived from the same three facts.
+ *
+ * `replaying` is reattaching to a turn that is still running server-side, with
+ * nothing of it on screen yet. It says nothing about the *transcript*, which the
+ * pre-read already seeded: only a thread with no replayed messages at all is
+ * still waiting for its history, and only that one holds turn-shaped geometry
+ * rather than the conversation. `undefined` rather than `false`, because
+ * `aria-busy="false"` is a claim of its own.
+ *
+ * `centeredComposer` is a page-scale conversation with nothing in it yet: the
+ * greeting and composer rise together to the middle of the column, and settle to
+ * the bottom on the first message. Only `page` does this - the dashboard column
+ * and the phone sheet are both too short for the move to read as anything but a
+ * jump.
+ */
+function panelGeometry({
+  messageCount,
+  status,
+  surface,
+}: {
+  messageCount: number;
+  status: AgentStatus;
+  surface: AssistantSurface;
+}): { centeredComposer: boolean; replaying: true | undefined } {
+  const resuming = status === "resuming";
+  const empty = messageCount === 0;
+
+  return {
+    centeredComposer: surface === "page" && !resuming && empty && status === "ready",
+    replaying: (resuming && empty) || undefined,
+  };
 }
 
 /**
@@ -456,6 +408,7 @@ function AssistantSettleSpacer({ grow, surface }: { grow: boolean; surface: Assi
  * taking them off screen along with the box would quietly delete them.
  */
 function AssistantComposerRegion({
+  approvals,
   centered,
   context,
   ended,
@@ -464,15 +417,15 @@ function AssistantComposerRegion({
   onSend,
   onSendNudge,
   onStop,
-  onSubmit,
   ownerUserId,
-  pendingApproval,
   queue,
   status,
   suggestPersonName,
   surface,
   textareaRef,
 }: {
+  /** What is waiting on the owner, and what Enter does about it. */
+  approvals: AssistantPanelApprovals;
   centered: boolean;
   context?: AssistantPersonContext;
   ended: boolean;
@@ -481,10 +434,7 @@ function AssistantComposerRegion({
   onSend: SendPrompt;
   onSendNudge: (prompt: string) => void;
   onStop: () => void;
-  onSubmit: (message: PromptInputMessage) => Promise<void>;
   ownerUserId: string;
-  /** The oldest tool approval still waiting on the owner, or null. */
-  pendingApproval: AssistantInputRequestView | null;
   queue: AssistantSendQueueControls;
   status: ChatStatus;
   suggestPersonName: string | null;
@@ -500,7 +450,7 @@ function AssistantComposerRegion({
     <>
       {centered ? <AssistantPageGreeting /> : null}
       <AssistantComposerShell surface={surface}>
-        <PendingApprovalNote request={ended ? null : pendingApproval} />
+        <PendingApprovalNote ended={ended} request={approvals.pendingApproval} />
         <AssistantSendQueue
           items={queue.items}
           note={queueNote}
@@ -522,7 +472,7 @@ function AssistantComposerRegion({
             onSend={onSend}
             onSendNudge={onSendNudge}
             onStop={onStop}
-            onSubmit={onSubmit}
+            onSubmit={approvals.handleSubmit}
             ownerUserId={ownerUserId}
             status={status}
             suggestPersonName={suggestPersonName}
@@ -554,10 +504,17 @@ function AssistantComposerRegion({
  * `status` rather than `alert`: nothing is wrong, and it appears at the moment eve
  * parks the turn, which is worth hearing once without interrupting.
  */
-function PendingApprovalNote({ request }: { request: AssistantInputRequestView | null }) {
+function PendingApprovalNote({
+  ended,
+  request,
+}: {
+  /** An ended thread has no composer, so nothing here about Enter is true of it. */
+  ended: boolean;
+  request: AssistantInputRequestView | null;
+}) {
   const { textInput } = usePromptInputController();
 
-  if (request === null) {
+  if (ended || request === null) {
     return null;
   }
 

@@ -91,6 +91,11 @@
  * how the gate is used, so the two modules that implement one import them by
  * path and every tool sees the policy alone.
  *
+ * The dependency seam (`./dependencies`). Installing the query layer at startup
+ * and replacing it in a test are the business of the startup hook and the test
+ * setup, never of a gated tool, so the handful of modules that do either import
+ * it by path instead.
+ *
  * `describeRegisteredSubject` (`./subject-registry`) reaches the shared
  * approval-subject registry. Re-exporting it here would put a registry lookup in
  * front of every tool that only wants the policy, so the id-referenced writes
@@ -107,12 +112,6 @@
  */
 
 export { APPROVAL_APPROVE_OPTION_ID, APPROVAL_REQUEST_KIND, OPAQUE_DENIAL } from "./contract";
-export {
-  type ApprovalPolicyDependencies,
-  registerApprovalPolicyDependencies,
-  resetApprovalPolicyDependencies,
-  setApprovalPolicyDependencies,
-} from "./dependencies";
 export {
   type OwnerApprovalSpec,
   requireOwnerApproval,

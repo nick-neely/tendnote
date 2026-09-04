@@ -162,61 +162,28 @@ export function requireOwnerApproval<TInput = Record<string, unknown>>(
       // Resolved once for this decision, after the `when` check: a call that asks
       // for nothing this gate decides never touches a store.
       const dependencies = await resolveApprovalPolicyDependencies();
-      const tier = resolveTier(spec, input);
-      const tainted = readConversationTaint().tainted;
       const call = callIdentity(ctx);
+      // What a decision record can say before any Approval Mode has been read:
+      // the tier, the taint, and the fallback mode a denial carries.
+      const undecided = {
+        tier: resolveTier(spec, input),
+        modeAtDecision: FALLBACK_APPROVAL_MODE,
+        tainted: readConversationTaint().tainted,
+      };
 
       const ownerUserId = interactiveOwnerUserId(ctx);
-      if (ownerUserId === null) {
-        recordDecision(
-          dependencies,
-          call,
-          {
-            tier,
-            modeAtDecision: FALLBACK_APPROVAL_MODE,
-            tainted,
-          },
-          "denied",
-        );
-        return DENIED;
-      }
+      if (ownerUserId === null) return deny(dependencies, call, undecided);
 
-      if (spec.describe !== undefined) {
-        const subject = await spec.describe(input, {
-          ownerUserId,
-          toolName: typeof ctx.toolName === "string" ? ctx.toolName : "",
-          callId: typeof ctx.callId === "string" ? ctx.callId : "",
-        });
-        if (!subject.found) {
-          recordDecision(
-            dependencies,
-            call,
-            {
-              tier,
-              modeAtDecision: FALLBACK_APPROVAL_MODE,
-              tainted,
-            },
-            "denied",
-          );
-          return DENIED;
-        }
+      if (!(await resolvesForOwner(spec, input, ctx, ownerUserId))) {
+        return deny(dependencies, call, undecided);
       }
 
       const mode = await readApprovalMode(dependencies, ownerUserId);
-      const decision = { tier, modeAtDecision: mode ?? FALLBACK_APPROVAL_MODE, tainted };
+      const decision = { ...undecided, modeAtDecision: mode ?? FALLBACK_APPROVAL_MODE };
 
-      // An unreadable mode parks without consulting anything else: a Session Tool
-      // Trust is an exception to a posture the system cannot currently see.
-      if (mode === null) {
-        recordDecision(dependencies, call, decision, "parked");
-        return USER_APPROVAL;
-      }
-
-      if (tier === "reversible_private" && !tainted) {
-        if (mode === "trusted" || (await readSessionToolTrust(dependencies, call))) {
-          recordDecision(dependencies, call, decision, "auto_approved");
-          return NOT_APPLICABLE;
-        }
+      if (await runsWithoutAsking(dependencies, call, mode, decision)) {
+        recordDecision(dependencies, call, decision, "auto_approved");
+        return NOT_APPLICABLE;
       }
 
       recordDecision(dependencies, call, decision, "parked");
@@ -225,6 +192,68 @@ export function requireOwnerApproval<TInput = Record<string, unknown>>(
       return DENIED;
     }
   };
+}
+
+/** What a decision record says about the call, apart from its outcome. */
+type DecisionFacts = {
+  readonly tier: EveApprovalDecisionTier;
+  readonly modeAtDecision: EveApprovalMode;
+  readonly tainted: boolean;
+};
+
+/** Record the uniform opaque denial and return it. */
+function deny(
+  dependencies: ApprovalPolicyDependencies,
+  call: CallIdentity | null,
+  decision: DecisionFacts,
+): ApprovalStatus {
+  recordDecision(dependencies, call, decision, "denied");
+  return DENIED;
+}
+
+/**
+ * Whether the record this call names resolves inside the owner's own scope.
+ *
+ * A tool with no describer has nothing to resolve and answers `true`: it is
+ * gated on the call itself rather than on a record it looked up.
+ */
+async function resolvesForOwner<TInput>(
+  spec: OwnerApprovalSpec<TInput>,
+  input: Readonly<TInput> | undefined,
+  ctx: ApprovalContext<TInput>,
+  ownerUserId: string,
+): Promise<boolean> {
+  if (spec.describe === undefined) return true;
+
+  const subject = await spec.describe(input, {
+    ownerUserId,
+    toolName: typeof ctx.toolName === "string" ? ctx.toolName : "",
+    callId: typeof ctx.callId === "string" ? ctx.callId : "",
+  });
+  return subject.found;
+}
+
+/**
+ * Step 4 of the decision, on its own: may this call run without a click?
+ *
+ * Only a Reversible Private Write in a conversation that is not a Tainted
+ * Conversation is eligible at all, and then only for an owner whose Approval Mode
+ * is `trusted` or a Session Tool Trust that names this tool for this session.
+ *
+ * An unreadable mode answers `false` without consulting anything else: a Session
+ * Tool Trust is an exception to a posture the system cannot currently see, so the
+ * call parks rather than borrowing an exception from a mode nobody could read.
+ */
+async function runsWithoutAsking(
+  dependencies: ApprovalPolicyDependencies,
+  call: CallIdentity | null,
+  mode: EveApprovalMode | null,
+  decision: DecisionFacts,
+): Promise<boolean> {
+  if (mode === null) return false;
+  if (decision.tier !== "reversible_private" || decision.tainted) return false;
+
+  return mode === "trusted" || (await readSessionToolTrust(dependencies, call));
 }
 
 /**
@@ -295,11 +324,7 @@ async function readSessionToolTrust(
 function recordDecision(
   dependencies: ApprovalPolicyDependencies,
   call: CallIdentity | null,
-  decision: {
-    readonly tier: EveApprovalDecisionTier;
-    readonly modeAtDecision: EveApprovalMode;
-    readonly tainted: boolean;
-  },
+  decision: DecisionFacts,
   outcome: EveApprovalDecisionInput["outcome"],
 ): void {
   if (call === null) return;

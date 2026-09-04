@@ -20,38 +20,21 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb } from "./client";
+import {
+  check,
+  DEMO_INTRUDER,
+  DEMO_OWNER,
+  reportLiveCheckResult,
+  requireDemoAccounts,
+} from "./live-check";
 import { bindEveSessionOwner } from "./queries/eve-session-owners";
 import {
   hasEveSessionToolTrust,
   recordEveSessionToolTrust,
 } from "./queries/eve-session-tool-trusts";
 import { eveSessionOwners, eveSessionToolTrusts } from "./schema";
-import { user } from "./schema/auth";
-
-/** The two seeded accounts. Either one stands in for "somebody else" here. */
-const OWNER = "demo-user";
-const INTRUDER = "demo-member";
 
 const TOOL = "capture_memory";
-
-let failures = 0;
-function check(label: string, condition: boolean, detail?: unknown) {
-  if (condition) {
-    console.log(`  ok   ${label}`);
-  } else {
-    failures += 1;
-    console.error(`  FAIL ${label}`, detail ?? "");
-  }
-}
-
-async function requireDemoAccounts(): Promise<void> {
-  const rows = await getDb().select({ id: user.id }).from(user);
-  const ids = new Set(rows.map((row) => row.id));
-  if (ids.has(OWNER) && ids.has(INTRUDER)) return;
-
-  console.error(`missing ${OWNER} / ${INTRUDER}. Run: pnpm --filter @tendnote/db db:seed`);
-  process.exit(1);
-}
 
 async function trustRows(sessionId: string) {
   return getDb()
@@ -60,6 +43,7 @@ async function trustRows(sessionId: string) {
     .where(eq(eveSessionToolTrusts.sessionId, sessionId));
 }
 
+// fallow-ignore-next-line complexity -- Same reason as the sibling decision check: a run of independent assertions against a real Postgres, scored for the unit coverage this file deliberately does not have.
 async function main() {
   await requireDemoAccounts();
 
@@ -68,12 +52,12 @@ async function main() {
   const db = getDb();
 
   try {
-    await bindEveSessionOwner({ sessionId, ownerUserId: OWNER });
+    await bindEveSessionOwner({ sessionId, ownerUserId: DEMO_OWNER });
 
     console.log("\nan account that does not hold the session records nothing:");
     check(
       "the intruder is told only that nothing was recorded",
-      (await recordEveSessionToolTrust({ ownerUserId: INTRUDER, sessionId, toolName: TOOL }))
+      (await recordEveSessionToolTrust({ ownerUserId: DEMO_INTRUDER, sessionId, toolName: TOOL }))
         .recorded === false,
     );
     check("and no row exists", (await trustRows(sessionId)).length === 0);
@@ -87,7 +71,7 @@ async function main() {
       "an unknown session records nothing",
       (
         await recordEveSessionToolTrust({
-          ownerUserId: OWNER,
+          ownerUserId: DEMO_OWNER,
           sessionId: unknownSessionId,
           toolName: TOOL,
         })
@@ -98,13 +82,13 @@ async function main() {
     console.log("\nthe owner the session is bound to records one:");
     check(
       "the write lands",
-      (await recordEveSessionToolTrust({ ownerUserId: OWNER, sessionId, toolName: TOOL }))
+      (await recordEveSessionToolTrust({ ownerUserId: DEMO_OWNER, sessionId, toolName: TOOL }))
         .recorded === true,
     );
     const [row] = await trustRows(sessionId);
     check(
       "the row carries the session's real owner",
-      row?.ownerUserId === OWNER && row?.toolName === TOOL,
+      row?.ownerUserId === DEMO_OWNER && row?.toolName === TOOL,
       row,
     );
     check(
@@ -119,7 +103,7 @@ async function main() {
     console.log("\nrepeating it is idempotent, not an error:");
     check(
       "a second identical trust still answers recorded",
-      (await recordEveSessionToolTrust({ ownerUserId: OWNER, sessionId, toolName: TOOL }))
+      (await recordEveSessionToolTrust({ ownerUserId: DEMO_OWNER, sessionId, toolName: TOOL }))
         .recorded === true,
     );
     check("and there is still exactly one row", (await trustRows(sessionId)).length === 1);
@@ -127,13 +111,13 @@ async function main() {
     console.log("\nand the intruder still cannot reach the existing row:");
     check(
       "a conflicting write by the wrong account records nothing",
-      (await recordEveSessionToolTrust({ ownerUserId: INTRUDER, sessionId, toolName: TOOL }))
+      (await recordEveSessionToolTrust({ ownerUserId: DEMO_INTRUDER, sessionId, toolName: TOOL }))
         .recorded === false,
     );
     const [afterIntruder] = await trustRows(sessionId);
     check(
       "the row's owner is untouched",
-      afterIntruder?.ownerUserId === OWNER &&
+      afterIntruder?.ownerUserId === DEMO_OWNER &&
         afterIntruder?.createdAt?.getTime() === row?.createdAt?.getTime(),
       afterIntruder,
     );
@@ -142,8 +126,7 @@ async function main() {
     await db.delete(eveSessionOwners).where(eq(eveSessionOwners.sessionId, sessionId));
   }
 
-  console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) FAILED`);
-  process.exit(failures === 0 ? 0 : 1);
+  reportLiveCheckResult();
 }
 
 void main();
