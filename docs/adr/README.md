@@ -42,6 +42,7 @@ the bounded publication evidence path.
 - [0197 — Conversational Capture separates explicit and inferred authority](0197-conversational-capture-separates-explicit-and-inferred-authority.md)
 - [0237 — Eve tool arguments are requests, not proofs](0237-eve-tool-arguments-are-requests-not-proofs.md)
 - [0238 — Assistant conversations are Tendnote threads over Eve sessions](0238-assistant-conversations-are-tendnote-threads-over-eve-sessions.md)
+- [0239 — The app shell mounts exactly one sidebar provider](0239-the-app-shell-mounts-exactly-one-sidebar-provider.md)
 
 ## Product phases
 
