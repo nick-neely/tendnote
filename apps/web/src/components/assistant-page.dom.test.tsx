@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { Activity } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { AssistantConversationView } from "@/app/actions/assistant-conversations";
 import { render, screen, userEvent, waitFor, within } from "@/test/dom";
@@ -147,6 +148,26 @@ function page(props: Partial<Parameters<typeof AssistantPage>[0]> = {}) {
 function renderPage(sessionId: string | null = null) {
   return render(page({ sessionId }));
 }
+
+it("restores the latest shared fold when a parked Assistant becomes visible again", async () => {
+  const content = page();
+  const view = render(<Activity mode="visible">{content}</Activity>);
+  await screen.findByText("fresh panel");
+  const sidebar = screen.getByRole("navigation", { name: "Conversations" }).closest("[data-state]");
+  expect(sidebar?.getAttribute("data-state")).toBe("expanded");
+
+  for (const open of [false, true]) {
+    view.rerender(<Activity mode="hidden">{content}</Activity>);
+    // Model a different destination changing the shared preference while parked.
+    // biome-ignore lint/suspicious/noDocumentCookie: exercise the sidebar persistence contract.
+    document.cookie = `sidebar_state=${open}; path=/`;
+    view.rerender(<Activity mode="visible">{content}</Activity>);
+    expect(sidebar?.getAttribute("data-state")).toBe(open ? "expanded" : "collapsed");
+    expect(screen.getByRole("navigation", { name: "Conversations" }).closest("[data-state]")).toBe(
+      sidebar,
+    );
+  }
+});
 
 it("shows the owner's threads beside a fresh conversation", async () => {
   renderPage();
