@@ -11,7 +11,7 @@ import { ReminderSettings } from "@/components/account/reminder-settings";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { type AppDestinationId, appDestination } from "@/components/app-destinations";
 import { SignOutButton } from "@/components/auth/sign-out-button";
-import { CheckIcon, ChevronRightIcon } from "@/components/icons";
+import { ChevronRightIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { localFallbackOwnerUserId } from "@/lib/access/access-state";
 import { resolveAccountView } from "@/lib/access/account-summary";
@@ -84,9 +84,14 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
           {initial}
         </span>
         <div className="flex min-w-0 flex-col">
-          <span className="truncate text-[length:var(--text-title)] leading-[var(--text-title-line)] font-medium">
-            {view.name}
-          </span>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="min-w-0 truncate text-[length:var(--text-title)] leading-[var(--text-title-line)] font-medium">
+              {view.name}
+            </span>
+            <Badge variant="secondary" title={`Private beta access active: ${view.sourceLabel}`}>
+              Private beta
+            </Badge>
+          </div>
           {view.name !== view.email ? (
             <span className="truncate text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
               {view.email}
@@ -111,27 +116,6 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
           label="Household"
         />
       </nav>
-
-      {/* Access status */}
-      <section className="flex flex-col gap-3">
-        <h2 className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-muted-foreground">
-          Access
-        </h2>
-        <div className="flex items-center justify-between gap-3 rounded-lg border bg-surface px-3.5 py-3">
-          <div className="flex min-w-0 flex-col">
-            <span className="text-[length:var(--text-body)] leading-[var(--text-body-line)]">
-              Private Beta Access
-            </span>
-            <span className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-              {view.sourceLabel}
-            </span>
-          </div>
-          <Badge>
-            <CheckIcon aria-hidden data-icon="inline-start" />
-            Active
-          </Badge>
-        </div>
-      </section>
 
       {/* Integrations — real Provider Connection rows. Calendar (Phase 2C, ADR-0071)
             and Gmail (Phase 2D, ADR-0090) are each connectable when Google credentials

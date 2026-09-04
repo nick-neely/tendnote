@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: "Assistant" };
  */
 export default function AssistantRoutePage() {
   return (
-    <Suspense fallback={<AssistantPageReserve />}>
+    <Suspense fallback={<AssistantPageReserve newConversation />}>
       <AssistantSurfaceContent sessionId={null} />
     </Suspense>
   );

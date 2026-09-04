@@ -12,5 +12,8 @@
  * eve adds next, because the alternative is the framework naming itself.
  */
 export function humanizeToolName(toolName: string): string {
-  return toolName.replace(/^eve:/, "").replace(/[_-]/g, " ").trim();
+  return toolName
+    .replace(/^(?:eve:|subagent:)/, "")
+    .replace(/[_-]/g, " ")
+    .trim();
 }

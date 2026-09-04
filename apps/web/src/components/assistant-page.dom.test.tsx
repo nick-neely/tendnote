@@ -97,6 +97,7 @@ vi.mock("@/components/assistant-panel", async () => {
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AssistantPage } from "./assistant-page";
+import { AssistantPageFrame } from "./assistant-page-frame";
 
 const CONVERSATIONS: AssistantConversationView[] = [
   {
@@ -119,6 +120,8 @@ beforeEach(() => {
     ok: true,
     view: { sessionId: "wrun_new", recorded: true },
   });
+  // biome-ignore lint/suspicious/noDocumentCookie: reset the sidebar cookie between tests.
+  document.cookie = "sidebar_state=true; path=/";
   window.localStorage.clear();
   window.history.replaceState(null, "", "/assistant");
 });
@@ -127,14 +130,16 @@ beforeEach(() => {
 function page(props: Partial<Parameters<typeof AssistantPage>[0]> = {}) {
   return (
     <TooltipProvider>
-      <AssistantPage
-        conversations={CONVERSATIONS}
-        nudges={[]}
-        ownerUserId="owner-1"
-        sessionId={null}
-        suggestPersonName={null}
-        {...props}
-      />
+      <AssistantPageFrame>
+        <AssistantPage
+          conversations={CONVERSATIONS}
+          nudges={[]}
+          ownerUserId="owner-1"
+          sessionId={null}
+          suggestPersonName={null}
+          {...props}
+        />
+      </AssistantPageFrame>
     </TooltipProvider>
   );
 }
@@ -326,11 +331,11 @@ it("starts a new conversation on a panel that no longer holds the old session", 
 });
 
 /**
- * The fold is the sidebar's own cookie, and the server hands its answer back as
- * `railOpen`. What the page owes it is the two halves of that round trip: write
+ * The fold is the sidebar's own cookie, read by the persistent frame.
+ * What the page owes it is the two halves of that round trip: write
  * the cookie when the trigger is pressed, and start folded when it says so.
  */
-it("writes the fold to the sidebar cookie and starts from what the server read", async () => {
+it("writes the fold to the sidebar cookie and restores it before painting", async () => {
   const view = renderPage();
   await screen.findByText("fresh panel");
   expect(rail().getByRole("button", { name: "New conversation" })).toBeDefined();
@@ -340,7 +345,7 @@ it("writes the fold to the sidebar cookie and starts from what the server read",
   await waitFor(() => expect(document.cookie).toContain("sidebar_state=false"));
 
   view.unmount();
-  render(page({ railOpen: false }));
+  render(page());
   await screen.findByText("fresh panel");
 
   // A folded rail is an icon rail, so the standing action moves to the header

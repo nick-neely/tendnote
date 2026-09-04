@@ -4,7 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChainOfThought, ChainOfThoughtStep } from "@/components/ai-elements/chain-of-thought";
 import { Reasoning, ReasoningTrigger, useReasoning } from "@/components/ai-elements/reasoning";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
-import { CheckIcon, ChevronDownIcon } from "@/components/icons";
+import {
+  BookOpenIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  NotebookPenIcon,
+  ShieldCheckIcon,
+  UsersRoundIcon,
+} from "@/components/icons";
 import { CollapsibleContent } from "@/components/ui/collapsible";
 import { Shimmer } from "@/components/ui/shimmer";
 import type { AssistantActivityStep, AssistantTurnReasoning } from "@/lib/eve/message-views";
@@ -292,7 +299,22 @@ export function AssistantTurnActivity({
             {steps.map((step) => (
               <ChainOfThoughtStep
                 description={step.description ?? undefined}
-                icon={step.status === "active" ? ActiveStepIcon : CompleteStepIcon}
+                icon={
+                  step.specialist
+                    ? step.specialist === "message_drafter"
+                      ? NotebookPenIcon
+                      : step.specialist === "relationship_strategist"
+                        ? UsersRoundIcon
+                        : step.specialist === "privacy_guard"
+                          ? ShieldCheckIcon
+                          : BookOpenIcon
+                    : step.status === "active"
+                      ? ActiveStepIcon
+                      : CompleteStepIcon
+                }
+                className={
+                  step.specialist ? "text-primary [&>div:first-child]:text-primary" : undefined
+                }
                 key={step.toolCallId}
                 label={step.status === "active" ? <Shimmer>{step.label}</Shimmer> : step.label}
                 status={step.status}

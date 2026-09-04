@@ -1,4 +1,3 @@
-import { AdmittedFrame } from "@/components/admitted-frame";
 import { AppShell } from "@/components/app-shell";
 import { readViewerHouseholdAccess } from "@/lib/household/viewer-household-access";
 
@@ -13,10 +12,8 @@ import { readViewerHouseholdAccess } from "@/lib/household/viewer-household-acce
  */
 export default function CanvasLayout({ children }: { children: React.ReactNode }) {
   return (
-    <AdmittedFrame>
-      <AppShell canvas viewerStandings={readViewerHouseholdAccess()}>
-        {children}
-      </AppShell>
-    </AdmittedFrame>
+    <AppShell canvas viewerStandings={readViewerHouseholdAccess()}>
+      {children}
+    </AppShell>
   );
 }

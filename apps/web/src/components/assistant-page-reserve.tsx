@@ -1,87 +1,103 @@
-import { AssistantComposerShell, AssistantMark } from "@/components/assistant-panel-chrome";
+"use client";
 
-/**
- * The Assistant page's 0–100 ms state, shaped like what replaces it (ADR 0207).
- *
- * The rule the dashboard reserves follow holds here too: anything already true
- * before the request resolves is rendered for real — the destination's name, the
- * rail's own "New conversation" geometry — and only the owner's threads and
- * transcript are held as neutral space. Nothing in this file reads owner data,
- * so it is a plain server component, which is also why the rail is drawn open:
- * the fold is a cookie, and a cookie read here would make the static shell this
- * reserve *is* into a dynamic render.
- */
+import { useRouter } from "next/navigation";
+import { AssistantPageHeader } from "@/components/assistant-page-header";
+import {
+  AssistantComposerShell,
+  AssistantPageGreeting,
+  AssistantResumeSkeleton,
+} from "@/components/assistant-panel-chrome";
+import { AssistantStarterChips } from "@/components/assistant-starter-chips";
+import { NotebookPenIcon } from "@/components/icons";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@/components/ui/sidebar";
 
-/** The transcript's measure, kept identical to the live page's own. */
-const columnClass = "mx-auto w-full max-w-[52rem] px-gutter sm:px-6";
-
-/** The page frame while the owner's conversations and thread are still reading. */
-export function AssistantPageReserve() {
+/** Owner-neutral chrome uses the live rail's provider, so streaming cannot reset its fold. */
+export function AssistantPageReserve({ newConversation = false }: { newConversation?: boolean }) {
+  const router = useRouter();
+  const { setOpenMobile } = useSidebar();
+  function startNewConversation() {
+    setOpenMobile(false);
+    router.push("/assistant");
+  }
   return (
-    <div
-      aria-busy="true"
-      className="flex h-[calc(100dvh-4rem-env(safe-area-inset-bottom))] min-h-0 lg:h-[calc(100dvh-3.5rem-2px)]"
-      data-full-bleed
-    >
-      {/* The sidebar's own expanded width and surface, so the rail does not
-          arrive a different size than the space held for it. */}
-      <aside
-        aria-label="Loading conversations"
-        className="hidden w-64 shrink-0 border-r bg-sidebar md:block"
+    <>
+      <Sidebar
+        className="top-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] h-auto lg:top-[calc(3.5rem+1px)] lg:bottom-0 lg:data-[side=left]:left-(--tn-canvas-rail)"
+        collapsible="icon"
       >
-        <div className="flex flex-col gap-1 p-2">
-          {/* The button is real product copy, not owner data, so it reserves as
-              itself rather than as a grey block that then moves. */}
-          <div className="flex h-9 items-center gap-2 px-2 font-medium text-primary text-sm">
-            New conversation
-          </div>
-          <div className="flex flex-col gap-1.5 px-2 pt-3">
-            <div className="h-4 w-[7ch] animate-pulse rounded bg-muted" />
-            <div className="h-7 w-full animate-pulse rounded-md bg-muted/60" />
-            <div className="h-7 w-11/12 animate-pulse rounded-md bg-muted/60" />
-            <div className="h-7 w-4/5 animate-pulse rounded-md bg-muted/60" />
-          </div>
-        </div>
-      </aside>
-
+        <nav
+          aria-label="Conversations"
+          className="flex h-full min-h-0 flex-col pt-[env(safe-area-inset-top)]"
+        >
+          <SidebarHeader className="gap-1">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="h-9 text-primary hover:bg-primary/10 hover:text-primary"
+                  onClick={startNewConversation}
+                  tooltip="New conversation"
+                >
+                  <NotebookPenIcon aria-hidden />
+                  <span>New conversation</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarHeader>
+          <SidebarContent
+            aria-busy="true"
+            aria-label="Loading conversations"
+            className="group-data-[collapsible=icon]:hidden"
+          >
+            <div aria-hidden className="flex flex-col gap-2 px-4 pt-3">
+              <div className="h-4 w-[7ch] animate-pulse rounded bg-muted" />
+              <div className="h-7 w-full animate-pulse rounded bg-muted/60" />
+            </div>
+          </SidebarContent>
+        </nav>
+      </Sidebar>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="shrink-0 border-b pt-[env(safe-area-inset-top)]">
-          <div className="flex min-h-14 w-full items-center gap-2 px-gutter sm:px-6">
-            {/* The rail trigger is geometry here, not a control that cannot yet
-                be pressed: a 28px hole keeps the title on the same line either
-                way. */}
-            <span aria-hidden className="-ml-1 size-7 shrink-0" />
-            <h1 className="flex min-w-0 flex-1 items-center gap-2 font-semibold text-sm">
-              <AssistantMark />
-              Assistant
-            </h1>
-          </div>
-        </header>
-        <div className={`flex min-h-0 flex-1 flex-col ${columnClass}`}>
-          <AssistantPageTranscriptReserve />
+        <AssistantPageHeader onNewConversation={startNewConversation} title={null} />
+        <div className="mx-auto flex min-h-0 w-full max-w-[52rem] flex-1 flex-col px-gutter sm:px-6">
+          <AssistantPageTranscriptReserve newConversation={newConversation} />
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
-/**
- * The transcript column alone, for the moment between the page frame arriving
- * and the panel's own chunk loading.
- *
- * The composer well is a matching box rather than a fake textarea: an input that
- * cannot be typed into would be worse than an obviously-not-yet-ready one, and
- * the height is the live composer's own (a `min-h-16` textarea over a 46px
- * toolbar inside a 1px border) so nothing shifts on the swap.
- */
-export function AssistantPageTranscriptReserve() {
+/** Only an existing thread reserves messages; a fresh page already knows its opening copy. */
+export function AssistantPageTranscriptReserve({
+  newConversation = false,
+}: {
+  newConversation?: boolean;
+}) {
   return (
     <>
-      <div aria-hidden className="min-h-0 flex-1" />
+      <div aria-hidden className="min-h-0 flex-1">
+        {newConversation ? null : <AssistantResumeSkeleton />}
+      </div>
+      {newConversation ? <AssistantPageGreeting /> : null}
       <AssistantComposerShell surface="page">
-        <div aria-hidden className="min-h-28 w-full rounded-lg border border-input" />
+        <section
+          aria-busy="true"
+          aria-label="Loading composer"
+          className="min-h-28 w-full rounded-lg border border-input"
+        />
+        {newConversation ? (
+          <div className="pt-3">
+            <AssistantStarterChips disabled />
+          </div>
+        ) : null}
       </AssistantComposerShell>
-      <div aria-hidden className="min-h-0 flex-1" />
+      {newConversation ? <div aria-hidden className="min-h-0 flex-1" /> : null}
     </>
   );
 }

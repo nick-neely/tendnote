@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
  */
 const SRC = join(process.cwd(), "src");
 const pageSource = readFileSync(
-  join(SRC, "app", "(admitted)", "people", "[personId]", "page.tsx"),
+  join(SRC, "app", "(member)", "(admitted)", "people", "[personId]", "page.tsx"),
   "utf8",
 );
 const viewSource = readFileSync(join(SRC, "lib", "relationship-snapshot-view.ts"), "utf8");

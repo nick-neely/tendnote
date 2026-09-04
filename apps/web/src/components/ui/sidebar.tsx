@@ -1,7 +1,7 @@
 "use client";
 
 /*
- * shadcn/ui `sidebar`, kept verbatim except for two things.
+ * shadcn/ui `sidebar`, adapted for Tendnote.
  *
  * 1. `lucide-react` is imported from `@/components/icons` (the standing rule:
  *    every icon in the product comes from the one Phosphor module).
@@ -11,6 +11,8 @@
  *    attribute presence. Left as shipped, every row in the sidebar renders in
  *    the selected tint. Removing the attribute when inactive is what the
  *    variant is actually asking for.
+ *
+ * The keyboard shortcut also yields to editable controls and handled events.
  *
  * The palette it reads (`--sidebar*`) is defined in `globals.css` entirely in
  * terms of Tendnote's own tokens, so nothing here needed restyling.
@@ -106,7 +108,23 @@ function SidebarProvider({
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
+      const target = event.target;
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.altKey ||
+        event.shiftKey ||
+        (target instanceof HTMLElement &&
+          (target.isContentEditable ||
+            target.closest(
+              'input, textarea, select, [role="textbox"], [contenteditable="true"], [contenteditable=""]',
+            )))
+      )
+        return;
+      if (
+        event.key.toLowerCase() === SIDEBAR_KEYBOARD_SHORTCUT &&
+        (event.metaKey || event.ctrlKey)
+      ) {
         event.preventDefault();
         toggleSidebar();
       }
