@@ -18,6 +18,7 @@ function grantedProfileFixture(userId: string): AccessProfile {
     selfContextOnboardingStatus: "not_started",
     selfContextOnboardingReminderAt: null,
     householdCheckinEnabled: false,
+    eveApprovalMode: "ask",
     createdAt: now,
     updatedAt: now,
   };
@@ -219,6 +220,49 @@ describe("access profile queries", () => {
     await expect(
       queries.setHouseholdCheckinEnabled({ userId: FIRST_USER, enabled: false }),
     ).resolves.toBe(false);
+  });
+
+  it("starts every user in ask Approval Mode and changes one for them alone", async () => {
+    // `trusted` is a choice a user makes about their own assistant. Two users
+    // get two answers, and neither one sets the other's (#549).
+    const store = createInMemoryAccessProfileStore();
+    const queries = createAccessProfileQueries(store);
+    await queries.ensureAccessProfile({ userId: FIRST_USER });
+    await queries.ensureAccessProfile({ userId: SECOND_USER });
+
+    await expect(queries.getEveApprovalMode({ userId: FIRST_USER })).resolves.toBe("ask");
+
+    await expect(queries.setEveApprovalMode({ userId: FIRST_USER, mode: "trusted" })).resolves.toBe(
+      "trusted",
+    );
+
+    await expect(queries.getEveApprovalMode({ userId: FIRST_USER })).resolves.toBe("trusted");
+    await expect(queries.getAccessProfile({ userId: FIRST_USER })).resolves.toMatchObject({
+      eveApprovalMode: "trusted",
+    });
+    await expect(queries.getEveApprovalMode({ userId: SECOND_USER })).resolves.toBe("ask");
+
+    await expect(queries.setEveApprovalMode({ userId: FIRST_USER, mode: "ask" })).resolves.toBe(
+      "ask",
+    );
+  });
+
+  it("reads ask for a user with no access profile rather than failing", async () => {
+    // The policy reads this on every gated call, and the safe answer to "I do
+    // not know this user's Approval Mode" is to park for an Owner Approval.
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+
+    await expect(queries.getEveApprovalMode({ userId: FIRST_USER })).resolves.toBe("ask");
+  });
+
+  it("refuses to set an Approval Mode for someone with no access profile", async () => {
+    // Same rule as the check-in: a control that reports success while writing
+    // nothing is worse than one that fails.
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+
+    await expect(
+      queries.setEveApprovalMode({ userId: FIRST_USER, mode: "trusted" }),
+    ).rejects.toThrow(/assistant approval mode/i);
   });
 
   it("refuses to turn a check-in on for someone with no access profile", async () => {

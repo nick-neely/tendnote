@@ -19,6 +19,7 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       selfContextOnboardingStatus: input.selfContextOnboardingStatus ?? "not_started",
       selfContextOnboardingReminderAt: input.selfContextOnboardingReminderAt ?? null,
       householdCheckinEnabled: false,
+      eveApprovalMode: "ask",
       createdAt: now,
       updatedAt: now,
     };

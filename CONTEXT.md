@@ -268,6 +268,26 @@ _Avoid_: Persona, workspace, unrestricted mode
 A single-use permission a Tendnote user gives, in the turn it applies to, for one exact assistant tool call that would write a durable record, reach outside Tendnote, widen an audience, or reveal restricted content. Eve pauses that call and shows the user its frozen arguments; their answer never passes through the model, so an owner approval is bound to that owner, turn, record, and action and expires with it. A tool argument the model set, an instruction in the system prompt, a control being visible, and an earlier approval of the same tool are none of them an owner approval.
 _Avoid_: Consent flag, permission, confirmation prompt, approved tool, standing authorization
 
+**Approval Mode**:
+A Tendnote user's account-level choice of how Eve's durable writes are authorized: `ask`, where every gated call waits for an Owner Approval, or `trusted`, where a Reversible Private Write runs immediately in an untainted conversation and everything else still asks. An approval mode is chosen only through the user's own account settings; nothing the model, the chat, or the browser supplies can select one.
+_Avoid_: Autonomy level, auto-approve, permission level, YOLO mode
+
+**Reversible Private Write**:
+The class of Eve tool call that `trusted` Approval Mode may run without an Owner Approval: it resolves or creates a record owned by the caller, is private by construction with no argument that can widen its audience, and has an undo, archive, restore, or lifecycle path. External egress, permanent deletion, household-visible writes, restricted-content reveals, accepted-proposal persistence, and overwrites with no way back are never in this class.
+_Avoid_: Safe write, low-risk tool, tier-1 tool, trusted tool
+
+**Untrusted Content**:
+Text that entered a conversation from outside the user and Tendnote, currently a fetched web page or a web search result. Content another active Household Member authored is not untrusted content; it is governed by Household Authorization Proofs instead.
+_Avoid_: External data, injected text, third-party content
+
+**Tainted Conversation**:
+An Assistant conversation in which Untrusted Content has been read. From that point the conversation behaves as `ask` Approval Mode regardless of the user's setting, every Session Tool Trust in it stops applying, and nothing clears it except starting a new conversation.
+_Avoid_: Compromised session, unsafe chat, dirty context
+
+**Session Tool Trust**:
+A user's explicit choice, made on an approval card, that one named Eve tool may run its Reversible Private Writes without asking again for the rest of that one conversation. It is scoped to the conversation and the tool name, never to an input, never applies in a Tainted Conversation, and is not an Owner Approval or an Approval Mode.
+_Avoid_: Remembered approval, standing approval, once-approved tool, allowlist
+
 **Household Workspace**:
 A small, durable shared operating layer for one private household or trusted circle of adult Tendnote users. A user has at most one active Household Workspace; it supports active members, invitations, co-owners, and visibility controls without becoming an organization, team workspace, CRM account, or admin console.
 _Avoid_: Organization, team, account, CRM workspace

@@ -1,6 +1,6 @@
 import { createDrizzleAccessProfileStore } from "./access-profiles/drizzle-store";
 import { createAccessProfileQueries } from "./access-profiles/queries";
-import type { AccessSource } from "./access-profiles/types";
+import type { AccessSource, EveApprovalMode } from "./access-profiles/types";
 
 export type {
   AccessProfileGateway,
@@ -35,6 +35,23 @@ export async function getAccessProfile(input: { userId: string }) {
  */
 export async function setHouseholdCheckinEnabled(input: { userId: string; enabled: boolean }) {
   return defaultAccessProfileQueries.setHouseholdCheckinEnabled(input);
+}
+
+/**
+ * This user's Approval Mode for Eve's gated tool calls. Owner-scoped: the
+ * signed-in user is the subject, and there is no form of this that names anybody
+ * else (#549).
+ */
+export async function setEveApprovalMode(input: { userId: string; mode: EveApprovalMode }) {
+  return defaultAccessProfileQueries.setEveApprovalMode(input);
+}
+
+/**
+ * The Approval Mode the policy reads on each gated call. A user with no profile
+ * reads `ask`, the same answer a failed read must produce.
+ */
+export async function getEveApprovalMode(input: { userId: string }) {
+  return defaultAccessProfileQueries.getEveApprovalMode(input);
 }
 
 export async function getSelfContextOnboardingState(input: { userId: string }) {

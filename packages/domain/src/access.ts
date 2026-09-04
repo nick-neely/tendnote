@@ -31,6 +31,15 @@ export const selfContextOnboardingStateSchema = z.object({
 
 export type SelfContextOnboardingState = z.infer<typeof selfContextOnboardingStateSchema>;
 
+/**
+ * The account-level Approval Mode for Eve's gated tool calls: `ask` waits for an
+ * Owner Approval on every one, `trusted` lets a Reversible Private Write run
+ * immediately in a conversation that is not tainted (#549).
+ */
+export const eveApprovalModeSchema = z.enum(["ask", "trusted"]);
+
+export type EveApprovalMode = z.infer<typeof eveApprovalModeSchema>;
+
 export const accessProfileSchema = z.object({
   userId: z.string(),
   status: accessStatusSchema,
@@ -50,6 +59,18 @@ export const accessProfileSchema = z.object({
    * (ADR 0220).
    */
   householdCheckinEnabled: z.boolean().default(false),
+  /**
+   * This user's Approval Mode for Eve's gated tool calls (#549).
+   *
+   * It lives on the access profile for the same reason the Household Check-in
+   * opt-in does: this row always exists for an admitted user, so the account
+   * setting can never succeed against nothing. Default `ask` — `trusted` is a
+   * choice the user makes for themselves in their own account settings, and
+   * nothing the model, the chat, or the browser supplies can select one. Only
+   * the owner of this profile sets it; there is deliberately no form of this
+   * that names anybody else.
+   */
+  eveApprovalMode: eveApprovalModeSchema.default("ask"),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
