@@ -1,9 +1,11 @@
+import { getEveApprovalMode } from "@tendnote/db/queries/access-profiles";
 import { getLatestOwnerDataExportJob } from "@tendnote/db/queries/owner-data-export";
 import { listReminderInstallations } from "@tendnote/db/queries/reminders";
 import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { AssistantApprovalSettings } from "@/components/account/assistant-approval-settings";
 import { CalendarPreviewSection } from "@/components/account/calendar-preview-section";
 import { OwnerDataExportSection } from "@/components/account/owner-data-export-section";
 import { ProviderConnectionsSection } from "@/components/account/provider-connections-section";
@@ -152,6 +154,13 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
         <CalendarPreviewStream target={calendarTarget} />
       </Suspense>
 
+      {/* How much the assistant does on its own (#549). It sits beside Reminders
+            because both are standing answers to "when may this reach me without
+            being asked", and neither is a connection or a record. */}
+      <Suspense fallback={<AccountRegionReserve label="Assistant approvals" />}>
+        <AssistantApprovalSettingsStream ownerUserId={ownerUserId} />
+      </Suspense>
+
       <Suspense fallback={<AccountRegionReserve label="Reminder settings" />}>
         <ReminderSettingsStream ownerUserId={ownerUserId} />
       </Suspense>
@@ -272,6 +281,23 @@ export async function CalendarPreviewStream({
   } catch (error) {
     unstable_rethrow(error);
     return <AccountRegionUnavailable label="Calendar preview" />;
+  }
+}
+
+/**
+ * The owner's Approval Mode, read where the admitted owner is already resolved.
+ *
+ * A failed read is the unavailable region rather than a control defaulted to a
+ * mode: the query's own answer for a missing profile is `ask`, and rendering that
+ * for a read that never landed would show `Ask every time` selected to someone
+ * who chose `Trusted` - a setting reporting the opposite of what the policy will
+ * do.
+ */
+async function AssistantApprovalSettingsStream({ ownerUserId }: { ownerUserId: string }) {
+  try {
+    return <AssistantApprovalSettings mode={await getEveApprovalMode({ userId: ownerUserId })} />;
+  } catch {
+    return <AccountRegionUnavailable label="Assistant approvals" />;
   }
 }
 

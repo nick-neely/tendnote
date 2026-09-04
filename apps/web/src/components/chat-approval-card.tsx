@@ -102,8 +102,16 @@ const NO_SUCH_RECORD = "This record isn't available to you.";
 const TAINT_EXPLANATION =
   "The assistant asked because web content was read in this conversation. Start a new conversation to resume automatic saves.";
 
-/** The Session Tool Trust offer, in the owner's own words rather than the policy's. */
-const REMEMBER_TOOL_LABEL = "Don't ask again for this in this conversation";
+/**
+ * The Session Tool Trust offer, in the owner's own words rather than the policy's.
+ *
+ * The parenthesis is not a caveat, it is the whole limit: a trust is honoured only
+ * for a Reversible Private Write, so on a card asking to send, share, delete, or
+ * fetch, ticking it changes nothing about the next such request. Without the words
+ * the checkbox promises a quiet that those calls will never deliver.
+ */
+const REMEMBER_TOOL_LABEL =
+  "Don't ask again for this in this conversation (reversible private saves only)";
 
 /** One answer, kept beside the request it answers so the card can settle both. */
 type ApprovalSubmission = {

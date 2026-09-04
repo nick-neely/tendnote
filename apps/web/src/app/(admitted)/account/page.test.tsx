@@ -8,6 +8,7 @@ const {
   getOwnerCalendarPreview,
   getLatestOwnerDataExportJob,
   listReminderInstallations,
+  getEveApprovalMode,
   unstable_rethrow,
 } = vi.hoisted(() => ({
   redirect: vi.fn((to: string) => {
@@ -19,6 +20,7 @@ const {
   getOwnerCalendarPreview: vi.fn().mockResolvedValue({ state: "hidden" }),
   getLatestOwnerDataExportJob: vi.fn().mockResolvedValue(null),
   listReminderInstallations: vi.fn().mockResolvedValue([]),
+  getEveApprovalMode: vi.fn().mockResolvedValue("ask"),
   unstable_rethrow: vi.fn(),
 }));
 
@@ -29,6 +31,7 @@ vi.mock("@/app/actions/owner-data-export", () => ({
 }));
 vi.mock("@/lib/access/current-access", () => ({ getCurrentAccess }));
 vi.mock("@tendnote/db/queries/reminders", () => ({ listReminderInstallations }));
+vi.mock("@tendnote/db/queries/access-profiles", () => ({ getEveApprovalMode }));
 vi.mock("@tendnote/db/queries/owner-data-export", () => ({ getLatestOwnerDataExportJob }));
 vi.mock("@/lib/access/account-summary", () => ({ resolveAccountView }));
 vi.mock("@/lib/access/access-state", () => ({ localFallbackOwnerUserId: () => undefined }));
@@ -51,6 +54,9 @@ vi.mock("@/components/account/provider-connections-section", () => ({
   ProviderConnectionsSection: () => null,
 }));
 vi.mock("@/components/account/reminder-settings", () => ({ ReminderSettings: () => null }));
+vi.mock("@/components/account/assistant-approval-settings", () => ({
+  AssistantApprovalSettings: () => null,
+}));
 vi.mock("@/components/ui/badge", () => ({
   Badge: ({ children }: { children: unknown }) => children,
 }));
@@ -65,6 +71,7 @@ beforeEach(() => {
   getOwnerCalendarPreview.mockReset().mockResolvedValue({ state: "hidden" });
   getLatestOwnerDataExportJob.mockReset().mockResolvedValue(null);
   listReminderInstallations.mockReset().mockResolvedValue([]);
+  getEveApprovalMode.mockReset().mockResolvedValue("ask");
   redirect.mockClear();
   unstable_rethrow.mockReset();
 });

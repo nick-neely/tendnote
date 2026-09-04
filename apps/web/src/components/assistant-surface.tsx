@@ -1,3 +1,4 @@
+import { getEveApprovalMode } from "@tendnote/db/queries/access-profiles";
 import {
   getAssistantConversation,
   listAssistantConversations,
@@ -35,16 +36,20 @@ export async function AssistantSurfaceContent({ sessionId }: { sessionId: string
 
   const ownerUserId = await requireAdmittedOwner({ returnTo: assistantReturnTo(sessionId) });
 
-  const [conversations, thread, hints] = await Promise.all([
+  // The Approval Mode joins the same fan-out: it is the owner's own account
+  // setting, read here so the panel never fetches it from the browser, and it
+  // only ever decides whether a card says one extra sentence.
+  const [conversations, thread, hints, approvalMode] = await Promise.all([
     listAssistantConversations({ ownerUserId, includeArchived: true }),
     sessionId ? getAssistantConversation({ ownerUserId, sessionId }) : Promise.resolve(null),
     dashboardAssistantHints(ownerUserId),
+    getEveApprovalMode({ userId: ownerUserId }),
   ]);
 
   const model = assistantSurfaceModel({ conversations, hints, ownerUserId, sessionId, thread });
   if (!model.found) notFound();
 
-  return <AssistantPage {...model.props} railOpen={await railOpen()} />;
+  return <AssistantPage {...model.props} approvalMode={approvalMode} railOpen={await railOpen()} />;
 }
 
 /**

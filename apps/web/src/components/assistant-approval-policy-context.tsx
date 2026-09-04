@@ -1,5 +1,6 @@
 "use client";
 
+import type { EveApprovalMode } from "@tendnote/domain";
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 
 /**
@@ -21,11 +22,11 @@ import { createContext, type ReactNode, useContext, useMemo } from "react";
  */
 
 /**
- * The owner's account-level Approval Mode. Structurally the domain's
- * `eveApprovalMode`; a sibling slice adds the field and the account control, and
- * this seam is where its value arrives (`AssistantPanel`'s `approvalMode` prop).
+ * The owner's account-level Approval Mode, re-exported from the domain so a card
+ * and the account control that sets it can never drift into two enums. Its value
+ * reaches the cards through `AssistantPanel`'s `approvalMode` prop.
  */
-export type EveApprovalMode = "ask" | "trusted";
+export type { EveApprovalMode };
 
 export type AssistantApprovalPolicyValue = {
   readonly approvalMode: EveApprovalMode;

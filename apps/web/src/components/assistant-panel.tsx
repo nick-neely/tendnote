@@ -5,6 +5,7 @@ import type { ChatStatus } from "ai";
 import type { EveMessage } from "eve/react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { recordSessionToolTrustAction } from "@/app/actions/eve-approvals";
 import {
   Conversation,
   ConversationContent,
@@ -49,7 +50,10 @@ import {
 import { AssistantTurnUnitView } from "@/components/assistant-turn-unit";
 import { DropOverlay } from "@/components/drop-overlay";
 import { ArrowUpRightIcon } from "@/components/icons";
-import { SessionToolTrustProvider } from "@/components/session-tool-trust-context";
+import {
+  type RecordSessionToolTrust,
+  SessionToolTrustProvider,
+} from "@/components/session-tool-trust-context";
 import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ui/shimmer";
 import { ASSISTANT_CONVERSATION_STARTERS } from "@/lib/assistant/starters";
@@ -270,6 +274,20 @@ function AssistantConversationPanel({
     [taintedCallIds],
   );
 
+  /**
+   * Where a ticked "don't ask again" goes: the owner-scoped action, which writes
+   * only through the session-owner binding.
+   *
+   * Best effort by construction. It runs after an approval that already went
+   * through, so a rejected promise or a `recorded: false` costs a convenience and
+   * never a decision - and `false` is the same answer for a session that belongs
+   * to somebody else as for one that never existed (ADR 0219), so there is
+   * nothing here to tell the owner either way.
+   */
+  const recordSessionToolTrust = useCallback<RecordSessionToolTrust>(async (request) => {
+    await recordSessionToolTrustAction(request).catch(() => {});
+  }, []);
+
   /** A conversational turn started by something other than the composer. */
   const sendPrompt = useCallback<SendPrompt>(
     async (text, options) => {
@@ -342,7 +360,10 @@ function AssistantConversationPanel({
             approvalMode={approvalMode}
             isTaintedBefore={isTaintedBefore}
           >
-            <SessionToolTrustProvider sessionId={agent.session?.sessionId ?? null}>
+            <SessionToolTrustProvider
+              recordSessionToolTrust={recordSessionToolTrust}
+              sessionId={agent.session?.sessionId ?? null}
+            >
               <Conversation aria-busy={replaying} className="min-h-0 flex-1">
                 <ConversationContent
                   className={cn("min-h-full gap-4", TRANSCRIPT_PADDING[surface])}

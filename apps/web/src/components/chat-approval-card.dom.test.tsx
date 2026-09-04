@@ -538,7 +538,8 @@ const SAVE_REQUEST: AssistantInputRequestView = {
 const TAINT_LINE =
   "The assistant asked because web content was read in this conversation. Start a new conversation to resume automatic saves.";
 
-const REMEMBER_LABEL = "Don't ask again for this in this conversation";
+const REMEMBER_LABEL =
+  "Don't ask again for this in this conversation (reversible private saves only)";
 
 type PolicyOptions = {
   approvalMode?: EveApprovalMode;

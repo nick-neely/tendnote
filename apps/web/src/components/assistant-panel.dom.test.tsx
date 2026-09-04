@@ -278,6 +278,14 @@ vi.mock("@/app/actions/asset-evidence", () => ({
   listAssetEvidenceDestinationsAction: vi.fn(() => Promise.resolve([])),
 }));
 
+// The panel binds the Session Tool Trust recorder for its cards; the action's own
+// module chain reaches `server-only`.
+vi.mock("@/app/actions/eve-approvals", () => ({
+  recordSessionToolTrustAction: vi.fn(() =>
+    Promise.resolve({ ok: true, view: { recorded: true } }),
+  ),
+}));
+
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 import { AssistantPanel } from "./assistant-panel";
