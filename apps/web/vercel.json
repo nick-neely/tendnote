@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "npx turbo-ignore --fallback=HEAD^1",
+  "ignoreCommand": "pnpm exec turbo query affected --base=${VERCEL_GIT_PREVIOUS_SHA:-HEAD^1} --packages=@tendnote/web --exit-code",
   "crons": [
     {
       "path": "/api/cron/background-jobs",
