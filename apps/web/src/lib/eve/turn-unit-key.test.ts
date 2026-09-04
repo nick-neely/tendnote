@@ -78,8 +78,8 @@ describe("turnUnitKey", () => {
 
   /**
    * A batch is not the card of its first member. Sharing that key would hand the
-   * batch card the single card's mounted state — its open disclosure, its half-sent
-   * decision — the moment a turn parked a second call.
+   * batch card the single card's mounted state - its open disclosure, its half-sent
+   * decision - the moment a turn parked a second call.
    */
   it("keys a batch apart from the single card of its first member", () => {
     const second = { ...request, requestId: "req-2", toolCallId: "call-park-2" };

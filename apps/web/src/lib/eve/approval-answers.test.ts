@@ -6,7 +6,7 @@ import type { AssistantInputRequestView } from "./input-request-view";
 /**
  * The composer's shortcut, and the one rule it must not break: a typed word is
  * *matched* against the ids eve offered, never mapped onto one. A word that matches
- * nothing is a message, and a message while a turn is parked cancels the approval —
+ * nothing is a message, and a message while a turn is parked cancels the approval -
  * so guessing wrong here is not a cosmetic failure.
  */
 

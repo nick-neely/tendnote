@@ -5,9 +5,9 @@ import type {
 import type { EveApprovalMode } from "@tendnote/domain";
 import type { ApprovalContext, ApprovalPolicy, ApprovalStatus } from "eve/tools/approval";
 import { readConversationTaint } from "../conversation-taint";
-import { resolveSessionEveMode } from "../eve-modes";
 import { OPAQUE_DENIAL } from "./contract";
-import { approvalPolicyDependencies } from "./dependencies-production";
+import { type ApprovalPolicyDependencies, resolveApprovalPolicyDependencies } from "./dependencies";
+import { interactiveOwnerUserId } from "./interactive-owner";
 import type { ApprovalSubjectResolver } from "./subject";
 
 /** The single denial value. Frozen so no caller can edit the shared reason. */
@@ -123,14 +123,12 @@ type CallIdentity = {
  *
  * ## Why the caller check is the mode table
  *
- * `resolveSessionEveMode` is the repository's one trusted-signal reader: it
- * takes only what the channel's own `AuthFn` stamped, never message text or
- * anything the browser supplied. `web_chat` is by definition the mode where a
- * signed-in human is present and the client can render and answer a request.
- * Every other mode either has nobody watching (`scheduled_workflow`, which runs
- * as `eve:app`) or no way to answer (`discord_capture`, whose route never
- * starts a model session at all), so parking there would hang the turn rather
- * than protect anything.
+ * `interactiveOwnerUserId` reads only what the channel's own `AuthFn` stamped,
+ * and only `web_chat` passes it: that is by definition the mode where a signed-in
+ * human is present and the client can render and answer a request. Parking any
+ * other mode would hang the turn rather than protect anything. The dynamic
+ * approval-posture instruction shares that function, so it cannot describe a
+ * posture to a session this would refuse.
  *
  * ## `always`, never `once`
  *
@@ -144,8 +142,8 @@ type CallIdentity = {
  *
  * eve invokes the policy inside its approval callback and does not guard it, so
  * a throw would abort the turn instead of failing closed. Every path returns a
- * status, and anything unexpected — a predicate that throws, a store that is
- * unreachable, a context arriving without a session — denies. The one deliberate
+ * status, and anything unexpected - a predicate that throws, a store that is
+ * unreachable, a context arriving without a session - denies. The one deliberate
  * exception is the dependency reads: a mode or trust lookup that fails parks
  * rather than denies, because "we could not tell what the owner chose" is a
  * reason to ask them, not a reason to refuse a call they may well have wanted.
@@ -161,13 +159,25 @@ export function requireOwnerApproval<TInput = Record<string, unknown>>(
 
       if (spec.when !== undefined && !spec.when(input)) return NOT_APPLICABLE;
 
+      // Resolved once for this decision, after the `when` check: a call that asks
+      // for nothing this gate decides never touches a store.
+      const dependencies = await resolveApprovalPolicyDependencies();
       const tier = resolveTier(spec, input);
       const tainted = readConversationTaint().tainted;
       const call = callIdentity(ctx);
 
       const ownerUserId = interactiveOwnerUserId(ctx);
       if (ownerUserId === null) {
-        recordDecision(call, { tier, modeAtDecision: FALLBACK_APPROVAL_MODE, tainted }, "denied");
+        recordDecision(
+          dependencies,
+          call,
+          {
+            tier,
+            modeAtDecision: FALLBACK_APPROVAL_MODE,
+            tainted,
+          },
+          "denied",
+        );
         return DENIED;
       }
 
@@ -178,29 +188,38 @@ export function requireOwnerApproval<TInput = Record<string, unknown>>(
           callId: typeof ctx.callId === "string" ? ctx.callId : "",
         });
         if (!subject.found) {
-          recordDecision(call, { tier, modeAtDecision: FALLBACK_APPROVAL_MODE, tainted }, "denied");
+          recordDecision(
+            dependencies,
+            call,
+            {
+              tier,
+              modeAtDecision: FALLBACK_APPROVAL_MODE,
+              tainted,
+            },
+            "denied",
+          );
           return DENIED;
         }
       }
 
-      const mode = await readApprovalMode(ownerUserId);
+      const mode = await readApprovalMode(dependencies, ownerUserId);
       const decision = { tier, modeAtDecision: mode ?? FALLBACK_APPROVAL_MODE, tainted };
 
       // An unreadable mode parks without consulting anything else: a Session Tool
       // Trust is an exception to a posture the system cannot currently see.
       if (mode === null) {
-        recordDecision(call, decision, "parked");
+        recordDecision(dependencies, call, decision, "parked");
         return USER_APPROVAL;
       }
 
       if (tier === "reversible_private" && !tainted) {
-        if (mode === "trusted" || (await readSessionToolTrust(call))) {
-          recordDecision(call, decision, "auto_approved");
+        if (mode === "trusted" || (await readSessionToolTrust(dependencies, call))) {
+          recordDecision(dependencies, call, decision, "auto_approved");
           return NOT_APPLICABLE;
         }
       }
 
-      recordDecision(call, decision, "parked");
+      recordDecision(dependencies, call, decision, "parked");
       return USER_APPROVAL;
     } catch {
       return DENIED;
@@ -227,9 +246,12 @@ function resolveTier<TInput>(
 }
 
 /** The owner's Approval Mode, or `null` when it could not be read as one. */
-async function readApprovalMode(userId: string): Promise<EveApprovalMode | null> {
+async function readApprovalMode(
+  dependencies: ApprovalPolicyDependencies,
+  userId: string,
+): Promise<EveApprovalMode | null> {
   try {
-    const mode = await approvalPolicyDependencies().readApprovalMode({ userId });
+    const mode = await dependencies.readApprovalMode({ userId });
     if (mode === "trusted" || mode === "ask") return mode;
     return null;
   } catch {
@@ -244,11 +266,14 @@ async function readApprovalMode(userId: string): Promise<EveApprovalMode | null>
  * exception. A call with no readable identity answers `false` for the same
  * reason - there is no session to have trusted anything in.
  */
-async function readSessionToolTrust(call: CallIdentity | null): Promise<boolean> {
+async function readSessionToolTrust(
+  dependencies: ApprovalPolicyDependencies,
+  call: CallIdentity | null,
+): Promise<boolean> {
   if (call === null) return false;
 
   try {
-    const trusted = await approvalPolicyDependencies().readSessionToolTrust({
+    const trusted = await dependencies.readSessionToolTrust({
       sessionId: call.sessionId,
       toolName: call.toolName,
     });
@@ -268,6 +293,7 @@ async function readSessionToolTrust(call: CallIdentity | null): Promise<boolean>
  * and inventing one would put a lie in the audit trail.
  */
 function recordDecision(
+  dependencies: ApprovalPolicyDependencies,
   call: CallIdentity | null,
   decision: {
     readonly tier: EveApprovalDecisionTier;
@@ -280,7 +306,7 @@ function recordDecision(
 
   try {
     void Promise.resolve(
-      approvalPolicyDependencies().recordApprovalDecision({ ...call, ...decision, outcome }),
+      dependencies.recordApprovalDecision({ ...call, ...decision, outcome }),
     ).catch(() => {
       // Best-effort: the decision itself has already been made.
     });
@@ -310,9 +336,9 @@ function trimmed(value: unknown): string | null {
 /**
  * The gate every restricted-reveal argument shares.
  *
- * Eight tools offer the same request under two spellings — `includeRestricted`
+ * Eight tools offer the same request under two spellings - `includeRestricted`
  * on the reads that widen what they return, `directlyRequested` on the ones that
- * widen what they may ground a suggestion in — and each had written the
+ * widen what they may ground a suggestion in - and each had written the
  * predicate out again. A hand-copied predicate is how one of them ends up
  * checking a truthy value, or a third spelling, or nothing at all. This is the
  * one definition: exactly those two keys, `=== true` and nothing looser, so a
@@ -337,25 +363,4 @@ export function requireRestrictedRevealApproval<
 function asksForRestrictedReveal(input: unknown): boolean {
   const asked = input as { includeRestricted?: unknown; directlyRequested?: unknown } | undefined;
   return asked?.includeRestricted === true || asked?.directlyRequested === true;
-}
-
-/**
- * The owner who can actually be asked, or `null`.
- *
- * Read defensively all the way down: an approval context that arrives without
- * a session is exactly the shape this must not throw on.
- */
-function interactiveOwnerUserId(ctx: unknown): string | null {
-  const current = (ctx as ApprovalContext | undefined)?.session?.auth?.current;
-  if (!current) return null;
-
-  const ownerUserId = current.principalId?.trim();
-  if (!ownerUserId) return null;
-
-  // A subagent turn. Subagents propose; the parent session is where a person is.
-  if ((ctx as ApprovalContext).session?.parent !== undefined) return null;
-
-  if (resolveSessionEveMode(current) !== "web_chat") return null;
-
-  return ownerUserId;
 }

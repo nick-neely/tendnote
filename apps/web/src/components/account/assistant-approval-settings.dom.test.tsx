@@ -84,4 +84,79 @@ describe("AssistantApprovalSettings", () => {
 
     expect(setEveApprovalModeAction).not.toHaveBeenCalled();
   });
+
+  /**
+   * Arrow keys walk a radio group, so two writes inside one round trip is an
+   * ordinary thing to do. The responses can then come back in either order, and
+   * an older one applying its result last would leave the page showing a mode the
+   * owner has already moved off.
+   */
+  it("keeps the newest choice when an older write answers last", async () => {
+    const settle: ((outcome: unknown) => void)[] = [];
+    setEveApprovalModeAction.mockImplementation(
+      () => new Promise((resolve) => settle.push(resolve)),
+    );
+    render(<AssistantApprovalSettings mode="ask" />);
+
+    await userEvent.click(radio(/Trusted/));
+    await userEvent.click(radio(/Ask every time/));
+
+    expect(setEveApprovalModeAction).toHaveBeenNthCalledWith(1, { mode: "trusted" });
+    expect(setEveApprovalModeAction).toHaveBeenNthCalledWith(2, { mode: "ask" });
+
+    // The newest answers first, and the older one lands after it.
+    settle[1]?.({ ok: true, view: { mode: "ask" } });
+    await waitFor(() => expect(checked(/Ask every time/)).toBe("true"));
+    settle[0]?.({ ok: true, view: { mode: "trusted" } });
+
+    await waitFor(() => expect(screen.queryByText("Saving…")).toBeNull());
+    expect(checked(/Ask every time/)).toBe("true");
+    expect(checked(/Trusted/)).toBe("false");
+  });
+
+  /** A superseded failure is not this page's answer either, and says nothing. */
+  it("neither rolls back nor complains when an older write fails last", async () => {
+    const settle: ((outcome: unknown) => void)[] = [];
+    setEveApprovalModeAction.mockImplementation(
+      () => new Promise((resolve) => settle.push(resolve)),
+    );
+    render(<AssistantApprovalSettings mode="ask" />);
+
+    await userEvent.click(radio(/Trusted/));
+    await userEvent.click(radio(/Ask every time/));
+
+    settle[1]?.({ ok: true, view: { mode: "ask" } });
+    await waitFor(() => expect(checked(/Ask every time/)).toBe("true"));
+    settle[0]?.({ ok: false, error: "That didn't go through." });
+
+    await waitFor(() => expect(screen.queryByText("Saving…")).toBeNull());
+    expect(checked(/Ask every time/)).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  /**
+   * The status line holds its row while it is empty. A line that appears and
+   * disappears with the round trip would push the sections under it down and pull
+   * them back while the owner is only picking a radio button.
+   */
+  it("keeps the status line in place while nothing is saving", async () => {
+    const settle: ((outcome: unknown) => void)[] = [];
+    setEveApprovalModeAction.mockImplementation(
+      () => new Promise((resolve) => settle.push(resolve)),
+    );
+    render(<AssistantApprovalSettings mode="ask" />);
+
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("");
+
+    await userEvent.click(radio(/Trusted/));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Saving…"));
+
+    settle[0]?.({ ok: true, view: { mode: "trusted" } });
+
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe(""));
+    // The same element throughout: it was never unmounted and remounted, so the
+    // sections under it never moved.
+    expect(screen.getByRole("status")).toBe(status);
+  });
 });

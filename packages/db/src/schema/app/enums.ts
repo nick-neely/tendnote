@@ -20,7 +20,7 @@ export const selfContextOnboardingStatus = pgEnum("self_context_onboarding_statu
 // A user's Approval Mode for Eve's gated tool calls (#549). Two members only:
 // `ask` parks every gated call for an Owner Approval, `trusted` additionally
 // lets a Reversible Private Write run in an untainted conversation. There is no
-// third, wider member on purpose — external egress, deletion, household-visible
+// third, wider member on purpose - external egress, deletion, household-visible
 // writes, and restricted reveals always ask.
 export const eveApprovalMode = pgEnum("eve_approval_mode", ["ask", "trusted"]);
 

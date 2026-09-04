@@ -42,6 +42,7 @@
     "./global-recall": "./src/global-recall.ts",
     "./local-calendar-dates": "./src/local-calendar-dates.ts",
     "./drafts": "./src/drafts.ts",
+    "./eve-approvals": "./src/eve-approvals.ts",
     "./gmail-drafts": "./src/gmail-drafts.ts",
     "./privacy": "./src/privacy.ts",
     "./push-endpoint": "./src/push-endpoint.ts",

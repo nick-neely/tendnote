@@ -1,3 +1,4 @@
+import { WEB_SOURCE_TOOLS, type WebSourceTool } from "@tendnote/domain/assistant-sources";
 import { defineState } from "eve/context";
 
 /**
@@ -36,10 +37,15 @@ import { defineState } from "eve/context";
  * residual); `web_fetch` is gated but its *result* is still an unknown page.
  * Content another active Household Member authored is deliberately absent: it is
  * governed by Household Authorization Proofs (ADR-0219), a different question.
+ *
+ * The same two names the Assistant's citation reader recognises, taken from it
+ * rather than restated: a tool that reaches the open web produces a citation and
+ * taints the conversation, and those cannot be allowed to disagree about which
+ * tools those are.
  */
-export const UNTRUSTED_CONTENT_TOOL_NAMES = ["web_fetch", "web_search"] as const;
+export const UNTRUSTED_CONTENT_TOOL_NAMES = WEB_SOURCE_TOOLS;
 
-export type UntrustedContentToolName = (typeof UNTRUSTED_CONTENT_TOOL_NAMES)[number];
+export type UntrustedContentToolName = WebSourceTool;
 
 export type ConversationTaint = {
   readonly tainted: boolean;

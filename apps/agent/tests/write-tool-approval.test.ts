@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { REVERSIBLE_PRIVATE_WRITE_TOOL_NAMES } from "@tendnote/domain/eve-approvals";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { OPAQUE_DENIAL } from "../agent/lib/approval";
@@ -352,6 +353,50 @@ const AUTHORITY_FLAGS = [
   "requestedScope",
 ] as const;
 
+const PERSON_ID = "11111111-1111-4111-8111-111111111111";
+const SOURCE_RECORD_ID = "22222222-2222-4222-8222-222222222222";
+
+/**
+ * One widened call per flag-gated tool: the argument set to the value that asks
+ * for more than an ordinary call, alongside whatever else that tool's schema
+ * needs. The same inputs `approval-trust-flags.test.ts` uses, because the two
+ * files are asking about the same call from opposite sides - that it parks at
+ * all, and that the Approval Mode does not stop it parking.
+ */
+const WIDENING_INPUTS: Readonly<Record<string, Record<string, unknown>>> = {
+  create_message_draft: { personId: PERSON_ID, includeRestricted: true },
+  get_person_context: { personId: PERSON_ID, includeRestricted: true },
+  get_relationship_agenda: {
+    windowStart: "2026-07-01T00:00:00.000Z",
+    windowEnd: "2026-07-08T00:00:00.000Z",
+    directlyRequested: true,
+  },
+  plan_suggested_general_actions: {
+    sourceRecordId: SOURCE_RECORD_ID,
+    steps: [{ title: "Call the clinic" }],
+    directlyRequested: true,
+  },
+  propose_followup: {
+    personId: PERSON_ID,
+    reason: "check in about the diagnosis",
+    dueAt: "2026-07-08T00:00:00.000Z",
+    sourceRecordId: SOURCE_RECORD_ID,
+    directlyRequested: true,
+  },
+  search_global_recall: { query: "the diagnosis", family: "memory", includeRestricted: true },
+  search_relationship_context: {
+    query: "the diagnosis",
+    visibilityScope: "all_visible",
+    directlyRequested: true,
+  },
+  search_semantic_context: { query: "the diagnosis", directlyRequested: true },
+  suggest_general_action: {
+    title: "Call the clinic",
+    sourceRecordId: SOURCE_RECORD_ID,
+    directlyRequested: true,
+  },
+};
+
 describe("a described subject and an authority flag never ride the same call", () => {
   // The web approval card renders the registry's description first and folds the
   // raw input behind a disclosure. That is right for a record — a uuid is not a
@@ -582,6 +627,27 @@ describe("every durable write is assigned a tier, and the tier is earned", () =>
     ).toEqual([...WRITE_TOOLS].sort());
   });
 
+  it("is the same list the web card reads for its trust offer", async () => {
+    // The approval card offers "Don't ask again for this in this conversation"
+    // only where the policy would honour it, and a browser cannot see a tier: it
+    // reads the shared list in `@tendnote/domain/eve-approvals`. That list is a
+    // copy, so this is where it is held to the declarations themselves - not to
+    // REVERSIBLE_PRIVATE_WRITES above, but to what each gate actually does in the
+    // mode that skips the click.
+    withApprovalMode("trusted");
+
+    const declaring: string[] = [];
+    for (const name of WRITE_TOOLS) {
+      const status = await runToolApproval(await loadTool(name), { toolName: name });
+      if (status === "not-applicable") declaring.push(name);
+    }
+
+    expect(
+      [...REVERSIBLE_PRIVATE_WRITE_TOOL_NAMES].sort(),
+      "REVERSIBLE_PRIVATE_WRITE_TOOL_NAMES in @tendnote/domain/eve-approvals has drifted from the tools' own reversiblePrivateWrite declarations.",
+    ).toEqual(declaring.sort());
+  });
+
   it.each([...REVERSIBLE_PRIVATE_WRITES])(
     "%s runs without asking in trusted mode",
     async (name) => {
@@ -613,6 +679,27 @@ describe("every durable write is assigned a tier, and the tier is earned", () =>
         // subject-shaped input; the registry mock accepts anything.
         toolInput: { id: "r1", url: "https://example.com/page" },
       }),
+    ).resolves.toBe("user-approval");
+  });
+
+  it.each([...FLAG_GATED_TOOLS])("%s asks even in trusted mode once widened", async (name) => {
+    // The flag-gated tools declare no tier, so every one of them is always-ask
+    // once its widening argument is set. `trusted` is the mode where that is
+    // worth stating: an owner who stopped clicking on private saves has not
+    // agreed to a restricted reveal, an accepted-proposal persist, or a
+    // household audience, and the absent declaration is the only thing standing
+    // between them. `approval-trust-flags.test.ts` owns what each flag means;
+    // this owns that the mode never reaches past it.
+    withApprovalMode("trusted");
+
+    const widening = WIDENING_INPUTS[name];
+    expect(
+      widening,
+      `${name} is flag-gated, so WIDENING_INPUTS needs the call that sets its argument`,
+    ).toBeDefined();
+
+    await expect(
+      runToolApproval(await loadTool(name), { toolName: name, toolInput: widening }),
     ).resolves.toBe("user-approval");
   });
 

@@ -20,6 +20,11 @@ import {
  * different posture calls `setApprovalPolicyDependencies` itself; the
  * `beforeEach` here puts these back first, so one file's override cannot leak
  * into the next test.
+ *
+ * All three matter, not just the one a given test varies: a complete set of
+ * overrides is what stops the seam reaching for its production half at all, so
+ * dropping one from this list would put the query layer's import back in front
+ * of every gated call under vitest.
  */
 beforeEach(() => {
   resetApprovalPolicyDependencies();

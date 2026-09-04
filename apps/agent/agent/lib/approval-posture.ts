@@ -8,8 +8,8 @@ import type { EveApprovalMode } from "@tendnote/domain";
  *
  * The paragraphs below speak in categories - saving, sharing, deleting, sending,
  * fetching, revealing - and never name a tool or a tier. A model that knew which
- * named tools auto-approve could reason about which one to reach for to get a
- * write past a review it expected; a model that only knows the shape of the line
+ * named tools run without a click could reason about which one to reach for to
+ * get a write past a review it expected; a model that only knows the shape of the line
  * cannot (ADR-0240). The tier declaration lives on the tool's gate, where the
  * policy reads it and the model does not.
  *

@@ -35,7 +35,7 @@ const inputSchema = z.object({
 export default defineTool({
   approval: requireOwnerApproval({ reversiblePrivateWrite: true }),
   description:
-    "Add a new person to the user's notebook when the user explicitly asks to add or create someone outside Global Capture. Do not use this for 'Use Capture', 'capture this', or a turn with another supported explicit clause even if the word Capture is absent; capture_saved_item owns that path. Otherwise search existing people first; never call this for a casual or ambiguous mention — ask the user to disambiguate instead. Returns a persisted person reference.",
+    "Add a new person to the user's notebook when the user explicitly asks to add or create someone outside Global Capture. Do not use this for 'Use Capture', 'capture this', or a turn with another supported explicit clause even if the word Capture is absent; capture_saved_item owns that path. Otherwise search existing people first; never call this for a casual or ambiguous mention - ask the user to disambiguate instead. Returns a persisted person reference.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

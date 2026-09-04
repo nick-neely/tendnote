@@ -1,7 +1,7 @@
 "use client";
 
 import type { EveApprovalMode } from "@tendnote/domain";
-import { useId, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import { setEveApprovalModeAction } from "@/app/actions/eve-approvals";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -66,6 +66,14 @@ const TAINT_NOTE =
  * here precisely because the setting is authoritative elsewhere: the agent's
  * policy reads the mode from the database on every gated call, so a selection
  * that did not persist would otherwise show a promise this page cannot keep.
+ *
+ * Only the newest choice may do either. Arrow keys walk a radio group, so two
+ * writes inside one round trip is an ordinary thing to do rather than an abuse,
+ * and the responses can come back in either order: an older one applying its
+ * result last would leave the page showing a mode the owner has already moved
+ * off, and the database holding the other. Each choice takes a sequence number
+ * and a stale response is dropped - the newest write is the one the server saw
+ * last, so it is also the one whose answer this page believes.
  */
 export function AssistantApprovalSettings({ mode: initialMode }: { mode: EveApprovalMode }) {
   const headingId = useId();
@@ -73,15 +81,20 @@ export function AssistantApprovalSettings({ mode: initialMode }: { mode: EveAppr
   const [mode, setMode] = useState<EveApprovalMode>(initialMode);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  /** The newest choice. A response from any older one is not this page's answer. */
+  const latestChoice = useRef(0);
 
   function choose(next: EveApprovalMode) {
     if (next === mode) return;
     const previous = mode;
+    latestChoice.current += 1;
+    const choice = latestChoice.current;
     setMode(next);
     setError(null);
     startTransition(async () => {
       try {
         const outcome = await setEveApprovalModeAction({ mode: next });
+        if (choice !== latestChoice.current) return;
         if (!outcome.ok) {
           setMode(previous);
           setError(outcome.error || GENERIC_FAILURE);
@@ -89,6 +102,7 @@ export function AssistantApprovalSettings({ mode: initialMode }: { mode: EveAppr
         }
         setMode(outcome.view.mode);
       } catch {
+        if (choice !== latestChoice.current) return;
         setMode(previous);
         setError(GENERIC_FAILURE);
       }
@@ -142,8 +156,15 @@ export function AssistantApprovalSettings({ mode: initialMode }: { mode: EveAppr
         ))}
       </RadioGroup>
 
+      {/*
+        Always rendered, and holding one line of height while it is empty: a
+        status that appears and disappears with a round trip would push whatever
+        sits under this section down and pull it back, which is a page moving
+        under a reader who is only choosing a radio button.
+      */}
       <p
-        className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)] empty:hidden"
+        aria-live="polite"
+        className="min-h-[var(--text-small-line)] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]"
         role="status"
       >
         {pending ? "Saving…" : null}

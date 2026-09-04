@@ -17,7 +17,7 @@
  * its `callId` recorded, durably at `session.waiting` until the authenticated
  * owner answers through the client (`useEveAgent().respond`). The answer never
  * passes through the model, so it is a real capability bound to owner, turn,
- * resource, and action — without a new table (ADR-0014), and sharing the one
+ * resource, and action - without a new table (ADR-0014), and sharing the one
  * approval artifact the web surface uses (ADR-0092).
  *
  * ```ts
@@ -72,7 +72,7 @@
  * ## What the tool sees
  *
  * Nothing new. `execute` runs unchanged after an approval, and never runs at
- * all after a denial or a decline — eve settles the call itself and the model
+ * all after a denial or a decline - eve settles the call itself and the model
  * receives a `tool-output-denied` result. There is no approval argument to
  * thread, and nothing for the model to assert.
  *
@@ -96,21 +96,23 @@
  * front of every tool that only wants the policy, so the id-referenced writes
  * import it by name from its own module and the rest never see it.
  *
- * That used to be a statement about bundles as well: `web_fetch` had no store at
- * all. It is not any more - ADR-0240 has the policy read the owner's Approval
- * Mode from the database on every gated call, so `@tendnote/db` is behind this
- * barrel for every tool that imports it. The seam that keeps that read testable
- * is `./dependencies`, which carries no runtime import of its own; the queries
- * live in `./dependencies-production`.
+ * It is also still a statement about bundles. ADR-0240 has the policy read the
+ * owner's Approval Mode from the database on every gated call, which would have
+ * put `@tendnote/db` behind this barrel for every tool that imports it -
+ * `web_fetch` included, whose whole chunk is otherwise a fetch. It does not:
+ * `./dependencies` is a seam with no runtime import at all, and the queries in
+ * `./dependencies-production` reach the policy either through the registration
+ * an eve-loaded hook performs at startup or through a lazy import behind the
+ * first decision that needs one.
  */
 
 export { APPROVAL_APPROVE_OPTION_ID, APPROVAL_REQUEST_KIND, OPAQUE_DENIAL } from "./contract";
 export {
   type ApprovalPolicyDependencies,
+  registerApprovalPolicyDependencies,
   resetApprovalPolicyDependencies,
   setApprovalPolicyDependencies,
 } from "./dependencies";
-export { approvalPolicyDependencies } from "./dependencies-production";
 export {
   type OwnerApprovalSpec,
   requireOwnerApproval,

@@ -57,10 +57,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ui/shimmer";
 import { ASSISTANT_CONVERSATION_STARTERS } from "@/lib/assistant/starters";
-import { pendingApprovalRequests, typedApprovalAnswer } from "@/lib/eve/approval-answers";
+import {
+  APPROVE_OPTION_ID,
+  pendingApprovalRequests,
+  typedApprovalAnswer,
+} from "@/lib/eve/approval-answers";
 import { webTaintedToolCallIds } from "@/lib/eve/conversation-taint";
 import { EVIDENCE_DROP_ACCEPT, type EvidencePick, useEvidencePick } from "@/lib/eve/evidence-pick";
 import { followUpSuggestions } from "@/lib/eve/follow-up-suggestions";
+import type { AssistantInputRequestView } from "@/lib/eve/input-request-view";
 import {
   isTurnInFlight,
   messageFiles,
@@ -233,7 +238,7 @@ function AssistantConversationPanel({
    * A typed answer to the oldest waiting approval, if that is what this line is.
    *
    * The framework's own instruction to the model is never to ask anyone to type
-   * "approve", but people type it anyway — and eve clears the parked batch when an
+   * "approve", but people type it anyway - and eve clears the parked batch when an
    * ordinary message arrives, so the word meant to allow the save is exactly what
    * cancels it. So the composer answers with it instead, and only on an exact match
    * against an option the request itself offers.
@@ -387,7 +392,6 @@ function AssistantConversationPanel({
         </AssistantRespondProvider>
 
         <AssistantComposerRegion
-          approvalPending={pendingApprovals.length > 0}
           centered={centeredComposer}
           context={context}
           ended={ended}
@@ -398,6 +402,7 @@ function AssistantConversationPanel({
           onSendNudge={sendNudge}
           onSubmit={handleSubmit}
           ownerUserId={ownerUserId}
+          pendingApproval={pendingApprovals[0] ?? null}
           queue={queue}
           status={submitStatus(agent.status)}
           suggestPersonName={suggestPersonName}
@@ -451,7 +456,6 @@ function AssistantSettleSpacer({ grow, surface }: { grow: boolean; surface: Assi
  * taking them off screen along with the box would quietly delete them.
  */
 function AssistantComposerRegion({
-  approvalPending,
   centered,
   context,
   ended,
@@ -462,14 +466,13 @@ function AssistantComposerRegion({
   onStop,
   onSubmit,
   ownerUserId,
+  pendingApproval,
   queue,
   status,
   suggestPersonName,
   surface,
   textareaRef,
 }: {
-  /** Whether a card in the transcript is still waiting on the owner. */
-  approvalPending: boolean;
   centered: boolean;
   context?: AssistantPersonContext;
   ended: boolean;
@@ -480,6 +483,8 @@ function AssistantComposerRegion({
   onStop: () => void;
   onSubmit: (message: PromptInputMessage) => Promise<void>;
   ownerUserId: string;
+  /** The oldest tool approval still waiting on the owner, or null. */
+  pendingApproval: AssistantInputRequestView | null;
   queue: AssistantSendQueueControls;
   status: ChatStatus;
   suggestPersonName: string | null;
@@ -495,7 +500,7 @@ function AssistantComposerRegion({
     <>
       {centered ? <AssistantPageGreeting /> : null}
       <AssistantComposerShell surface={surface}>
-        <PendingApprovalNote pending={approvalPending && !ended} />
+        <PendingApprovalNote request={ended ? null : pendingApproval} />
         <AssistantSendQueue
           items={queue.items}
           note={queueNote}
@@ -530,29 +535,44 @@ function AssistantComposerRegion({
 }
 
 /**
- * What sending a message costs while a decision is waiting above.
+ * What pressing Enter does while a decision is waiting above.
  *
- * Eve clears the parked batch when an ordinary message arrives — that is the
- * framework's own behaviour, not a rule this app could soften — so a follow-up
- * thought typed into the box silently withdraws the approval. One line, stated
- * plainly, so the owner is not surprised by it. It never blocks the box: sending is
- * a legitimate thing to do, and a composer that argued with the reader would be
- * pressing for the approval.
+ * Usually it costs the approval: eve clears the parked batch when an ordinary
+ * message arrives - that is the framework's own behaviour, not a rule this app
+ * could soften - so a follow-up thought typed into the box silently withdraws it.
+ * One line, stated plainly, so the owner is not surprised by it. It never blocks
+ * the box: sending is a legitimate thing to do, and a composer that argued with
+ * the reader would be pressing for the approval.
+ *
+ * The exception is the word itself. `handleSubmit` intercepts an exact `approve`
+ * or `cancel` and answers the card with it instead of sending it, so on those two
+ * drafts the standing line is not merely unhelpful, it is false. The note reads
+ * the live draft through the composer's own controller and says what Enter will
+ * actually do - the same helper the submit path uses, so the sentence and the
+ * behaviour cannot disagree.
  *
  * `status` rather than `alert`: nothing is wrong, and it appears at the moment eve
  * parks the turn, which is worth hearing once without interrupting.
  */
-function PendingApprovalNote({ pending }: { pending: boolean }) {
-  if (!pending) {
+function PendingApprovalNote({ request }: { request: AssistantInputRequestView | null }) {
+  const { textInput } = usePromptInputController();
+
+  if (request === null) {
     return null;
   }
+
+  const optionId = typedApprovalAnswer(request, textInput.value);
 
   return (
     <p
       className="pb-2 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]"
       role="status"
     >
-      Sending a message cancels the approval waiting above.
+      {optionId === APPROVE_OPTION_ID
+        ? "Enter approves the request waiting above."
+        : optionId !== null
+          ? "Enter cancels the request waiting above."
+          : "Sending a message cancels the approval waiting above."}
     </p>
   );
 }

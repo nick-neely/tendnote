@@ -1386,6 +1386,42 @@ it("sends anything else as a message, and says what sending one costs", async ()
   expect(eve.responded).toEqual([]);
 });
 
+/**
+ * The line has to describe the Enter the owner is about to press, not Enter in
+ * general. On the two drafts the composer intercepts, "sending a message cancels
+ * the approval" is not merely unhelpful - it is the opposite of what happens.
+ */
+it.each([
+  ["approve", "Enter approves the request waiting above."],
+  ["  Approve  ", "Enter approves the request waiting above."],
+  ["cancel", "Enter cancels the request waiting above."],
+])("says what Enter does while the draft is %s", async (typed, line) => {
+  await showParkedTurn(turnAwaitingApproval);
+
+  await userEvent.type(composer(), typed);
+
+  await waitFor(() => expect(screen.getByText(line)).toBeDefined());
+  expect(screen.queryByText("Sending a message cancels the approval waiting above.")).toBeNull();
+  // Still only a description: nothing was sent or answered by typing it.
+  expect(eve.responded).toEqual([]);
+  expect(eve.sent).toEqual([]);
+});
+
+it("goes back to the standing warning once the draft is an ordinary message", async () => {
+  await showParkedTurn(turnAwaitingApproval);
+
+  await userEvent.type(composer(), "approve");
+  await waitFor(() =>
+    expect(screen.getByText("Enter approves the request waiting above.")).toBeDefined(),
+  );
+
+  await userEvent.type(composer(), " the fetch");
+
+  await waitFor(() =>
+    expect(screen.getByText("Sending a message cancels the approval waiting above.")).toBeDefined(),
+  );
+});
+
 it("intercepts nothing, and warns about nothing, when no decision is waiting", async () => {
   render(<AssistantPanel ownerUserId="owner-1" />);
 

@@ -4,7 +4,7 @@ import { webTaintedToolCallIds } from "./conversation-taint";
 
 /**
  * The client's reading of a Tainted Conversation. It explains a card; it never
- * decides one — so what these pin is that "before" means transcript order and that
+ * decides one - so what these pin is that "before" means transcript order and that
  * a web tool never taints the very call that is asking to read the web.
  */
 

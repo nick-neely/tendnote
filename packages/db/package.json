@@ -86,6 +86,7 @@
     "db:audit-retention:check": "TMPDIR=/tmp tsx src/audit-retention-live-check.ts",
     "db:assistant-conversations:check": "TMPDIR=/tmp tsx src/assistant-conversations-live-check.ts",
     "db:eve-session-tool-trusts:check": "TMPDIR=/tmp tsx src/eve-session-tool-trusts-live-check.ts",
+    "db:eve-approval-decisions:check": "TMPDIR=/tmp tsx src/eve-approval-decisions-live-check.ts",
     "db:purge:check": "TMPDIR=/tmp tsx src/household-purge-live-check.ts",
     "db:account-deletion:check": "TMPDIR=/tmp tsx src/household-account-deletion-live-check.ts",
     "db:eval:reset": "TMPDIR=/tmp tsx src/eval/reset.ts",

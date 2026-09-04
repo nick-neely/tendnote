@@ -4,7 +4,7 @@ import type { EveApprovalMode } from "@tendnote/domain";
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 
 /**
- * The two facts an approval card needs to explain *why it is asking* — and neither
+ * The two facts an approval card needs to explain *why it is asking* - and neither
  * of them may change what it sends.
  *
  * The owner's Approval Mode lives on their access profile and is read by the agent's

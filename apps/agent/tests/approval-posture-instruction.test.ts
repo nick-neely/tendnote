@@ -27,16 +27,23 @@ async function posture(ctx: unknown): Promise<string | null> {
 
 /** The dynamic resolve context an authenticated web-chat turn arrives with. */
 function resolveContext(
-  options: { messages?: readonly unknown[]; principalId?: string | null; subagent?: boolean } = {},
+  options: {
+    messages?: readonly unknown[];
+    principalId?: string | null;
+    /** What the channel's own AuthFn stamped. `eve` is web chat. */
+    channel?: string;
+    principalType?: string;
+    subagent?: boolean;
+  } = {},
 ) {
   const principal =
     options.principalId === null
       ? null
       : {
-          attributes: { channel: "eve" },
+          attributes: { channel: options.channel ?? "eve" },
           authenticator: "better-auth",
           principalId: options.principalId ?? "user-1",
-          principalType: "user",
+          principalType: options.principalType ?? "user",
         };
 
   return {
@@ -71,8 +78,8 @@ describe("approvalPostureInstruction: exactly one paragraph per posture", () => 
   });
 
   it("says nothing about which tool is in which tier", () => {
-    // The model never learns the map: knowing which named tool auto-approves is
-    // what would let it pick one to get a write past a review it expected.
+    // The model never learns the map: knowing which named tool runs without a
+    // click is what would let it pick one to get a write past a review it expected.
     for (const paragraph of [
       ASK_APPROVAL_POSTURE,
       TRUSTED_APPROVAL_POSTURE,
@@ -133,9 +140,16 @@ describe("the turn.started instruction resolves the posture from trusted signals
     ["an unauthenticated turn", { principalId: null }],
     ["a blank principal", { principalId: "  " }],
     ["a subagent turn", { subagent: true }],
+    // Not web chat: a Discord capture turn carries a real signed-in user, and the
+    // policy still denies every gated call it makes. A paragraph telling it that
+    // reversible private saves run immediately would describe a posture that
+    // does not exist there, which is why this shares the policy's own caller
+    // check rather than the looser orientation one.
+    ["a signed-in user on another channel", { channel: "discord" }],
+    ["a user principal with no channel marker", { channel: "" }],
+    ["Eve's own runtime principal", { principalType: "runtime", principalId: "eve:app" }],
   ])("says nothing on %s", async (_name, options) => {
-    // No directly authenticated human owner means no Approval Mode to state, and
-    // a subagent's writes are denied outright rather than parked.
+    // No caller the policy would park for means no Approval Mode to state.
     await expect(posture(resolveContext(options))).resolves.toBeNull();
     expect(readApprovalMode).not.toHaveBeenCalled();
   });

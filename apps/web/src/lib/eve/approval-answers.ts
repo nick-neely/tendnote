@@ -7,15 +7,15 @@ import { type AssistantInputRequestView, toInputRequestView } from "./input-requ
  * Two of those exist: the composer, where an owner who was told to "type approve"
  * by an older habit would otherwise send the word as a message and cancel the very
  * thing they meant to allow, and "Approve all", which settles a whole batch at once.
- * Both need the same two facts about a request — which option is the affirmative
- * one, and which requests are still waiting — so both live here rather than being
+ * Both need the same two facts about a request - which option is the affirmative
+ * one, and which requests are still waiting - so both live here rather than being
  * re-derived at each call site.
  *
  * The rule the approval card states holds here too: *the answer is the id eve asked
  * for*. Nothing in this module invents an option id. {@link APPROVE_OPTION_ID} is
  * eve's own affirmative id (`extractApprovalRequests` authors `approve` / `cancel`),
  * and every function that uses it looks it up in the request's own options and
- * yields nothing when it is absent — so a framework that renamed its options would
+ * yields nothing when it is absent - so a framework that renamed its options would
  * lose these shortcuts rather than start answering the wrong way.
  */
 
@@ -32,7 +32,7 @@ const TYPED_ANSWER_WORDS: readonly string[] = [APPROVE_OPTION_ID, "cancel"];
  * Every tool-approval Eve has parked and the owner has not answered, oldest first.
  *
  * Transcript order is turn order, so the first entry is the oldest waiting decision
- * — which is the one a typed `approve` answers. Questions are excluded: they carry
+ * - which is the one a typed `approve` answers. Questions are excluded: they carry
  * the model's own words and their options are whatever it offered, so a word typed
  * into the composer is an answer to *them* only through eve's own matching, not
  * through this shortcut.
@@ -70,7 +70,7 @@ export function approveOptionId(request: AssistantInputRequestView): string | nu
  *
  * Exact match only, trimmed and case-folded: "approve" and "Cancel" are answers,
  * "approve the fetch but not the save" is a sentence the owner meant Eve to read.
- * The word then has to *be* one of the ids the request offers — matching, never
+ * The word then has to *be* one of the ids the request offers - matching, never
  * mapping, so a typed answer and a clicked one send the same thing.
  */
 export function typedApprovalAnswer(

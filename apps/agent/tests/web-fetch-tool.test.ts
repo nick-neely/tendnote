@@ -1,8 +1,24 @@
 import { webFetch } from "eve/tools/web_fetch";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OPAQUE_DENIAL } from "../agent/lib/approval";
 import webFetchTool from "../agent/tools/web_fetch";
 import { parseToolInput, runToolApproval } from "./test-tool";
+
+/**
+ * The taint writer, spied at the module seam. The real one goes through
+ * `defineState`, which needs an active eve context this test has no way to
+ * supply; what is being pinned here is *when* the tool calls it, not what the
+ * slot then holds (`tests/conversation-taint.test.ts` owns that).
+ */
+const { markConversationTainted } = vi.hoisted(() => ({ markConversationTainted: vi.fn() }));
+vi.mock("../agent/lib/conversation-taint", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../agent/lib/conversation-taint")>()),
+  markConversationTainted,
+}));
+
+beforeEach(() => {
+  markConversationTainted.mockClear();
+});
 
 const denied = { type: "denied", reason: OPAQUE_DENIAL };
 const url = "https://example.com/manual?model=EDR1RXD1";
@@ -228,5 +244,52 @@ describe("web_fetch egress gate", () => {
         toolInput: { url },
       }),
     ).resolves.toBe("user-approval");
+  });
+});
+
+/**
+ * A conversation is tainted by *asking* for a page, not by getting one back.
+ *
+ * The `step.started` scanner sees a fetch only once its call is in the history,
+ * so between two resolves the tool's own mark is the only signal the policy has -
+ * and the approval decision most likely to be acting on what a page said is the
+ * very next one. A fetch that throws still spent a turn on an unknown host and
+ * may still be followed by a parked call in the same turn, so marking after the
+ * await would leave exactly that call deciding as if nothing had been read.
+ */
+describe("web_fetch taints the conversation before the page arrives", () => {
+  it("marks the taint before Eve's executor is even called", async () => {
+    const order: string[] = [];
+    markConversationTainted.mockImplementation(() => order.push("tainted"));
+
+    const execute = webFetch.execute;
+    (webFetch as { execute: unknown }).execute = () => {
+      order.push("fetched");
+      return { content: "# Manual", contentType: "text/markdown", truncated: false, url };
+    };
+    try {
+      await webFetchTool.execute({ url }, {} as never);
+    } finally {
+      (webFetch as { execute: unknown }).execute = execute;
+    }
+
+    expect(order).toEqual(["tainted", "fetched"]);
+    expect(markConversationTainted).toHaveBeenCalledWith("web_fetch");
+  });
+
+  it("still marks it when the fetch throws", async () => {
+    const execute = webFetch.execute;
+    (webFetch as { execute: unknown }).execute = () => {
+      throw new Error("connection refused");
+    };
+    try {
+      await expect(webFetchTool.execute({ url }, {} as never)).rejects.toThrow(
+        "connection refused",
+      );
+    } finally {
+      (webFetch as { execute: unknown }).execute = execute;
+    }
+
+    expect(markConversationTainted).toHaveBeenCalledWith("web_fetch");
   });
 });

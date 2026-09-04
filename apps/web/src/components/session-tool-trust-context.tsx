@@ -8,14 +8,14 @@ import { createContext, type ReactNode, useContext, useMemo } from "react";
  * A Session Tool Trust is the owner's choice, made on the card as they approve,
  * that one named tool may run its Reversible Private Writes without asking again
  * for the rest of *this* conversation. It is scoped to the conversation and the
- * tool name — never to an input, never beyond the conversation — and the agent
+ * tool name - never to an input, never beyond the conversation - and the agent
  * ignores it entirely in a Tainted Conversation, which is why the card hides the
  * checkbox there rather than writing a row that would never be honoured.
  *
  * The write itself is an owner-scoped server action, and this slice deliberately
  * does not own it: the default is a no-op, so the checkbox is inert until the
- * sibling slice provides the real recorder here. That keeps one seam — this
- * context — rather than a server action reached from inside a card, which is the
+ * sibling slice provides the real recorder here. That keeps one seam - this
+ * context - rather than a server action reached from inside a card, which is the
  * shape every other approval-adjacent write in the panel already avoids.
  *
  * Recording is best effort by construction: it happens *after* an approval that
@@ -24,7 +24,12 @@ import { createContext, type ReactNode, useContext, useMemo } from "react";
 
 /** One remembered tool, in the scope the trust is keyed by. */
 export type SessionToolTrustRequest = {
-  /** The Eve session the trust belongs to. Null while no session exists yet. */
+  /**
+   * The Eve session the trust belongs to. Required, not nullable: a card only
+   * builds this request once it has a live session id to key the trust by. The
+   * "no session yet" case is {@link SessionToolTrustValue.sessionId}, and the
+   * card withholds the checkbox entirely while it holds.
+   */
   readonly sessionId: string;
   readonly toolName: string;
 };

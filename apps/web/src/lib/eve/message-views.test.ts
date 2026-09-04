@@ -485,7 +485,7 @@ describe("messageTurnUnits (a turn's tool activity, in the order it happened)", 
 
   /**
    * One `input.requested` can park several calls at once, and eve holds the turn
-   * while any of them wait — so every approval still parked in a turn came from the
+   * while any of them wait - so every approval still parked in a turn came from the
    * same batch. Three cards stacked down the transcript is how an interruption stops
    * being read, so they project as one.
    */

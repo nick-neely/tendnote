@@ -163,13 +163,16 @@ export default defineTool({
     UNTRUSTED_CONTENT_GUIDANCE,
   ].join("\n"),
   async execute(input: WebFetchToolInput, ctx: ToolContext) {
-    const fetched = (await webFetch.execute(input, ctx)) as WebFetchOutput;
-    // This conversation has now read Untrusted Content, so every gated call in
-    // it asks again for the rest of its life. Recorded here as well as by the
-    // `step.started` scanner because a fetch that lands between two resolves
-    // would otherwise be invisible to the very next approval decision, which is
-    // the one most likely to be acting on what the page said (ADR-0240).
+    // Marked before the fetch, not after: this conversation asked for a page, so
+    // every gated call in it asks again for the rest of its life whatever comes
+    // back. Recorded here as well as by the `step.started` scanner because a
+    // fetch in flight between two resolves would otherwise be invisible to the
+    // very next approval decision, which is the one most likely to be acting on
+    // what the page said - and a fetch that throws still leaves an approval
+    // parked mid-turn that must not decide as if nothing had been read
+    // (ADR-0240).
     markConversationTainted("web_fetch");
+    const fetched = (await webFetch.execute(input, ctx)) as WebFetchOutput;
     const source: WebFetchSource = {
       // Eve resolves up to ten redirects and re-checks each one, so this is the
       // page that actually answered - the URL a citation should point at, not

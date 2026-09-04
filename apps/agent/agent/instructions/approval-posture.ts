@@ -1,8 +1,8 @@
 import { defineDynamic, defineInstructions } from "eve/instructions";
-import { approvalPolicyDependencies } from "../lib/approval/dependencies-production";
+import { resolveApprovalPolicyDependencies } from "../lib/approval/dependencies";
+import { interactiveOwnerUserId } from "../lib/approval/interactive-owner";
 import { approvalPostureInstruction } from "../lib/approval-posture";
 import { resolveConversationTaint } from "../lib/conversation-taint";
-import { resolveOrientationCaller } from "../lib/self-context-orientation";
 
 /**
  * States this conversation's approval posture once per turn, in the same words
@@ -15,10 +15,11 @@ import { resolveOrientationCaller } from "../lib/self-context-orientation";
  * injected dependency, the taint from the state slot with the message history as
  * the backstop - so the paragraph and the decisions cannot disagree.
  *
- * The caller check is the orientation one: a session with no directly
- * authenticated human owner has no Approval Mode to state, and a subagent turn
- * is denied by the policy outright, so the paragraph would be a description of a
- * posture that does not apply.
+ * The caller check is the policy's own `interactiveOwnerUserId`, and it has to
+ * be: a session the policy would deny has no posture to describe. A looser check
+ * would tell a `discord_capture` or `scheduled_workflow` turn that its
+ * reversible private saves run immediately, when every gated call it makes is
+ * denied outright.
  *
  * A failed mode read yields the `ask` paragraph, matching the policy exactly: an
  * unreadable mode parks, so telling the model that saves pause is the truth.
@@ -26,14 +27,15 @@ import { resolveOrientationCaller } from "../lib/self-context-orientation";
 export default defineDynamic({
   events: {
     "turn.started": async (_event, ctx) => {
-      const callerUserId = resolveOrientationCaller(ctx);
-      if (!callerUserId) return null;
+      const callerUserId = interactiveOwnerUserId(ctx);
+      if (callerUserId === null) return null;
 
       const tainted = resolveConversationTaint(ctx.messages).tainted;
 
       let mode: "ask" | "trusted" = "ask";
       try {
-        const read = await approvalPolicyDependencies().readApprovalMode({ userId: callerUserId });
+        const dependencies = await resolveApprovalPolicyDependencies();
+        const read = await dependencies.readApprovalMode({ userId: callerUserId });
         if (read === "trusted") mode = "trusted";
       } catch {
         // Unreadable is `ask`, which is also what the policy will do.

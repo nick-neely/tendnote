@@ -1,10 +1,11 @@
+import { isWebSourceTool } from "@tendnote/domain/assistant-sources";
 import type { EveMessage } from "eve/react";
 
 /**
  * Which parked calls in a conversation come *after* web content was read.
  *
- * A Tainted Conversation is one in which Untrusted Content — today a fetched page
- * or a web search result — has been read. From that point Eve's policy behaves as
+ * A Tainted Conversation is one in which Untrusted Content - today a fetched page
+ * or a web search result - has been read. From that point Eve's policy behaves as
  * `ask` Approval Mode whatever the owner chose, so an owner in `trusted` mode sees
  * an approval card they were not expecting and deserves to be told why.
  *
@@ -20,17 +21,9 @@ import type { EveMessage } from "eve/react";
  */
 
 /**
- * The two tools that reach the open web. Mirrors `WEB_SOURCE_TOOLS` in
- * `@tendnote/domain/assistant-sources`, which is private to that module; the set is
- * two literals and duplicating them is cheaper than widening that module's surface
- * for a projection that only the transcript needs.
- */
-const WEB_TOOL_NAMES: ReadonlySet<string> = new Set(["web_fetch", "web_search"]);
-
-/**
  * Every tool call in the conversation that a web tool part precedes, by call id.
  *
- * Order is transcript order — messages, then parts within a message — which is the
+ * Order is transcript order - messages, then parts within a message - which is the
  * order the turn happened in, so "before" means what it says. A web part never
  * taints itself: the page has not been read at the moment the fetch is asked about.
  */
@@ -46,7 +39,7 @@ export function webTaintedToolCallIds(messages: readonly EveMessage[]): Readonly
       if (readWeb) {
         tainted.add(part.toolCallId);
       }
-      if (WEB_TOOL_NAMES.has(part.toolName)) {
+      if (isWebSourceTool(part.toolName)) {
         readWeb = true;
       }
     }

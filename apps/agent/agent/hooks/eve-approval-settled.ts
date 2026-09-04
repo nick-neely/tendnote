@@ -1,6 +1,7 @@
 import { settleEveApprovalDecision } from "@tendnote/db/queries/eve-approval-decisions";
 import { defineHook } from "eve/hooks";
 import { APPROVAL_REQUEST_KIND } from "../lib/approval/contract";
+import { installProductionApprovalPolicyDependencies } from "../lib/approval/dependencies-production";
 
 /**
  * Records how a parked Owner Approval ended, against the decision row the policy
@@ -24,7 +25,19 @@ import { APPROVAL_REQUEST_KIND } from "../lib/approval/contract";
  *
  * Like every hook here, the write is swallowed: hooks are observe-only and the
  * durable event is already recorded.
+ *
+ * ## Why this file also installs the policy's dependencies
+ *
+ * It is the approval feature's one eve-loaded module: hooks are loaded at
+ * startup so their events can be subscribed, and this one already owns the
+ * `@tendnote/db` half of the same decision record. Installing the policy's
+ * dependencies here is what keeps `agent/lib/approval/dependencies.ts` free of
+ * any runtime import, and with it every tool that imports the gate - see that
+ * file for what a static import of the query layer costs `web_fetch`'s bundle
+ * and the test suite. A tool called before this module loads is not stranded:
+ * the seam falls back to a lazy import of the same queries.
  */
+installProductionApprovalPolicyDependencies();
 
 /**
  * How many unanswered approval requests one process remembers.

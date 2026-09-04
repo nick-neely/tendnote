@@ -117,7 +117,7 @@ export default defineTool({
     reversiblePrivateWrite: true,
   }),
   description:
-    "Update an active follow-up's status through the shared lifecycle: complete, dismiss, snooze (to a new dueAt), reopen, or archive. Only act on the user's explicit instruction. For snooze, pass a concrete dueAt — ask the user if the new timing is ambiguous. Invalid transitions are rejected. Returns the updated follow-up reference (id, reason, due date, status, plus the person id for your tool calls); refer to the person by name from context and never show the raw id.",
+    "Update an active follow-up's status through the shared lifecycle: complete, dismiss, snooze (to a new dueAt), reopen, or archive. Only act on the user's explicit instruction. For snooze, pass a concrete dueAt - ask the user if the new timing is ambiguous. Invalid transitions are rejected. Returns the updated follow-up reference (id, reason, due date, status, plus the person id for your tool calls); refer to the person by name from context and never show the raw id.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

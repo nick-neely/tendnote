@@ -64,7 +64,7 @@ export const accessProfileSchema = z.object({
    *
    * It lives on the access profile for the same reason the Household Check-in
    * opt-in does: this row always exists for an admitted user, so the account
-   * setting can never succeed against nothing. Default `ask` — `trusted` is a
+   * setting can never succeed against nothing. Default `ask` - `trusted` is a
    * choice the user makes for themselves in their own account settings, and
    * nothing the model, the chat, or the browser supplies can select one. Only
    * the owner of this profile sets it; there is deliberately no form of this

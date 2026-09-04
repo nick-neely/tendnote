@@ -89,7 +89,23 @@ export function clipTitle(text: string, max: number = MAX_TITLE_LENGTH): string 
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-const WEB_SOURCE_TOOLS = new Set(["web_search", "web_fetch"]);
+/**
+ * The tools that reach the open web, and the one place they are named.
+ *
+ * This module reads their results back into citations; the agent's approval
+ * policy treats a conversation that has called one as a Tainted Conversation,
+ * and the Assistant transcript derives the same fact client-side to explain a
+ * card. Three readings of one list, so the list is exported rather than copied -
+ * a fourth tool added here has to reach all three at once.
+ */
+export const WEB_SOURCE_TOOLS = ["web_fetch", "web_search"] as const;
+
+export type WebSourceTool = (typeof WEB_SOURCE_TOOLS)[number];
+
+/** Whether this tool name is one of them. */
+export function isWebSourceTool(toolName: string): boolean {
+  return (WEB_SOURCE_TOOLS as readonly string[]).includes(toolName);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -175,7 +191,7 @@ function fetchSources(output: unknown): AssistantSource[] {
  * was cited", and a guessed one is not.
  */
 export function sourcesFromToolOutput(toolName: string, output: unknown): AssistantSource[] {
-  if (!WEB_SOURCE_TOOLS.has(toolName)) return [];
+  if (!isWebSourceTool(toolName)) return [];
 
   const sources = toolName === "web_fetch" ? fetchSources(output) : searchSources(output);
 

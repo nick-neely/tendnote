@@ -40,7 +40,7 @@ export default defineTool({
     reversiblePrivateWrite: true,
   }),
   description:
-    "Accept a suggested General Action, promoting it onto the active ledger (a Routine if it carries a cadence). Only call this when the user has explicitly approved that specific suggestion — never accept on their behalf. Optionally apply corrections (title, notes, or due date) first. Returns the now-active action reference; name it by its title, never the raw id.",
+    "Accept a suggested General Action, promoting it onto the active ledger (a Routine if it carries a cadence). Only call this when the user has explicitly approved that specific suggestion - never accept on their behalf. Optionally apply corrections (title, notes, or due date) first. Returns the now-active action reference; name it by its title, never the raw id.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

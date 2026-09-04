@@ -477,7 +477,7 @@ describe("requireOwnerApproval: the Approval Mode", () => {
   });
 
   describe("a Session Tool Trust runs one named tool in one conversation", () => {
-    it("runs the trusted tool in ask mode", async () => {
+    it("runs a Session Tool Trust's tool in ask mode", async () => {
       readSessionToolTrust.mockResolvedValue(true);
 
       await expect(
