@@ -22,3 +22,8 @@ test-results
 .DS_Store
 .vercel
 .neon
+
+# Impeccable downloads the version-pinned native engine for the current host.
+.agents/skills/impeccable/scripts/bin/
+.claude/skills/impeccable/scripts/bin/
+.claude/settings.local.json
