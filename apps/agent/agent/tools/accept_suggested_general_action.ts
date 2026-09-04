@@ -35,9 +35,12 @@ const inputSchema = z.object({
  * proposal returns it unchanged.
  */
 export default defineTool({
-  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
+  approval: requireOwnerApproval({
+    describe: describeRegisteredSubject(),
+    reversiblePrivateWrite: true,
+  }),
   description:
-    "Accept a suggested General Action, promoting it onto the active ledger (a Routine if it carries a cadence). Only call this when the user has explicitly approved that specific suggestion — never accept on their behalf. Optionally apply corrections (title, notes, or due date) first. Returns the now-active action reference; name it by its title, never the raw id. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Accept a suggested General Action, promoting it onto the active ledger (a Routine if it carries a cadence). Only call this when the user has explicitly approved that specific suggestion — never accept on their behalf. Optionally apply corrections (title, notes, or due date) first. Returns the now-active action reference; name it by its title, never the raw id.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

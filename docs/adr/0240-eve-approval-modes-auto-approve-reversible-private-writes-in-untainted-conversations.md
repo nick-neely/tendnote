@@ -34,7 +34,10 @@ is neither owner-scoped nor private - each fails on a different clause, which is
 the point of checking one predicate instead of maintaining a list someone has to
 keep honest as tools are added. `update_person` stays tier 0 because it has no
 reversal path yet; `update_self_context` qualifies today because the self-context
-lifecycle already has one. `update_person` moves tiers only when #557 gives it an
+lifecycle already has one. `edit_general_action` stays tier 0 for the same reason and by the same
+clause: rewriting an Action's title or notes overwrites wording nothing keeps a
+copy of, and the Action's status lifecycle is a path back to a status, not to the
+text it used to say. `update_person` moves tiers only when #557 gives it an
 undo, not before - the tier follows the capability.
 
 **Tainted Conversation.** Taint is derived, not accumulated: a dynamic tool

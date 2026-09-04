@@ -35,9 +35,12 @@ const inputSchema = z.object({
  * is the memory's state now, never a claim about what this call did.
  */
 export default defineTool({
-  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
+  approval: requireOwnerApproval({
+    describe: describeRegisteredSubject(),
+    reversiblePrivateWrite: true,
+  }),
   description:
-    "Archive one memory the user explicitly asks you to drop in the current turn ('forget that', 'archive that memory about the move'). Requires a memoryId from a result in this conversation - a memory you just saved or one a review tool returned. Archiving takes it out of recall and every normal view while keeping the record itself; it is not a deletion, and the user can restore it in the app. Do NOT use this on your own initiative, to tidy up memories you judge stale, wrong, or duplicated, to act on a cleanup proposal the user has not accepted, or on more than the one memory they pointed at. If it is not obvious exactly which memory they mean, ask - never archive a guess. Confirm plainly afterwards and do not keep using the fact. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Archive one memory the user explicitly asks you to drop in the current turn ('forget that', 'archive that memory about the move'). Requires a memoryId from a result in this conversation - a memory you just saved or one a review tool returned. Archiving takes it out of recall and every normal view while keeping the record itself; it is not a deletion, and the user can restore it in the app. Do NOT use this on your own initiative, to tidy up memories you judge stale, wrong, or duplicated, to act on a cleanup proposal the user has not accepted, or on more than the one memory they pointed at. If it is not obvious exactly which memory they mean, ask - never archive a guess. Confirm plainly afterwards and do not keep using the fact.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

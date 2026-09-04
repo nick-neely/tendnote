@@ -50,6 +50,25 @@
  * approval: requireOwnerApproval<Input>({ describe: describeRegisteredSubject() }),
  * ```
  *
+ * ## Declaring a Reversible Private Write
+ *
+ * A write that is owner-scoped, private by construction, and undoable may say so,
+ * and an owner whose Approval Mode is `trusted` gets it without a click - unless
+ * the conversation has become a Tainted Conversation, in which case everything
+ * asks again (ADR-0240):
+ *
+ * ```ts
+ * approval: requireOwnerApproval<Input>({ reversiblePrivateWrite: true }),
+ * // or, when the tier depends on the arguments:
+ * approval: requireOwnerApproval<Input>({
+ *   reversiblePrivateWrite: (input) => input?.requestedScope === undefined,
+ * }),
+ * ```
+ *
+ * Omitting it means always-ask. `tests/write-tool-approval.test.ts` enforces the
+ * rule behind the declaration, so this is a claim the test checks rather than a
+ * list somebody maintains.
+ *
  * ## What the tool sees
  *
  * Nothing new. `execute` runs unchanged after an approval, and never runs at
@@ -73,13 +92,25 @@
  * path and every tool sees the policy alone.
  *
  * `describeRegisteredSubject` (`./subject-registry`) reaches the shared
- * approval-subject registry, and that registry imports the whole
- * `@tendnote/db` query layer. Re-exporting it here would drag those modules
- * into every tool that only wants the policy - `web_fetch` has no store at all -
- * so the id-referenced writes import it by name from its own module.
+ * approval-subject registry. Re-exporting it here would put a registry lookup in
+ * front of every tool that only wants the policy, so the id-referenced writes
+ * import it by name from its own module and the rest never see it.
+ *
+ * That used to be a statement about bundles as well: `web_fetch` had no store at
+ * all. It is not any more - ADR-0240 has the policy read the owner's Approval
+ * Mode from the database on every gated call, so `@tendnote/db` is behind this
+ * barrel for every tool that imports it. The seam that keeps that read testable
+ * is `./dependencies`, which carries no runtime import of its own; the queries
+ * live in `./dependencies-production`.
  */
 
 export { APPROVAL_APPROVE_OPTION_ID, APPROVAL_REQUEST_KIND, OPAQUE_DENIAL } from "./contract";
+export {
+  type ApprovalPolicyDependencies,
+  resetApprovalPolicyDependencies,
+  setApprovalPolicyDependencies,
+} from "./dependencies";
+export { approvalPolicyDependencies } from "./dependencies-production";
 export {
   type OwnerApprovalSpec,
   requireOwnerApproval,

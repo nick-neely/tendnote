@@ -132,9 +132,12 @@ function applyTransition(
  * never a raw id in prose.
  */
 export default defineTool({
-  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
+  approval: requireOwnerApproval({
+    describe: describeRegisteredSubject(),
+    reversiblePrivateWrite: true,
+  }),
   description:
-    "Apply one lifecycle transition to a single General Action the user explicitly names: complete, defer (to a concrete deferUntil), dismiss, reopen, archive, or pause/resume a Routine. Only call this on the user's explicit, action-specific instruction in the current turn, against an id you resolved deterministically (via list_general_actions or search) — never mutate an action on your own initiative, from an inference, from earlier context, on a schedule, or as a bulk cleanup. If the user's request could match more than one action, or asks to 'clean up' / change many at once, ask which one(s) rather than acting; each call touches exactly one action. For 'defer', pass a concrete deferUntil; ask if the timing is ambiguous. Returns the updated action reference; name it by its title, never the raw id. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Apply one lifecycle transition to a single General Action the user explicitly names: complete, defer (to a concrete deferUntil), dismiss, reopen, archive, or pause/resume a Routine. Only call this on the user's explicit, action-specific instruction in the current turn, against an id you resolved deterministically (via list_general_actions or search) — never mutate an action on your own initiative, from an inference, from earlier context, on a schedule, or as a bulk cleanup. If the user's request could match more than one action, or asks to 'clean up' / change many at once, ask which one(s) rather than acting; each call touches exactly one action. For 'defer', pass a concrete deferUntil; ask if the timing is ambiguous. Returns the updated action reference; name it by its title, never the raw id.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

@@ -32,9 +32,12 @@ const inputSchema = z.object({
 });
 
 export default defineTool({
-  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
+  approval: requireOwnerApproval({
+    describe: describeRegisteredSubject(),
+    reversiblePrivateWrite: true,
+  }),
   description:
-    "Correct one active Self Context fact only when the user explicitly asks to change it. Use the exact id from a prior Self Context result, preserve the user's wording, and pass expectedUpdatedAt when available so stale intent cannot overwrite a newer correction. This replaces the current statement rather than creating a parallel fact; a conflict is returned for focused clarification. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Correct one active Self Context fact only when the user explicitly asks to change it. Use the exact id from a prior Self Context result, preserve the user's wording, and pass expectedUpdatedAt when available so stale intent cannot overwrite a newer correction. This replaces the current statement rather than creating a parallel fact; a conflict is returned for focused clarification.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

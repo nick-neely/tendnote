@@ -39,9 +39,12 @@ const inputSchema = z.object({
  * suggestions later.
  */
 export default defineTool({
-  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
+  approval: requireOwnerApproval({
+    describe: describeRegisteredSubject(),
+    reversiblePrivateWrite: true,
+  }),
   description:
-    "Log a casual relationship note as a source record (logged context, not a confirmed fact). Use this when the user shares context without an explicit remember/save instruction. Returns persisted ids for review components. For explicit 'remember/save/note/keep track of' requests use capture_memory instead. If the person is ambiguous, ask to disambiguate rather than guessing a personId. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Log a casual relationship note as a source record (logged context, not a confirmed fact). Use this when the user shares context without an explicit remember/save instruction. Returns persisted ids for review components. For explicit 'remember/save/note/keep track of' requests use capture_memory instead. If the person is ambiguous, ask to disambiguate rather than guessing a personId.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
