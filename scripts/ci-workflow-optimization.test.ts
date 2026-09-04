@@ -360,6 +360,10 @@ describe("CI workflow optimization contract", () => {
     expect(workflow).not.toContain("vercel promote");
     expect(workflow).not.toContain("VERCEL_TOKEN");
     expect(workflow).not.toContain("VERCEL_CLI_VERSION");
-    expect(vercel.ignoreCommand).toBe("npx turbo-ignore --fallback=HEAD^1");
+    expect(vercel.ignoreCommand).toBe(
+      "pnpm exec turbo query affected --base=${VERCEL_GIT_PREVIOUS_SHA:-HEAD^1} --packages=@tendnote/web --exit-code",
+    );
+    expect(vercel.ignoreCommand).not.toContain("npx");
+    expect(vercel.ignoreCommand).not.toContain("turbo-ignore");
   });
 });
