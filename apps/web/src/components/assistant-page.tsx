@@ -1,6 +1,6 @@
 "use client";
 
-import type { PromptNudge } from "@tendnote/domain";
+import type { EveApprovalMode, PromptNudge } from "@tendnote/domain";
 import { placeholderConversationTitle } from "@tendnote/domain/assistant-conversations";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -76,6 +76,15 @@ type Thread = {
 };
 
 export type AssistantPageProps = {
+  /**
+   * The owner's Approval Mode, read per request by the surface around this page.
+   *
+   * It travels beside the surface model's props rather than out of it because it
+   * is request state read from the owner's own account, not a judgment about
+   * which thread this URL names. Absent means the cautious mode, which is also
+   * the one the cards say nothing extra about.
+   */
+  approvalMode?: EveApprovalMode;
   /** Every thread the owner has, archived ones included; split for the rail here. */
   conversations: AssistantConversationView[];
   /** Calendar-derived openings for a brand-new conversation (#114). */
@@ -90,6 +99,7 @@ export type AssistantPageProps = {
 const columnClass = "mx-auto w-full max-w-[52rem] px-gutter sm:px-6";
 
 export function AssistantPage({
+  approvalMode = "ask",
   conversations: serverConversations,
   nudges,
   ownerUserId,
@@ -194,6 +204,7 @@ export function AssistantPage({
         />
         <div className={cn("flex min-h-0 flex-1 flex-col", columnClass)}>
           <Panel
+            approvalMode={approvalMode}
             initialSessionId={thread.resumeSessionId ?? undefined}
             key={thread.key}
             nudges={nudges}

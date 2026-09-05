@@ -37,9 +37,12 @@ function field(result: unknown, name: "clarification" | "confirmation"): unknown
 }
 
 export default defineTool({
-  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
+  approval: requireOwnerApproval({
+    describe: describeRegisteredSubject(),
+    reversiblePrivateWrite: true,
+  }),
   description:
-    "Change the wording of the destination record created by capture_saved_item when the user explicitly corrects that just-saved capture. Use the exact changeTarget returned by Capture. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Change the wording of the destination record created by capture_saved_item when the user explicitly corrects that just-saved capture. Use the exact changeTarget returned by Capture.",
   inputSchema: z.object({
     clarificationAnswer: z.string().trim().min(1).max(500).optional(),
     originalText: z.string().trim().min(1).max(20_000),

@@ -17,10 +17,16 @@ import {
   usePromptInputController,
 } from "@/components/ai-elements/prompt-input";
 import { Suggestion } from "@/components/ai-elements/suggestion";
+import type { EveApprovalMode } from "@/components/assistant-approval-policy-context";
 import { AssistantAuthorizationCard } from "@/components/assistant-authorization-card";
 import { AssistantComposerForm } from "@/components/assistant-composer";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { sendNudgeToAgent } from "@/components/assistant-nudge";
+import {
+  AssistantApprovalProviders,
+  type AssistantPanelApprovals,
+  useAssistantPanelApprovals,
+} from "@/components/assistant-panel-approvals";
 import {
   AssistantComposerShell,
   AssistantEmptyCapture,
@@ -48,8 +54,10 @@ import { DropOverlay } from "@/components/drop-overlay";
 import { ArrowUpRightIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ui/shimmer";
+import { APPROVE_OPTION_ID, typedApprovalAnswer } from "@/lib/eve/approval-answers";
 import { EVIDENCE_DROP_ACCEPT, type EvidencePick, useEvidencePick } from "@/lib/eve/evidence-pick";
 import { followUpSuggestions } from "@/lib/eve/follow-up-suggestions";
+import type { AssistantInputRequestView } from "@/lib/eve/input-request-view";
 import {
   isTurnInFlight,
   messageFiles,
@@ -91,6 +99,15 @@ const TRANSCRIPT_PADDING: Record<AssistantSurface, string> = {
 };
 
 type AssistantPanelProps = {
+  /**
+   * The owner's Approval Mode, for the one thing the browser does with it: explain
+   * why a card appeared in a conversation where web content was read. The agent's
+   * policy reads the mode from the database on every gated call, so nothing here is
+   * authoritative and a stale value can only produce a stale sentence.
+   *
+   * Defaults to the cautious mode, which is also the mode that says nothing extra.
+   */
+  approvalMode?: EveApprovalMode;
   context?: AssistantPersonContext;
   /**
    * A prior Eve session to reopen instead of starting a fresh one.
@@ -179,6 +196,7 @@ function AssistantPanelReserve({
 }
 
 function AssistantConversationPanel({
+  approvalMode = "ask",
   context,
   onSessionStarted,
   ownerUserId,
@@ -203,10 +221,14 @@ function AssistantConversationPanel({
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messages = agent.data.messages;
 
-  const handleSubmit = useCallback(
-    (message: PromptInputMessage) => queue.submit(message.text),
-    [queue.submit],
-  );
+  // What is waiting on the owner in this conversation, and the two writes that
+  // answer it. All four are derivations of the same transcript; the panel is only
+  // where they are read, because it holds the app's one `respond`.
+  const approvals = useAssistantPanelApprovals({
+    messages,
+    respond: agent.respond,
+    submit: queue.submit,
+  });
 
   /** A conversational turn started by something other than the composer. */
   const sendPrompt = useCallback<SendPrompt>(
@@ -225,21 +247,11 @@ function AssistantConversationPanel({
     sendNudgeToAgent({ status: agent.status, send: agent.send }, context, prompt);
   }
 
-  // Reattaching to a turn that is still running server-side, with nothing of it
-  // on screen yet. It says nothing about the *transcript*, which the pre-read
-  // already seeded: only a thread with no replayed messages at all is still
-  // waiting for its history, and only that one holds turn-shaped geometry rather
-  // than the conversation. `undefined` rather than `false`, because
-  // `aria-busy="false"` is a claim of its own.
-  const resuming = agent.status === "resuming";
-  const replaying = (resuming && messages.length === 0) || undefined;
-
-  // A page-scale conversation with nothing in it yet: the greeting and composer
-  // rise together to the middle of the column, and settle to the bottom on the
-  // first message. Only `page` does this — the dashboard column and the phone
-  // sheet are both too short for the move to read as anything but a jump.
-  const centeredComposer =
-    surface === "page" && !resuming && messages.length === 0 && agent.status === "ready";
+  const { centeredComposer, replaying } = panelGeometry({
+    messageCount: messages.length,
+    status: agent.status,
+    surface,
+  });
 
   // The whole conversation surface is a drop target, not just the composer box:
   // a file dragged over the transcript is aimed at this panel, and a target the
@@ -273,25 +285,33 @@ function AssistantConversationPanel({
           then, so answering one pending request disables every other one until it
           settles. */}
         <AssistantRespondProvider ready={agent.status === "ready"} respond={agent.respond}>
-          <Conversation aria-busy={replaying} className="min-h-0 flex-1">
-            <ConversationContent className={cn("min-h-full gap-4", TRANSCRIPT_PADDING[surface])}>
-              <AssistantConversation
-                busy={isTurnInFlight(agent.status)}
-                composerRef={composerRef}
-                events={agent.events}
-                messages={messages}
-                nudges={nudges}
-                onSend={sendPrompt}
-                onSendNudge={sendNudge}
-                status={agent.status}
-                surface={surface}
-              />
-            </ConversationContent>
-            <ConversationScrollButton />
-          </Conversation>
+          {/* Why a card is asking, and where a "don't ask again" goes. */}
+          <AssistantApprovalProviders
+            approvalMode={approvalMode}
+            approvals={approvals}
+            sessionId={agent.session?.sessionId}
+          >
+            <Conversation aria-busy={replaying} className="min-h-0 flex-1">
+              <ConversationContent className={cn("min-h-full gap-4", TRANSCRIPT_PADDING[surface])}>
+                <AssistantConversation
+                  busy={isTurnInFlight(agent.status)}
+                  composerRef={composerRef}
+                  events={agent.events}
+                  messages={messages}
+                  nudges={nudges}
+                  onSend={sendPrompt}
+                  onSendNudge={sendNudge}
+                  status={agent.status}
+                  surface={surface}
+                />
+              </ConversationContent>
+              <ConversationScrollButton />
+            </Conversation>
+          </AssistantApprovalProviders>
         </AssistantRespondProvider>
 
         <AssistantComposerRegion
+          approvals={approvals}
           centered={centeredComposer}
           context={context}
           ended={ended}
@@ -300,7 +320,6 @@ function AssistantConversationPanel({
           onStop={() => void agent.cancel()}
           onSend={sendPrompt}
           onSendNudge={sendNudge}
-          onSubmit={handleSubmit}
           ownerUserId={ownerUserId}
           queue={queue}
           status={submitStatus(agent.status)}
@@ -320,6 +339,40 @@ function AssistantConversationPanel({
       </AssistantPanelShell>
     </PromptInputProvider>
   );
+}
+
+/**
+ * The two things the panel's shape depends on, derived from the same three facts.
+ *
+ * `replaying` is reattaching to a turn that is still running server-side, with
+ * nothing of it on screen yet. It says nothing about the *transcript*, which the
+ * pre-read already seeded: only a thread with no replayed messages at all is
+ * still waiting for its history, and only that one holds turn-shaped geometry
+ * rather than the conversation. `undefined` rather than `false`, because
+ * `aria-busy="false"` is a claim of its own.
+ *
+ * `centeredComposer` is a page-scale conversation with nothing in it yet: the
+ * greeting and composer rise together to the middle of the column, and settle to
+ * the bottom on the first message. Only `page` does this - the dashboard column
+ * and the phone sheet are both too short for the move to read as anything but a
+ * jump.
+ */
+function panelGeometry({
+  messageCount,
+  status,
+  surface,
+}: {
+  messageCount: number;
+  status: AgentStatus;
+  surface: AssistantSurface;
+}): { centeredComposer: boolean; replaying: true | undefined } {
+  const resuming = status === "resuming";
+  const empty = messageCount === 0;
+
+  return {
+    centeredComposer: surface === "page" && !resuming && empty && status === "ready",
+    replaying: (resuming && empty) || undefined,
+  };
 }
 
 /**
@@ -355,6 +408,7 @@ function AssistantSettleSpacer({ grow, surface }: { grow: boolean; surface: Assi
  * taking them off screen along with the box would quietly delete them.
  */
 function AssistantComposerRegion({
+  approvals,
   centered,
   context,
   ended,
@@ -363,7 +417,6 @@ function AssistantComposerRegion({
   onSend,
   onSendNudge,
   onStop,
-  onSubmit,
   ownerUserId,
   queue,
   status,
@@ -371,6 +424,8 @@ function AssistantComposerRegion({
   surface,
   textareaRef,
 }: {
+  /** What is waiting on the owner, and what Enter does about it. */
+  approvals: AssistantPanelApprovals;
   centered: boolean;
   context?: AssistantPersonContext;
   ended: boolean;
@@ -379,7 +434,6 @@ function AssistantComposerRegion({
   onSend: SendPrompt;
   onSendNudge: (prompt: string) => void;
   onStop: () => void;
-  onSubmit: (message: PromptInputMessage) => Promise<void>;
   ownerUserId: string;
   queue: AssistantSendQueueControls;
   status: ChatStatus;
@@ -396,6 +450,7 @@ function AssistantComposerRegion({
     <>
       {centered ? <AssistantPageGreeting /> : null}
       <AssistantComposerShell surface={surface}>
+        <PendingApprovalNote ended={ended} request={approvals.pendingApproval} />
         <AssistantSendQueue
           items={queue.items}
           note={queueNote}
@@ -417,7 +472,7 @@ function AssistantComposerRegion({
             onSend={onSend}
             onSendNudge={onSendNudge}
             onStop={onStop}
-            onSubmit={onSubmit}
+            onSubmit={approvals.handleSubmit}
             ownerUserId={ownerUserId}
             status={status}
             suggestPersonName={suggestPersonName}
@@ -426,6 +481,56 @@ function AssistantComposerRegion({
         )}
       </AssistantComposerShell>
     </>
+  );
+}
+
+/**
+ * What pressing Enter does while a decision is waiting above.
+ *
+ * Usually it costs the approval: eve clears the parked batch when an ordinary
+ * message arrives - that is the framework's own behaviour, not a rule this app
+ * could soften - so a follow-up thought typed into the box silently withdraws it.
+ * One line, stated plainly, so the owner is not surprised by it. It never blocks
+ * the box: sending is a legitimate thing to do, and a composer that argued with
+ * the reader would be pressing for the approval.
+ *
+ * The exception is the word itself. `handleSubmit` intercepts an exact `approve`
+ * or `cancel` and answers the card with it instead of sending it, so on those two
+ * drafts the standing line is not merely unhelpful, it is false. The note reads
+ * the live draft through the composer's own controller and says what Enter will
+ * actually do - the same helper the submit path uses, so the sentence and the
+ * behaviour cannot disagree.
+ *
+ * `status` rather than `alert`: nothing is wrong, and it appears at the moment eve
+ * parks the turn, which is worth hearing once without interrupting.
+ */
+function PendingApprovalNote({
+  ended,
+  request,
+}: {
+  /** An ended thread has no composer, so nothing here about Enter is true of it. */
+  ended: boolean;
+  request: AssistantInputRequestView | null;
+}) {
+  const { textInput } = usePromptInputController();
+
+  if (ended || request === null) {
+    return null;
+  }
+
+  const optionId = typedApprovalAnswer(request, textInput.value);
+
+  return (
+    <p
+      className="pb-2 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]"
+      role="status"
+    >
+      {optionId === APPROVE_OPTION_ID
+        ? "Enter approves the request waiting above."
+        : optionId !== null
+          ? "Enter cancels the request waiting above."
+          : "Sending a message cancels the approval waiting above."}
+    </p>
   );
 }
 

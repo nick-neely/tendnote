@@ -12,7 +12,9 @@ import type { AssistantTurnUnit } from "@/lib/eve/message-views";
  *   not collide with a seventh that renders on its own.
  * - **A parked call and its settled status share a key.** They are the same part in
  *   two states, so `ChatApprovalCard` is *replaced* by `ChatApprovalStatus` in place
- *   rather than the slot unmounting and a new one animating in beneath it.
+ *   rather than the slot unmounting and a new one animating in beneath it. A batch of
+ *   them keys off its first member under its own `batch:` prefix, so a card listing
+ *   several calls is never mistaken for the single card of the first of them.
  * - **Everything else keys off its own `toolCallId`,** which eve guarantees unique per
  *   call, so a card never inherits the open/closed state of the card that preceded it.
  *
@@ -28,6 +30,8 @@ export function turnUnitKey(messageId: string, unit: AssistantTurnUnit): string 
       return `${messageId}:${unit.entry.toolCallId}`;
     case "request":
       return `${messageId}:${unit.request.toolCallId}`;
+    case "request-batch":
+      return `${messageId}:batch:${unit.requests[0].toolCallId}`;
     case "resolution":
       return `${messageId}:${unit.resolution.toolCallId}`;
     default:

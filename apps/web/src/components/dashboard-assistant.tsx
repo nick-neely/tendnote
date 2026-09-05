@@ -1,6 +1,6 @@
 "use client";
 
-import type { PromptNudge } from "@tendnote/domain";
+import type { EveApprovalMode, PromptNudge } from "@tendnote/domain";
 import dynamic from "next/dynamic";
 import { recordAssistantConversationAction } from "@/app/actions/assistant-conversations";
 import { DashboardAssistantReserve } from "@/components/dashboard-reserve";
@@ -29,10 +29,13 @@ const AssistantPanel = dynamic(
 );
 
 export function DashboardAssistant({
+  approvalMode = "ask",
   nudges,
   ownerUserId,
   suggestPersonName,
 }: {
+  /** The owner's Approval Mode, read server-side by the destination (#549). */
+  approvalMode?: EveApprovalMode;
   /** Calendar-derived prompt nudges; clicking one starts a turn (#114). */
   nudges: PromptNudge[];
   ownerUserId: string;
@@ -49,6 +52,7 @@ export function DashboardAssistant({
 
   return (
     <AssistantPanel
+      approvalMode={approvalMode}
       nudges={nudges}
       // A conversation started here is the same kind of thing as one started on
       // the Assistant page, and has to be findable again from the same list -

@@ -6,7 +6,11 @@ import type {
 } from "@/components/assistant-results/registry";
 import { AssistantToolGroup } from "@/components/assistant-tool-group";
 import { AssistantToolResult } from "@/components/assistant-tool-result";
-import { ChatApprovalCard, ChatApprovalStatus } from "@/components/chat-approval-card";
+import {
+  ChatApprovalBatchCard,
+  ChatApprovalCard,
+  ChatApprovalStatus,
+} from "@/components/chat-approval-card";
 import { ChatAssetReviewCard } from "@/components/chat-asset-review-card";
 import { ChatDraftCard } from "@/components/chat-draft-card";
 import {
@@ -57,6 +61,37 @@ const singleUnitRenderers: {
 };
 
 /**
+ * The unit-kind half of the same map, over the card units rather than the
+ * interactive result kinds - and total for the same reason: a new unit kind is a
+ * type error here until it has a card, which is the guarantee a `default:` arm
+ * silently gave up. The index needs one cast because TypeScript will not correlate
+ * a key with its own narrowed member; the map's own entries are each checked
+ * against exactly their unit.
+ */
+const unitRenderers: {
+  [K in AssistantTurnCardUnit["type"]]: (
+    unit: Extract<AssistantTurnCardUnit, { type: K }>,
+  ) => React.ReactNode;
+} = {
+  group: (unit) => (
+    <AssistantToolGroup
+      isNew
+      kind={unit.kind}
+      views={unit.entries.map((entry) => entry.view as GroupableToolView)}
+    />
+  ),
+  // A tool call Eve parked on the owner. This is the one card whose action resumes
+  // the live turn instead of mutating independent domain state, so it reads
+  // `respond` from the panel's session through context, not a server action.
+  request: (unit) => <ChatApprovalCard isNew request={unit.request} />,
+  // Several calls parked in the same breath: one card, one set of chrome, and a
+  // separate decision for each of them.
+  "request-batch": (unit) => <ChatApprovalBatchCard isNew requests={unit.requests} />,
+  resolution: (unit) => <ChatApprovalStatus isNew resolution={unit.resolution} />,
+  single: (unit) => <AssistantSingleUnitView entry={unit.entry} />,
+};
+
+/**
  * Renders one tool-activity unit for an assistant turn. Same-kind durable saves
  * arrive pre-folded into a collapsed group (see groupTurnToolEntries); a single
  * unit routes to the interactive card the user can act on inline
@@ -71,31 +106,14 @@ const singleUnitRenderers: {
  * excludes it and the panel renders it directly.
  */
 export function AssistantTurnUnitView({ unit }: { unit: AssistantTurnCardUnit }) {
-  switch (unit.type) {
-    case "group":
-      return (
-        <AssistantToolGroup
-          isNew
-          kind={unit.kind}
-          views={unit.entries.map((entry) => entry.view as GroupableToolView)}
-        />
-      );
-    // A tool call Eve parked on the owner. This is the one card whose action resumes
-    // the live turn instead of mutating independent domain state, so it reads
-    // `respond` from the panel's session through context, not a server action.
-    case "request":
-      return <ChatApprovalCard isNew request={unit.request} />;
-    case "resolution":
-      return <ChatApprovalStatus isNew resolution={unit.resolution} />;
-    default:
-      return <AssistantSingleUnitView entry={unit.entry} />;
-  }
+  const render = unitRenderers[unit.type] as (unit: AssistantTurnCardUnit) => React.ReactNode;
+  return render(unit);
 }
 
 /**
  * One standalone tool result: the interactive card for the kinds that carry an inline
  * action, and the read-only record of what Eve did for everything else. Split from the
- * dispatch above so the unit switch stays a statement about unit *kinds* and this stays
+ * dispatch above so the unit map stays a statement about unit *kinds* and this stays
  * the one place a result kind is turned into a card.
  */
 function AssistantSingleUnitView({ entry }: { entry: AssistantToolEntry }) {

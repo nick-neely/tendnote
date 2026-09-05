@@ -35,9 +35,12 @@ const UNDO_GUIDANCE = {
 } as const;
 
 export default defineTool({
-  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
+  approval: requireOwnerApproval({
+    describe: describeRegisteredSubject(),
+    reversiblePrivateWrite: true,
+  }),
   description:
-    "Safely Undo a just-completed capture_saved_item operation when the user explicitly asks. Applies the returned authoritative inverse (archiving a new record or restoring the prior Context Fact value) while preserving source evidence. Use the exact undoTarget returned by Capture. It reports whether the inverse ran now, was already undone, or did not happen at all — never claim an Undo the result does not report. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Safely Undo a just-completed capture_saved_item operation when the user explicitly asks. Applies the returned authoritative inverse (archiving a new record or restoring the prior Context Fact value) while preserving source evidence. Use the exact undoTarget returned by Capture. It reports whether the inverse ran now, was already undone, or did not happen at all - never claim an Undo the result does not report.",
   inputSchema: z.object({
     target: conversationalCaptureUndoTargetSchema.describe(
       "The exact undoTarget returned by capture_saved_item.",

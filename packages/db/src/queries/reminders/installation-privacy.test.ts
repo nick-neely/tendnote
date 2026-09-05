@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { createInMemoryReminderStore } from "./in-memory-store";
+import {
+  checkPushEndpointDestination,
+  type PushEndpointCheck,
+  type PushEndpointLookup,
+} from "./push-endpoint";
 import { createReminderService } from "./service";
 
 const OWNER = "owner-1";
@@ -7,11 +12,24 @@ const ACTION = "11111111-1111-1111-1111-111111111111";
 const SAVED_ITEM = "44444444-4444-4444-4444-444444444444";
 const reminderDeepLink = (kind: string, id: string) => `/reminders/open?kind=${kind}&id=${id}`;
 
+/**
+ * These cases are about preview text and delivery bookkeeping, not endpoint
+ * policy - `push-endpoint.test.ts` owns that. Resolving `push.example.test` for
+ * real spends the whole lookup budget on every registration and dispatch, so
+ * answer it in process and leave the rest of the destination rule intact.
+ */
+const resolveFixtureHost: PushEndpointLookup = async () => [
+  { address: "93.184.216.34", family: 4 },
+];
+const checkPushEndpoint: PushEndpointCheck = (endpoint) =>
+  checkPushEndpointDestination(endpoint, { lookup: resolveFixtureHost });
+
 describe("Reminder installation privacy and delivery", () => {
   it("continues an earned iOS offer once, on a new installation, within seven days", async () => {
     const store = createInMemoryReminderStore();
     const service = createReminderService({
       store,
+      checkPushEndpoint,
       loadGeneralAction: vi.fn(async () => ({
         id: ACTION,
         ownerUserId: OWNER,
@@ -60,6 +78,7 @@ describe("Reminder installation privacy and delivery", () => {
     const store = createInMemoryReminderStore();
     const service = createReminderService({
       store,
+      checkPushEndpoint,
       loadGeneralAction: vi.fn(async () => ({
         id: ACTION,
         ownerUserId: OWNER,
@@ -98,6 +117,7 @@ describe("Reminder installation privacy and delivery", () => {
     const store = createInMemoryReminderStore();
     const service = createReminderService({
       store,
+      checkPushEndpoint,
       loadGeneralAction: vi.fn(async () => ({
         id: ACTION,
         ownerUserId: OWNER,
@@ -152,6 +172,7 @@ describe("Reminder installation privacy and delivery", () => {
     const scheduleDelivery = vi.fn(async () => undefined);
     const service = createReminderService({
       store,
+      checkPushEndpoint,
       scheduleDelivery,
       loadGeneralAction: vi.fn(async () => ({
         id: ACTION,
@@ -206,6 +227,7 @@ describe("Reminder installation privacy and delivery", () => {
     let sensitivity: "normal" | "sensitive" = "normal";
     const service = createReminderService({
       store,
+      checkPushEndpoint,
       loadGeneralAction: vi.fn(async () => ({
         id: ACTION,
         ownerUserId: OWNER,
@@ -313,6 +335,7 @@ describe("Reminder installation privacy and delivery", () => {
     const store = createInMemoryReminderStore();
     const service = createReminderService({
       store,
+      checkPushEndpoint,
       loadGeneralAction: vi.fn(async () => ({
         id: ACTION,
         ownerUserId: OWNER,
@@ -423,7 +446,11 @@ describe("Reminder installation privacy and delivery", () => {
       scope: "private" as const,
       personId: null,
     };
-    const service = createReminderService({ store, loadReminderRecord: vi.fn(async () => record) });
+    const service = createReminderService({
+      store,
+      checkPushEndpoint,
+      loadReminderRecord: vi.fn(async () => record),
+    });
     const scheduled = await service.saveReminder({
       ownerUserId: OWNER,
       recordKind: "saved_item",
@@ -506,6 +533,7 @@ describe("Reminder installation privacy and delivery", () => {
     const store = createInMemoryReminderStore();
     const service = createReminderService({
       store,
+      checkPushEndpoint,
       loadGeneralAction: vi.fn(async () => ({
         id: ACTION,
         ownerUserId: OWNER,

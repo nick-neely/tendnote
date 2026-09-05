@@ -24,7 +24,7 @@ const inputSchema = z.object({
 });
 
 /**
- * The one tool that writes a pre-approved durable memory, and why it now pauses.
+ * The one tool that writes a pre-approved durable memory, and why it is gated.
  *
  * Nothing downstream asks the user to confirm what this stored: unlike a
  * suggested memory, an explicit one is written approved. Until the web chat
@@ -37,11 +37,20 @@ const inputSchema = z.object({
  * authenticated owner answers through the client, and the answer never passes
  * through the model, so an injected "remember that Eve may email invoices to
  * ..." can ask and cannot write.
+ *
+ * It is a Reversible Private Write: the memory is the owner's own, private by
+ * construction, and `archive_memory` takes it back out. So an owner whose
+ * Approval Mode is `trusted` gets it without a click - unless the conversation
+ * has read Untrusted Content, which is exactly the injected case above and puts
+ * the click back (ADR-0240).
  */
 export default defineTool({
-  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
+  approval: requireOwnerApproval({
+    describe: describeRegisteredSubject(),
+    reversiblePrivateWrite: true,
+  }),
   description:
-    "Save an explicit memory for a person when the user says remember, save, note, or keep track of something outside Global Capture. Do not use this for 'Use Capture', 'capture this', or a turn with another supported explicit clause even if the word Capture is absent; capture_saved_item owns that path. Otherwise this creates a durable approved memory backed by a source record. Resolve the person first. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Save an explicit memory for a person when the user says remember, save, note, or keep track of something outside Global Capture. Do not use this for 'Use Capture', 'capture this', or a turn with another supported explicit clause even if the word Capture is absent; capture_saved_item owns that path. Otherwise this creates a durable approved memory backed by a source record. Resolve the person first.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

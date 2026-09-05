@@ -23,6 +23,7 @@ function admittedState(sourceLabelSource: "bootstrap" | "beta_flag"): AccessStat
       selfContextOnboardingStatus: "not_started",
       selfContextOnboardingReminderAt: null,
       householdCheckinEnabled: false,
+      eveApprovalMode: "ask",
       createdAt: new Date(),
       updatedAt: new Date(),
     },

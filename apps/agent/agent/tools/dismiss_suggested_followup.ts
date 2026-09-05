@@ -18,9 +18,12 @@ const inputSchema = z.object({
  * explicit rejection.
  */
 export default defineTool({
-  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
+  approval: requireOwnerApproval({
+    describe: describeRegisteredSubject(),
+    reversiblePrivateWrite: true,
+  }),
   description:
-    "Dismiss a suggested follow-up the user does not want. Only call this when the user has explicitly rejected it. It leaves review without creating any reminder. Returns the persisted id and new status; name the person, never the raw id. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Dismiss a suggested follow-up the user does not want. Only call this when the user has explicitly rejected it. It leaves review without creating any reminder. Returns the persisted id and new status; name the person, never the raw id.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

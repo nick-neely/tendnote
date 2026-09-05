@@ -4,6 +4,7 @@ export type {
   AccessDecision,
   AccessProfile,
   AccessSource,
+  EveApprovalMode,
   SelfContextOnboardingState,
   SelfContextOnboardingStatus,
 } from "@tendnote/domain";
@@ -28,6 +29,7 @@ export type AccessProfilePatch = Partial<
     | "selfContextOnboardingStatus"
     | "selfContextOnboardingReminderAt"
     | "householdCheckinEnabled"
+    | "eveApprovalMode"
   >
 >;
 

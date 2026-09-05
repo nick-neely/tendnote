@@ -1,6 +1,13 @@
+import type {
+  EveApprovalDecisionInput,
+  EveApprovalDecisionTier,
+} from "@tendnote/db/queries/eve-approval-decisions";
+import type { EveApprovalMode } from "@tendnote/domain";
 import type { ApprovalContext, ApprovalPolicy, ApprovalStatus } from "eve/tools/approval";
-import { resolveSessionEveMode } from "../eve-modes";
+import { readConversationTaint } from "../conversation-taint";
 import { OPAQUE_DENIAL } from "./contract";
+import { type ApprovalPolicyDependencies, resolveApprovalPolicyDependencies } from "./dependencies";
+import { interactiveOwnerUserId } from "./interactive-owner";
 import type { ApprovalSubjectResolver } from "./subject";
 
 /** The single denial value. Frozen so no caller can edit the shared reason. */
@@ -11,6 +18,15 @@ const NOT_APPLICABLE: ApprovalStatus = "not-applicable";
 
 /** Park the turn and wait for the owner. */
 const USER_APPROVAL: ApprovalStatus = "user-approval";
+
+/**
+ * The Approval Mode every unreadable answer resolves to.
+ *
+ * ADR-0240: a mode the system cannot read is `ask`, never a denial - parking is
+ * the safe direction when nothing can tell what the owner chose. It is also what
+ * a decision record carries for a call denied before any mode was read.
+ */
+const FALLBACK_APPROVAL_MODE: EveApprovalMode = "ask";
 
 export interface OwnerApprovalSpec<TInput> {
   /**
@@ -34,7 +50,37 @@ export interface OwnerApprovalSpec<TInput> {
    * the tool has nothing to load.
    */
   readonly describe?: ApprovalSubjectResolver<TInput>;
+  /**
+   * Declares this call a **Reversible Private Write**: owner-scoped or
+   * owner-created, private by construction with no argument that can widen its
+   * audience, and carrying an undo, archive, restore, or lifecycle path back.
+   *
+   * Absent means always-ask, deliberately. A tier is a claim about what a write
+   * can cost, and the safe default for a claim nobody made is that it was not
+   * made. `tests/write-tool-approval.test.ts` holds every write to the rule
+   * rather than to a list, so a tool that declares this without earning it fails
+   * there.
+   *
+   * A predicate takes the same frozen input `when` does, for the tool whose tier
+   * depends on its arguments: `capture_saved_item` is a Reversible Private Write
+   * only while `requestedScope` is absent, because setting it asks to widen the
+   * audience beyond the owner.
+   *
+   * The declaration alone never lets a call run. It is read after the caller
+   * check and the describer, and only in a conversation that is not a Tainted
+   * Conversation, when the owner's Approval Mode is `trusted` or a Session Tool
+   * Trust names this tool for this session.
+   */
+  readonly reversiblePrivateWrite?: boolean | ((input: Readonly<TInput> | undefined) => boolean);
 }
+
+/** Everything a decision record needs from the call itself, or `null`. */
+type CallIdentity = {
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly callId: string;
+  readonly toolName: string;
+};
 
 /**
  * The approval policy every durable write, external egress, and
@@ -52,37 +98,55 @@ export interface OwnerApprovalSpec<TInput> {
  *
  * ## What it decides, in order
  *
- * 1. `spec.when` says this call is ordinary → `not-applicable`.
+ * 1. `spec.when` says this call is ordinary → `not-applicable`, and nothing is
+ *    recorded: it asked for nothing this gate decides.
  * 2. The caller is not an authenticated owner on the interactive web channel,
  *    or this is a subagent turn → the uniform opaque denial.
  * 3. `spec.describe` cannot resolve the record inside that owner's scope →
  *    the same denial.
- * 4. Otherwise → `user-approval`: eve parks the *specific* call, with its input
+ * 4. This call is a Reversible Private Write and the conversation is not a
+ *    Tainted Conversation, and either the owner's Approval Mode is `trusted` or
+ *    a Session Tool Trust names this tool for this session → `not-applicable`:
+ *    the write runs without a click, and the decision record says so.
+ * 5. Otherwise → `user-approval`: eve parks the *specific* call, with its input
  *    frozen, until the owner answers through the client.
+ *
+ * ## Why the mode is read here, every time
+ *
+ * Not stamped onto the session principal in the channel's `AuthFn`, which runs
+ * once per turn: a value frozen there would survive a mid-turn setting change,
+ * and it would couple authentication to an account preference it has no other
+ * reason to know. Reading fresh means a mode change applies to the very next
+ * gated call. The read is owner-scoped by construction - the id it is given is
+ * the one the caller check just verified - so no `clientContext`, model input, or
+ * message text can reach it (ADR-0240).
  *
  * ## Why the caller check is the mode table
  *
- * `resolveSessionEveMode` is the repository's one trusted-signal reader: it
- * takes only what the channel's own `AuthFn` stamped, never message text or
- * anything the browser supplied. `web_chat` is by definition the mode where a
- * signed-in human is present and the client can render and answer a request.
- * Every other mode either has nobody watching (`scheduled_workflow`, which runs
- * as `eve:app`) or no way to answer (`discord_capture`, whose route never
- * starts a model session at all), so parking there would hang the turn rather
- * than protect anything.
+ * `interactiveOwnerUserId` reads only what the channel's own `AuthFn` stamped,
+ * and only `web_chat` passes it: that is by definition the mode where a signed-in
+ * human is present and the client can render and answer a request. Parking any
+ * other mode would hang the turn rather than protect anything. The dynamic
+ * approval-posture instruction shares that function, so it cannot describe a
+ * posture to a session this would refuse.
  *
  * ## `always`, never `once`
  *
  * `ctx.approvedTools` is eve's session-wide memory behind `once()`. It is
  * deliberately unread here: a durable write is not authorised by an earlier,
- * unrelated call to the same tool, so every call is its own decision.
+ * unrelated call to the same tool, so every call is its own decision. The
+ * Session Tool Trust that *can* let a repeat run is a row the owner wrote from
+ * an approval card, not a memory the model can see (ADR-0240).
  *
- * ## It never throws
+ * ## It never throws, and a broken dependency parks
  *
  * eve invokes the policy inside its approval callback and does not guard it, so
  * a throw would abort the turn instead of failing closed. Every path returns a
- * status, and anything unexpected — a predicate that throws, a store that is
- * unreachable, a context arriving without a session — denies.
+ * status, and anything unexpected - a predicate that throws, a store that is
+ * unreachable, a context arriving without a session - denies. The one deliberate
+ * exception is the dependency reads: a mode or trust lookup that fails parks
+ * rather than denies, because "we could not tell what the owner chose" is a
+ * reason to ask them, not a reason to refuse a call they may well have wanted.
  */
 export function requireOwnerApproval<TInput = Record<string, unknown>>(
   spec: OwnerApprovalSpec<TInput> = {},
@@ -95,18 +159,34 @@ export function requireOwnerApproval<TInput = Record<string, unknown>>(
 
       if (spec.when !== undefined && !spec.when(input)) return NOT_APPLICABLE;
 
-      const ownerUserId = interactiveOwnerUserId(ctx);
-      if (ownerUserId === null) return DENIED;
+      // Resolved once for this decision, after the `when` check: a call that asks
+      // for nothing this gate decides never touches a store.
+      const dependencies = await resolveApprovalPolicyDependencies();
+      const call = callIdentity(ctx);
+      // What a decision record can say before any Approval Mode has been read:
+      // the tier, the taint, and the fallback mode a denial carries.
+      const undecided = {
+        tier: resolveTier(spec, input),
+        modeAtDecision: FALLBACK_APPROVAL_MODE,
+        tainted: readConversationTaint().tainted,
+      };
 
-      if (spec.describe !== undefined) {
-        const subject = await spec.describe(input, {
-          ownerUserId,
-          toolName: typeof ctx.toolName === "string" ? ctx.toolName : "",
-          callId: typeof ctx.callId === "string" ? ctx.callId : "",
-        });
-        if (!subject.found) return DENIED;
+      const ownerUserId = interactiveOwnerUserId(ctx);
+      if (ownerUserId === null) return deny(dependencies, call, undecided);
+
+      if (!(await resolvesForOwner(spec, input, ctx, ownerUserId))) {
+        return deny(dependencies, call, undecided);
       }
 
+      const mode = await readApprovalMode(dependencies, ownerUserId);
+      const decision = { ...undecided, modeAtDecision: mode ?? FALLBACK_APPROVAL_MODE };
+
+      if (await runsWithoutAsking(dependencies, call, mode, decision)) {
+        recordDecision(dependencies, call, decision, "auto_approved");
+        return NOT_APPLICABLE;
+      }
+
+      recordDecision(dependencies, call, decision, "parked");
       return USER_APPROVAL;
     } catch {
       return DENIED;
@@ -114,17 +194,185 @@ export function requireOwnerApproval<TInput = Record<string, unknown>>(
   };
 }
 
+/** What a decision record says about the call, apart from its outcome. */
+type DecisionFacts = {
+  readonly tier: EveApprovalDecisionTier;
+  readonly modeAtDecision: EveApprovalMode;
+  readonly tainted: boolean;
+};
+
+/** Record the uniform opaque denial and return it. */
+function deny(
+  dependencies: ApprovalPolicyDependencies,
+  call: CallIdentity | null,
+  decision: DecisionFacts,
+): ApprovalStatus {
+  recordDecision(dependencies, call, decision, "denied");
+  return DENIED;
+}
+
+/**
+ * Whether the record this call names resolves inside the owner's own scope.
+ *
+ * A tool with no describer has nothing to resolve and answers `true`: it is
+ * gated on the call itself rather than on a record it looked up.
+ */
+async function resolvesForOwner<TInput>(
+  spec: OwnerApprovalSpec<TInput>,
+  input: Readonly<TInput> | undefined,
+  ctx: ApprovalContext<TInput>,
+  ownerUserId: string,
+): Promise<boolean> {
+  if (spec.describe === undefined) return true;
+
+  const subject = await spec.describe(input, {
+    ownerUserId,
+    toolName: typeof ctx.toolName === "string" ? ctx.toolName : "",
+    callId: typeof ctx.callId === "string" ? ctx.callId : "",
+  });
+  return subject.found;
+}
+
+/**
+ * Step 4 of the decision, on its own: may this call run without a click?
+ *
+ * Only a Reversible Private Write in a conversation that is not a Tainted
+ * Conversation is eligible at all, and then only for an owner whose Approval Mode
+ * is `trusted` or a Session Tool Trust that names this tool for this session.
+ *
+ * An unreadable mode answers `false` without consulting anything else: a Session
+ * Tool Trust is an exception to a posture the system cannot currently see, so the
+ * call parks rather than borrowing an exception from a mode nobody could read.
+ */
+async function runsWithoutAsking(
+  dependencies: ApprovalPolicyDependencies,
+  call: CallIdentity | null,
+  mode: EveApprovalMode | null,
+  decision: DecisionFacts,
+): Promise<boolean> {
+  if (mode === null) return false;
+  if (decision.tier !== "reversible_private" || decision.tainted) return false;
+
+  return mode === "trusted" || (await readSessionToolTrust(dependencies, call));
+}
+
+/**
+ * Which side of the Approval Mode line this call falls on.
+ *
+ * A declaration that is neither `true` nor a predicate returning `true` is
+ * always-ask, including a predicate that answers with something merely truthy:
+ * the tier is a claim, and only the exact claim counts.
+ */
+function resolveTier<TInput>(
+  spec: OwnerApprovalSpec<TInput>,
+  input: Readonly<TInput> | undefined,
+): EveApprovalDecisionTier {
+  const declared = spec.reversiblePrivateWrite;
+  if (declared === undefined) return "always_ask";
+
+  const reversible = typeof declared === "function" ? declared(input) === true : declared === true;
+  return reversible ? "reversible_private" : "always_ask";
+}
+
+/** The owner's Approval Mode, or `null` when it could not be read as one. */
+async function readApprovalMode(
+  dependencies: ApprovalPolicyDependencies,
+  userId: string,
+): Promise<EveApprovalMode | null> {
+  try {
+    const mode = await dependencies.readApprovalMode({ userId });
+    if (mode === "trusted" || mode === "ask") return mode;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a Session Tool Trust names this tool for this session.
+ *
+ * A failure answers `false`, which parks: an unreadable exception is not an
+ * exception. A call with no readable identity answers `false` for the same
+ * reason - there is no session to have trusted anything in.
+ */
+async function readSessionToolTrust(
+  dependencies: ApprovalPolicyDependencies,
+  call: CallIdentity | null,
+): Promise<boolean> {
+  if (call === null) return false;
+
+  try {
+    const trusted = await dependencies.readSessionToolTrust({
+      sessionId: call.sessionId,
+      toolName: call.toolName,
+    });
+    return trusted === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Write the approval decision record, best-effort.
+ *
+ * Fire and forget with the rejection swallowed: this is an audit row, and the
+ * one thing it must never do is fail or delay the decision it is describing.
+ * A call whose turn id is unreadable is skipped rather than written with a
+ * placeholder - `turn_id` is `NOT NULL` because a decision belongs to a turn,
+ * and inventing one would put a lie in the audit trail.
+ */
+function recordDecision(
+  dependencies: ApprovalPolicyDependencies,
+  call: CallIdentity | null,
+  decision: DecisionFacts,
+  outcome: EveApprovalDecisionInput["outcome"],
+): void {
+  if (call === null) return;
+
+  try {
+    void Promise.resolve(
+      dependencies.recordApprovalDecision({ ...call, ...decision, outcome }),
+    ).catch(() => {
+      // Best-effort: the decision itself has already been made.
+    });
+  } catch {
+    // A dependency that throws synchronously is the same non-event.
+  }
+}
+
+/** The call's durable identity, or `null` when any part of it is missing. */
+function callIdentity(ctx: unknown): CallIdentity | null {
+  const session = (ctx as ApprovalContext | undefined)?.session;
+  const sessionId = trimmed(session?.id);
+  const turnId = trimmed(session?.turn?.id);
+  const callId = trimmed((ctx as ApprovalContext | undefined)?.callId);
+  const toolName = trimmed((ctx as ApprovalContext | undefined)?.toolName);
+
+  if (sessionId === null || turnId === null || callId === null || toolName === null) return null;
+  return { sessionId, turnId, callId, toolName };
+}
+
+function trimmed(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  return text === "" ? null : text;
+}
+
 /**
  * The gate every restricted-reveal argument shares.
  *
- * Eight tools offer the same request under two spellings — `includeRestricted`
+ * Eight tools offer the same request under two spellings - `includeRestricted`
  * on the reads that widen what they return, `directlyRequested` on the ones that
- * widen what they may ground a suggestion in — and each had written the
+ * widen what they may ground a suggestion in - and each had written the
  * predicate out again. A hand-copied predicate is how one of them ends up
  * checking a truthy value, or a third spelling, or nothing at all. This is the
  * one definition: exactly those two keys, `=== true` and nothing looser, so a
  * `"false"` string or a `1` from a provider that stringifies booleans cannot
  * widen anything by being merely truthy.
+ *
+ * Never a Reversible Private Write: the whole point of the argument is that the
+ * call reveals restricted-sensitivity content it would otherwise withhold, which
+ * is neither private by construction nor undoable once read.
  *
  * `create_message_draft` keeps its own predicate: it also gates
  * `acceptedProposal`, which is a different question (a proposal the model claims
@@ -140,25 +388,4 @@ export function requireRestrictedRevealApproval<
 function asksForRestrictedReveal(input: unknown): boolean {
   const asked = input as { includeRestricted?: unknown; directlyRequested?: unknown } | undefined;
   return asked?.includeRestricted === true || asked?.directlyRequested === true;
-}
-
-/**
- * The owner who can actually be asked, or `null`.
- *
- * Read defensively all the way down: an approval context that arrives without
- * a session is exactly the shape this must not throw on.
- */
-function interactiveOwnerUserId(ctx: unknown): string | null {
-  const current = (ctx as ApprovalContext | undefined)?.session?.auth?.current;
-  if (!current) return null;
-
-  const ownerUserId = current.principalId?.trim();
-  if (!ownerUserId) return null;
-
-  // A subagent turn. Subagents propose; the parent session is where a person is.
-  if ((ctx as ApprovalContext).session?.parent !== undefined) return null;
-
-  if (resolveSessionEveMode(current) !== "web_chat") return null;
-
-  return ownerUserId;
 }

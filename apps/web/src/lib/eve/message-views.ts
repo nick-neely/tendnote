@@ -242,6 +242,15 @@ export type AssistantTurnUnit =
     }
   /** A call parked on the owner: the approval (or question) card they act on. */
   | { readonly type: "request"; readonly request: AssistantInputRequestView }
+  /** Several tool approvals parked in one breath: one card listing all of them. */
+  | {
+      readonly type: "request-batch";
+      readonly requests: readonly [
+        AssistantInputRequestView,
+        AssistantInputRequestView,
+        ...AssistantInputRequestView[],
+      ];
+    }
   /** A parked call that has settled: a quiet status in the slot the card held. */
   | { readonly type: "resolution"; readonly resolution: AssistantInputResolutionView }
   /** A call still running: the transient working shimmer. */
@@ -327,6 +336,12 @@ export function groupTurnToolEntries(entries: readonly AssistantToolEntry[]): As
  * ({@link groupTurnToolEntries}), which then takes the slot of its first member so a
  * busy capture turn reads as a short summary without reordering the turn around it.
  *
+ * Tool approvals fold the same way and for the same reason: a turn that parked three
+ * calls parked them in one `input.requested`, and three stacked cards is how an
+ * interruption becomes unreadable. They render as one `request-batch` in the slot of
+ * the first, and a turn with a single parked call still projects a plain `request`.
+ * Answered ones drop out as their own settled units, in the seats they occupied.
+ *
  * `turnInFlight` gates only the working lines: a call parked in `input-available`
  * when a turn ends would otherwise claim forever that Eve is still searching (see
  * {@link messageActiveToolViews}). A parked approval is *not* activity — the turn is
@@ -339,6 +354,8 @@ export function messageTurnUnits(message: EveMessage, turnInFlight: boolean): As
 
   const placed: { at: number; unit: AssistantTurnUnit }[] = [];
   const results: { at: number; entry: AssistantToolEntry }[] = [];
+  /** Tool approvals still waiting on the owner, in the order the turn parked them. */
+  const parked: { at: number; request: AssistantInputRequestView }[] = [];
 
   message.parts.forEach((part, at) => {
     // A silent tool contributes no unit in any state: not a working line while it
@@ -361,7 +378,13 @@ export function messageTurnUnits(message: EveMessage, turnInFlight: boolean): As
 
     const request = toInputRequestView(part);
     if (request) {
-      placed.push({ at, unit: { type: "request", request } });
+      // A question is the model's own words to one person and is never batched with
+      // anything; a tool approval waits to see whether it has siblings.
+      if (request.kind === "tool-approval") {
+        parked.push({ at, request });
+      } else {
+        placed.push({ at, unit: { type: "request", request } });
+      }
       return;
     }
 
@@ -387,6 +410,24 @@ export function messageTurnUnits(message: EveMessage, turnInFlight: boolean): As
       });
     }
   });
+
+  // Every approval still parked in this turn came from one `input.requested`: eve
+  // holds the turn while any of them wait, so no later step can have parked another.
+  // Two or more become one card in the slot of the first, and a lone one keeps
+  // exactly the card it has always had.
+  const head = parked[0];
+  const second = parked[1];
+  if (head && second) {
+    placed.push({
+      at: head.at,
+      unit: {
+        type: "request-batch",
+        requests: [head.request, second.request, ...parked.slice(2).map((it) => it.request)],
+      },
+    });
+  } else if (head) {
+    placed.push({ at: head.at, unit: { type: "request", request: head.request } });
+  }
 
   const slotOf = new Map(results.map(({ at, entry }) => [entry.toolCallId, at]));
   for (const unit of groupTurnToolEntries(results.map(({ entry }) => entry))) {

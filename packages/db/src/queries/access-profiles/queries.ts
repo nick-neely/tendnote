@@ -2,6 +2,7 @@ import {
   type AccessDecision,
   type AccessProfile,
   type AccessSource,
+  type EveApprovalMode,
   type SelfContextOnboardingState,
   selfContextOnboardingStateSchema,
 } from "@tendnote/domain";
@@ -138,6 +139,45 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
       });
       if (!updated) throw new Error("Failed to update the household check-in.");
       return updated.householdCheckinEnabled;
+    },
+
+    /**
+     * Sets this user's Approval Mode for Eve's gated tool calls (#549).
+     *
+     * Owner-scoped by `userId` and nothing else: an Approval Mode is chosen only
+     * through the user's own account settings, so there is deliberately no
+     * argument for whose mode this is. A target here would be exactly the
+     * "somebody else made Eve trusted for me" hole the mode exists to close.
+     *
+     * The profile must already exist, so the control cannot report success while
+     * writing nothing.
+     */
+    async setEveApprovalMode(input: {
+      userId: string;
+      mode: EveApprovalMode;
+    }): Promise<EveApprovalMode> {
+      const existing = await store.getByUserId(input.userId);
+      if (!existing) throw new Error("Failed to update the assistant approval mode.");
+
+      const updated = await store.update({
+        userId: input.userId,
+        patch: { eveApprovalMode: input.mode },
+      });
+      if (!updated) throw new Error("Failed to update the assistant approval mode.");
+      return updated.eveApprovalMode;
+    },
+
+    /**
+     * This user's current Approval Mode, as the approval policy reads it on every
+     * gated call.
+     *
+     * A user with no access profile answers `ask`, which is the same answer a
+     * read failure has to produce: the safe outcome of not knowing the mode is
+     * to park for an Owner Approval, never to skip one and never to deny.
+     */
+    async getEveApprovalMode(input: { userId: string }): Promise<EveApprovalMode> {
+      const profile = await store.getByUserId(input.userId);
+      return profile?.eveApprovalMode ?? "ask";
     },
 
     /** Ensure a signed-up user has a pending profile without granting access. */

@@ -23,9 +23,12 @@ const inputSchema = z.object({
 });
 
 export default defineTool({
-  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
+  approval: requireOwnerApproval({
+    describe: describeRegisteredSubject(),
+    reversiblePrivateWrite: true,
+  }),
   description:
-    "Archive one active Self Context fact only on the user's explicit current-turn request. Use the exact id from a prior tool result, never guess or sweep, and pass expectedUpdatedAt when available. Archive is recoverable; permanent deletion remains an Account action, not an Eve action. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Archive one active Self Context fact only on the user's explicit current-turn request. Use the exact id from a prior tool result, never guess or sweep, and pass expectedUpdatedAt when available. Archive is recoverable; permanent deletion remains an Account action, not an Eve action.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

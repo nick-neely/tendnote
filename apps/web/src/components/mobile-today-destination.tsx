@@ -1,5 +1,6 @@
 "use client";
 
+import type { EveApprovalMode } from "@tendnote/domain";
 import type { TodayShortlistResponse } from "@tendnote/domain/today";
 import dynamic from "next/dynamic";
 import { useRef, useState } from "react";
@@ -24,12 +25,18 @@ const EveSurface = dynamic(
 
 /** Route-owned mobile Today surface, rendered inside the admitted application shell. */
 export function MobileTodayDestination({
+  approvalMode = "ask",
   ownerUserId,
   todayHandlers,
   todayInitial,
   todayLocalDate,
   todayTimeZone,
 }: {
+  /**
+   * The owner's Approval Mode, read on the server by this route and passed to the
+   * assistant flow this destination opens (#549).
+   */
+  approvalMode?: EveApprovalMode;
   ownerUserId: string;
   todayHandlers: TodayShortlistHandlers;
   todayInitial: TodayShortlistResponse;
@@ -68,7 +75,7 @@ export function MobileTodayDestination({
             });
           }}
         >
-          <EveSurface ownerUserId={ownerUserId} />
+          <EveSurface approvalMode={approvalMode} ownerUserId={ownerUserId} />
         </EveFlow>
       ) : null}
     </>

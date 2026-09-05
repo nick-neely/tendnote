@@ -322,8 +322,14 @@ header (never a card inside a sheet).
 3. **Result cards** — the trust-weighted cards (saved memory = sage/confirmed,
    logged context = neutral, tentative suggestion = clay) and the interactive
    ones: review, follow-up, general action, asset, draft, and the **approval
-   card** for in-turn owner approval (ADR 0237). Interactive cards resolve in
-   place using the same owner-scoped mutations as the rail and ledger. Keep the
+   card** for in-turn owner approval (ADR 0237). Several calls parked in one
+   breath share one approval card: one state chip, a hairline between items, a
+   separate Approve and Cancel for each, and one "Approve all" at the same weight
+   as the rest with no "Cancel all" beside it. Each item may also offer "Don't ask
+   again for this in this conversation", withheld once the conversation has read
+   web content; a `trusted` owner asked anyway is told why in one quiet line.
+   Interactive cards resolve in place using the same owner-scoped mutations as
+   the rail and ledger. Keep the
    rest read-only; only a genuinely actionable, trust-bearing item earns buttons.
    Cards name the person and show the record's content; never surface a raw id.
 4. **Sources strip** — "Used N sources", collapsed, only when the turn searched or
@@ -363,7 +369,9 @@ plainly inert (muted surface, muted-foreground ink) and Enter does nothing;
 it is never natively `disabled`, which would fade the whole input group.
 Typing while a turn runs is allowed: messages queue in a "Queued" strip above
 the composer with Send now (interrupt) and Remove, and drain one per settled
-turn.
+turn. While an approval waits above, one quiet line says that sending a message
+cancels it, and a line that is exactly "approve" or "cancel" answers the oldest
+waiting card instead of being sent.
 
 ### Empty States
 

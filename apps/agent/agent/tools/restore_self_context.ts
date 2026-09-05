@@ -41,9 +41,12 @@ const RESTORE_GUIDANCE = {
 } as const;
 
 export default defineTool({
-  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
+  approval: requireOwnerApproval({
+    describe: describeRegisteredSubject(),
+    reversiblePrivateWrite: true,
+  }),
   description:
-    "Restore one archived Self Context fact only on an explicit user request or authoritative Undo. Use the exact id and, when available, expectedArchivedAt from the archive result so stale intent cannot restore over a later change. The shared product layer rejects duplicates or conflicts instead of creating contradictory active facts. It reports whether the archived fact was actually restored or an equivalent fact was already active — never claim a restore the result does not report. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Restore one archived Self Context fact only on an explicit user request or authoritative Undo. Use the exact id and, when available, expectedArchivedAt from the archive result so stale intent cannot restore over a later change. The shared product layer rejects duplicates or conflicts instead of creating contradictory active facts. It reports whether the archived fact was actually restored or an equivalent fact was already active - never claim a restore the result does not report.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

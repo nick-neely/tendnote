@@ -1,3 +1,4 @@
+import { getEveApprovalMode } from "@tendnote/db/queries/access-profiles";
 import { getHouseholdCheckin } from "@tendnote/db/queries/household-home";
 import { getOwnerTodayContext } from "@tendnote/db/queries/today";
 import type { BriefCadence, TodayShortlistResponse } from "@tendnote/domain";
@@ -144,10 +145,14 @@ async function HomeGreeting() {
 async function HomeAssistant({ searchParams }: HomeProps) {
   if (process.env.NODE_ENV !== "test") await connection();
   const ownerUserId = await admittedHomeOwner(await homeTab(searchParams));
-  const hints = await dashboardAssistantHints(ownerUserId);
+  const [hints, approvalMode] = await Promise.all([
+    dashboardAssistantHints(ownerUserId),
+    getEveApprovalMode({ userId: ownerUserId }),
+  ]);
 
   return (
     <DashboardAssistant
+      approvalMode={approvalMode}
       nudges={hints.nudges}
       ownerUserId={ownerUserId}
       suggestPersonName={hints.suggestPersonName}
@@ -406,10 +411,17 @@ async function HomeMobileDestination({ searchParams }: HomeProps) {
     );
   }
 
-  const todayContext = await getOwnerTodayContext({ ownerUserId });
+  const [todayContext, approvalMode] = await Promise.all([
+    getOwnerTodayContext({ ownerUserId }),
+    // The assistant opens inside this destination rather than on a route of its
+    // own, so the owner's Approval Mode is read here - the one place on the phone
+    // that already has the admitted owner - and handed down as a prop.
+    getEveApprovalMode({ userId: ownerUserId }),
+  ]);
 
   return (
     <MobileTodayDestination
+      approvalMode={approvalMode}
       ownerUserId={ownerUserId}
       todayHandlers={{
         act: actOnTodayItemAction,

@@ -1,5 +1,6 @@
 "use client";
 
+import type { EveApprovalMode } from "@tendnote/domain";
 import { useEffect, useState } from "react";
 import { loadMobileEveContextAction } from "@/app/actions/eve-context";
 import { AssistantPanel } from "@/components/assistant-panel";
@@ -14,7 +15,19 @@ type EveContext =
     : never;
 
 /** Loads the assistant's optional owner context only after the owner opens it. */
-export function EveSurface({ ownerUserId }: { ownerUserId: string }) {
+export function EveSurface({
+  approvalMode = "ask",
+  ownerUserId,
+}: {
+  /**
+   * The owner's Approval Mode, read on the server by the destination that mounts
+   * this flow. It arrives as a prop rather than joining the context load above,
+   * because it is already known before the sheet opens and a card must never wait
+   * on a fetch to explain itself.
+   */
+  approvalMode?: EveApprovalMode;
+  ownerUserId: string;
+}) {
   const [context, setContext] = useState<EveContext | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -49,6 +62,7 @@ export function EveSurface({ ownerUserId }: { ownerUserId: string }) {
   }
   return (
     <AssistantPanel
+      approvalMode={approvalMode}
       nudges={context.nudges}
       ownerUserId={ownerUserId}
       suggestPersonName={context.suggestPersonName}

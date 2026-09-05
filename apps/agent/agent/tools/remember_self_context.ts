@@ -28,9 +28,9 @@ const inputSchema = z.object({
 
 /** Explicit Self Context creation; casual self-reference remains conversation-only. */
 export default defineTool({
-  approval: requireOwnerApproval(),
+  approval: requireOwnerApproval({ reversiblePrivateWrite: true }),
   description:
-    "Create one active Self Context fact for the authenticated user. Call only after an explicit current-turn instruction such as 'remember that I run a consultancy' or 'save this about me'; do not call for casual self-reference, inference, or a generated profile. Preserve the user's meaningful wording, choose one fixed category, and never use this to authorize an external action. Call it even when an equivalent active fact already exists: the direct write is idempotent, returns the existing authoritative fact, and must not be replaced with a read, review proposal, or clarification. Returns the authoritative fact and decision; do not repeat raw ids. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Create one active Self Context fact for the authenticated user. Call only after an explicit current-turn instruction such as 'remember that I run a consultancy' or 'save this about me'; do not call for casual self-reference, inference, or a generated profile. Preserve the user's meaningful wording, choose one fixed category, and never use this to authorize an external action. Call it even when an equivalent active fact already exists: the direct write is idempotent, returns the existing authoritative fact, and must not be replaced with a read, review proposal, or clarification. Returns the authoritative fact and decision; do not repeat raw ids.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

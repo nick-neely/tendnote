@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { boolean, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
-import { accessSource, accessStatus, selfContextOnboardingStatus } from "./enums";
+import { accessSource, accessStatus, eveApprovalMode, selfContextOnboardingStatus } from "./enums";
 
 /**
  * Tendnote-owned account/access profile. Records durable Private Beta Access for
@@ -31,6 +31,12 @@ export const accessProfiles = pgTable(
     // (#390). It sits here because this row always exists for an admitted member,
     // so the control can never succeed against nothing (ADR 0220).
     householdCheckinEnabled: boolean("household_checkin_enabled").notNull().default(false),
+    // This user's Approval Mode for Eve's gated tool calls (#549). It sits here
+    // for the same reason the Check-in flag does: the row always exists for an
+    // admitted user, so the account control can never succeed against nothing.
+    // `ask` is the default and the failure answer - the policy reads this column
+    // on every gated call and parks when the read fails, never denies.
+    eveApprovalMode: eveApprovalMode("eve_approval_mode").notNull().default("ask"),
     ...timestamps,
   },
   (table) => [

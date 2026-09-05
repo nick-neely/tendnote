@@ -17,9 +17,12 @@ const inputSchema = z.object({
  * suggestions are not reintroduced. Only dismiss on explicit user instruction.
  */
 export default defineTool({
-  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
+  approval: requireOwnerApproval({
+    describe: describeRegisteredSubject(),
+    reversiblePrivateWrite: true,
+  }),
   description:
-    "Dismiss a suggested memory the user does not want kept. It leaves review and is excluded from future context. Only call this when the user has explicitly rejected the suggestion. Returns the persisted memory id and new status. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Dismiss a suggested memory the user does not want kept. It leaves review and is excluded from future context. Only call this when the user has explicitly rejected the suggestion. Returns the persisted memory id and new status.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

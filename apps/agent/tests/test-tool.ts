@@ -57,6 +57,10 @@ export type ApprovalContextOptions = {
   approvedTools?: readonly string[];
   toolName?: string;
   callId?: string;
+  /** `session.id`. The Session Tool Trust and the decision record are keyed by it. */
+  sessionId?: string;
+  /** `session.turn.id`. Pass `null` for a context that carries no turn at all. */
+  turnId?: string | null;
 };
 
 const OWNER_PRINCIPAL: Required<TestPrincipal> = {
@@ -82,13 +86,15 @@ export function toolApprovalContext(options: ApprovalContextOptions = {}): unkno
   const principal =
     options.principal === null ? null : { ...OWNER_PRINCIPAL, ...(options.principal ?? {}) };
 
+  const turnId = options.turnId === undefined ? "turn-1" : options.turnId;
+
   return {
     approvedTools: new Set(options.approvedTools ?? []),
     callId: options.callId ?? "call-1",
     session: {
-      id: "session-1",
+      id: options.sessionId ?? "session-1",
       auth: { current: principal, initiator: principal },
-      turn: { id: "turn-1" },
+      ...(turnId === null ? {} : { turn: { id: turnId } }),
       ...(options.subagent === true
         ? { parent: { sessionId: "parent-session-1", turnId: "parent-turn-1" } }
         : {}),

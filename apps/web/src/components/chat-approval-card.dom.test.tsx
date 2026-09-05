@@ -1,7 +1,19 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it, vi } from "vitest";
+import {
+  AssistantApprovalPolicyProvider,
+  type EveApprovalMode,
+} from "@/components/assistant-approval-policy-context";
 import { AssistantRespondProvider } from "@/components/assistant-respond-context";
-import { ChatApprovalCard, ChatApprovalStatus } from "@/components/chat-approval-card";
+import {
+  ChatApprovalBatchCard,
+  ChatApprovalCard,
+  ChatApprovalStatus,
+} from "@/components/chat-approval-card";
+import {
+  type RecordSessionToolTrust,
+  SessionToolTrustProvider,
+} from "@/components/session-tool-trust-context";
 import type {
   AssistantInputRequestView,
   AssistantInputResolutionView,
@@ -38,6 +50,9 @@ beforeEach(() => {
  * The fixture is eve 0.47.7's actual request: a fixed placeholder prompt, unstyled
  * `approve` / `cancel` options, and the whole substance in the frozen input.
  */
+
+/** The disclosure that unfolds the frozen input, by its label. */
+const SHOW_FULL_REQUEST = "Show the full request";
 
 const FETCH_REQUEST: AssistantInputRequestView = {
   requestId: "req-1",
@@ -169,7 +184,7 @@ it("keeps a long or nested argument out of the way until it is asked for", async
   });
 
   expect(screen.queryByText(note)).toBeNull();
-  await userEvent.click(screen.getByRole("button", { name: /Show everything/ }));
+  await userEvent.click(screen.getByRole("button", { name: SHOW_FULL_REQUEST }));
   expect(screen.getByText(note)).toBeDefined();
 });
 
@@ -198,7 +213,7 @@ it("leads with the record the server described, keeping the frozen input reachab
   // A summary is an aid to the decision, never a replacement for it: what actually
   // executes is the input, so it stays one deliberate click away.
   expect(screen.queryByText("fu_123")).toBeNull();
-  await userEvent.click(screen.getByRole("button", { name: "Show everything that will be sent" }));
+  await userEvent.click(screen.getByRole("button", { name: SHOW_FULL_REQUEST }));
   expect(screen.getByText("followupId")).toBeDefined();
   expect(screen.getByText("fu_123")).toBeDefined();
 });
@@ -210,9 +225,7 @@ it("puts the decision on the disclosure's row rather than a row of its own", asy
   await waitFor(() => expect(screen.getByText("Accept a follow-up with Mara")).toBeDefined());
   const decision = document.querySelector("[data-slot=approval-decision]");
   expect(decision).not.toBeNull();
-  expect(
-    decision?.contains(screen.getByRole("button", { name: "Show everything that will be sent" })),
-  ).toBe(true);
+  expect(decision?.contains(screen.getByRole("button", { name: SHOW_FULL_REQUEST }))).toBe(true);
   expect(decision?.contains(screen.getByRole("button", { name: "Approve" }))).toBe(true);
   expect(decision?.contains(screen.getByRole("button", { name: "Cancel" }))).toBe(true);
 });
@@ -500,4 +513,318 @@ it("names the described record in the settled line, once the card's lookup has l
     "Accept a follow-up with Mara",
   );
   expect(describeSubject).toHaveBeenCalledTimes(1);
+});
+
+// ---------------------------------------------------------------------------
+// A batch, the taint explanation, and the Session Tool Trust offer
+// ---------------------------------------------------------------------------
+
+/**
+ * One `input.requested` can park several calls at once. The card that shows them has
+ * one job the single card does not: to stay readable while carrying three decisions.
+ * So the chrome is shared and the *decisions* are not - and "Approve all" is offered
+ * without a "Cancel all" beside it, at no more weight than anything else.
+ */
+
+const SAVE_REQUEST: AssistantInputRequestView = {
+  ...FETCH_REQUEST,
+  requestId: "req-2",
+  toolCallId: "call-2",
+  toolName: "capture_memory",
+  prompt: "Approve tool call: capture_memory",
+  fields: [{ key: "content", value: "Allergic to shellfish.", block: false }],
+  input: { content: "Allergic to shellfish." },
+};
+
+const TAINT_LINE =
+  "The assistant asked because web content was read in this conversation. Start a new conversation to resume automatic saves.";
+
+const REMEMBER_LABEL =
+  "Don't ask again for this in this conversation (reversible private saves only)";
+
+type PolicyOptions = {
+  approvalMode?: EveApprovalMode;
+  ready?: boolean;
+  recordSessionToolTrust?: RecordSessionToolTrust;
+  respond?: (responses: readonly { requestId: string }[]) => Promise<void>;
+  /** Call ids the conversation read web content before. */
+  tainted?: readonly string[];
+  /** Null stands for a panel with no live session, where no trust can be recorded. */
+  sessionId?: string | null;
+};
+
+function renderWithPolicy(card: React.ReactElement, options: PolicyOptions = {}) {
+  const {
+    approvalMode = "ask",
+    ready = true,
+    recordSessionToolTrust = vi.fn(async () => {}),
+    respond = vi.fn(async () => {}),
+    sessionId = "session-1",
+    tainted = [],
+  } = options;
+
+  render(
+    <AssistantRespondProvider ready={ready} respond={respond}>
+      <AssistantApprovalPolicyProvider
+        approvalMode={approvalMode}
+        isTaintedBefore={(toolCallId) => tainted.includes(toolCallId)}
+      >
+        <SessionToolTrustProvider
+          recordSessionToolTrust={recordSessionToolTrust}
+          sessionId={sessionId}
+        >
+          {card}
+        </SessionToolTrustProvider>
+      </AssistantApprovalPolicyProvider>
+    </AssistantRespondProvider>,
+  );
+
+  return { recordSessionToolTrust, respond };
+}
+
+function renderBatch(options: PolicyOptions = {}) {
+  return renderWithPolicy(
+    <ChatApprovalBatchCard requests={[FETCH_REQUEST, SAVE_REQUEST]} />,
+    options,
+  );
+}
+
+it("lists every parked call on one card, each with its own subject and answers", () => {
+  renderBatch();
+
+  expect(document.querySelectorAll("[data-tool-view=input_request]")).toHaveLength(1);
+  expect(screen.getByText("2 decisions are waiting for you.")).toBeDefined();
+  expect(screen.getByText("The assistant wants to run web fetch.")).toBeDefined();
+  expect(screen.getByText("The assistant wants to run capture memory.")).toBeDefined();
+  expect(screen.getAllByRole("button", { name: "Approve" })).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: "Cancel" })).toHaveLength(2);
+  // The state chip is the card's, said once, rather than repeated over every item.
+  expect(screen.getAllByText("Needs your approval")).toHaveLength(1);
+});
+
+it("answers every remaining request in one respond when the owner approves them all", async () => {
+  const { respond } = renderBatch();
+
+  await userEvent.click(screen.getByRole("button", { name: /Approve all/ }));
+
+  await waitFor(() =>
+    expect(respond).toHaveBeenCalledWith([
+      { requestId: "req-1", optionId: "approve" },
+      { requestId: "req-2", optionId: "approve" },
+    ]),
+  );
+  expect(respond).toHaveBeenCalledTimes(1);
+});
+
+/** Refusing in bulk is not something a person needs to do quickly. */
+it("offers no way to cancel the whole batch at once", () => {
+  renderBatch();
+
+  expect(screen.queryByRole("button", { name: /Cancel all/ })).toBeNull();
+});
+
+/**
+ * The shortcut through a batch must not be the button the eye lands on. It carries
+ * exactly the weight the per-item answers do, and eve marks none of them primary.
+ */
+it("gives Approve all no more weight than a single item's own answer", () => {
+  renderBatch();
+
+  const approveAll = screen.getByRole("button", { name: /Approve all/ });
+  const approve = screen.getAllByRole("button", { name: "Approve" })[0];
+  expect(approveAll.getAttribute("data-variant")).toBe(approve?.getAttribute("data-variant"));
+  expect(approveAll.getAttribute("data-variant")).not.toBe("default");
+});
+
+it("answers only the item whose own Cancel was clicked", async () => {
+  const { respond } = renderBatch();
+
+  await userEvent.click(screen.getAllByRole("button", { name: "Cancel" })[1] as HTMLElement);
+
+  await waitFor(() =>
+    expect(respond).toHaveBeenCalledWith([{ requestId: "req-2", optionId: "cancel" }]),
+  );
+});
+
+/**
+ * Once a single item is left there is nothing to approve *all* of, and its own
+ * button is the whole decision.
+ */
+it("retires Approve all once one decision is left", async () => {
+  renderBatch();
+
+  await userEvent.click(screen.getAllByRole("button", { name: "Approve" })[0] as HTMLElement);
+
+  await waitFor(() => expect(screen.queryByRole("button", { name: /Approve all/ })).toBeNull());
+});
+
+it("will not answer an item twice while the card waits for the stream to catch up", async () => {
+  const { respond } = renderBatch();
+
+  const approve = screen.getAllByRole("button", { name: "Approve" })[0] as HTMLButtonElement;
+  await userEvent.click(approve);
+  await waitFor(() => expect(approve.disabled).toBe(true));
+
+  await userEvent.click(approve);
+  expect(respond).toHaveBeenCalledTimes(1);
+});
+
+/**
+ * An owner in `trusted` mode who is asked anyway is owed the reason. Both halves are
+ * required: the mode, and web content read before this very call.
+ */
+it("explains the interruption when a trusted conversation has read the web", () => {
+  renderWithPolicy(<ChatApprovalCard request={SAVE_REQUEST} />, {
+    approvalMode: "trusted",
+    tainted: ["call-2"],
+  });
+
+  expect(screen.getByText(TAINT_LINE)).toBeDefined();
+});
+
+it("says nothing about the web when nothing in the conversation read it", () => {
+  renderWithPolicy(<ChatApprovalCard request={SAVE_REQUEST} />, { approvalMode: "trusted" });
+
+  expect(screen.queryByText(TAINT_LINE)).toBeNull();
+});
+
+/** In `ask` mode every call was always going to pause; there is nothing to explain. */
+it("says nothing about the web to an owner who asked to be asked", () => {
+  renderWithPolicy(<ChatApprovalCard request={SAVE_REQUEST} />, {
+    approvalMode: "ask",
+    tainted: ["call-2"],
+  });
+
+  expect(screen.queryByText(TAINT_LINE)).toBeNull();
+});
+
+/** Explanatory only: the same click sends the same thing with the line on screen. */
+it("changes nothing about the answer it sends", async () => {
+  const { respond } = renderWithPolicy(<ChatApprovalCard request={SAVE_REQUEST} />, {
+    approvalMode: "trusted",
+    tainted: ["call-2"],
+  });
+
+  await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+  await waitFor(() =>
+    expect(respond).toHaveBeenCalledWith([{ requestId: "req-2", optionId: "approve" }]),
+  );
+});
+
+it("offers to stop asking about this tool for the rest of the conversation", () => {
+  renderWithPolicy(<ChatApprovalCard request={SAVE_REQUEST} />);
+
+  const remember = screen.getByLabelText(REMEMBER_LABEL) as HTMLInputElement;
+  // Unticked by default: a Session Tool Trust is a thing the owner reaches for.
+  expect(remember.getAttribute("data-state")).toBe("unchecked");
+});
+
+/**
+ * The agent ignores every Session Tool Trust in a Tainted Conversation, so offering
+ * one there would be a control that quietly does nothing.
+ */
+it("withholds the offer once the conversation has read web content", () => {
+  renderWithPolicy(<ChatApprovalCard request={SAVE_REQUEST} />, { tainted: ["call-2"] });
+
+  expect(screen.queryByLabelText(REMEMBER_LABEL)).toBeNull();
+});
+
+it("withholds the offer on a question, which authorizes nothing", () => {
+  renderWithPolicy(
+    <ChatApprovalCard
+      request={{ ...SAVE_REQUEST, kind: "question", prompt: "Which Mara?", fields: [] }}
+    />,
+  );
+
+  expect(screen.queryByLabelText(REMEMBER_LABEL)).toBeNull();
+});
+
+/**
+ * A Session Tool Trust is honoured only for a Reversible Private Write, so on a
+ * fetch, a send, or a permanent deletion the box would be a control the agent
+ * ignores. The tier itself comes from `@tendnote/domain/eve-approvals`, which
+ * `apps/agent/tests/write-tool-approval.test.ts` holds to the tools' own gates.
+ */
+it("withholds the offer on an always-ask call such as a web fetch", () => {
+  renderWithPolicy(<ChatApprovalCard request={FETCH_REQUEST} />);
+
+  expect(screen.queryByLabelText(REMEMBER_LABEL)).toBeNull();
+});
+
+it("offers it on a capture whose audience is the owner alone", () => {
+  renderWithPolicy(
+    <ChatApprovalCard
+      request={{
+        ...SAVE_REQUEST,
+        toolName: "capture_saved_item",
+        input: { originalText: "Mara starts at the clinic in March." },
+      }}
+    />,
+  );
+
+  expect(screen.getByLabelText(REMEMBER_LABEL)).toBeDefined();
+});
+
+/**
+ * The one tool whose tier depends on its arguments: a capture that names a
+ * `requestedScope` is asking to widen its audience beyond the owner, and the
+ * policy asks about it whatever the mode. The frozen input is what says so, which
+ * is why the card reads it and not the tool name alone.
+ */
+it("withholds it on a capture that asks for a wider audience", () => {
+  renderWithPolicy(
+    <ChatApprovalCard
+      request={{
+        ...SAVE_REQUEST,
+        toolName: "capture_saved_item",
+        input: { originalText: "Book the campsite.", requestedScope: "household" },
+      }}
+    />,
+  );
+
+  expect(screen.queryByLabelText(REMEMBER_LABEL)).toBeNull();
+});
+
+it("records the trust only once the approval it rode on has gone through", async () => {
+  const { recordSessionToolTrust } = renderWithPolicy(<ChatApprovalCard request={SAVE_REQUEST} />);
+
+  await userEvent.click(screen.getByLabelText(REMEMBER_LABEL));
+  expect(recordSessionToolTrust).not.toHaveBeenCalled();
+
+  await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+  await waitFor(() =>
+    expect(recordSessionToolTrust).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      toolName: "capture_memory",
+    }),
+  );
+});
+
+/** Cancelling authorizes nothing, so there is nothing to remember. */
+it("records nothing when the owner ticks the box and then cancels", async () => {
+  const { recordSessionToolTrust } = renderWithPolicy(<ChatApprovalCard request={SAVE_REQUEST} />);
+
+  await userEvent.click(screen.getByLabelText(REMEMBER_LABEL));
+  await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+  await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  expect(recordSessionToolTrust).not.toHaveBeenCalled();
+});
+
+it("remembers each batch item on its own when the whole batch is approved", async () => {
+  const { recordSessionToolTrust } = renderBatch();
+
+  // One offer on this card, not two: the fetch is always-ask, so only the capture
+  // has a trust to give.
+  expect(screen.getAllByLabelText(REMEMBER_LABEL)).toHaveLength(1);
+  await userEvent.click(screen.getByLabelText(REMEMBER_LABEL));
+  await userEvent.click(screen.getByRole("button", { name: /Approve all/ }));
+
+  await waitFor(() => expect(recordSessionToolTrust).toHaveBeenCalledTimes(1));
+  expect(recordSessionToolTrust).toHaveBeenCalledWith({
+    sessionId: "session-1",
+    toolName: "capture_memory",
+  });
 });

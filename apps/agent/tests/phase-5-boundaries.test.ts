@@ -574,9 +574,13 @@ describe("Phase 5 boundary — Eve exposes a bounded, single-record General Acti
       ).toBe(true);
     }
     // The third kind of file in the slot: a dynamic resolver, exempt only for as
-    // long as it reads no store. The mode gate returns constants, so nothing it
-    // binds can throw a Drizzle error at the model in the first place.
-    expect(DYNAMIC_TOOL_RESOLVER_FILES).toEqual(["apps/agent/agent/tools/eve_mode_gate.ts"]);
+    // long as it reads no store. The mode gate returns constants and the taint
+    // scanner returns nothing at all, so nothing either binds can throw a Drizzle
+    // error at the model in the first place.
+    expect(DYNAMIC_TOOL_RESOLVER_FILES).toEqual([
+      "apps/agent/agent/tools/conversation_taint_gate.ts",
+      "apps/agent/agent/tools/eve_mode_gate.ts",
+    ]);
     for (const path of DYNAMIC_TOOL_RESOLVER_FILES) {
       expect(read(path), `${path} calls no store`).not.toContain("@tendnote/db");
     }

@@ -28,6 +28,7 @@ const admittedDecision: AccessDecision = {
     selfContextOnboardingStatus: "not_started",
     selfContextOnboardingReminderAt: null,
     householdCheckinEnabled: false,
+    eveApprovalMode: "ask",
     createdAt: new Date(),
     updatedAt: new Date(),
   },

@@ -27,7 +27,16 @@ const { withDatabaseTransaction } = vi.hoisted(() => ({
   withDatabaseTransaction: vi.fn(<T>(run: () => Promise<T>) => run()),
 }));
 
-vi.mock("@tendnote/db/client", () => ({ withDatabaseTransaction }));
+// `getDb` is here only because the approval policy's dependency module reaches
+// the access-profile queries, whose Drizzle store binds it at import time. This
+// test never issues a query; the throw makes that a failure rather than a
+// connection if one ever slips in.
+vi.mock("@tendnote/db/client", () => ({
+  withDatabaseTransaction,
+  getDb: () => {
+    throw new Error("no database in this test");
+  },
+}));
 vi.mock("@tendnote/db/queries/asset-search", () => ({ searchAssets }));
 vi.mock("@tendnote/db/queries/asset-snapshots", () => ({ getAssetSnapshot }));
 vi.mock("@tendnote/db/queries/assets", () => ({

@@ -17,7 +17,7 @@
  * its `callId` recorded, durably at `session.waiting` until the authenticated
  * owner answers through the client (`useEveAgent().respond`). The answer never
  * passes through the model, so it is a real capability bound to owner, turn,
- * resource, and action — without a new table (ADR-0014), and sharing the one
+ * resource, and action - without a new table (ADR-0014), and sharing the one
  * approval artifact the web surface uses (ADR-0092).
  *
  * ```ts
@@ -50,10 +50,29 @@
  * approval: requireOwnerApproval<Input>({ describe: describeRegisteredSubject() }),
  * ```
  *
+ * ## Declaring a Reversible Private Write
+ *
+ * A write that is owner-scoped, private by construction, and undoable may say so,
+ * and an owner whose Approval Mode is `trusted` gets it without a click - unless
+ * the conversation has become a Tainted Conversation, in which case everything
+ * asks again (ADR-0240):
+ *
+ * ```ts
+ * approval: requireOwnerApproval<Input>({ reversiblePrivateWrite: true }),
+ * // or, when the tier depends on the arguments:
+ * approval: requireOwnerApproval<Input>({
+ *   reversiblePrivateWrite: (input) => input?.requestedScope === undefined,
+ * }),
+ * ```
+ *
+ * Omitting it means always-ask. `tests/write-tool-approval.test.ts` enforces the
+ * rule behind the declaration, so this is a claim the test checks rather than a
+ * list somebody maintains.
+ *
  * ## What the tool sees
  *
  * Nothing new. `execute` runs unchanged after an approval, and never runs at
- * all after a denial or a decline — eve settles the call itself and the model
+ * all after a denial or a decline - eve settles the call itself and the model
  * receives a `tool-output-denied` result. There is no approval argument to
  * thread, and nothing for the model to assert.
  *
@@ -72,11 +91,24 @@
  * how the gate is used, so the two modules that implement one import them by
  * path and every tool sees the policy alone.
  *
+ * The dependency seam (`./dependencies`). Installing the query layer at startup
+ * and replacing it in a test are the business of the startup hook and the test
+ * setup, never of a gated tool, so the handful of modules that do either import
+ * it by path instead.
+ *
  * `describeRegisteredSubject` (`./subject-registry`) reaches the shared
- * approval-subject registry, and that registry imports the whole
- * `@tendnote/db` query layer. Re-exporting it here would drag those modules
- * into every tool that only wants the policy - `web_fetch` has no store at all -
- * so the id-referenced writes import it by name from its own module.
+ * approval-subject registry. Re-exporting it here would put a registry lookup in
+ * front of every tool that only wants the policy, so the id-referenced writes
+ * import it by name from its own module and the rest never see it.
+ *
+ * It is also still a statement about bundles. ADR-0240 has the policy read the
+ * owner's Approval Mode from the database on every gated call, which would have
+ * put `@tendnote/db` behind this barrel for every tool that imports it -
+ * `web_fetch` included, whose whole chunk is otherwise a fetch. It does not:
+ * `./dependencies` is a seam with no runtime import at all, and the queries in
+ * `./dependencies-production` reach the policy either through the registration
+ * an eve-loaded hook performs at startup or through a lazy import behind the
+ * first decision that needs one.
  */
 
 export { APPROVAL_APPROVE_OPTION_ID, APPROVAL_REQUEST_KIND, OPAQUE_DENIAL } from "./contract";
