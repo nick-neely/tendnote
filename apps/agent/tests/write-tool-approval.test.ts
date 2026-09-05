@@ -57,6 +57,7 @@ const WRITE_TOOLS = [
   "remove_gift_idea",
   "restore_self_context",
   "save_draft_to_gmail",
+  "undo_person_update",
   "undo_saved_item_capture",
   "update_followup_status",
   "update_general_action_status",
@@ -504,6 +505,7 @@ const REVERSIBLE_PRIVATE_WRITES = [
   "undo_saved_item_capture",
   "update_followup_status",
   "update_general_action_status",
+  "update_person",
   "update_self_context",
 ] as const;
 
@@ -523,12 +525,10 @@ const REVERSIBLE_PRIVATE_WRITES = [
  * - `edit_draft_body` and `dismiss_draft` are the drafting surface: a draft is
  *   the text of a message to another person, an edit overwrites wording nothing
  *   keeps a copy of, and a dismissal throws the draft away.
- * - `edit_general_action` and `update_person` overwrite wording nothing keeps a
+ * - `edit_general_action` overwrites wording nothing keeps a
  *   copy of, and CONTEXT.md is explicit that an overwrite with no way back is
  *   never a Reversible Private Write. The Action's own status lifecycle is not a
- *   path back to the title it used to have. Both join the tier when an undo for
- *   the edit exists (#557 for the person half), not before: the tier follows the
- *   capability.
+ *   path back to the title it used to have. It joins the tier when an undo exists. Person updates now have that path (#557); undo_person_update itself consumes the inverse and has no redo.
  */
 const ALWAYS_ASK_WRITES = [
   "add_gift_idea",
@@ -541,7 +541,7 @@ const ALWAYS_ASK_WRITES = [
   "propose_asset_memories",
   "remove_gift_idea",
   "save_draft_to_gmail",
-  "update_person",
+  "undo_person_update",
 ] as const;
 
 /**
@@ -566,6 +566,7 @@ const PRIVATE_DEFAULT_CREATES = new Set<string>([
  * than another Eve call; the sentence has to say which.
  */
 const REVERSAL_PATHS: Readonly<Record<string, { tool: string } | { lifecycle: string }>> = {
+  update_person: { tool: "undo_person_update" },
   accept_suggested_followup: { tool: "update_followup_status" },
   accept_suggested_general_action: { tool: "update_general_action_status" },
   approve_suggested_memory: { tool: "archive_memory" },
@@ -588,7 +589,7 @@ const REVERSAL_PATHS: Readonly<Record<string, { tool: string } | { lifecycle: st
   create_general_action: { tool: "update_general_action_status" },
   create_person: {
     lifecycle:
-      "A person the owner did not want is deleted in the app (`deletePerson`), which is why creating one is the reversible half and updating one is not (#557).",
+      "A person the owner did not want is deleted in the app (`deletePerson`), while profile updates have their own stored inverse (#557).",
   },
   dismiss_suggested_followup: { tool: "update_followup_status" },
   dismiss_suggested_general_action: { tool: "update_general_action_status" },

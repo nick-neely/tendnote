@@ -1,4 +1,4 @@
-import { humanizeToolName } from "./tool-name";
+import { humanizeToolName, specialistToolName } from "./tool-name";
 
 /**
  * Human copy for one Eve tool call, in the two tenses a turn needs it: the
@@ -63,6 +63,7 @@ const TOOL_LABELS: Record<string, readonly [active: string, done: string]> = {
   capture_memory: ["Saving to memory…", "Saved to memory"],
   create_message_draft: ["Drafting a message…", "Drafted a message"],
   create_person: ["Adding to your notebook…", "Added to your notebook"],
+  undo_person_update: ["Undoing the profile update…", "Checked profile undo"],
   update_person: ["Updating the profile…", "Updated the profile"],
   create_general_action: ["Adding to your actions…", "Added to your actions"],
   suggest_general_action: ["Drafting a suggested action…", "Drafted a suggested action"],
@@ -140,14 +141,13 @@ function sentenceCase(text: string): string {
 
 /** Present-continuous label for an in-flight tool call (the shimmer line). */
 export function activeToolLabel(toolName: string): string {
-  if (toolName.startsWith("subagent:"))
+  if (specialistToolName(toolName))
     return `${sentenceCase(humanizeToolName(toolName))} is helping…`;
   return TOOL_LABELS[toolName]?.[0] ?? `${humanizeToolName(toolName)}…`;
 }
 
 /** Past-tense label for a settled tool call (the activity disclosure's step). */
 export function completedToolLabel(toolName: string): string {
-  if (toolName.startsWith("subagent:"))
-    return `${sentenceCase(humanizeToolName(toolName))} finished`;
+  if (specialistToolName(toolName)) return `${sentenceCase(humanizeToolName(toolName))} finished`;
   return TOOL_LABELS[toolName]?.[1] ?? sentenceCase(humanizeToolName(toolName));
 }

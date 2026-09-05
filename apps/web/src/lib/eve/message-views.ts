@@ -25,6 +25,7 @@ import {
   toInputRequestView,
   toInputResolutionView,
 } from "./input-request-view";
+import { specialistToolName } from "./tool-name";
 import type { AssistantToolView } from "./tool-result-view";
 
 function isTextPart(part: EveMessagePart): part is Extract<EveMessagePart, { type: "text" }> {
@@ -220,7 +221,7 @@ export function messageActiveToolViews(
     .map((part) => ({
       toolCallId: part.toolCallId,
       label: activeToolLabel(part.toolName),
-      ...(part.toolName.startsWith("subagent:") ? { specialist: part.toolName.slice(9) } : {}),
+      specialist: specialistToolName(part.toolName),
     }));
 }
 
@@ -402,9 +403,7 @@ export function messageTurnUnits(message: EveMessage, turnInFlight: boolean): As
           active: {
             toolCallId: part.toolCallId,
             label: activeToolLabel(part.toolName),
-            ...(part.toolName.startsWith("subagent:")
-              ? { specialist: part.toolName.slice(9) }
-              : {}),
+            specialist: specialistToolName(part.toolName),
           },
         },
       });
@@ -579,9 +578,7 @@ function partitionTurnUnits(units: readonly AssistantTurnUnit[]): {
     if (unit.type === "single" && toolViewTier(unit.entry.view) === "line") {
       activity.push({
         description: resultViewSummary(unit.entry.view),
-        ...(unit.entry.toolName.startsWith("subagent:")
-          ? { specialist: unit.entry.toolName.slice(9) }
-          : {}),
+        specialist: specialistToolName(unit.entry.toolName),
         label: completedToolLabel(unit.entry.toolName),
         status: "complete",
         toolCallId: unit.entry.toolCallId,

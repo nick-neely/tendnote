@@ -20,6 +20,7 @@ const stores = vi.hoisted(() => ({
   getGiftPlan: vi.fn(),
   getMemory: vi.fn(),
   getPerson: vi.fn(),
+  getLatestPersonUpdate: vi.fn(),
   getSavedItem: vi.fn(),
   getSelfContextFact: vi.fn(),
 }));
@@ -37,7 +38,10 @@ vi.mock("./gift-plans", () => ({
   getGiftPlan: stores.getGiftPlan,
 }));
 vi.mock("./memories", () => ({ getMemory: stores.getMemory }));
-vi.mock("./people", () => ({ getPerson: stores.getPerson }));
+vi.mock("./people", () => ({
+  getPerson: stores.getPerson,
+  getLatestPersonUpdate: stores.getLatestPersonUpdate,
+}));
 vi.mock("./saved-items", () => ({ getSavedItem: stores.getSavedItem }));
 
 const {
@@ -95,6 +99,7 @@ describe("the registry's boundaries", () => {
       "remove_gift_idea",
       "restore_self_context",
       "save_draft_to_gmail",
+      "undo_person_update",
       "undo_saved_item_capture",
       "update_followup_status",
       "update_general_action_status",
@@ -726,6 +731,7 @@ describe("every describer accepts the input its tool actually sends", () => {
     remove_gift_idea: { giftIdeaId: ID },
     restore_self_context: { contextFactId: ID, expectedArchivedAt: "2026-07-04T00:00:00.000Z" },
     save_draft_to_gmail: { draftId: ID, recipientEmail: "sam@example.com", subject: "Friday" },
+    undo_person_update: { personId: ID, updateId: ID },
     undo_saved_item_capture: { target: { kind: "archive_memory", memoryId: ID } },
     update_followup_status: { followupId: ID, status: "snooze", dueAt: "2026-07-11" },
     update_general_action_status: {
@@ -760,6 +766,10 @@ describe("every describer accepts the input its tool actually sends", () => {
     stores.getGiftPlan.mockResolvedValue({ subjectName: "Ana" });
     stores.getMemory.mockResolvedValue({ content: "Ana moves in August" });
     stores.getPerson.mockResolvedValue({ displayName: "Sam Okafor" });
+    stores.getLatestPersonUpdate.mockResolvedValue({
+      target: { personId: ID, updateId: ID },
+      changes: [{ field: "birthday", before: null, after: "--03-03" }],
+    });
     stores.getSavedItem.mockResolvedValue({ title: "Fix the porch light" });
     stores.getSelfContextFact.mockResolvedValue({
       category: "work",
@@ -780,4 +790,26 @@ describe("every describer accepts the input its tool actually sends", () => {
     expect(lookup.subject.title.length).toBeGreaterThan(0);
     expect(lookup.subject.lines.length).toBeGreaterThan(0);
   });
+});
+
+it("describes only the stored current inverse for a person undo", async () => {
+  stores.getPerson.mockResolvedValue({ id: PERSON_ID, displayName: "Mara" });
+  stores.getLatestPersonUpdate.mockResolvedValue({
+    target: { personId: PERSON_ID, updateId: DRAFT_ID },
+    changes: [{ field: "birthday", before: null, after: "--03-03" }],
+  });
+  const described = await describeFor("undo_person_update", {
+    personId: PERSON_ID,
+    updateId: DRAFT_ID,
+    before: "forged",
+  });
+  expect(JSON.stringify(described)).toContain("Not set");
+  expect(JSON.stringify(described)).not.toContain("forged");
+  expect(stores.getLatestPersonUpdate).toHaveBeenCalledWith({
+    ownerUserId: OWNER,
+    personId: PERSON_ID,
+  });
+  expect(
+    await describeFor("undo_person_update", { personId: PERSON_ID, updateId: IDEA_ID }),
+  ).toEqual({ kind: "missing" });
 });

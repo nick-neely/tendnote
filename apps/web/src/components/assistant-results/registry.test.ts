@@ -34,6 +34,7 @@ const EXPECTED_KINDS: AssistantToolView["kind"][] = [
   "saved_memory",
   "added_person",
   "updated_person",
+  "person_update_undo",
   "person_context",
   "suggested_memory_review",
   "suggested_memory_review_list",

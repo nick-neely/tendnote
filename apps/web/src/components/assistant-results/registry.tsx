@@ -27,6 +27,7 @@ import {
   addedPersonModule,
   memoryCuratorProposalsModule,
   personContextModule,
+  personUpdateUndoModule,
   relationshipAgendaModule,
   relationshipContextSearchModule,
   savedMemoryModule,
@@ -106,6 +107,7 @@ export const RESULT_MODULES = {
   saved_memory: savedMemoryModule,
   added_person: addedPersonModule,
   updated_person: updatedPersonModule,
+  person_update_undo: personUpdateUndoModule,
   person_context: personContextModule,
   suggested_memory_review: suggestedMemoryReviewModule,
   suggested_memory_review_list: suggestedMemoryReviewListModule,
@@ -269,12 +271,7 @@ export function renderResultModule(view: AssistantToolView, isNew: boolean): Rea
  * cards, which stay individual and actionable. Every kind here has `groupable: true`
  * on its module (asserted by the registry completeness test).
  */
-export const GROUPABLE_KINDS = [
-  "saved_memory",
-  "saved_source_record",
-  "added_person",
-  "updated_person",
-] as const;
+export const GROUPABLE_KINDS = ["saved_memory", "saved_source_record", "added_person"] as const;
 
 export type GroupableToolKind = (typeof GROUPABLE_KINDS)[number];
 
@@ -304,6 +301,7 @@ export function isGroupableToolKind(kind: AssistantToolView["kind"]): kind is Gr
  * completeness test asserts the module flags and this tuple stay in lock-step.
  */
 const INTERACTIVE_KINDS = [
+  "updated_person",
   "saved_source_record",
   "message_draft",
   "suggested_memory_review",

@@ -76,9 +76,12 @@ const inputSchema = z
  * `capture_source_record`. Only the provided fields change.
  */
 export default defineTool({
-  approval: requireOwnerApproval({ describe: describeRegisteredSubject() }),
+  approval: requireOwnerApproval({
+    reversiblePrivateWrite: true,
+    describe: describeRegisteredSubject(),
+  }),
   description:
-    "Update an existing person's profile fields — display name, first/last name, birthday, relationship type, closeness, or one-line blurb — when the user asks to change those details ('change Mara's birthday to March 3', 'rename Sam to Samuel', 'mark Theo as a colleague'). Resolve the person with search_people first; pass only the fields that change. This edits profile attributes, NOT memories — use capture_memory for facts about a person and capture_source_record for logged context. Returns the updated person reference. This call pauses for the user's approval; if they cancel, say it did not happen and do not retry it or route around it.",
+    "Update an existing person's profile fields — display name, first/last name, birthday, relationship type, closeness, or one-line blurb — when the user asks to change those details ('change Mara's birthday to March 3', 'rename Sam to Samuel', 'mark Theo as a colleague'). Resolve the person with search_people first; pass only the fields that change. This edits profile attributes, NOT memories — use capture_memory for facts about a person and capture_source_record for logged context. Returns the updated person reference. Returns the exact undo target for undo_person_update; never invent prior values.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
@@ -97,16 +100,17 @@ export default defineTool({
       };
     }
 
+    if (!person.update) return { updated: false, reason: "unchanged" };
+
     return {
       updated: true,
+      update: person.update,
       person: {
         id: person.id,
         displayName: person.displayName,
         relationshipType: person.relationshipType,
       },
-      updatedFields: Object.keys(patch).filter(
-        (key) => patch[key as keyof typeof patch] !== undefined,
-      ),
+      updatedFields: person.update.changes.map(({ field }) => field),
       component: { type: "person_updated", personId: person.id },
     };
   },
@@ -120,7 +124,9 @@ export default defineTool({
         value: {
           updated: false,
           guidance:
-            "The update didn't apply (the person couldn't be found). Tell the user and offer to confirm who they meant.",
+            "reason" in output && output.reason === "unchanged"
+              ? "No profile values changed. Do not claim an update."
+              : "The update didn't apply (the person couldn't be found). Tell the user and offer to confirm who they meant.",
         },
       };
     }
@@ -131,6 +137,7 @@ export default defineTool({
         personId: output.person.id,
         person: output.person.displayName,
         updatedFields: output.updatedFields,
+        undoTarget: output.update.target,
         rendered: "The updated profile is shown to the user in a card.",
         guidance:
           "Confirm briefly which fields you changed — the card shows the result; don't restate the full profile.",

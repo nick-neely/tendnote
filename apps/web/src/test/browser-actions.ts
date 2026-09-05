@@ -163,3 +163,12 @@ export const unlinkHouseholdEventPlanRecordAction = unusedAction;
 export const updateHouseholdContextFactAction = unusedAction;
 export const updateHouseholdEventPlanAction = unusedAction;
 export const withdrawHouseholdOwnerOfferAction = unusedAction;
+
+export const undoPersonUpdateAction = async () => ({
+  ok: true as const,
+  view: { status: "applied" as const },
+});
+export const getPersonUpdateStatusAction = async () => ({
+  ok: true as const,
+  view: { status: "available" as const },
+});

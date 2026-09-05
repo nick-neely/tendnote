@@ -56,6 +56,7 @@ export const REVERSIBLE_PRIVATE_WRITE_TOOL_NAMES = [
   "undo_saved_item_capture",
   "update_followup_status",
   "update_general_action_status",
+  "update_person",
   "update_self_context",
 ] as const;
 

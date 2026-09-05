@@ -13,6 +13,7 @@ import {
 } from "../../schema";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import type { PeopleStore } from "./types";
+import { createPersonUpdateStore } from "./update-store";
 
 const visibleProfileFollowups = alias(followups, "f");
 
@@ -82,15 +83,7 @@ export function createDrizzlePeopleStore(): PeopleStore {
       return person;
     },
 
-    async updatePerson({ ownerUserId, personId, patch }) {
-      const [person] = await getDb()
-        .update(people)
-        .set({ ...patch, updatedAt: new Date() })
-        .where(and(eq(people.id, personId), eq(people.ownerUserId, ownerUserId)))
-        .returning();
-
-      return person ?? null;
-    },
+    ...createPersonUpdateStore(),
 
     async deletePerson({ ownerUserId, personId }) {
       // Owner-scoped hard delete. Every person-owned table's foreign key is

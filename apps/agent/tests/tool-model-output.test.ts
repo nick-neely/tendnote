@@ -235,6 +235,10 @@ describe("card tools toModelOutput strip rendered content", () => {
         updated: true,
         person: { id: PERSON_ID, displayName: "Sam", relationshipType: null },
         updatedFields: ["birthday"],
+        update: {
+          target: { personId: PERSON_ID, updateId: "22222222-2222-4222-8222-222222222222" },
+          changes: [{ field: "birthday", before: "--03-03", after: null }],
+        },
         component: { type: "person_updated", personId: PERSON_ID },
       },
       omit: [],

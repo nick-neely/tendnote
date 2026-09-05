@@ -31,8 +31,20 @@ export function createAffectedPeopleQueries(store: PeopleStore) {
     ...queries,
     createPerson: (input: Parameters<typeof queries.createPerson>[0]) =>
       withPersonScopes(queries.createPerson(input), input),
-    updatePerson: (input: Parameters<typeof queries.updatePerson>[0]) =>
-      withPersonScopes(queries.updatePerson(input), input),
+    async updatePerson(input: Parameters<typeof queries.updatePerson>[0]) {
+      const result = await queries.updatePerson(input);
+      return { result, affectedScopes: result?.update ? affectedScopesForPerson(input) : [] };
+    },
+    async undoPersonUpdate(input: Parameters<typeof queries.undoPersonUpdate>[0]) {
+      const result = await queries.undoPersonUpdate(input);
+      return {
+        result,
+        affectedScopes:
+          result.status === "applied" || result.status === "already_undone"
+            ? affectedScopesForPerson(input)
+            : [],
+      };
+    },
     deletePerson: (input: Parameters<typeof queries.deletePerson>[0]) =>
       withPersonScopes(queries.deletePerson(input), input),
     deleteCaptureOnlyPerson: (input: Parameters<typeof queries.deleteCaptureOnlyPerson>[0]) =>

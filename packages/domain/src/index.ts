@@ -57,6 +57,7 @@ export * from "./memories";
 export * from "./memory-curator";
 export * from "./people";
 export * from "./person-references";
+export * from "./person-updates";
 export * from "./privacy";
 export * from "./prompt-nudges";
 export * from "./provider-connection-catalog";

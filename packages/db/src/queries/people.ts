@@ -8,6 +8,7 @@ import type {
   GetPersonInput,
   GetPersonProfileInput,
   SearchPeopleQueryInput,
+  UndoPersonUpdateInput,
   UpdatePersonMutationInput,
 } from "./people/types";
 
@@ -64,4 +65,16 @@ export async function listPeopleProductView(input: { ownerUserId: string; limit:
 
 export async function getPersonDetailCoreView(input: GetPersonProfileInput) {
   return defaultPeopleProductQueries.detail(input);
+}
+
+export async function undoPersonUpdate(input: UndoPersonUpdateInput) {
+  return defaultPeopleQueries.undoPersonUpdate(input);
+}
+
+export async function getLatestPersonUpdate(input: GetPersonInput) {
+  return defaultPeopleQueries.getLatestPersonUpdate(input);
+}
+
+export async function getPersonUpdateStatus(input: UndoPersonUpdateInput) {
+  return defaultPeopleQueries.getPersonUpdateStatus(input);
 }
