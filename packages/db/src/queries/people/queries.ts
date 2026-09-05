@@ -7,6 +7,7 @@ import type {
   GetPersonProfileInput,
   PeopleStore,
   SearchPeopleQueryInput,
+  UndoPersonUpdateInput,
   UpdatePersonMutationInput,
   UpdatePersonPatch,
 } from "./types";
@@ -30,6 +31,25 @@ export function createPeopleQueries(store: PeopleStore) {
 
   return {
     assertCaptureOnlyPersonRemovable,
+    getPersonUpdateStatus: store.getPersonUpdateStatus,
+    getLatestPersonUpdate: store.getLatestPersonUpdate,
+    async undoPersonUpdate(input: UndoPersonUpdateInput) {
+      const result = await store.undoPersonUpdate(input);
+      if (result.status === "applied") {
+        try {
+          await store.createAuditLogEntry({
+            ownerUserId: input.ownerUserId,
+            action: "person.update.undo",
+            entityType: "person",
+            entityId: input.personId,
+            metadataJson: { updateId: input.updateId },
+          });
+        } catch {
+          /* The restoration already committed; audit failure must not misreport it. */
+        }
+      }
+      return result;
+    },
     async createPerson(input: CreatePersonMutationInput) {
       const parsed = createPersonSchema.parse(input);
       const person = await store.createPerson({
@@ -73,8 +93,8 @@ export function createPeopleQueries(store: PeopleStore) {
         patch,
       });
 
-      if (!person) {
-        return null;
+      if (!person?.update) {
+        return person;
       }
 
       try {
@@ -83,7 +103,7 @@ export function createPeopleQueries(store: PeopleStore) {
           action: "person.update",
           entityType: "person",
           entityId: person.id,
-          metadataJson: { fields: Object.keys(patch) },
+          metadataJson: { fields: person.update.changes.map(({ field }) => field) },
         });
       } catch {
         // The update is already persisted; an audit-log failure must not lose it.

@@ -1,5 +1,6 @@
+import { personUpdateTargetSchema } from "@tendnote/domain";
 import { z } from "zod";
-import { getPerson } from "../people";
+import { getLatestPersonUpdate, getPerson } from "../people";
 import { type ApprovalSubjectDescribers, defineSubject, detail, subject } from "./define";
 
 /**
@@ -22,6 +23,26 @@ const PATCH_LABELS = [
 ] as const;
 
 export const peopleApprovalSubjects: ApprovalSubjectDescribers = {
+  undo_person_update: defineSubject({
+    schema: personUpdateTargetSchema,
+    async load(input, ownerUserId) {
+      const [person, update] = await Promise.all([
+        getPerson({ ownerUserId, personId: input.personId }),
+        getLatestPersonUpdate({ ownerUserId, personId: input.personId }),
+      ]);
+      return person && update?.target.updateId === input.updateId ? { person, update } : null;
+    },
+    describe: ({ person, update }) =>
+      subject(
+        `Undo ${person.displayName}'s last profile update`,
+        update.changes.map(({ field, before }) =>
+          detail(
+            PATCH_LABELS.find(([key]) => key === field)?.[1] ?? field,
+            before === null ? "Not set" : String(before),
+          ),
+        ),
+      ),
+  }),
   update_person: defineSubject({
     // Loose on purpose: the patch fields are read by name below, and a field the
     // tool grows later shows up as an unlisted change rather than a parse error

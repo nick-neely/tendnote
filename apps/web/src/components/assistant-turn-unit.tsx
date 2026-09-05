@@ -22,6 +22,7 @@ import {
   ChatGeneralActionReviewList,
 } from "@/components/chat-general-action-review-card";
 import { ChatLoggedNoteCard } from "@/components/chat-logged-note-card";
+import { ChatPersonUpdateCard } from "@/components/chat-person-update-card";
 import { ChatReviewCard, ChatReviewList } from "@/components/chat-review-card";
 import type { AssistantToolEntry, AssistantTurnCardUnit } from "@/lib/eve/message-views";
 import type { AssistantToolView } from "@/lib/eve/tool-result-view";
@@ -39,6 +40,8 @@ import type { AssistantToolView } from "@/lib/eve/tool-result-view";
 const singleUnitRenderers: {
   [K in InteractiveResultKind]: (view: Extract<AssistantToolView, { kind: K }>) => React.ReactNode;
 } = {
+  updated_person: (view) =>
+    view.update ? <ChatPersonUpdateCard view={view} update={view.update} /> : null,
   suggested_memory_review: (view) => <ChatReviewCard isNew item={view} />,
   suggested_memory_review_list: (view) => <ChatReviewList isNew view={view} />,
   suggested_followup_review: (view) => <ChatFollowupReviewCard isNew item={view} />,

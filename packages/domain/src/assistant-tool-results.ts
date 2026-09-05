@@ -7,6 +7,7 @@ import { exactRecallRecordKindSchema, exactRecallTrustLevelSchema } from "./exac
 import { globalRecallResponseSchema } from "./global-recall";
 import { householdCoordinationFamilySchema } from "./household-home";
 import { memoryCuratorProposalResultSchema, memoryCuratorProposalSchema } from "./memory-curator";
+import { personUpdateSummarySchema, personUpdateUndoStatusSchema } from "./person-updates";
 import { privacyScopeSchema } from "./privacy";
 import {
   relationshipSemanticRecordKindSchema,
@@ -50,6 +51,7 @@ export const personUpdatedToolResult = z.object({
     relationshipType: z.string().nullish(),
   }),
   updatedFields: z.array(z.string()),
+  update: personUpdateSummarySchema.optional(),
 });
 
 export const personContextToolResult = z.object({
@@ -574,6 +576,7 @@ export const assistantToolResultSchemas = {
   capture_memory: memoryToolResult,
   create_person: personToolResult,
   update_person: personUpdatedToolResult,
+  undo_person_update: z.object({ status: personUpdateUndoStatusSchema }),
   get_person_context: personContextToolResult,
   create_message_draft: messageDraftToolResult,
   get_suggested_memory_review: suggestedMemoryToolResult,

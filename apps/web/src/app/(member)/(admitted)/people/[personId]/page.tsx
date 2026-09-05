@@ -12,6 +12,7 @@ import {
 } from "@tendnote/db/queries/households";
 import { listPersonMemoryContext, listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import {
+  getLatestPersonUpdate,
   getPerson,
   getPersonProfile,
   type PersonDetailCoreView,
@@ -39,6 +40,7 @@ import { PersonHeader } from "@/components/person-header";
 import { LedgerEmpty, PersonDetailsCard } from "@/components/person-ledger";
 import { LoggedContextSection, MemoriesSection } from "@/components/person-ledger-records";
 import { PersonRemove } from "@/components/person-remove";
+import { PersonUpdateUndo } from "@/components/person-update-undo";
 import { RelationshipSnapshotCard } from "@/components/relationship-snapshot-card";
 import { SuggestedFollowupReviewSection } from "@/components/suggested-followup-review";
 import { SuggestedMemoryReviewSection } from "@/components/suggested-memory-review";
@@ -260,6 +262,7 @@ async function PersonDetailEnrichment({
   }
 
   const [
+    latestUpdate,
     memoryContext,
     sourceRecords,
     snapshot,
@@ -270,6 +273,7 @@ async function PersonDetailEnrichment({
     reminderSchedules,
     followups,
   ] = await Promise.all([
+    getLatestPersonUpdate({ ownerUserId, personId }),
     selectedTab === "memory" ? listPersonMemoryContext({ ownerUserId, personId }) : null,
     selectedTab === "memory" ? listSourceRecordsForPersonContext({ ownerUserId, personId }) : [],
     selectedTab === "snapshot" ? loadProfileContext(ownerUserId, personId) : null,
@@ -355,6 +359,12 @@ async function PersonDetailEnrichment({
       aside={
         <>
           <PersonDetailsCard person={person} />
+          {latestUpdate && (
+            <section className="flex min-w-0 flex-col gap-3 border-t pt-4">
+              <h2 className="text-sm font-medium">Last profile update</h2>
+              <PersonUpdateUndo key={latestUpdate.target.updateId} update={latestUpdate} />
+            </section>
+          )}
           <PersonRemove personId={person.id} personName={person.displayName} />
         </>
       }

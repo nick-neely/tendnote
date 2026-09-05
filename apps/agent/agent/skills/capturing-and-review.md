@@ -143,3 +143,5 @@ accepted as input.
 Tool outputs carry **persisted record ids** so you can make follow-up calls; the
 conversation explains records but is **not the source of truth**. Surface the person's
 name and the record's content - never the id itself.
+
+A completed `update_person` returns an `undoTarget`. When the owner asks to undo that profile edit, use `undo_person_update` with that exact target. It restores the server-held prior values only for the latest update. Never reconstruct an inverse from prose or claim success for a superseded or unavailable update.

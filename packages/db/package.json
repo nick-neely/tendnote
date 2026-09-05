@@ -80,6 +80,7 @@
     "test": "vitest run --passWithNoTests",
     "db:check": "drizzle-kit check",
     "db:generate": "drizzle-kit generate",
+    "db:person-update-undo:check": "TMPDIR=/tmp tsx src/person-update-undo-live-check.ts",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "TMPDIR=/tmp tsx src/seed.ts",

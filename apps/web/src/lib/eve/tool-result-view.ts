@@ -1,6 +1,8 @@
 import type {
   ExactRecallRecordKind,
   ExactRecallTrustLevel,
+  PersonUpdateSummary,
+  PersonUpdateUndoStatus,
   RelationshipSemanticRecordKind,
   RelationshipSemanticTrustLevel,
 } from "@tendnote/domain";
@@ -29,6 +31,7 @@ export type AssistantToolView =
       personName: string | null;
       content: string;
     }
+  | { kind: "person_update_undo"; status: PersonUpdateUndoStatus }
   | { kind: "added_person"; personId: string; displayName: string; relationshipType: string | null }
   | {
       kind: "updated_person";
@@ -36,6 +39,7 @@ export type AssistantToolView =
       displayName: string;
       relationshipType: string | null;
       updatedFields: string[];
+      update?: PersonUpdateSummary;
     }
   | {
       kind: "person_context";

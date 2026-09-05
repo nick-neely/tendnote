@@ -139,3 +139,5 @@ References: ADR-0237 (Eve tool arguments are requests, not proofs), ADR-0219
 (Household Authorization Proofs), ADR-0128 (Phase 3 uses explicit Eve modes),
 ADR-0014 (lifecycle fields plus audit for approval), ADR-0092 (Eve Gmail writes use
 the shared approval gate).
+
+Update: ADR 0241 implements #557. `update_person` now qualifies through its stored, owner-scoped latest-update inverse; `undo_person_update` itself remains always-ask because there is no redo.

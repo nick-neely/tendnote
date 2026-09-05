@@ -63,6 +63,7 @@ const TOOL_LABELS: Record<string, readonly [active: string, done: string]> = {
   capture_memory: ["Saving to memory…", "Saved to memory"],
   create_message_draft: ["Drafting a message…", "Drafted a message"],
   create_person: ["Adding to your notebook…", "Added to your notebook"],
+  undo_person_update: ["Undoing the profile update…", "Checked profile undo"],
   update_person: ["Updating the profile…", "Updated the profile"],
   create_general_action: ["Adding to your actions…", "Added to your actions"],
   suggest_general_action: ["Drafting a suggested action…", "Drafted a suggested action"],

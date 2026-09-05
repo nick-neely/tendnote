@@ -8,6 +8,7 @@ import {
   type Memory,
   type MessageDraft,
   type Person,
+  type PersonUpdateSummary,
   personMatchesPeopleSearch,
   type SourceRecord,
   type SourceRecordPerson,
@@ -15,6 +16,12 @@ import {
 import type { HouseholdRecordShare } from "../households/types";
 import { canViewerSeeSeededHouseholdRecord } from "../households/visibility-memory";
 import type { PeopleStore, PersonAuditLogEntry } from "./types";
+import {
+  nextPersonRevision,
+  personUpdateChanges,
+  personUpdateStatus,
+  previousPersonValues,
+} from "./update-contract";
 
 export type InMemoryPeopleStoreSeed = {
   people?: Person[];
@@ -42,6 +49,7 @@ export type InMemoryPeopleStore = PeopleStore & {
 
 export function createInMemoryPeopleStore(seed: InMemoryPeopleStoreSeed = {}): InMemoryPeopleStore {
   const people = new Map((seed.people ?? []).map((person) => [person.id, person]));
+  const updates = new Map<string, PersonUpdateSummary & { revision: number; undone: boolean }>();
   const memories = new Map((seed.memories ?? []).map((memory) => [memory.id, memory]));
   const followups = new Map((seed.followups ?? []).map((followup) => [followup.id, followup]));
   const messageDrafts = new Map((seed.messageDrafts ?? []).map((draft) => [draft.id, draft]));
@@ -94,10 +102,64 @@ export function createInMemoryPeopleStore(seed: InMemoryPeopleStoreSeed = {}): I
         return null;
       }
 
-      const updated = { ...existing, ...patch, updatedAt: new Date() };
+      const changes = personUpdateChanges(existing, patch);
+      if (!changes.length) return { ...existing, update: null };
+      const updated = { ...existing, ...patch, updatedAt: nextPersonRevision(existing.updatedAt) };
       people.set(personId, updated);
+      const update = { target: { personId, updateId: randomUUID() }, changes };
+      updates.set(personId, { ...update, revision: updated.updatedAt.getTime(), undone: false });
+      return { ...updated, update };
+    },
 
-      return updated;
+    async getLatestPersonUpdate({ ownerUserId, personId }) {
+      const person = people.get(personId);
+      const update = updates.get(personId);
+      if (
+        !person ||
+        person.ownerUserId !== ownerUserId ||
+        !update ||
+        update.undone ||
+        update.revision !== person.updatedAt.getTime()
+      )
+        return null;
+      return { target: update.target, changes: update.changes };
+    },
+
+    async getPersonUpdateStatus({ ownerUserId, personId, updateId }) {
+      const person = people.get(personId);
+      const update = updates.get(personId);
+      return {
+        status: personUpdateStatus({
+          updateId,
+          currentRevision:
+            person?.ownerUserId === ownerUserId ? person.updatedAt.getTime() : undefined,
+          receipt: update
+            ? { updateId: update.target.updateId, revision: update.revision, undone: update.undone }
+            : undefined,
+        }),
+      };
+    },
+    async undoPersonUpdate({ ownerUserId, personId, updateId }) {
+      const person = people.get(personId);
+      if (!person || person.ownerUserId !== ownerUserId) return { status: "unavailable" };
+      const update = updates.get(personId);
+      const status = personUpdateStatus({
+        updateId,
+        currentRevision: person.updatedAt.getTime(),
+        receipt: update
+          ? { updateId: update.target.updateId, revision: update.revision, undone: update.undone }
+          : undefined,
+      });
+      if (status !== "available" || !update)
+        return { status: status === "available" ? "superseded" : status };
+      people.set(personId, {
+        ...person,
+        ...previousPersonValues(update.changes),
+        updatedAt: nextPersonRevision(person.updatedAt),
+      });
+      update.undone = true;
+      update.changes = [];
+      return { status: "applied" };
     },
 
     async deletePerson({ ownerUserId, personId }) {
@@ -111,6 +173,7 @@ export function createInMemoryPeopleStore(seed: InMemoryPeopleStoreSeed = {}): I
       // mirror that here so the double stays faithful — drop the person and any
       // memories, follow-ups, drafts, source records, and links that belonged to them.
       people.delete(personId);
+      updates.delete(personId);
       for (const [id, memory] of memories) {
         if (memory.personId === personId) {
           memories.delete(id);

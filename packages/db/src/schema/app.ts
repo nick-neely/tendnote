@@ -38,6 +38,7 @@ export * from "./app/memories";
 export * from "./app/owner-data-exports";
 export * from "./app/people";
 export * from "./app/person-references";
+export * from "./app/person-updates";
 export * from "./app/provider-connections";
 export * from "./app/relations";
 export * from "./app/reminders";

@@ -5,8 +5,7 @@ import {
   type GroupableToolView,
 } from "@/components/assistant-results/registry";
 import { DisclosureShell } from "@/components/assistant-results/shells";
-import { CheckIcon, NotebookPenIcon, UserPenIcon, UserPlusIcon } from "@/components/icons";
-import { formatFieldList, PERSON_FIELD_LABEL } from "@/lib/eve/person-fields";
+import { CheckIcon, NotebookPenIcon, UserPlusIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 /**
@@ -33,11 +32,6 @@ const GROUP_META: Record<
     tone: "confirmed",
     icon: <UserPlusIcon className="size-3" />,
     label: (count) => `Added ${count} people`,
-  },
-  updated_person: {
-    tone: "confirmed",
-    icon: <UserPenIcon className="size-3" />,
-    label: (count) => `Updated ${count} profiles`,
   },
 };
 
@@ -120,14 +114,7 @@ function GroupRow({ view, showPerson }: { view: GroupableToolView; showPerson: b
     );
   }
 
-  // added_person / updated_person — the person is the record, so the name leads
-  // and the change rides beneath it as a quiet caption.
-  const detail =
-    view.kind === "added_person"
-      ? view.relationshipType
-      : view.updatedFields.length > 0
-        ? `Updated ${formatFieldList(view.updatedFields.map((field) => PERSON_FIELD_LABEL[field] ?? field))}`
-        : null;
+  const detail = view.relationshipType;
 
   return (
     <div className="flex flex-col gap-0.5 py-2 first:pt-0 last:pb-0">
@@ -165,7 +152,5 @@ function groupFooter(kind: GroupableToolKind, views: readonly GroupableToolView[
       return "Logged context, saved for review. Not confirmed facts.";
     case "added_person":
       return "Added to your notebook";
-    case "updated_person":
-      return "Updated in your notebook";
   }
 }

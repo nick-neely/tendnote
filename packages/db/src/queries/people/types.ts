@@ -3,6 +3,10 @@ import type {
   Followup,
   Memory,
   Person,
+  PersonUpdateStatus,
+  PersonUpdateSummary,
+  PersonUpdateTarget,
+  PersonUpdateUndoStatus,
   RelationshipType,
   SearchPeopleInput,
   SourceRecord,
@@ -102,13 +106,20 @@ export type PersonAuditLogEntry = {
   metadataJson: Record<string, unknown>;
 };
 
+export type PersonUpdateResult = Person & { update?: PersonUpdateSummary | null };
+export type UndoPersonUpdateInput = PersonUpdateTarget & { ownerUserId: string };
+export type UndoPersonUpdateResult = { status: PersonUpdateUndoStatus };
+
 export type PeopleStore = {
+  getPersonUpdateStatus: (input: UndoPersonUpdateInput) => Promise<{ status: PersonUpdateStatus }>;
+  getLatestPersonUpdate: (input: GetPersonInput) => Promise<PersonUpdateSummary | null>;
+  undoPersonUpdate: (input: UndoPersonUpdateInput) => Promise<UndoPersonUpdateResult>;
   createPerson: (person: PersistPersonInput) => Promise<Person>;
   updatePerson: (input: {
     ownerUserId: string;
     personId: string;
     patch: UpdatePersonPatch;
-  }) => Promise<Person | null>;
+  }) => Promise<PersonUpdateResult | null>;
   deletePerson: (input: { ownerUserId: string; personId: string }) => Promise<Person | null>;
   createAuditLogEntry: (auditLogEntry: PersonAuditLogEntry) => Promise<void>;
   searchPeople: (input: SearchPeopleStoreInput) => Promise<Person[]>;

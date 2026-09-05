@@ -71,6 +71,8 @@ the bounded publication evidence path.
 - [0235 — Self-hosted admission uses an explicit email policy](0235-self-hosted-admission-uses-an-explicit-email-policy.md)
 - [0236 - Pull request verification is one full-fidelity path](0236-pull-request-verification-is-one-full-fidelity-path.md)
 
+- [0241 — Person profile updates have one owner-scoped inverse](0241-person-profile-updates-have-one-owner-scoped-inverse.md)
+
 The catalog intentionally omits the Phase 9a planning workspace. That
 workspace remains useful to maintainers, but it is not a newcomer evidence
 route.

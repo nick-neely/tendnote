@@ -28,6 +28,7 @@ import type {
   SemanticContextSearchResultView,
   SuggestedReviewItemView,
 } from "@/lib/eve/tool-result-view";
+import { PERSON_UNDO_MESSAGES } from "@/lib/person-update-format";
 import { defineModule } from "./module";
 import { flagIsFalse, formatDueLabel } from "./shared";
 import { DisclosureShell, ToolActivityLine } from "./shells";
@@ -410,6 +411,7 @@ export const updatedPersonModule = defineModule<"updated_person">({
         displayName: parsed.data.person.displayName,
         relationshipType: parsed.data.person.relationshipType ?? null,
         updatedFields: parsed.data.updatedFields,
+        ...(parsed.data.update ? { update: parsed.data.update } : {}),
       };
     },
   },
@@ -418,8 +420,11 @@ export const updatedPersonModule = defineModule<"updated_person">({
     note: "No changes were needed",
   },
   tier: () => "card",
-  key: (view) => `person-updated:${view.personId}:${view.updatedFields.join(",")}`,
-  groupable: true,
+  key: (view) =>
+    view.update
+      ? `person-update:${view.update.target.updateId}`
+      : `person-updated:${view.personId}:${view.updatedFields.join(",")}`,
+  interactive: true,
   render: (view, isNew) => {
     const fields = view.updatedFields.map((field) => PERSON_FIELD_LABEL[field] ?? field);
     return (
@@ -696,4 +701,21 @@ export const memoryCuratorProposalsModule = defineModule<"memory_curator_proposa
       </ResultCard>
     );
   },
+});
+
+export const personUpdateUndoModule = defineModule<"person_update_undo">({
+  kind: "person_update_undo",
+  parsers: {
+    undo_person_update: (output) => {
+      const parsed = assistantToolResultSchemas.undo_person_update.safeParse(output);
+      return parsed.success ? { kind: "person_update_undo", status: parsed.data.status } : null;
+    },
+  },
+  tier: () => "card",
+  key: (view) => `person-undo:${view.status}`,
+  render: (view, isNew) => (
+    <ResultCard tone="neutral" kind={view.kind} isNew={isNew}>
+      <Body>{PERSON_UNDO_MESSAGES[view.status]}</Body>
+    </ResultCard>
+  ),
 });
