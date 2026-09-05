@@ -33,6 +33,12 @@ export default defineConfig({
       // `react/jsx-runtime` is CJS, so served unbundled that named import throws
       // rather than resolving. With `noDiscovery` on, nothing adds it for us.
       "react/jsx-runtime",
+      // Activity reasoning renders Streamdown, whose CJS dependencies need bundling.
+      "streamdown",
+      "@streamdown/mermaid",
+      "@streamdown/math",
+      "@streamdown/code",
+      "@streamdown/cjk",
       "tailwind-merge",
       "zod",
     ],

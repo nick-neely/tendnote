@@ -34,3 +34,18 @@ invalidation: `already_undone` now returns affected scopes so a lost first respo
 can repair caches on retry. The new regression test passed and the reviewer
 confirmed resolution. Impeccable's finish review returned `ship`, with no material
 visual fixes; desktop and mobile captures covered both recovery surfaces.
+
+## Specialist activity follow-up
+
+The user added the specialist label/icon regression from PR #559 to this branch.
+Eve 0.47.7 emits `eve:subagent:<role>`; the earlier UI and comparison fixture
+recognized only `subagent:<role>`. A shared name parser now recognizes both forms
+through active and completed activity, preserving the approved labels and icons.
+
+The runtime-shaped message regression failed before the fix and passed afterward.
+Coverage includes all four roles, an unknown future role, legacy names, and ordinary
+tools. The actual activity component passed working/completed browser assertions
+for distinct icons and readable labels; desktop/mobile fixtures were inspected.
+`pnpm verify`, `pnpm test:browser` (52 tests), `pnpm coverage:ci`, and
+`FALLOW_AUDIT_BASE=origin/main pnpm fallow:ci` passed. Independent review found no
+issues. No database or Instant navigation behavior changed in this follow-up.

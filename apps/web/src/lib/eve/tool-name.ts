@@ -13,7 +13,12 @@
  */
 export function humanizeToolName(toolName: string): string {
   return toolName
-    .replace(/^(?:eve:|subagent:)/, "")
+    .replace(/^(?:eve:)?(?:subagent:)?/, "")
     .replace(/[_-]/g, " ")
     .trim();
+}
+
+/** Eve namespaces subagent calls; accept older unprefixed transcript entries too. */
+export function specialistToolName(toolName: string): string | undefined {
+  return /^(?:eve:)?subagent:(.+)$/.exec(toolName)?.[1];
 }

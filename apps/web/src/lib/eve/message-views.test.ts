@@ -17,37 +17,40 @@ import {
 } from "./message-views";
 import type { AssistantToolView } from "./tool-result-view";
 
-it("keeps specialist identity through active and completed activity", () => {
-  const call = {
-    type: "dynamic-tool" as const,
-    toolCallId: "draft-helper",
-    toolName: "subagent:message_drafter",
-    input: {},
-  };
-  const active: EveMessage = {
-    id: "specialist",
-    role: "assistant",
-    parts: [{ ...call, state: "input-available" }],
-  };
-  expect(messageTurnAnatomy(active, true).activity).toEqual([
-    expect.objectContaining({
-      specialist: "message_drafter",
-      label: "Message drafter is helping…",
-      status: "active",
-    }),
-  ]);
-  const complete: EveMessage = {
-    ...active,
-    parts: [{ ...call, state: "output-available", output: {} }],
-  };
-  expect(messageTurnAnatomy(complete, false).activity).toEqual([
-    expect.objectContaining({
-      specialist: "message_drafter",
-      label: "Message drafter finished",
-      status: "complete",
-    }),
-  ]);
-});
+it.each(["subagent:", "eve:subagent:"])(
+  "keeps %s specialist identity through active and completed activity",
+  (prefix) => {
+    const call = {
+      type: "dynamic-tool" as const,
+      toolCallId: "draft-helper",
+      toolName: `${prefix}message_drafter`,
+      input: {},
+    };
+    const active: EveMessage = {
+      id: "specialist",
+      role: "assistant",
+      parts: [{ ...call, state: "input-available" }],
+    };
+    expect(messageTurnAnatomy(active, true).activity).toEqual([
+      expect.objectContaining({
+        specialist: "message_drafter",
+        label: "Message drafter is helping…",
+        status: "active",
+      }),
+    ]);
+    const complete: EveMessage = {
+      ...active,
+      parts: [{ ...call, state: "output-available", output: {} }],
+    };
+    expect(messageTurnAnatomy(complete, false).activity).toEqual([
+      expect.objectContaining({
+        specialist: "message_drafter",
+        label: "Message drafter finished",
+        status: "complete",
+      }),
+    ]);
+  },
+);
 
 describe("messageText (streamed assistant text)", () => {
   it("concatenates text parts in order and ignores non-text parts", () => {
