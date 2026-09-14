@@ -36,3 +36,14 @@ gate. The observed newcomer walkthrough remains a launch-readiness check.
 
 Decision detail belongs on the map's tickets. This directory is an artifact
 entry point, not a second decision index.
+
+## Artifacts
+
+- [Stripe subscription lifecycle constraints](../research/phase-9b-stripe-subscription-lifecycle.md):
+  hosted Checkout and portal capabilities, payment-first access evidence,
+  webhook idempotency and recovery, and the cancellation and refund choices
+  still open.
+- [First paid customer and first-value promise](first-paid-customer-and-first-value.md):
+  the Launch Customer, the relationship-loop promise inside the Personal OS
+  category, the First Value milestone, the unaided Newcomer Walkthrough
+  standard, and content-free Activation Milestones.

@@ -395,3 +395,23 @@ _Avoid_: Open signup, managed beta gate, missing-configuration fallback, multi-t
 **Self-Hosted Bootstrap Owner**:
 The one Tendnote account whose authenticated email is configured by a deployment operator to receive the initial admission grant in Self-Hosted Admission Mode. It is neither the first visitor nor an application-wide administrator, and it does not make the deployment a hosted multi-tenant service.
 _Avoid_: First-signup bootstrap, root user, Vercel account, service administrator
+
+**Personal OS**:
+Tendnote's private, owner-scoped, multi-domain operating layer for one person's life, with relationship memory and follow-up as its founding domain and General Actions, Routines, and Assets as further domains. It is not a productivity suite, task manager, life dashboard, or CRM.
+_Avoid_: Productivity app, second brain, life dashboard, CRM
+
+**Launch Customer**:
+The individual adult the first paid hosted release is written for: someone with a full personal and professional life who wants to keep what people tell them and reach out at the right time, and who need not care how Tendnote was built. It is a persona, not a specific person, a Household, a technical reader, or anyone the author coaches.
+_Avoid_: First paid customer, beta user, early adopter, lead
+
+**First Value**:
+The milestone at which a newcomer, in their first sitting, has a real person saved with a Memory they confirmed and a Follow-Up they scheduled, has seen where it will resurface, and has had Eve give something back about that person grounded in what they said. It is not a completed onboarding checklist, a provider connection, a delivered reminder, or a General Action capture.
+_Avoid_: Activation, aha moment, onboarding completion
+
+**Newcomer Walkthrough**:
+An observed, unaided run by someone who is not the author from the public landing page through payment, admission, and First Value, where the marketing site, in-app copy, the first-run path, and Eve are the only help. It is a launch-readiness check, not demand evidence, a usability study, or a coached demo.
+_Avoid_: User test, demo, beta invite, demand validation
+
+**Activation Milestone**:
+A content-free, per-account, operator-facing timestamp recording that a newcomer first reached one fixed step toward or at First Value. It is not record content, a user-facing productivity statistic, a third-party analytics event, or a streak.
+_Avoid_: Analytics event, activation metric, funnel step, streak
