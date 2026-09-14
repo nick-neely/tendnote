@@ -73,7 +73,7 @@ Suggested-memory extraction, action extraction, and semantic embeddings run as P
 
 > **Local gotcha:** the offline adapter's model version is part of every embedding idempotency key and read filter. When that fixture version changes, old local vectors are intentionally ignored — reset the disposable local Postgres volume and rerun `pnpm db:migrate && pnpm db:seed` to rebuild them.
 
-Both apps publish outbox deliveries through one shared owner-scoped `publishBackgroundJobDelivery` in `packages/db` (ADR 0194). The queue transport is injected, so the data layer stays provider-agnostic and never imports the queue provider; the rate-limit-aware consumers live in `apps/web`. See [`background-job-delivery.md`](background-job-delivery.md) for the production foundation, recovery path, and optional live smoke test.
+Both apps publish outbox deliveries through one shared owner-scoped `publishBackgroundJobDelivery` in `packages/db` (ADR 0244). The queue transport is injected, so the data layer stays provider-agnostic and never imports the queue provider; the rate-limit-aware consumers live in `apps/web`. See [`background-job-delivery.md`](background-job-delivery.md) for the production foundation, recovery path, and optional live smoke test.
 
 The same ten-minute recovery cron (`apps/web/src/app/api/cron/background-jobs/route.ts`) also runs two irreversible sweeps as a second job class alongside the extraction/embedding/reminder recovery work: the household purge sweep, which closes a dissolved household's thirty-day recovery window by erasing what the workspace owns (ADR 0221), and the audit-log retention sweep, which hard-deletes expired audit entries (ADR 0223). Both are bounded per pass - `HOUSEHOLD_PURGE_LIMIT` (3 households) and `AUDIT_RETENTION_LIMIT` (100 rows) - and the retention sweep runs as its own final stage so a failure earlier in the pass cannot block it.
 
@@ -124,7 +124,7 @@ reads, configure the same `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the
 Eve deployment. Eve registers Google only for Better Auth's server-side token
 resolution and refresh; the web deployment remains the sole owner of OAuth
 routes, callbacks, account linking, scopes, and Provider Connection state. Eve
-does not expose an OAuth route or keep a second token store (ADR 0224).
+does not expose an OAuth route or keep a second token store (ADR 0243).
 
 ## Access and private beta
 
