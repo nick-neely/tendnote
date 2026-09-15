@@ -204,6 +204,18 @@ _Avoid_: Version number, etag, content hash of the raw provider record
 The account-level gate that decides whether a signed-up user may enter Tendnote during the early hosted product phase. It controls product access only; it is not the same as relationship data ownership, integration authorization, or payment status.
 _Avoid_: Public signup, environment allowlist, owner scope
 
+**Paid Access**:
+The durable record that a hosted Tendnote account holds verified payment standing, admitting it to the product alongside a signed-in session. It is a sibling of Private Beta Access rather than a replacement, it is Tendnote's own record rather than a payment provider's subscription state, and it does not exist on a self-hosted deployment.
+_Avoid_: Subscription status, billing flag, seat, licence, entitlement sync
+
+**Household Guest**:
+A hosted account that accepted a Household Invitation without paying, and may only read that household's shared records for as long as one of its Household Owners holds Paid Access. A guest never sees another member's private records, never captures or edits, and never reaches the assistant. A guest uses a distinct read-only experience rather than the full product with controls hidden.
+_Avoid_: Free tier, trial account, viewer seat, limited member, read-only subscriber, hidden-controls member
+
+**Lapsed Account**:
+A hosted account that once held Paid Access and no longer does. It stays signed in and unadmitted with a limited area for resubscribing, exporting, and deleting, and its data is kept for a stated retention period before deletion.
+_Avoid_: Cancelled subscription, suspended user, expired trial, deleted account
+
 **Authenticated App Shell**:
 The recognizable Tendnote navigation and layout frame available only after Better Auth and Private Beta Access admit an owner. It contains no relationship records, Today or Eve content, or other owner-specific data.
 _Avoid_: Public app shell, dashboard data, owner cache
@@ -395,3 +407,43 @@ _Avoid_: Open signup, managed beta gate, missing-configuration fallback, multi-t
 **Self-Hosted Bootstrap Owner**:
 The one Tendnote account whose authenticated email is configured by a deployment operator to receive the initial admission grant in Self-Hosted Admission Mode. It is neither the first visitor nor an application-wide administrator, and it does not make the deployment a hosted multi-tenant service.
 _Avoid_: First-signup bootstrap, root user, Vercel account, service administrator
+
+**Personal OS**:
+Tendnote's private, owner-scoped, multi-domain operating layer for one person's life, with relationship memory and follow-up as its founding domain and General Actions, Routines, and Assets as further domains. It is not a productivity suite, task manager, life dashboard, or CRM.
+_Avoid_: Productivity app, second brain, life dashboard, CRM
+
+**Launch Customer**:
+The individual adult the first paid hosted release is written for: someone with a full personal and professional life who wants to keep what people tell them and reach out at the right time, and who need not care how Tendnote was built. It is a persona, not a specific person, a Household, a technical reader, or anyone the author coaches.
+_Avoid_: First paid customer, beta user, early adopter, lead
+
+**First Value**:
+The milestone at which a newcomer, in their first sitting, has a real person saved with a Memory they confirmed and a Follow-Up they scheduled, has seen where it will resurface, and has had Eve give something back about that person grounded in what they said. It is not a completed onboarding checklist, a provider connection, a delivered reminder, or a General Action capture.
+_Avoid_: Activation, aha moment, onboarding completion
+
+**Newcomer Walkthrough**:
+An observed, unaided run by someone who is not the author from the public landing page through payment, admission, and First Value, where the marketing site, in-app copy, the first-run path, and Eve are the only help. It is a launch-readiness check, not demand evidence, a usability study, or a coached demo.
+_Avoid_: User test, demo, beta invite, demand validation
+
+**Activation Milestone**:
+A content-free, per-account, operator-facing timestamp recording that a newcomer first reached one fixed step toward or at First Value. It is not record content, a user-facing productivity statistic, a third-party analytics event, or a streak.
+_Avoid_: Analytics event, activation metric, funnel step, streak
+
+**Representative Month**:
+A synthetic month of Launch Customer activity, built from the First Value loop plus the Return, replayed through Eve's real session protocol to measure what one account costs to serve. It comes in light, typical, and heavy variants and is not a real account's history, a load test, or an eval case.
+_Avoid_: Persona workload, load test, usage scenario
+
+**Usage Ledger**:
+The content-free, per-account daily rollup of model id, cost category, tokens in and out, call count, and stored bytes that checks a real hosted account against the Representative Month. It is not a conversation log, a billing meter, an analytics event, or a record of what Eve was asked.
+_Avoid_: Token log, usage analytics, metering table
+
+**Fair-Use Budget**:
+The soft monthly per-account allowance per cost category, set where the heavy Representative Month is still profitable at the price. Crossing it changes pace and model with a visible notice and never changes access or tool authority.
+_Avoid_: Quota, hard cap, plan limit, overage
+
+**Spend Breaker**:
+The deployment-wide daily spend ceiling that sheds inference in a fixed order, background extraction first and interactive Eve last, and never sheds reminder delivery. It is a pace control beside the Eve mode gate, not part of it.
+_Avoid_: Kill switch, rate limit, outage mode
+
+**Fallback Model**:
+The cheaper, policy-qualified model an account's interactive turns run on while it is over its Fair-Use Budget, always with a visible notice. It is not the production model, a silent downgrade, or a trial tier.
+_Avoid_: Degraded mode, lite model, backup model
