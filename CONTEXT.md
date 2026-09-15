@@ -204,6 +204,18 @@ _Avoid_: Version number, etag, content hash of the raw provider record
 The account-level gate that decides whether a signed-up user may enter Tendnote during the early hosted product phase. It controls product access only; it is not the same as relationship data ownership, integration authorization, or payment status.
 _Avoid_: Public signup, environment allowlist, owner scope
 
+**Paid Access**:
+The durable record that a hosted Tendnote account holds verified payment standing, admitting it to the product alongside a signed-in session. It is a sibling of Private Beta Access rather than a replacement, it is Tendnote's own record rather than a payment provider's subscription state, and it does not exist on a self-hosted deployment.
+_Avoid_: Subscription status, billing flag, seat, licence, entitlement sync
+
+**Household Guest**:
+A hosted account that accepted a Household Invitation without paying, and may only read that household's shared records for as long as one of its Household Owners holds Paid Access. A guest never sees another member's private records, never captures or edits, and never reaches the assistant. A guest uses a distinct read-only experience rather than the full product with controls hidden.
+_Avoid_: Free tier, trial account, viewer seat, limited member, read-only subscriber, hidden-controls member
+
+**Lapsed Account**:
+A hosted account that once held Paid Access and no longer does. It stays signed in and unadmitted with a limited area for resubscribing, exporting, and deleting, and its data is kept for a stated retention period before deletion.
+_Avoid_: Cancelled subscription, suspended user, expired trial, deleted account
+
 **Authenticated App Shell**:
 The recognizable Tendnote navigation and layout frame available only after Better Auth and Private Beta Access admit an owner. It contains no relationship records, Today or Eve content, or other owner-specific data.
 _Avoid_: Public app shell, dashboard data, owner cache

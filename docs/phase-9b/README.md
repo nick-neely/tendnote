@@ -47,3 +47,8 @@ entry point, not a second decision index.
   the Launch Customer, the relationship-loop promise inside the Personal OS
   category, the First Value milestone, the unaided Newcomer Walkthrough
   standard, and content-free Activation Milestones.
+- [Subscription ownership and paid-access lifecycle](subscription-ownership-and-paid-access-lifecycle.md):
+  Paid Access as a hosted admission source, one account per subscription, the
+  first paid invoice as admission evidence, dunning, cancellation, refund and
+  dispute policy, the Lapsed Account, the Household Guest exception, and the
+  hosted account state machine.

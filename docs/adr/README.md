@@ -73,6 +73,7 @@ the bounded publication evidence path.
 
 - [0241 — Person profile updates have one owner-scoped inverse](0241-person-profile-updates-have-one-owner-scoped-inverse.md)
 - [0242 - Activation Milestones are content-free and product-owned](0242-activation-milestones-are-content-free-and-product-owned.md)
+- [0245 - Paid Access is a hosted admission source owned by the account](0245-paid-access-is-a-hosted-admission-source-owned-by-the-account.md)
 
 The catalog intentionally omits the Phase 9a planning workspace. That
 workspace remains useful to maintainers, but it is not a newcomer evidence
