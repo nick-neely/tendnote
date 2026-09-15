@@ -427,3 +427,23 @@ _Avoid_: User test, demo, beta invite, demand validation
 **Activation Milestone**:
 A content-free, per-account, operator-facing timestamp recording that a newcomer first reached one fixed step toward or at First Value. It is not record content, a user-facing productivity statistic, a third-party analytics event, or a streak.
 _Avoid_: Analytics event, activation metric, funnel step, streak
+
+**Representative Month**:
+A synthetic month of Launch Customer activity, built from the First Value loop plus the Return, replayed through Eve's real session protocol to measure what one account costs to serve. It comes in light, typical, and heavy variants and is not a real account's history, a load test, or an eval case.
+_Avoid_: Persona workload, load test, usage scenario
+
+**Usage Ledger**:
+The content-free, per-account daily rollup of model id, cost category, tokens in and out, call count, and stored bytes that checks a real hosted account against the Representative Month. It is not a conversation log, a billing meter, an analytics event, or a record of what Eve was asked.
+_Avoid_: Token log, usage analytics, metering table
+
+**Fair-Use Budget**:
+The soft monthly per-account allowance per cost category, set where the heavy Representative Month is still profitable at the price. Crossing it changes pace and model with a visible notice and never changes access or tool authority.
+_Avoid_: Quota, hard cap, plan limit, overage
+
+**Spend Breaker**:
+The deployment-wide daily spend ceiling that sheds inference in a fixed order, background extraction first and interactive Eve last, and never sheds reminder delivery. It is a pace control beside the Eve mode gate, not part of it.
+_Avoid_: Kill switch, rate limit, outage mode
+
+**Fallback Model**:
+The cheaper, policy-qualified model an account's interactive turns run on while it is over its Fair-Use Budget, always with a visible notice. It is not the production model, a silent downgrade, or a trial tier.
+_Avoid_: Degraded mode, lite model, backup model

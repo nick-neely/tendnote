@@ -52,3 +52,8 @@ entry point, not a second decision index.
   first paid invoice as admission evidence, dunning, cancellation, refund and
   dispute policy, the Lapsed Account, the Household Guest exception, and the
   hosted account state machine.
+- [Cost and reliability evidence for a paid offer](cost-and-reliability-evidence.md):
+  the Representative Month, the content-free Usage Ledger, the profitability
+  rule and Fair-Use Budget, the Fallback Model, the Spend Breaker's shedding
+  order, the Reliability Indicators and support promise, the regression bar,
+  and the first cost-bounded evaluation plan.
