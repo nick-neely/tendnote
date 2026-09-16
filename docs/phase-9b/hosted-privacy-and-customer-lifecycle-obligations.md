@@ -159,6 +159,12 @@ Whether any US state law obligates more than this is
 [research ticket #580](https://github.com/nick-neely/tendnote/issues/580). The
 posture ships as written unless the research says otherwise, and the register
 tracks that review rather than leaving it implicit.
+The [research](../research/phase-9b-us-privacy-and-breach-law-applicability.md)
+found that the California regulations already contemplate an operator with no
+reasonable way to verify a requester and require exactly this response: deny the
+request, explain why, state the limitation in the privacy policy, and
+re-evaluate it at least yearly, so the Privacy Policy carries that statement and
+the register's recurring applicability review covers the re-evaluation.
 
 This does not contradict ADR 0226. The Region Block defers EU data subject
 rights; it does not eliminate US obligations, and ADR 0226 said as much.
@@ -383,6 +389,9 @@ reviews it. This is a planning table, not policy text.
 | Notify affected customers by email without undue delay | Incident runbook [#582](https://github.com/nick-neely/tendnote/issues/582) | Decided, unbuilt | counsel review |
 | Tabletop exercise before launch | [#582](https://github.com/nick-neely/tendnote/issues/582) | Decided, unbuilt | owner-decided |
 | State breach triggers and deadlines | Wording follows the research | Open question | agent research ([#580](https://github.com/nick-neely/tendnote/issues/580)), then counsel review |
+| Privacy Policy meets CalOPPA content requirements, including the Do Not Track disclosure | Policy drafting checklist from the [research](../research/phase-9b-us-privacy-and-breach-law-applicability.md); no tracking means the DNT answer is one honest sentence | Decided, undrafted | counsel review |
+| Reasonable security appropriate to the data, including the credential store and free-text health mentions | Existing Better Auth credential handling, scope enforcement, and sensitivity tiers; incident runbook in [#582](https://github.com/nick-neely/tendnote/issues/582) | Enforced today; review before launch | counsel review |
+| Recurring applicability review of state privacy thresholds and revenue | Annual register review; revenue-based trigger, not user count | Decided, unscheduled | owner-decided |
 
 ## Glossary
 
