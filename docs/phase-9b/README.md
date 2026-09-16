@@ -63,3 +63,11 @@ entry point, not a second decision index.
   Data Subjects, the retention table and the deletion promise, sub-processors
   and the model-provider condition, sales tax, the contact and email sets, the
   tracking boundary, breach handling, and the Hosted Obligations Register.
+- [US privacy and breach-law applicability](../research/phase-9b-us-privacy-and-breach-law-applicability.md):
+  state privacy thresholds as the current shield, note subjects as consumers,
+  breach duties triggered by the credential store, scale-independent
+  California obligations, and the counsel-review list.
+- [Model-provider training and retention terms](../research/phase-9b-model-provider-data-terms.md):
+  the configured gateway path, which providers meet the written no-training
+  and bounded-retention bar, and the privity gap between provider commitments
+  made to Vercel and promises Tendnote can make to a customer.
