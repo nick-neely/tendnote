@@ -57,3 +57,9 @@ entry point, not a second decision index.
   rule and Fair-Use Budget, the Fallback Model, the Spend Breaker's shedding
   order, the Reliability Indicators and support promise, the regression bar,
   and the first cost-bounded evaluation plan.
+- [Hosted privacy and customer-lifecycle obligations](hosted-privacy-and-customer-lifecycle-obligations.md):
+  the contracting party, US eighteen-plus eligibility and the Region Block, the
+  two-document launch set and the Acceptance Record, the stance on Non-User
+  Data Subjects, the retention table and the deletion promise, sub-processors
+  and the model-provider condition, sales tax, the contact and email sets, the
+  tracking boundary, breach handling, and the Hosted Obligations Register.

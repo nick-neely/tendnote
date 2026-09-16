@@ -216,6 +216,22 @@ _Avoid_: Free tier, trial account, viewer seat, limited member, read-only subscr
 A hosted account that once held Paid Access and no longer does. It stays signed in and unadmitted with a limited area for resubscribing, exporting, and deleting, and its data is kept for a stated retention period before deletion.
 _Avoid_: Cancelled subscription, suspended user, expired trial, deleted account
 
+**Acceptance Record**:
+The stored fact that a hosted account accepted a specific version of a Tendnote legal document. It holds the account, the document, the version, and the time of acceptance, and nothing else.
+_Avoid_: Consent log, signature, terms flag, audit entry, IP record
+
+**Hosted Obligations Register**:
+The planning table that maps each hosted service commitment to the mechanism enforcing it, its current status, and the route by which it is reviewed. It is a planning artifact, not published policy text.
+_Avoid_: Compliance matrix, privacy policy, control catalog, risk register
+
+**Non-User Data Subject**:
+A person described in a customer's records who holds no Tendnote account and cannot be authenticated by the service. Tendnote holds information about them on a customer's behalf and has no relationship with them.
+_Avoid_: Third party, contact, data subject, non-customer user, unregistered user
+
+**Region Block**:
+The hosted-only refusal, at the edge, of sign-up, sign-in, checkout, and app routes for requests from the EU, the EEA, the UK, and Switzerland. It is a filter rather than a legal shield, it excludes marketing pages, and it does not exist on a self-hosted deployment.
+_Avoid_: Geo-fence, IP ban, compliance control, country allowlist, firewall rule
+
 **Authenticated App Shell**:
 The recognizable Tendnote navigation and layout frame available only after Better Auth and Private Beta Access admit an owner. It contains no relationship records, Today or Eve content, or other owner-specific data.
 _Avoid_: Public app shell, dashboard data, owner cache
