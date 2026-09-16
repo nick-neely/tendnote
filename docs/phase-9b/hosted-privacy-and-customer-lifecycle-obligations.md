@@ -336,6 +336,20 @@ delay, and to state plainly that Tendnote cannot notify non-users directly -
 it has no contact details for them and, per the stance above, will not search
 content to find any.
 
+The [research](../research/phase-9b-us-privacy-and-breach-law-applicability.md)
+changes what that commitment has to account for. Every state breach statute it
+read owes notice to affected residents by residence alone, with no customer,
+contract, or consent condition, and California's substitute-notice path still
+requires email to anyone whose address the business holds. That can compel
+emailing a non-user whose address a customer typed into the service. The public
+"cannot notify non-users directly" sentence is therefore drafted with counsel as
+a capability statement about the contact details Tendnote holds, not as a legal
+position, and the runbook in
+[#582](https://github.com/nick-neely/tendnote/issues/582) carries a third-party
+notice path rather than assuming the question away. The incident clock the
+runbook is built to is fourteen business days to the strictest regulator,
+Vermont, and thirty days to affected individuals.
+
 State-specific triggers and deadlines are research
 ([#580](https://github.com/nick-neely/tendnote/issues/580)) and get counsel
 review before any wording about them ships.
@@ -388,7 +402,13 @@ reviews it. This is a planning table, not policy text.
 | No cookie banner | Strictly necessary cookies plus content-free first-party telemetry | Decided | counsel review |
 | Notify affected customers by email without undue delay | Incident runbook [#582](https://github.com/nick-neely/tendnote/issues/582) | Decided, unbuilt | counsel review |
 | Tabletop exercise before launch | [#582](https://github.com/nick-neely/tendnote/issues/582) | Decided, unbuilt | owner-decided |
-| State breach triggers and deadlines | Wording follows the research | Open question | agent research ([#580](https://github.com/nick-neely/tendnote/issues/580)), then counsel review |
+| State breach triggers and deadlines | Wording follows the research | Researched; wording pending counsel | agent research ([#580](https://github.com/nick-neely/tendnote/issues/580)), then counsel review |
+| Birthdays stored as month and day, no year | Domain schema constraint; removes name-plus-birthday breach elements in North Dakota and Washington | Proposed, undecided | owner-decided, hands to specification |
+| Note bodies encrypted at the application layer with keys outside the database | Architecture decision for the specification | Proposed, undecided | owner-decided, then counsel review of the safe-harbor fit |
+| Credential hashing documented at Argon2id or bcrypt cost twelve or higher | Better Auth configuration, recorded | Verify before launch | owner-decided |
+| Retention and destruction policy covers records not retained (Texas 521.052(b)) | Retention table plus sweeps | Decided, unbuilt | counsel review |
+| Incident clock: fourteen business days to the strictest regulator, thirty days to individuals | Runbook in [#582](https://github.com/nick-neely/tendnote/issues/582) | Decided, unbuilt | counsel review |
+| Third-party (non-user) breach notice path, including substitute notice | Runbook in [#582](https://github.com/nick-neely/tendnote/issues/582) | Open question | counsel review |
 | Privacy Policy meets CalOPPA content requirements, including the Do Not Track disclosure | Policy drafting checklist from the [research](../research/phase-9b-us-privacy-and-breach-law-applicability.md); no tracking means the DNT answer is one honest sentence | Decided, undrafted | counsel review |
 | Reasonable security appropriate to the data, including the credential store and free-text health mentions | Existing Better Auth credential handling, scope enforcement, and sensitivity tiers; incident runbook in [#582](https://github.com/nick-neely/tendnote/issues/582) | Enforced today; review before launch | counsel review |
 | Recurring applicability review of state privacy thresholds and revenue | Annual register review; revenue-based trigger, not user count | Decided, unscheduled | owner-decided |
