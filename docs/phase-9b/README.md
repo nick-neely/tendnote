@@ -71,3 +71,8 @@ entry point, not a second decision index.
   the configured gateway path, which providers meet the written no-training
   and bounded-retention bar, and the privity gap between provider commitments
   made to Vercel and promises Tendnote can make to a customer.
+- [Self-service signup through First Value](self-service-signup-through-first-value.md):
+  proposal awaiting owner reaction; the clickable journey prototype
+  ([HTML](prototypes/self-service-signup-through-first-value.html)), the
+  pending-area and confirming-page contracts, the first-run prompt, the
+  Newcomer Walkthrough protocol, and the open questions.
