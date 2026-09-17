@@ -76,3 +76,9 @@ entry point, not a second decision index.
   ([HTML](prototypes/self-service-signup-through-first-value.html)), the
   pending-area and confirming-page contracts, the first-run prompt, the
   Newcomer Walkthrough protocol, and the open questions.
+- [Bounded usage and the author-operated support contract](bounded-usage-and-support-contract.md):
+  the per-function usage states and recovery conditions, the Account Ceiling,
+  the hosted support contract and refund workflow, the static status page,
+  operator alerting, the audited Operator Actions and Admission Exceptions,
+  Temporary Suspension and Termination, and the recovery procedure, with
+  suspension billing and Recovery Journal mechanics left to research.

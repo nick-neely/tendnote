@@ -463,3 +463,35 @@ _Avoid_: Kill switch, rate limit, outage mode
 **Fallback Model**:
 The cheaper, policy-qualified model an account's interactive turns run on while it is over its Fair-Use Budget, always with a visible notice. It is not the production model, a silent downgrade, or a trial tier.
 _Avoid_: Degraded mode, lite model, backup model
+
+**Account Ceiling**:
+The hard per-account monthly spend limit per cost category that sits above the Fair-Use Budget and pauses that function until the billing reset. It changes pace only; records, reminders, export, billing, and cancellation keep working.
+_Avoid_: Hard cap, quota, overage limit, ban
+
+**Operator Action**:
+One of the enumerated changes the operator may make to a hosted account by hand, each performed by runbook and each producing an audited, scoped record. It is not an admin permission, a support macro, or a direct database edit.
+_Avoid_: Admin override, manual fix, backdoor
+
+**Admission Exception**:
+A record that names one specific blocking event, such as a failed invoice or a resolved dispute, and overrides only that event's effect on admission. It is evaluated inside its condition and never outranks a later event.
+_Avoid_: Override, precedence rule, whitelist, grant flag
+
+**Temporary Suspension**:
+The reviewable state in which a hosted account is denied admission while the operator investigates, keeps a restricted area for export, deletion, and billing, and retains Household membership with access denied. It is neither Lapsed nor Termination and ends only by an audited lift or conversion.
+_Avoid_: Ban, lock, freeze, disabled account
+
+**Termination**:
+The permanent removal of a hosted account's admission by the operator, cancelling renewal, keeping export and deletion available, and starting the retention clock. It is not a cancellation by the customer and not a Lapsed Account.
+_Avoid_: Ban, deactivation, account closure
+
+**Legal Hold**:
+A record naming specific account data whose deletion is blocked until a stated expiry. It blocks that deletion only and nothing else about the account's exit.
+_Avoid_: Freeze, retention flag, suspension
+
+**Deletion Record**:
+The durable, content-free fact (account id and time) written to the Recovery Journal before an account's rows are deleted, so a database restore can re-apply the deletion. It is not a tombstone row inside the product database.
+_Avoid_: Tombstone, soft delete, audit entry
+
+**Recovery Journal**:
+The durable store outside the product database that holds Deletion Records and the records recovery needs to reconcile admission after a restore. It is a recovery aid, not a second authoritative event store.
+_Avoid_: Event store, event log, backup, audit log
