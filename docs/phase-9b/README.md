@@ -39,6 +39,10 @@ entry point, not a second decision index.
 
 ## Artifacts
 
+- [Marketing site and demo experience](marketing-site-and-demo-experience.md):
+  the public page inventory, main-domain marketing and app-subdomain product,
+  demo-first navigation, fictional scripted Marketing Demo, pricing
+  disclosures, self-hosting alternative, and public claim boundaries.
 - [Stripe subscription lifecycle constraints](../research/phase-9b-stripe-subscription-lifecycle.md):
   hosted Checkout and portal capabilities, payment-first access evidence,
   webhook idempotency and recovery, and the cancellation and refund choices

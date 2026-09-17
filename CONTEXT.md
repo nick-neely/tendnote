@@ -436,6 +436,10 @@ _Avoid_: First paid customer, beta user, early adopter, lead
 The milestone at which a newcomer, in their first sitting, has a real person saved with a Memory they confirmed and a Follow-Up they scheduled, has seen where it will resurface, and has had Eve give something back about that person grounded in what they said. It is not a completed onboarding checklist, a provider connection, a delivered reminder, or a General Action capture.
 _Avoid_: Activation, aha moment, onboarding completion
 
+**Marketing Demo**:
+A guided, fictional relationship story that lets a visitor preview capture, confirmed Memory, scheduled Follow-Up, and Eve recall before purchase. It is not a hosted trial, a real account, or evidence that the visitor reached First Value.
+_Avoid_: Free trial, sandbox account, First Value
+
 **Newcomer Walkthrough**:
 An observed, unaided run by someone who is not the author from the public landing page through payment, admission, and First Value, where the marketing site, in-app copy, the first-run path, and Eve are the only help. It is a launch-readiness check, not demand evidence, a usability study, or a coached demo.
 _Avoid_: User test, demo, beta invite, demand validation
