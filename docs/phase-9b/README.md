@@ -39,6 +39,10 @@ entry point, not a second decision index.
 
 ## Artifacts
 
+- [Baseline cost replay harness](baseline-cost-replay.md): the isolated synthetic
+  workload, unpaid verification, spending reservations, web-search exclusion,
+  and exact command awaiting separate paid-run approval.
+
 - [Hosted telemetry and data boundary](hosted-telemetry-and-data-boundary.md):
   hosted GlitchTip as the preferred error service pending erasure qualification,
   Tendnote-owned funnel reports, a closed content-free event and diagnostic
