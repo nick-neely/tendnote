@@ -74,8 +74,9 @@ allocate shared indexes, infrastructure, and database overhead.
 
 The isolated app disables Eve's provider-executed `web_search` tool, which uses
 `gateway.exa_search` and has charges outside the token catalog. The production
-app is unchanged. This proposed exclusion is explicit in the approval packet:
-results measure the synthetic relationship workload, **not** an upper bound on
+app is unchanged. The owner confirmed this exclusion on 2026-09-18. This scope
+decision does not authorize paid execution, which still requires separate approval.
+Results measure the synthetic relationship workload, **not** an upper bound on
 web-research usage. All authored relationship tools retain their current schemas.
 The earlier blanket claim that this is the full current-surface cost ceiling
 must be qualified accordingly before using the result to set an offer.
