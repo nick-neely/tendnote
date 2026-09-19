@@ -9,6 +9,21 @@ cost or price is established by that startup failure. Because no inference was
 sent, continuation after the startup repair uses the existing approval and the
 same unspent $25 allowance. No paid sample or uncertain charge may be retried.
 
+## Paid sample outcome
+
+The [continuation on the repaired source](../../evidence/cost/1b6b9f1adf90815b3df8bc7e1216bc7dc927dd6a/README.md)
+ran on 2026-09-19 and stopped during the light workload. All fifteen calls settled
+for **$0.142670825**, with no pending requests or reserved dollars. Typical and
+heavy did not start, and no monthly cost estimate or variance is available.
+
+The first compound capture followed the current Global Capture route and returned
+a Saved Items Note instead of the requested Memory and Follow-Up. The harness's
+legacy-tool assertion failed; read-only database inspection independently confirmed
+zero Memories and zero Follow-Ups. The next preparation must reconcile the fixture
+and persisted-outcome validation with the current Capture contract before another
+paid sample. The sample was not retried. The ticket remains open and cannot yet
+supply the pricing or fair-use decisions with usable monthly evidence.
+
 ## First approved attempt
 
 The [preserved attempt](../../evidence/cost/1ad0b132b9464aa7e7483a9dbb538b4c67ec6f69/README.md)

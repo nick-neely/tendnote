@@ -1,0 +1,16 @@
+{
+  "status": "partial",
+  "turns": 1,
+  "captures": 0,
+  "followups": 0,
+  "uploads": 0,
+  "scheduledChecks": 3,
+  "simulated": false,
+  "workload": {
+    "turns": 40,
+    "captures": 20,
+    "people": 15,
+    "followups": 10,
+    "uploads": 2
+  }
+}
