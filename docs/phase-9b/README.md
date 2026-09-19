@@ -87,10 +87,10 @@ entry point, not a second decision index.
   and bounded-retention bar, and the privity gap between provider commitments
   made to Vercel and promises Tendnote can make to a customer.
 - [Self-service signup through First Value](self-service-signup-through-first-value.md):
-  proposal awaiting owner reaction; the clickable journey prototype
+  the owner-approved journey; the clickable prototype
   ([HTML](prototypes/self-service-signup-through-first-value.html)), the
   pending-area and confirming-page contracts, the first-run prompt, the
-  Newcomer Walkthrough protocol, and the open questions.
+  Newcomer Walkthrough protocol, and the questions settled as prototyped.
 - [Bounded usage and the author-operated support contract](bounded-usage-and-support-contract.md):
   the per-function usage states and recovery conditions, the Account Ceiling,
   the hosted support contract and refund workflow, the static status page,

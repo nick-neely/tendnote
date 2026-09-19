@@ -1,10 +1,11 @@
 # Self-service signup through First Value
 
 Prototype artifact for [Prototype self-service signup through first
-value](https://github.com/nick-neely/tendnote/issues/569). **Status: proposal
-awaiting owner reaction.** Nothing below is decided until the ticket's
-resolution comment says so; the ticket resolves through the owner's feedback on
-the prototype, not through this document.
+value](https://github.com/nick-neely/tendnote/issues/569). **Status: decided.**
+The owner reviewed the prototype and approved every interaction in it as
+prototyped. Visual design, theming, and final wording are explicitly not
+settled here: the owner expects to refine them heavily at implementation, so
+the prototype's look and copy bind nothing.
 
 The prototype is one self-contained file:
 [`prototypes/self-service-signup-through-first-value.html`](prototypes/self-service-signup-through-first-value.html).
@@ -26,7 +27,7 @@ accept-first Household Guest, beta sunset), and the
 blocks the exit, the launch email set). It does not touch the price, the guest
 interface, or the marketing site.
 
-## The proposed journey
+## The approved journey
 
 1. **Landing and pricing.** Readable everywhere, including from blocked
    regions. One plan, one account, the price, the fourteen-day guarantee, US
@@ -73,10 +74,10 @@ as a guest, subscribe later with the membership intact) and the existing
 private-beta account (announced sunset, data intact, re-acceptance of the launch
 Terms, subscribe from the pending area).
 
-## Newcomer Walkthrough protocol (proposed)
+## Newcomer Walkthrough protocol
 
-The first-value decision handed this ticket the protocol. This is the proposal
-for the owner to react to. Nothing here has been run.
+The first-value decision handed this ticket the protocol. The owner approved it
+as written. Nothing here has been run.
 
 - **Participants.** Two people who are not the author, recruited from outside
   the author's household, who have not seen Tendnote before and have not been
@@ -85,9 +86,8 @@ for the owner to react to. Nothing here has been run.
 - **Payment mode.** Real Stripe Checkout in live mode with a real card of the
   participant's, refunded in full by the author after the session under the
   fourteen-day guarantee, so the checkout under test is the one a customer
-  meets. Alternative for the owner to weigh: a 100 percent promotion code,
-  which keeps the flow real but never exercises the card decline and refund
-  paths.
+  meets. A 100 percent promotion code was the alternative and was not chosen:
+  it never exercises the card decline and refund paths.
 - **Start.** The participant receives only the public landing URL, on their
   own everyday device. At least one of the two runs is on a phone.
 - **Observation.** The author watches in person or over a screen share, may
@@ -107,34 +107,44 @@ for the owner to react to. Nothing here has been run.
   the existing manual verification notes, linked from the launch-readiness
   checklist when that exists.
 
-## Open questions for the owner
+## Questions the prototype raised, settled as prototyped
 
-Each is exposed by a walkthrough and shown on the phone where it arises.
+The owner's approval covered the interactions as the prototype shows them, so
+each question below is answered by what the prototype does.
 
-1. **Abandoned checkout nudge.** After a closed tab, send one "finish setting
-   up" email after twenty-four hours, or stay silent? The launch email set has
-   no marketing mail; this sits on the line.
-2. **Never-paid ex-beta accounts.** When the beta sunsets and an account never
-   subscribes, does it get the ninety-day Lapsed clock and deletion notices, or
-   does it sit in Unpaid indefinitely? The lifecycle only clocks accounts that
-   held Paid Access.
-3. **Account before payment.** The prototype creates the account first. The
-   alternative, Checkout first with the account created from the Stripe
-   Customer email on return, removes a form but complicates matching and the
-   returning-customer path. Confirm the order.
-4. **Slow confirmation copy.** After one minute of confirming, is "we'll email
-   you the moment you're in" a promise the operator can keep at launch, or
-   should the page just say "sign in later"?
-5. **Walkthrough payment mode.** Real card plus refund, or a full promotion
-   code? See the protocol above.
-6. **First-run prompt placement.** One interstitial on admission then Home, or
-   land on Home with the prompt inside the Eve composer only?
+1. **Abandoned checkout.** No nudge email. A closed tab leaves an Unpaid
+   account, no timer, and no message; the pending area explains what happened
+   when the customer returns. This keeps the launch email set free of anything
+   that reads as marketing.
+2. **Never-paid ex-beta accounts.** After the sunset the account is Unpaid with
+   its data intact and no retention clock. The ninety-day clock belongs to
+   Lapsed, which only an account that held Paid Access can enter. This matches
+   the retention table's "while the account exists" row; export and deletion
+   stay available from the pending area.
+3. **Account before payment.** The account is created first, then Checkout.
+4. **Slow confirmation.** After a minute the confirming page promises an email
+   on admission. Implementation therefore owes a content-free "you're in"
+   message, which falls inside the account and sign-in email category.
+5. **Walkthrough payment mode.** Real card in live mode, refunded under the
+   guarantee.
+6. **First-run prompt.** One skippable prompt on admission, repeated once on
+   Home in the empty Today rail and the Eve composer.
 
-## What happens after the owner reacts
+## What carries into the specification
 
-The resolution comment records the answers and any changes to the journey. The
-prototype stays on this branch as the primary source. Any durable shape it
-settles (the pending-area contract, the confirming page's local-read rule, the
-first-run prompt, the walkthrough protocol) goes into the specification and,
-where warranted, an ADR. The Household Guest interface stays with its own
-ticket.
+- **The pending-area contract:** one home for every signed-in, not-admitted,
+  not-Lapsed state; one line of what happened; Finish subscribing, Export,
+  Delete, Sign out.
+- **The confirming page's local-read rule:** it polls Tendnote's admission
+  record and never calls Stripe; admission follows the projected paid invoice,
+  not the redirect.
+- **The first-run path** and the life-admin steer.
+- **Billing states as notices** on an admitted account, with Lapsed as its own
+  area.
+- **The Newcomer Walkthrough protocol** above.
+
+The prototype stays on this branch as the primary source. Its reducer is the
+liftable part; the page around it is throwaway. The Household Guest interface
+stays with [Prototype the Household Guest
+experience](https://github.com/nick-neely/tendnote/issues/577), which this
+resolution unblocks.
