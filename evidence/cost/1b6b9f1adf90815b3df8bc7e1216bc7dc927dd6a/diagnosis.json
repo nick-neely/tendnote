@@ -1,0 +1,38 @@
+{
+  "error": "Planned mutation was not executed",
+  "verdict": "failed",
+  "requiredMutationTools": ["capture_memory", "create_followup"],
+  "observedTools": [
+    {
+      "name": "load_skill",
+      "status": "completed"
+    },
+    {
+      "name": "search_people",
+      "status": "completed"
+    },
+    {
+      "name": "get_person_context",
+      "status": "completed"
+    },
+    {
+      "name": "suggest_next_steps",
+      "status": "completed"
+    },
+    {
+      "name": "load_skill",
+      "status": "completed"
+    },
+    {
+      "name": "capture_saved_item",
+      "status": "completed"
+    },
+    {
+      "name": "suggest_next_steps",
+      "status": "completed"
+    }
+  ],
+  "captureDestination": "Saved Items",
+  "captureKind": "Note",
+  "interpretation": "The compound request followed Global Capture precedence. The router returned a Saved Items Note, not the requested confirmed Memory and Follow-Up. The harness requires legacy tool names; neither that assertion nor the intended persisted outcomes succeeded. No paid retry performed."
+}

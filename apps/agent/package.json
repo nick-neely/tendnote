@@ -13,7 +13,8 @@
     "eval:prepare": "TENDNOTE_EVAL_DATABASE_URL=${TENDNOTE_EVAL_DATABASE_URL:-postgres://tendnote:tendnote@localhost:55432/tendnote_eval} pnpm --dir ../.. --filter @tendnote/db db:eval:reset && DATABASE_URL=${TENDNOTE_EVAL_DATABASE_URL:-postgres://tendnote:tendnote@localhost:55432/tendnote_eval} pnpm --dir ../.. --filter @tendnote/db db:migrate && DATABASE_URL=${TENDNOTE_EVAL_DATABASE_URL:-postgres://tendnote:tendnote@localhost:55432/tendnote_eval} pnpm --dir ../.. --filter @tendnote/db db:seed",
     "lint": "biome check agent evals tests scripts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval:cost": "node scripts/cost-replay/run.mjs"
   },
   "dependencies": {
     "@better-auth/redis-storage": "^1.7.2",

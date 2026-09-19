@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PROTOTYPE - Self-service signup through First Value</title>
+<style>
+  :root {
+    --ink: #1c1b19; --muted: #6b6760; --line: #e6e2da; --paper: #fbfaf7; --card: #ffffff;
+    --accent: #2f6f4e; --accent-ink: #ffffff; --soft: #eef4f0; --warn: #8a5a00; --warn-bg: #fff6e0;
+    --bad: #9b2c2c; --bad-bg: #fdecec;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: var(--ink); background: var(--paper); }
+  header { padding: 28px 32px 12px; border-bottom: 1px solid var(--line); background: var(--card); }
+  header h1 { margin: 0 0 6px; font-size: 22px; }
+  header p { margin: 0; color: var(--muted); max-width: 900px; }
+  header .tag { display: inline-block; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px; margin-bottom: 10px; }
+  main { display: grid; grid-template-columns: 380px 1fr; gap: 24px; padding: 24px 32px 48px; max-width: 1400px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  section.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+  h2 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+  h3 { font-size: 15px; margin: 18px 0 8px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 14px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--soft); color: var(--accent); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.off { background: #f1efea; color: var(--muted); }
+  .changed { margin-top: 12px; padding: 10px 12px; background: var(--soft); border-radius: 8px; font-size: 14px; }
+  .changed.bad { background: var(--bad-bg); }
+  /* the customer's screen */
+  .phone { margin: 0 auto; width: 360px; min-height: 560px; border: 1px solid var(--line); border-radius: 28px; background: var(--card); padding: 26px 22px; display: flex; flex-direction: column; box-shadow: 0 1px 0 var(--line), 0 12px 32px rgba(0,0,0,.06); }
+  .phone .where { font-size: 11px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 14px; }
+  .phone .title { font-size: 21px; font-weight: 600; line-height: 1.25; margin: 0 0 10px; }
+  .phone .body { color: #3d3a35; font-size: 14px; white-space: pre-line; }
+  .phone .notice { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 13px; }
+  .phone .notice.bad { background: var(--bad-bg); color: var(--bad); }
+  .phone .list { margin-top: 12px; font-size: 13px; border-top: 1px solid var(--line); }
+  .phone .list div { padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .phone .ctas { margin-top: auto; padding-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+  .phone .cta { padding: 10px 12px; border-radius: 10px; text-align: center; font-size: 14px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  .phone .cta.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .phone .cta:disabled { opacity: .45; cursor: default; }
+  .phone .fine { margin-top: 10px; font-size: 11px; color: var(--muted); }
+  /* buttons */
+  .group { margin-bottom: 14px; }
+  .group .g { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  button.act { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); background: var(--card); border-radius: 8px; cursor: pointer; color: var(--ink); }
+  button.act:hover { border-color: var(--accent); }
+  button.act.done { background: var(--soft); border-color: var(--accent); }
+  button.act.next { outline: 2px solid var(--accent); }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .tabs button { font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); cursor: pointer; }
+  .tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .steps { display: flex; flex-direction: column; gap: 6px; }
+  .steps button.act { text-align: left; }
+  .steps .n { color: var(--muted); margin-right: 6px; }
+  .desc { color: #3d3a35; font-size: 14px; margin: 0 0 12px; }
+  .watch { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+  .log { font-size: 12px; color: var(--muted); max-height: 160px; overflow: auto; margin: 0; padding-left: 18px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 1250px) { .two { grid-template-columns: 1fr; } }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+  .row select { font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); }
+</style>
+</head>
+<body>
+<header>
+  <div class="tag">Prototype · throwaway · Phase 9b · ticket #569</div>
+  <h1>What does a stranger go through, from choosing the offer to First Value?</h1>
+  <p>
+    This page lets you walk a new United States customer through the proposed hosted Tendnote journey: the landing page, the offer, creating an account, paying through Stripe, being admitted, the first-run path, and the four steps that make up First Value. It also covers the awkward cases: a declined card, a closed tab, a slow payment confirmation, an invited Household member, an existing private-beta account, a life-admin first capture, and what happens to billing later. The left column is the model's state; the phone is what the customer would see. The screen copy is a proposal for reaction, not final wording. Nothing here talks to Stripe or a database.
+  </p>
+</header>
+
+<main>
+  <div>
+    <section class="card">
+      <h2>Current state</h2>
+      <dl id="state"></dl>
+      <div id="changed" class="changed"></div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h2>Free play</h2>
+      <div class="row" style="margin-bottom:12px">
+        Visitor is in <select id="region"><option>US</option><option>EU</option></select>
+        on a <select id="device"><option>phone</option><option>laptop</option></select>
+        <button type="button" class="act" id="reset">Reset everything</button>
+      </div>
+      <div id="free"></div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h2>What happened</h2>
+      <ol id="log" class="log"></ol>
+    </section>
+  </div>
+
+  <div>
+    <div class="two">
+      <section class="card">
+        <h2>The customer's screen</h2>
+        <div id="phone" class="phone"></div>
+      </section>
+      <section class="card">
+        <h2>Guided walkthroughs</h2>
+        <div id="tabs" class="tabs"></div>
+        <p id="desc" class="desc"></p>
+        <p id="watch" class="watch"></p>
+        <div id="steps" class="steps"></div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script>
+// ============================================================================
+// PURE MODULE: the hosted newcomer journey.
+// No DOM in here. (state, action) => state. Could be lifted later.
+// Times are minutes on a simulated clock; `days` are folded into minutes.
+// ============================================================================
+const Journey = (() => {
+  const DAY = 24 * 60;
+  const ACCESS = {
+    UNPAID: "Unpaid", GUEST: "Household Guest", PAID: "Paid", ENDING: "Ending",
+    PAST_DUE: "Past Due", LAPSED: "Lapsed", DELETED: "Deleted",
+  };
+  const POLICY = {
+    dunningDays: 7, guaranteeDays: 14, lapsedRetentionDays: 90, firstValueTargetMinutes: 15,
+    betaSunsetLabel: "the launch date", checkoutSessionHours: 23,
+  };
+
+  function initial(opts = {}) {
+    return {
+      clock: 0, paidAt: null, periodEnd: null, lapsedAt: null, pastDueSince: null,
+      visitor: { region: opts.region || "US", device: opts.device || "phone" },
+      account: null,                       // { email }
+      acceptance: [],                      // Acceptance Records: document + version
+      beta: "none",                        // none | granted | sunset
+      invitation: "none",                  // none | received | accepted (membership is real)
+      householdHasPayingOwner: true,
+      checkout: { status: "none", attempts: 0, openedAt: null }, // none|open|declined|abandoned|expired|paid_unconfirmed|confirmed
+      paidAccess: false,
+      firstRun: "not_started",             // not_started | prompted | skipped | done
+      records: { people: [], memories: [], followUps: [], lifeAdmin: [] },
+      milestones: { firstPerson: null, firstMemory: null, firstFollowUp: null, firstGroundedAnswer: null, firstValue: null },
+      seenResurface: false,
+      screen: "landing",
+      last: null, lastBad: false, log: [],
+    };
+  }
+
+  // ---- derived facts -------------------------------------------------------
+  function accessState(s) {
+    if (s.deleted) return ACCESS.DELETED;
+    if (s.lapsedAt !== null) return ACCESS.LAPSED;
+    if (s.paidAccess) {
+      if (s.pastDueSince !== null) return ACCESS.PAST_DUE;
+      if (s.periodEnd !== null && s.cancelScheduled) return ACCESS.ENDING;
+      return ACCESS.PAID;
+    }
+    if (s.invitation === "accepted" && s.householdHasPayingOwner) return ACCESS.GUEST;
+    return ACCESS.UNPAID;
+  }
+  function admittedVia(s) {
+    if (!s.account) return null;
+    const a = accessState(s);
+    if (a === ACCESS.PAID || a === ACCESS.ENDING || a === ACCESS.PAST_DUE) return "Paid Access";
+    if (s.beta === "granted") return "Private Beta Access";
+    if (a === ACCESS.GUEST) return "Household Guest (read-only)";
+    return null;
+  }
+  function fullyAdmitted(s) {
+    const v = admittedVia(s);
+    return v === "Paid Access" || v === "Private Beta Access";
+  }
+  function firstValueMinutes(s) {
+    if (s.milestones.firstValue === null || s.paidAt === null) return null;
+    return s.milestones.firstValue - s.paidAt;
+  }
+  function daysSince(s, t) { return t === null ? null : Math.floor((s.clock - t) / DAY); }
+
+  // ---- reducer -------------------------------------------------------------
+  function note(s, text, bad = false) {
+    return { ...s, last: text, lastBad: bad, log: [...s.log, `${fmtClock(s.clock)} · ${text}`] };
+  }
+  function refuse(s, why) { return note(s, `Not possible: ${why}`, true); }
+  function fmtClock(m) {
+    const d = Math.floor(m / DAY), h = Math.floor((m % DAY) / 60), mm = m % 60;
+    return d ? `day ${d + 1} ${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}` : `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  }
+  function tick(s, minutes) { return { ...s, clock: s.clock + minutes }; }
+  function checkMilestones(s) {
+    const m = s.milestones;
+    if (m.firstValue === null && m.firstPerson !== null && m.firstMemory !== null && m.firstFollowUp !== null && m.firstGroundedAnswer !== null) {
+      return { ...s, milestones: { ...m, firstValue: s.clock }, firstRun: "done" };
+    }
+    return s;
+  }
+  const blocked = (s) => s.visitor.region !== "US";
+
+  function reduce(s, action) {
+    const t = action.type;
+    switch (t) {
+      case "setVisitor": return { ...s, visitor: { ...s.visitor, ...action.patch } };
+
+      // ---------------- marketing and offer
+      case "openLanding": return note({ ...s, screen: "landing" }, "Opened the landing page. Marketing pages are readable from anywhere.");
+      case "openPricing": return note({ ...s, screen: "pricing" }, "Opened the pricing page: one plan, one account, price and guarantee stated.");
+      case "chooseOffer": {
+        s = tick(s, 1);
+        if (blocked(s)) return note({ ...s, screen: "region" }, "Region Block refused checkout entry for a non-US visitor. Marketing stays readable; the region page links to self-hosting.");
+        if (!s.account) return note({ ...s, screen: "createAccount" }, "Chose the offer. The account comes first so payment can land on something durable.");
+        if (fullyAdmitted(s)) return note({ ...s, screen: "home" }, "Already admitted. Went to Home.");
+        return note({ ...s, screen: "checkoutEntry" }, "Chose the offer with an existing account. Straight to checkout entry.");
+      }
+
+      // ---------------- account
+      case "createAccount": {
+        if (s.account) return refuse(s, "an account already exists for this visitor. Sign in instead.");
+        if (blocked(s)) return note({ ...s, screen: "region" }, "Region Block refused sign-up.");
+        s = tick(s, 2);
+        s = { ...s, account: { email: "sam@example.com" }, acceptance: ["Terms v1", "Privacy Policy v1"] };
+        const dest = s.invitation === "received" ? "join" : "checkoutEntry";
+        return note({ ...s, screen: dest }, "Created the account and accepted Terms and Privacy Policy (two Acceptance Records: account, document, version, time). No product yet: account is Unpaid.");
+      }
+      case "signIn": {
+        if (!s.account) return refuse(s, "no account exists yet.");
+        if (blocked(s)) return note({ ...s, screen: "region" }, "Region Block refused sign-in.");
+        s = tick(s, 1);
+        const a = accessState(s);
+        if (fullyAdmitted(s)) return note({ ...s, screen: "home" }, `Signed in. Admitted via ${admittedVia(s)}.`);
+        if (a === ACCESS.GUEST) return note({ ...s, screen: "guest" }, "Signed in as a Household Guest. Read-only household view (shape decided in #577).");
+        if (a === ACCESS.LAPSED) return note({ ...s, screen: "lapsed" }, "Signed in to a Lapsed Account: resubscribe, export, or delete.");
+        if (s.checkout.status === "paid_unconfirmed") return note({ ...s, screen: "confirming" }, "Signed in while payment confirmation is still pending.");
+        return note({ ...s, screen: "pending" }, "Signed in, not admitted. The pending area offers exactly one thing: finish subscribing.");
+      }
+
+      // ---------------- checkout
+      case "startCheckout": {
+        if (!s.account) return refuse(s, "checkout needs an account first.");
+        if (fullyAdmitted(s)) return refuse(s, "already admitted; nothing to buy.");
+        if (blocked(s)) return note({ ...s, screen: "region" }, "Region Block refused checkout entry.");
+        s = tick(s, 1);
+        return note({ ...s, checkout: { ...s.checkout, status: "open", attempts: s.checkout.attempts + 1, openedAt: s.clock }, screen: "stripe" },
+          `Opened Stripe Checkout (attempt ${s.checkout.attempts + 1}). Card only, billing country restricted to US, client_reference_id = account.`);
+      }
+      case "payCard": {
+        if (s.checkout.status !== "open") return refuse(s, "no Checkout is open.");
+        s = tick(s, 2);
+        return note({ ...s, checkout: { ...s.checkout, status: "paid_unconfirmed" }, screen: "confirming" },
+          "Card charged. Stripe redirected back. The product does NOT admit on the redirect: it waits for the first paid invoice to be projected onto Paid Access.");
+      }
+      case "cardDeclined": {
+        if (s.checkout.status !== "open") return refuse(s, "no Checkout is open.");
+        s = tick(s, 1);
+        return note({ ...s, checkout: { ...s.checkout, status: "declined" }, screen: "declined" },
+          "Card declined inside Stripe Checkout. Stripe shows the error in place; the customer can retry there. If they leave, the pending area still offers to finish.");
+      }
+      case "closeTab": {
+        if (s.checkout.status !== "open") return refuse(s, "nothing to abandon.");
+        return note({ ...s, checkout: { ...s.checkout, status: "abandoned" }, screen: "away" },
+          "Closed the tab mid-checkout. No charge. Account exists, Unpaid.");
+      }
+      case "confirmPayment": {
+        if (s.checkout.status !== "paid_unconfirmed") return refuse(s, "no payment is waiting for confirmation.");
+        s = tick(s, 1);
+        const wasGuest = accessState(s) === ACCESS.GUEST;
+        const wasLapsed = s.lapsedAt !== null;
+        s = { ...s, paidAccess: true, paidAt: s.clock, periodEnd: s.clock + 30 * DAY, lapsedAt: null, pastDueSince: null, cancelScheduled: false,
+              checkout: { ...s.checkout, status: "confirmed" } };
+        if (s.firstRun === "not_started") s = { ...s, firstRun: "prompted", screen: "welcome" };
+        else s = { ...s, screen: "home" };
+        return note(s, `invoice.paid projected onto Paid Access (idempotently). Admitted.${wasGuest ? " Household membership unchanged." : ""}${wasLapsed ? " Retention deadline cleared." : ""} The fifteen-minute clock starts now.`);
+      }
+      case "returnLater": {
+        if (s.checkout.status === "open") {
+          const hours = (s.clock - s.checkout.openedAt) / 60;
+          if (hours >= POLICY.checkoutSessionHours) s = { ...s, checkout: { ...s.checkout, status: "expired" } };
+        }
+        return reduce(s, { type: "signIn" });
+      }
+
+      // ---------------- household
+      case "receiveInvitation": {
+        if (s.invitation !== "none") return refuse(s, "an invitation is already in play.");
+        return note({ ...s, invitation: "received", screen: "join" }, "An emailed Household Invitation arrived. The join page renders no app shell.");
+      }
+      case "acceptInvitation": {
+        if (s.invitation !== "received") return refuse(s, "no open invitation.");
+        if (!s.account) return note({ ...s, screen: "createAccount" }, "Must sign in or create an account before accepting. The invitation waits.");
+        s = tick(s, 1);
+        s = { ...s, invitation: "accepted" };
+        if (fullyAdmitted(s)) return note({ ...s, screen: "home" }, "Accepted. Membership is real. Already admitted, so nothing else changes.");
+        return note({ ...s, screen: "guest" }, "Accepted first, paid never (yet). Membership is real; the account is a Household Guest with a read-only view and a path to subscribe.");
+      }
+      case "householdOwnerLapses": {
+        if (s.invitation !== "accepted") return refuse(s, "this account is not in a household.");
+        s = { ...s, householdHasPayingOwner: false };
+        const a = accessState(s);
+        return note({ ...s, screen: fullyAdmitted(s) ? "home" : "pending" },
+          `The household's last paying Owner lapsed. ${a === ACCESS.UNPAID ? "The guest collapses to the pending area, honestly labelled." : "This account pays for itself, so it is unaffected."} Membership itself is untouched.`);
+      }
+      case "householdOwnerPaysAgain": {
+        if (s.householdHasPayingOwner) return refuse(s, "the household already has a paying Owner.");
+        s = { ...s, householdHasPayingOwner: true };
+        return note({ ...s, screen: fullyAdmitted(s) ? "home" : "guest" }, "A household Owner is paying again; guest view returns. Checked live, never cached.");
+      }
+
+      // ---------------- private beta
+      case "startAsBetaUser": {
+        if (s.account) return refuse(s, "reset first: this sets up an existing beta account.");
+        s = { ...s, account: { email: "beta@example.com" }, beta: "granted", acceptance: [],
+              records: { ...s.records, people: ["Priya"], memories: ["Priya: starting a new job in October"] } };
+        return note({ ...s, screen: "home" }, "An existing private-beta account with real data, admitted via Private Beta Access. It has never accepted the launch Terms.");
+      }
+      case "announceSunset": {
+        if (s.beta !== "granted") return refuse(s, "no beta grant on this account.");
+        return note({ ...s, screen: "home", sunsetAnnounced: true }, `Beta sunset announced in-app and by email: Private Beta Access ends on ${POLICY.betaSunsetLabel}. Subscribe to keep full access. Nothing is lost on that date.`);
+      }
+      case "betaSunset": {
+        if (s.beta !== "granted") return refuse(s, "no beta grant to end.");
+        s = { ...s, beta: "sunset" };
+        if (fullyAdmitted(s)) return note({ ...s, screen: "home" }, "Beta ended, but this account already pays. No change.");
+        return note({ ...s, screen: "pending" }, "Beta ended without a subscription. The account is Unpaid: pending area with 'finish subscribing', export, delete. Data is intact. Open question: does a never-paid ex-beta account get the ninety-day Lapsed clock?");
+      }
+      case "acceptLaunchTerms": {
+        if (!s.account) return refuse(s, "no account.");
+        if (s.acceptance.length) return refuse(s, "already accepted the current versions.");
+        return note({ ...s, acceptance: ["Terms v1", "Privacy Policy v1"] }, "Re-acceptance gate: accepted the launch Terms and Privacy Policy. The gate blocks the app, never export or deletion.");
+      }
+
+      // ---------------- first run and First Value
+      case "skipFirstRun": {
+        if (!fullyAdmitted(s)) return refuse(s, "not admitted.");
+        return note({ ...s, firstRun: s.firstRun === "done" ? "done" : "skipped", screen: "home" }, "Skipped the first-run prompt. Home shows the empty Today rail and the Eve composer; the prompt is repeated once there.");
+      }
+      case "captureLifeAdmin": {
+        if (!fullyAdmitted(s)) return refuse(s, "not admitted.");
+        s = tick(s, 1);
+        s = { ...s, records: { ...s.records, lifeAdmin: [...s.records.lifeAdmin, "Renew my passport"] }, screen: "lifeAdmin" };
+        return note(s, "First capture was life admin: 'renew my passport'. Saved as a General Action, shown where it lives, and the next prompt steers toward a person. Never rejected, never hidden. Does not count toward First Value.");
+      }
+      case "savePerson": {
+        if (!fullyAdmitted(s)) return refuse(s, "not admitted.");
+        if (s.records.people.includes("Marcus")) return refuse(s, "Marcus is already saved.");
+        s = tick(s, 2);
+        s = { ...s, records: { ...s.records, people: [...s.records.people, "Marcus"] }, screen: "person" };
+        s = { ...s, milestones: { ...s.milestones, firstPerson: s.milestones.firstPerson ?? s.clock } };
+        return note(checkMilestones(s), "Typed 'Had coffee with Marcus, he's moving to Denver in March'. Eve proposed a new person, Marcus, and the customer saved him. Milestone: first person created.");
+      }
+      case "confirmMemory": {
+        if (!fullyAdmitted(s)) return refuse(s, "not admitted.");
+        if (!s.records.people.includes("Marcus")) return refuse(s, "save Marcus first; the Memory is about him.");
+        if (s.records.memories.some(m => m.startsWith("Marcus"))) return refuse(s, "that Memory is already confirmed.");
+        s = tick(s, 1);
+        s = { ...s, records: { ...s.records, memories: [...s.records.memories, "Marcus: moving to Denver in March"] }, screen: "person" };
+        s = { ...s, milestones: { ...s.milestones, firstMemory: s.milestones.firstMemory ?? s.clock } };
+        return note(checkMilestones(s), "Eve extracted 'moving to Denver in March' as a proposed Memory; the customer confirmed it. Milestone: first Memory confirmed.");
+      }
+      case "scheduleFollowUp": {
+        if (!fullyAdmitted(s)) return refuse(s, "not admitted.");
+        if (!s.records.people.includes("Marcus")) return refuse(s, "save Marcus first.");
+        if (s.records.followUps.length) return refuse(s, "a Follow-Up is already scheduled.");
+        s = tick(s, 2);
+        s = { ...s, records: { ...s.records, followUps: ["Check in with Marcus about the move · late February"] }, screen: "person" };
+        s = { ...s, milestones: { ...s.milestones, firstFollowUp: s.milestones.firstFollowUp ?? s.clock } };
+        return note(checkMilestones(s), "Scheduled a Follow-Up: check in about the move in late February. Milestone: first Follow-Up scheduled.");
+      }
+      case "seeResurface": {
+        if (!s.records.followUps.length) return refuse(s, "no Follow-Up to look for.");
+        s = tick(s, 1);
+        return note({ ...s, seenResurface: true, screen: "today" }, "Opened Today. The Follow-Up shows under 'coming up', so the customer has seen where it will resurface.");
+      }
+      case "askEve": {
+        if (!fullyAdmitted(s)) return refuse(s, "not admitted.");
+        s = tick(s, 2);
+        if (!s.records.people.includes("Marcus")) return note({ ...s, screen: "eveEmpty" }, "Asked Eve about someone with nothing saved. Eve says so plainly and offers to capture. No grounded answer, no milestone.");
+        s = { ...s, screen: "eveAnswer", milestones: { ...s.milestones, firstGroundedAnswer: s.milestones.firstGroundedAnswer ?? s.clock } };
+        s = checkMilestones(s);
+        return note(s, s.milestones.firstValue === s.clock
+          ? `Eve answered from what was said, citing the Memory and the Follow-Up. Milestone: first grounded answer. FIRST VALUE reached ${firstValueMinutes(s)} minutes after payment.`
+          : "Eve answered from what was said. Milestone: first grounded answer. First Value still needs the other steps.");
+      }
+      case "nextDay": {
+        s = tick(s, DAY);
+        if (!fullyAdmitted(s)) return note(s, "A day passed.");
+        return note({ ...s, screen: "today" }, s.records.followUps.length
+          ? "Day two: the Daily Brief arrives and Today lists Marcus. This is the Return. It is a readiness check, not part of First Value."
+          : "Day two: nothing to bring back yet.");
+      }
+
+      // ---------------- billing lifecycle
+      case "renewalFails": {
+        if (!s.paidAccess || s.pastDueSince !== null) return refuse(s, "no paid renewal to fail.");
+        s = tick(s, 30 * DAY);
+        return note({ ...s, pastDueSince: s.clock, screen: "home" }, "Renewal card failed. Stripe retries; Tendnote keeps the account admitted for seven days with an in-app notice.");
+      }
+      case "paymentRecovered": {
+        if (s.pastDueSince === null) return refuse(s, "not past due.");
+        s = tick(s, DAY);
+        return note({ ...s, pastDueSince: null, periodEnd: s.clock + 30 * DAY, screen: "home" }, "Card fixed in the Stripe portal; payment recovered. Notice disappears.");
+      }
+      case "dunningCloses": {
+        if (s.pastDueSince === null) return refuse(s, "not past due.");
+        s = tick(s, POLICY.dunningDays * DAY);
+        return note({ ...s, paidAccess: false, pastDueSince: null, lapsedAt: s.clock, screen: "lapsed" }, "Seven days passed without recovery. Paid Access lapsed. Ninety-day retention deadline set once, now.");
+      }
+      case "cancel": {
+        if (!s.paidAccess || s.cancelScheduled) return refuse(s, "nothing to cancel.");
+        s = tick(s, 3);
+        return note({ ...s, cancelScheduled: true, screen: "home" }, "Cancelled in the Stripe portal, effective at period end. Access continues to the end of what was paid for. Confirmation email sent.");
+      }
+      case "reverseCancel": {
+        if (!s.cancelScheduled) return refuse(s, "no cancellation scheduled.");
+        return note({ ...s, cancelScheduled: false, screen: "home" }, "Cancellation reversed before period end.");
+      }
+      case "periodEnds": {
+        if (!s.cancelScheduled) return refuse(s, "no cancellation scheduled; renewal would just happen.");
+        s = { ...s, clock: Math.max(s.clock, s.periodEnd) };
+        return note({ ...s, paidAccess: false, cancelScheduled: false, lapsedAt: s.clock, screen: "lapsed" }, "Period ended. Lapsed: resubscribe, export, or delete. Ninety-day clock set.");
+      }
+      case "requestRefund": {
+        if (!s.paidAccess) return refuse(s, "no active paid access to refund.");
+        const d = daysSince(s, s.paidAt);
+        if (d > POLICY.guaranteeDays) return refuse(s, `the fourteen-day guarantee has passed (day ${d + 1}). Cancellation is the path.`);
+        s = tick(s, 5);
+        return note({ ...s, paidAccess: false, lapsedAt: s.clock, cancelScheduled: false, pastDueSince: null, refunded: true, screen: "lapsed" },
+          `Refund requested by email on day ${d + 1}, inside the guarantee. Refunded in full; Paid Access revoked immediately; account is Lapsed with the ninety-day clock.`);
+      }
+      case "dispute": {
+        if (!s.paidAccess) return refuse(s, "no paid access to dispute.");
+        return note({ ...s, paidAccess: false, lapsedAt: s.clock, cancelScheduled: false, pastDueSince: null, screen: "lapsed" },
+          "Chargeback opened. Treated like a refund: revoked immediately. Winning it later does not re-admit automatically; the author re-admits by hand.");
+      }
+      case "resubscribe": {
+        if (s.lapsedAt === null && !(s.beta === "sunset" && !s.paidAccess)) return refuse(s, "the account is not lapsed.");
+        s = tick(s, 1);
+        return note({ ...s, checkout: { ...s.checkout, status: "open", attempts: s.checkout.attempts + 1, openedAt: s.clock }, screen: "stripe" }, "Resubscribe opens a fresh Stripe Checkout (a cancelled subscription is terminal; this is a new one).");
+      }
+      case "retentionPasses": {
+        if (s.lapsedAt === null) return refuse(s, "no retention clock is running.");
+        s = tick(s, POLICY.lapsedRetentionDays * DAY);
+        return note({ ...s, deleted: true, screen: "deleted" }, "Ninety days passed after notices at set intervals. Account and records deleted per the disposition table. Terminal.");
+      }
+      case "deleteAccount": {
+        if (!s.account) return refuse(s, "no account.");
+        return note({ ...s, deleted: true, screen: "deleted" }, "Owner deleted the account from the pending or lapsed area. Immediate. Any live subscription is cancelled with it.");
+      }
+      case "advance15": return note(tick(s, 15), "Fifteen minutes passed.");
+      default: return refuse(s, `unknown action ${t}`);
+    }
+  }
+
+  // ---- the customer's screen, derived from state --------------------------
+  function screen(s) {
+    const a = accessState(s);
+    const price = "$[PRICE]/month";
+    const dunningLeft = s.pastDueSince === null ? null : POLICY.dunningDays - daysSince(s, s.pastDueSince);
+    const notices = [];
+    if (a === ACCESS.PAST_DUE) notices.push({ text: `Your last payment didn't go through. Update your card within ${dunningLeft} day${dunningLeft === 1 ? "" : "s"} to keep access. Nothing has been lost.`, cta: "Update card (Stripe portal)" });
+    if (a === ACCESS.ENDING) notices.push({ text: "Your subscription ends at the close of this billing period. You keep full access until then. Change your mind in the portal any time before.", cta: "Manage billing" });
+    if (s.beta === "granted" && s.sunsetAnnounced) notices.push({ text: `Private beta ends on ${POLICY.betaSunsetLabel}. Subscribe to keep full access; nothing is deleted on that date.`, cta: "Subscribe" });
+    const base = { notices, list: null, fine: null };
+
+    switch (s.screen) {
+      case "landing": return { ...base, where: "tendnote.com", title: "A Personal OS that starts with the people in your life.",
+        body: "Keep what people tell you. Get nudged to reach out at the right time. Private by design, yours to export.\n\nOne plan, for one person. No free tier: self-hosting is free, and the code is open.", ctas: ["See pricing", "Try the demo", "Self-host instead"] };
+      case "pricing": return { ...base, where: "tendnote.com/pricing", title: `${price}, one account, cancel any time.`,
+        body: "Fourteen-day money-back guarantee on your first month.\nUS residents, eighteen and over. Card payment.\nFair-use budget for the assistant, stated plainly.\nEmail support, reply within two business days.", ctas: ["Subscribe"], fine: "Wording is a placeholder; the marketing ticket owns the claims." };
+      case "region": return { ...base, where: "tendnote.com (blocked route)", title: "Tendnote's hosted service is US-only for now.",
+        body: "We aren't offering accounts outside the United States yet. You can still read everything here, and the software is open source and free to run yourself.", ctas: ["Self-hosting guide"] };
+      case "createAccount": return { ...base, where: "Create your account", title: s.invitation === "received" ? "Create an account to see your invitation." : "First, an account. Then payment.",
+        body: "Email and password, or GitHub. Your account exists before you pay so your subscription has somewhere to land, and so a closed tab never loses your place.", ctas: ["Continue"], fine: "By continuing you accept the Terms and Privacy Policy (Terms v1, Privacy Policy v1). I confirm I am a US resident aged eighteen or over." };
+      case "checkoutEntry": return { ...base, where: "Subscribe", title: "You're one step from Tendnote.",
+        body: `${price}. Charged today; renews monthly. Fourteen-day money-back guarantee. Cancel any time from your account.`, ctas: ["Pay with Stripe"], fine: "Card only. Billing address must be in the United States." };
+      case "stripe": return { ...base, where: "checkout.stripe.com", title: `Tendnote · ${price}`,
+        body: "Stripe-hosted Checkout. Card number, expiry, CVC, US billing address. Stripe Tax applied.\n\n(Tendnote passes client_reference_id = your account, so the paid invoice can be matched to you.)", ctas: ["Pay"], fine: "Powered by Stripe." };
+      case "declined": return { ...base, where: "checkout.stripe.com", title: "Your card was declined.",
+        body: "Stripe shows this inline. Try another card or check with your bank. Nothing was charged.", ctas: ["Try again"], fine: "If you leave now, your account still exists. Sign in later and 'Finish subscribing' brings you straight back here." };
+      case "away": return { ...base, where: "(tab closed)", title: "The customer is gone.",
+        body: "No charge happened. The account exists and is Unpaid. There is nothing to clean up: no timer, no email chase at launch.\n\nOpen question for the owner: send one 'finish setting up' email after 24 hours, or stay silent?", ctas: [] };
+      case "confirming": return { ...base, where: "tendnote.com/welcome", title: "Thanks. Confirming your payment…",
+        body: "Usually a few seconds. This page checks Tendnote's own record of your access, not Stripe, so it works even if Stripe is slow.\n\nIf it takes longer than a minute we'll email you the moment you're in. Your card was charged once and only once.", ctas: ["Checking…"], fine: "The redirect proves nothing; the paid invoice does." };
+      case "pending": return { ...base, where: "tendnote.com/pending", title: s.beta === "sunset" ? "Private beta has ended." : "Almost there.",
+        body: (s.beta === "sunset" ? "Your data is exactly where you left it. Subscribe to keep using Tendnote, or export and delete it here.\n\n" : "Your account is ready; there's no subscription on it yet.\n\n") + `Signed in as ${s.account?.email}.`,
+        list: s.checkout.status === "expired" ? ["Your earlier checkout expired. Starting a new one is fine; nothing was charged."] : (s.checkout.status === "declined" || s.checkout.status === "abandoned") ? ["Your earlier checkout didn't finish. Nothing was charged."] : null,
+        ctas: ["Finish subscribing", "Export my data", "Delete my account", "Sign out"] };
+      case "welcome": return { ...base, where: "tendnote.com (first run)", title: "You're in. Who did you talk to this week?",
+        body: "Tell Eve in a sentence, like you'd tell a friend: who it was and one thing they said. Eve will offer to save the person and remember it. You can skip this and just start.", ctas: ["Type: Had coffee with Marcus, he's moving to Denver in March", "Skip for now"], fine: `Fifteen-minute target started at payment (${fmtClock(s.paidAt ?? 0)}).` };
+      case "home": return { ...base, where: "Home", title: s.records.people.length ? "Home" : "Nothing on today. Start with a person.",
+        body: s.records.people.length ? "Today rail on the left, Eve on the right." : "Who did you talk to this week? Tell Eve one thing they said.",
+        list: [ ...s.records.people.map(p => `Person · ${p}`), ...s.records.lifeAdmin.map(x => `Action · ${x}`) ].concat(s.records.people.length ? [] : ["Today: nothing yet", "People: no people yet"]),
+        ctas: ["Ask Eve…", "Connect Google Contacts (optional)"] };
+      case "lifeAdmin": return { ...base, where: "Home", title: "Saved as an action: Renew my passport.",
+        body: "It'll show up in Actions and on Today when it's due.\n\nTendnote is at its best with people. Who did you talk to this week? Try one sentence about them.", ctas: ["Type: Had coffee with Marcus…", "Not now"] };
+      case "person": {
+        const m = s.records.memories.filter(x => x.startsWith("Marcus")), f = s.records.followUps;
+        return { ...base, where: "People · Marcus", title: "Marcus",
+          body: m.length ? "" : "Eve proposed a Memory from what you said. Confirm it if it's right.",
+          list: [ ...m.map(x => `Memory ✓ ${x.replace("Marcus: ", "")}`), ...(m.length ? [] : ["Proposed Memory · moving to Denver in March  [Confirm] [Edit] [Discard]"]),
+                  ...(f.length ? f.map(x => `Follow-Up · ${x}`) : ["Follow-Up · none yet. Want a nudge before the move?  [Late February]"]) ],
+          ctas: f.length ? ["See it on Today", "Ask Eve about Marcus"] : ["Schedule the follow-up"] };
+      }
+      case "today": return { ...base, where: "Today", title: daysSince(s, s.paidAt ?? 0) >= 1 ? "Good morning. One thing today." : "Today",
+        body: daysSince(s, s.paidAt ?? 0) >= 1 ? "Your Daily Brief arrived by email too." : "Nothing due today.",
+        list: s.records.followUps.length ? [`${daysSince(s, s.paidAt ?? 0) >= 1 ? "Today" : "Coming up"} · ${s.records.followUps[0]}`] : ["Nothing on today."], ctas: ["Ask Eve…"] };
+      case "eveAnswer": return { ...base, where: "Eve", title: "“What's going on with Marcus?”",
+        body: "Marcus is moving to Denver in March; you had coffee with him this week. You've set a check-in for late February so you can ask how the move is going.\n\nSources: 1 Memory, 1 Follow-Up (yours).", ctas: ["Ask something else"], fine: "Grounded in what you said; nothing invented." };
+      case "eveEmpty": return { ...base, where: "Eve", title: "“What's going on with Marcus?”",
+        body: "I don't have anything saved about Marcus yet. Tell me one thing about him and I'll keep it.", ctas: ["Type: Had coffee with Marcus…"] };
+      case "join": return { ...base, where: "Invitation (emailed link)", title: s.account ? "You're invited to Alex's household." : "You have an invitation.",
+        body: s.account ? "Join when you're ready. Nothing of yours is shared until you choose to share it.\n\nJoining is free and gives you a read-only view of what the household shares. Using Tendnote for yourself is a separate subscription." : "Sign in or create an account to see who it's from.",
+        ctas: s.account ? ["Accept invitation", "Not now"] : ["Create account", "Sign in"] };
+      case "guest": return { ...base, where: "Alex's household (guest view)", title: "You're viewing Alex's household.",
+        body: "Read-only: shared people, memories, follow-ups, assets and the household calendar. No assistant, no capture, nothing private.\n\nWant Tendnote for yourself? Subscribe and this membership stays.", list: ["Shared · Grandma's birthday · 14 Oct", "Shared · Plumber · Mike R."],
+        ctas: ["Subscribe for myself", "Sign out"], fine: "The guest interface's real shape is ticket #577. This is a stub." };
+      case "lapsed": return { ...base, where: "tendnote.com/pending", title: s.refunded ? "Refunded. Your access has ended." : "Your subscription has ended.",
+        body: `Your data stays for ${POLICY.lapsedRetentionDays} days from ${fmtClock(s.lapsedAt)}, then it's deleted. We'll email you before that happens.\n\nResubscribe any time in that window and everything is exactly where you left it.`, ctas: ["Resubscribe", "Export my data", "Delete my account now", "Sign out"] };
+      case "deleted": return { ...base, where: "(gone)", title: "Account deleted.", body: "Terminal. Nothing to show.", ctas: [] };
+      default: return { ...base, where: "?", title: s.screen, body: "", ctas: [] };
+    }
+  }
+
+  return { initial, reduce, screen, accessState, admittedVia, fullyAdmitted, firstValueMinutes, fmtClock, POLICY, ACCESS, DAY };
+})();
+
+// ============================================================================
+// PAGE SHELL (throwaway): renders state, screen, free-play buttons, scenarios.
+// ============================================================================
+const ACTIONS = [
+  ["Marketing and offer", [["openLanding", "Open landing page"], ["openPricing", "Open pricing"], ["chooseOffer", "Choose the offer"]]],
+  ["Account", [["createAccount", "Create account (accept Terms)"], ["signIn", "Sign in"], ["acceptLaunchTerms", "Accept launch Terms (re-acceptance)"]]],
+  ["Checkout", [["startCheckout", "Start Stripe Checkout"], ["payCard", "Card accepted"], ["cardDeclined", "Card declined"], ["closeTab", "Close the tab"], ["confirmPayment", "invoice.paid arrives"], ["returnLater", "Come back and sign in"]]],
+  ["Household", [["receiveInvitation", "Receive Household Invitation"], ["acceptInvitation", "Accept invitation"], ["householdOwnerLapses", "Household's last paying Owner lapses"], ["householdOwnerPaysAgain", "Household Owner pays again"]]],
+  ["Private beta", [["startAsBetaUser", "Be an existing beta account"], ["announceSunset", "Announce beta sunset"], ["betaSunset", "Beta ends"]]],
+  ["First run and First Value", [["captureLifeAdmin", "Capture 'renew my passport'"], ["savePerson", "Save Marcus"], ["confirmMemory", "Confirm the Memory"], ["scheduleFollowUp", "Schedule the Follow-Up"], ["seeResurface", "See it on Today"], ["askEve", "Ask Eve about Marcus"], ["skipFirstRun", "Skip first run"], ["nextDay", "Next day (the Return)"]]],
+  ["Billing later", [["renewalFails", "Renewal fails"], ["paymentRecovered", "Payment recovered"], ["dunningCloses", "Seven days pass"], ["cancel", "Cancel (portal)"], ["reverseCancel", "Undo cancel"], ["periodEnds", "Period ends"], ["requestRefund", "Request refund"], ["dispute", "Chargeback"], ["resubscribe", "Resubscribe"], ["retentionPasses", "Ninety days pass"], ["deleteAccount", "Delete account"], ["advance15", "+15 minutes"]]],
+];
+const LABEL = Object.fromEntries(ACTIONS.flatMap(([, list]) => list));
+
+const SCENARIOS = [
+  { name: "Happy path", desc: "A stranger on a phone: landing page, pricing, account, Stripe, admission, then the four First Value steps.",
+    watch: "Watch the fifteen-minute clock in the state panel, and that the customer is never admitted on the redirect alone.",
+    steps: ["openLanding", "openPricing", "chooseOffer", "createAccount", "startCheckout", "payCard", "confirmPayment", "savePerson", "confirmMemory", "scheduleFollowUp", "seeResurface", "askEve", "nextDay"] },
+  { name: "Card declined", desc: "The first card fails inside Stripe. The customer retries with another card.",
+    watch: "Nothing is charged on decline; the retry is a new Checkout attempt; the account already exists so nothing is re-entered.",
+    steps: ["chooseOffer", "createAccount", "startCheckout", "cardDeclined", "startCheckout", "payCard", "confirmPayment"] },
+  { name: "Closed the tab, came back next day", desc: "Mid-checkout the customer closes the tab. A day later they sign in.",
+    watch: "The pending area says exactly what happened (nothing charged) and offers one action: finish subscribing. Also the open question about a nudge email.",
+    steps: ["chooseOffer", "createAccount", "startCheckout", "closeTab", "nextDay", "returnLater", "startCheckout", "payCard", "confirmPayment"] },
+  { name: "Paid, but confirmation is slow", desc: "Card accepted, redirected back, and the paid invoice has not been projected yet.",
+    watch: "The 'confirming' page reads Tendnote's own record, never Stripe. Admission happens the instant invoice.paid is projected, even if the customer already left and signed back in.",
+    steps: ["chooseOffer", "createAccount", "startCheckout", "payCard", "returnLater", "confirmPayment"] },
+  { name: "Invited Household member", desc: "Someone receives a Household Invitation, has no account, accepts first, browses as a guest, then subscribes for themselves.",
+    watch: "Accept-first means the membership is real before any payment; subscribing later keeps the membership; a paying member is unaffected when the household's Owner lapses.",
+    steps: ["receiveInvitation", "acceptInvitation", "createAccount", "acceptInvitation", "householdOwnerLapses", "householdOwnerPaysAgain", "startCheckout", "payCard", "confirmPayment", "householdOwnerLapses"] },
+  { name: "Existing private-beta account", desc: "A beta user with real data sees the sunset notice, ignores it, hits the pending area after the sunset, then subscribes.",
+    watch: "Data is intact through the sunset; the re-acceptance gate for the launch Terms; and the open question of whether a never-paid ex-beta account gets a ninety-day clock.",
+    steps: ["startAsBetaUser", "announceSunset", "betaSunset", "returnLater", "acceptLaunchTerms", "startCheckout", "payCard", "confirmPayment"] },
+  { name: "Life-admin first capture", desc: "The newcomer's first thought is 'renew my passport', not a person.",
+    watch: "It is saved and shown, never rejected; the steer toward a person is one sentence; First Value is still reached afterwards.",
+    steps: ["chooseOffer", "createAccount", "startCheckout", "payCard", "confirmPayment", "skipFirstRun", "captureLifeAdmin", "savePerson", "confirmMemory", "scheduleFollowUp", "askEve"] },
+  { name: "Ask Eve too early", desc: "The newcomer asks Eve about Marcus before saying anything about him.",
+    watch: "Eve says plainly it has nothing and offers capture. No invented answer, no milestone.",
+    steps: ["chooseOffer", "createAccount", "startCheckout", "payCard", "confirmPayment", "askEve", "savePerson", "askEve"] },
+  { name: "Refund inside the guarantee", desc: "After First Value, the customer asks for their money back on day three.",
+    watch: "Revoked immediately, Lapsed with a ninety-day clock, resubscribe clears it. Try 'Request refund' again after +15 days in free play to see the guarantee refuse.",
+    steps: ["chooseOffer", "createAccount", "startCheckout", "payCard", "confirmPayment", "savePerson", "nextDay", "nextDay", "requestRefund", "resubscribe", "payCard", "confirmPayment"] },
+  { name: "Renewal fails, then cancel", desc: "Month two: the card fails, gets fixed, then the customer cancels and lets the period end.",
+    watch: "Past Due and Ending are notices on top of Paid, not separate admission answers; the account is admitted right up to period end.",
+    steps: ["chooseOffer", "createAccount", "startCheckout", "payCard", "confirmPayment", "renewalFails", "paymentRecovered", "cancel", "reverseCancel", "cancel", "periodEnds", "retentionPasses"] },
+  { name: "EU visitor", desc: "Someone in the EU reads the site and tries to subscribe.",
+    watch: "Marketing is readable; the offer is refused at checkout entry by the Region Block; the page points at self-hosting. (Set the region to EU first.)",
+    steps: ["openLanding", "openPricing", "chooseOffer", "createAccount"] },
+];
+
+let state = Journey.initial();
+let scenarioIdx = 0, stepIdx = 0;
+
+function dispatch(type) { state = Journey.reduce(state, { type }); render(); }
+function pillFor(a) {
+  const A = Journey.ACCESS;
+  if (a === A.PAID) return "pill"; if (a === A.GUEST || a === A.ENDING || a === A.PAST_DUE) return "pill warn";
+  if (a === A.LAPSED || a === A.DELETED) return "pill bad"; return "pill off";
+}
+function render() {
+  const s = state, a = Journey.accessState(s), m = s.milestones, fv = Journey.firstValueMinutes(s);
+  const fmt = (t) => t === null ? "—" : Journey.fmtClock(t);
+  document.getElementById("state").innerHTML = [
+    ["Clock", Journey.fmtClock(s.clock)],
+    ["Visitor", `${s.visitor.region}, ${s.visitor.device}`],
+    ["Account", s.account ? s.account.email : "none"],
+    ["Acceptance Records", s.acceptance.length ? s.acceptance.join(", ") : (s.account ? "<span class='pill warn'>none, gate will ask</span>" : "—")],
+    ["Account state", `<span class="${pillFor(a)}">${a}</span>`],
+    ["Admitted via", Journey.admittedVia(s) || "not admitted"],
+    ["Checkout", `${s.checkout.status} (${s.checkout.attempts} attempt${s.checkout.attempts === 1 ? "" : "s"})`],
+    ["Private beta", s.beta],
+    ["Household", s.invitation === "none" ? "—" : `${s.invitation}${s.invitation === "accepted" ? (s.householdHasPayingOwner ? ", household paying" : ", household NOT paying") : ""}`],
+    ["First run", s.firstRun],
+    ["Records", `${s.records.people.length} people, ${s.records.memories.length} memories, ${s.records.followUps.length} follow-ups, ${s.records.lifeAdmin.length} actions`],
+    ["First person", fmt(m.firstPerson)], ["First Memory", fmt(m.firstMemory)], ["First Follow-Up", fmt(m.firstFollowUp)], ["First grounded answer", fmt(m.firstGroundedAnswer)],
+    ["First Value", m.firstValue === null ? "—" : `<span class="pill ${fv <= Journey.POLICY.firstValueTargetMinutes ? "" : "warn"}">${fv} min after payment (target ≤ ${Journey.POLICY.firstValueTargetMinutes})</span>`],
+    ["Retention deadline", s.lapsedAt === null ? "—" : Journey.fmtClock(s.lapsedAt + Journey.POLICY.lapsedRetentionDays * Journey.DAY)],
+  ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+  const ch = document.getElementById("changed");
+  ch.textContent = s.last || "Nothing yet. Pick a walkthrough or press a button.";
+  ch.className = "changed" + (s.lastBad ? " bad" : "");
+
+  const sc = Journey.screen(s);
+  document.getElementById("phone").innerHTML = `
+    <div class="where">${sc.where}</div>
+    <div class="title">${sc.title}</div>
+    <div class="body">${sc.body}</div>
+    ${sc.notices.map(n => `<div class="notice">${n.text}<br><b>${n.cta}</b></div>`).join("")}
+    ${sc.list ? `<div class="list">${sc.list.map(x => `<div>${x}</div>`).join("")}</div>` : ""}
+    <div class="ctas">${sc.ctas.map((c, i) => `<button class="cta ${i === 0 ? "primary" : ""}" disabled>${c}</button>`).join("")}</div>
+    ${sc.fine ? `<div class="fine">${sc.fine}</div>` : ""}`;
+
+  document.getElementById("free").innerHTML = ACTIONS.map(([g, list]) =>
+    `<div class="group"><div class="g">${g}</div><div class="btns">${list.map(([id, label]) => `<button class="act" data-a="${id}">${label}</button>`).join("")}</div></div>`).join("");
+
+  document.getElementById("log").innerHTML = s.log.map(l => `<li>${l}</li>`).join("");
+  const logEl = document.getElementById("log"); logEl.scrollTop = logEl.scrollHeight;
+
+  document.getElementById("tabs").innerHTML = SCENARIOS.map((sc, i) => `<button class="${i === scenarioIdx ? "on" : ""}" data-s="${i}">${sc.name}</button>`).join("");
+  const scn = SCENARIOS[scenarioIdx];
+  document.getElementById("desc").textContent = scn.desc;
+  document.getElementById("watch").textContent = "Watch for: " + scn.watch;
+  document.getElementById("steps").innerHTML = scn.steps.map((id, i) =>
+    `<button class="act ${i < stepIdx ? "done" : ""} ${i === stepIdx ? "next" : ""}" data-step="${i}"><span class="n">${i + 1}.</span>${LABEL[id]}</button>`).join("")
+    + `<button class="act" data-restart="1">Restart this walkthrough</button>`;
+}
+function startScenario(i) {
+  scenarioIdx = i; stepIdx = 0;
+  const region = SCENARIOS[i].name === "EU visitor" ? "EU" : document.getElementById("region").value;
+  document.getElementById("region").value = region;
+  state = Journey.initial({ region, device: document.getElementById("device").value });
+  render();
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.a) dispatch(b.dataset.a);
+  else if (b.dataset.s !== undefined) startScenario(+b.dataset.s);
+  else if (b.dataset.step !== undefined) { const i = +b.dataset.step; dispatch(SCENARIOS[scenarioIdx].steps[i]); stepIdx = i + 1; render(); }
+  else if (b.dataset.restart) startScenario(scenarioIdx);
+  else if (b.id === "reset") { state = Journey.initial({ region: document.getElementById("region").value, device: document.getElementById("device").value }); stepIdx = 0; render(); }
+});
+document.getElementById("region").addEventListener("change", (e) => { state = Journey.reduce(state, { type: "setVisitor", patch: { region: e.target.value } }); render(); });
+document.getElementById("device").addEventListener("change", (e) => { state = Journey.reduce(state, { type: "setVisitor", patch: { device: e.target.value } }); render(); });
+startScenario(0);
+</script>
+</body>
+</html>
