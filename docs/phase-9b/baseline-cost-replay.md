@@ -2,8 +2,28 @@
 
 Preparation for [Run the approved baseline cost replay](https://github.com/nick-neely/tendnote/issues/578).
 The owner authorized building and validating this harness with synthetic data
-and unpaid checks. Paid execution still requires separate approval. No monthly
-cost or price is established by the smoke test.
+and unpaid checks, then separately approved one paid replay on 2026-09-18,
+capped at $25 total across all three variants with web search excluded.
+That attempt stopped during startup before any inference request. No monthly
+cost or price is established by that startup failure. Because no inference was
+sent, continuation after the startup repair uses the existing approval and the
+same unspent $25 allowance. No paid sample or uncertain charge may be retried.
+
+## First approved attempt
+
+The [preserved attempt](../../evidence/cost/1ad0b132b9464aa7e7483a9dbb538b4c67ec6f69/README.md)
+reset and seeded the isolated eval database, then failed while Eve loaded model
+metadata. No variant started its workload. The ledger contains zero inference
+requests, $0 known spend, $0 reserved, and no pending requests. Typical and heavy
+monthly costs and sample variance remain unknown; zero spend is a startup result,
+not an estimate of product cost.
+
+The proxy forwarded the public catalog's `content-encoding: br` header after
+Node fetch had already decompressed its body. Eve's second decompression failed.
+The proxy now removes stale encoding and length headers when forwarding decoded
+responses. A regression test and an unpaid live catalog fetch verify the repair;
+neither sends model inference requests. The original evidence remains unchanged,
+and the ticket remains open pending usable monthly evidence.
 
 ## Reviewable commands
 
@@ -75,7 +95,7 @@ allocate shared indexes, infrastructure, and database overhead.
 The isolated app disables Eve's provider-executed `web_search` tool, which uses
 `gateway.exa_search` and has charges outside the token catalog. The production
 app is unchanged. The owner confirmed this exclusion on 2026-09-18. This scope
-decision does not authorize paid execution, which still requires separate approval.
+decision was followed by the separate one-run approval recorded above.
 Results measure the synthetic relationship workload, **not** an upper bound on
 web-research usage. All authored relationship tools retain their current schemas.
 The earlier blanket claim that this is the full current-surface cost ceiling

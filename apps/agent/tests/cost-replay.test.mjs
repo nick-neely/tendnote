@@ -223,3 +223,32 @@ it("forwards paid-path requests only after reservation and substitutes parent-he
     fetchSpy.mockRestore();
   }
 });
+
+it("forwards decoded catalog metadata without upstream compression or length headers", async () => {
+  const original = globalThis.fetch;
+  const metadata = { models: [{ slug: models.agent }] };
+  const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+    if (String(url) === "https://ai-gateway.vercel.sh/v1/models/catalog") {
+      return new Response(JSON.stringify(metadata), {
+        headers: {
+          "content-type": "application/json",
+          "content-encoding": "br",
+          "content-length": "9999",
+        },
+      });
+    }
+    return original(url, init);
+  });
+  const proxy = await startProxy({ token: "test", catalog, ceilingUsd: 25, persist() {} });
+  try {
+    const response = await fetch(`${proxy.url}/v1/models/catalog`, {
+      headers: { "x-cost-proxy-token": "test" },
+    });
+    expect(response.headers.has("content-encoding")).toBe(false);
+    expect(await response.json()).toEqual(metadata);
+    expect(proxy.meter.snapshot().rows).toEqual([]);
+  } finally {
+    await proxy.close();
+    fetchSpy.mockRestore();
+  }
+});

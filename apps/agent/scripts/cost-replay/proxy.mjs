@@ -17,9 +17,13 @@ export async function startProxy(options) {
         return;
       }
       const response = await routeRequest(req, context);
-      res
-        .writeHead(response.status, Object.fromEntries(response.headers))
-        .end(await response.text());
+      // Fetch decodes compressed bodies but retains the upstream wire headers.
+      const body = await response.text();
+      const headers = new Headers(response.headers);
+      headers.delete("content-encoding");
+      headers.delete("content-length");
+      headers.delete("transfer-encoding");
+      res.writeHead(response.status, Object.fromEntries(headers)).end(body);
     } catch (error) {
       console.error("Cost proxy rejected request:", req.method, req.url, error.message);
       meter.stop("proxy-stopped; inspect content-free ledger");
