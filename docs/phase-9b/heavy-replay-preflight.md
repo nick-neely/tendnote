@@ -157,3 +157,17 @@ using the existing $50 replay ceiling and a distinct `heavy-month-50-usd`
 acknowledgement. The meter reserves $0.005 inside that ceiling for one report
 query. It starts from a fresh isolated database and writes `heavy-month` evidence;
 light and typical do not rerun. Existing outcome assertions and stop rules remain.
+
+## Full heavy replay result, 2026-09-20
+
+The [full-run evidence](../../evidence/cost/de25a0d12183a84a70b973818b8bde7a780cd50d/heavy-month/README.md)
+records 55 validated turns before the turn-56 source assertion stopped the sample.
+The last session output belongs to the preceding recall; its terminal waiting
+event appears twice, with no recorded receipt of the capture request. Investigate
+and reproduce stale session-boundary handling before another paid attempt. This
+is evidence for an eval/client sequencing problem, not a confirmed model refusal.
+
+All 444 requests reconcile. Provider charges were $2.15668920; including the
+single reporting-query allowance gives $2.16168920 against the $50 cap. There are
+no uncertain requests or unfinished jobs. The full month remains incomplete, and
+no automatic retry was launched.

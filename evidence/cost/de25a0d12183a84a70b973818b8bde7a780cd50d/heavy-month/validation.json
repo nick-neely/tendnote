@@ -1,0 +1,44 @@
+{
+  "status": "partial",
+  "validatedActivity": {
+    "turns": 55,
+    "captures": 27,
+    "followups": 32,
+    "uploads": 2,
+    "scheduledChecks": 6
+  },
+  "failedAttempt": {
+    "day": 3,
+    "turn": 56,
+    "stage": "checking-outcomes",
+    "error": "Expected one new private person-linked source record"
+  },
+  "settledRequests": 444,
+  "uncertainRequests": 0,
+  "transportRetries": 0,
+  "retainedReservationUsd": "0",
+  "emptyResponseRecoveryLogEvents": 34,
+  "observedSessionEvidence": {
+    "lastReceivedWorkloadTurn": 55,
+    "lastRuntimeTurnId": "turn_26",
+    "lastResponseKind": "read-only recall for the preceding person",
+    "duplicateTerminalWaitingEventCount": 2,
+    "duplicateTerminalWaitingEventId": "evt_01M2YSR89NXT7AV0JY4H3Q157W",
+    "requestedCaptureReceiptRecorded": false
+  },
+  "interpretation": "Evidence supports a stale session boundary being accepted for the next send. This is not yet a reproduced root cause and does not prove a model capture refusal.",
+  "storage": {
+    "logicalRowBytes": 451331,
+    "uploadedBytesIncludedInLogicalRows": 131072,
+    "unfinishedBackgroundJobs": 0,
+    "savedItems": 0,
+    "generalActions": 1
+  },
+  "limits": [
+    "No full-month estimate; only 55 of 600 turns validated.",
+    "First weekly review and person reuse were not reached.",
+    "Day-two activity and scheduled checks passed; previously failing turn 30 passed.",
+    "No paid retry or continuation was launched.",
+    "Raw prompts, replies and traces remain local."
+  ]
+}

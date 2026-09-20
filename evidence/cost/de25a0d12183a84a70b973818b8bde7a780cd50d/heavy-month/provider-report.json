@@ -1,0 +1,50 @@
+{
+  "queriedAt": "2026-09-20T07:03:24.443Z",
+  "query": {
+    "start_date": "2026-09-20",
+    "end_date": "2026-09-20",
+    "group_by": "model",
+    "api_key_id": "self",
+    "user_id": "cost-replay:fbd6508e-95d1-473b-945d-4ca0d19e2c4e",
+    "tags": "cost:heavy"
+  },
+  "status": 200,
+  "queryFeeAllowanceUsd": 0.005,
+  "response": {
+    "results": [
+      {
+        "model": "google/gemini-3.1-flash-lite",
+        "total_cost": 0.03348925,
+        "market_cost": 0.01211425,
+        "input_tokens": 27019,
+        "output_tokens": 3573,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "reasoning_tokens": 0,
+        "request_count": 95
+      },
+      {
+        "model": "google/gemini-3.7-flash",
+        "total_cost": 2.12318115,
+        "market_cost": 2.05253115,
+        "input_tokens": 1319537,
+        "output_tokens": 11097,
+        "cached_input_tokens": 12001312,
+        "cache_creation_input_tokens": 0,
+        "reasoning_tokens": 32311,
+        "request_count": 314
+      },
+      {
+        "model": "openai/text-embedding-3-small",
+        "total_cost": 0.0000188,
+        "market_cost": 0.0000188,
+        "input_tokens": 940,
+        "output_tokens": 0,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "reasoning_tokens": 0,
+        "request_count": 35
+      }
+    ]
+  }
+}
