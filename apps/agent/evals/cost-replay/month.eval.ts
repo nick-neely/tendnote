@@ -10,14 +10,16 @@ import { captureSourceRecordForPerson } from "@tendnote/db/queries/source-record
 import { generateWeeklyRelationshipReview } from "@tendnote/db/queries/weekly-relationship-review";
 import type { EveEvalContext, EveEvalTurn } from "eve/evals";
 import { defineEval } from "../define-eval";
+import { capturePreflight } from "./capture-preflight";
 import {
   ownerUserId,
   seedMonth,
   storedActivity,
   syntheticCalendar,
   uploadEvidence,
-  type Workload,
 } from "./fixtures";
+import { assertTurnOutcomes, personOutcomes } from "./outcomes";
+import { plannedTurn, type Workload } from "./workload";
 
 export default defineEval({
   description:
@@ -91,6 +93,11 @@ async function replay(t: EveEvalContext) {
     result.status = "complete";
     t.succeeded();
   } finally {
+    try {
+      result.storage = await storedActivity();
+    } catch {
+      /* Keep the original replay failure. */
+    }
     persist();
     await closeDb();
   }
@@ -117,6 +124,7 @@ async function smoke(t: EveEvalContext, run: Replay) {
   if (!turn.message?.includes("Synthetic smoke reply."))
     throw new Error("Smoke reply did not traverse the proxy");
   run.result.turns = 1;
+  await capturePreflight(run.persons);
   await smokeBackground(run.persons[0]?.id);
   await uploadEvidence(1);
   run.result.uploads = 1;
@@ -186,64 +194,19 @@ async function dayTurns(
   now: Date,
 ) {
   for (const index of dayIndices(day, run.config.workload.turns)) {
-    const step = plannedTurn(run, index, now);
+    const person = run.persons[index % run.persons.length];
+    if (!person) throw new Error("Missing synthetic person");
+    const step = plannedTurn(run.config.workload, index, person, now);
+    const before = await personOutcomes(person.id);
     const turn = await session.send(step.prompt);
     assertSettled(turn);
-    requireTools(turn, step.tools);
+    assertTurnOutcomes(step, before, await personOutcomes(person.id));
     run.result.turns++;
     run.result.captures += Number(step.capture);
     run.result.followups += Number(step.followup);
     await checkMeter(run.config);
     run.persist();
   }
-}
-function plannedTurn(run: Replay, index: number, now: Date) {
-  const { workload } = run.config;
-  const person = run.persons[index % run.persons.length];
-  if (!person) throw new Error("Missing synthetic person");
-  const capture =
-    Math.floor(((index + 1) * workload.captures) / workload.turns) >
-    Math.floor((index * workload.captures) / workload.turns);
-  const followup = capture && run.result.followups < workload.followups;
-  const explicit = run.result.captures % 4 === 0;
-  const identity = `${person.displayName} (person ID ${person.id})`;
-  return {
-    capture,
-    followup,
-    ...turnContent({ identity, index, now, capture, followup, explicit }),
-  };
-}
-function turnContent(input: {
-  identity: string;
-  index: number;
-  now: Date;
-  capture: boolean;
-  followup: boolean;
-  explicit: boolean;
-}) {
-  if (!input.capture)
-    return {
-      prompt: `What relationship context do I have for ${input.identity}? Give a short grounded answer and one possible next step. Do not write anything.`,
-      tools: [],
-    };
-  const instruction = input.explicit
-    ? "Remember their pottery interest as a confirmed private memory."
-    : "Log this as a private casual relationship note, not a confirmed memory.";
-  const tools = [input.explicit ? "capture_memory" : "capture_source_record"];
-  const suffix = followupInstruction(input.now, input.followup);
-  return {
-    prompt: `I caught up with ${input.identity}. They mentioned enjoying pottery, and we discussed a fictional community picnic, conversation ${input.index + 1}. ${instruction}${suffix.prompt}`,
-    tools: [...tools, ...suffix.tools],
-  };
-}
-function followupInstruction(now: Date, followup: boolean) {
-  const due = new Date(now.getTime() + 3 * 86400000).toISOString().slice(0, 10);
-  return followup
-    ? {
-        prompt: ` Also create a follow-up for me to ask them about the picnic on ${due}.`,
-        tools: ["create_followup"],
-      }
-    : { prompt: "", tools: [] };
 }
 async function dailySchedules(run: Replay, now: Date) {
   const localDate = now.toISOString().slice(0, 10);
@@ -252,10 +215,6 @@ async function dailySchedules(run: Replay, now: Date) {
   await generatePostMeetingAftercare({ ownerUserId, now, calendarReaderFor });
   await generateBirthdayGiftPlanning({ ownerUserId, localDate, now });
   run.result.scheduledChecks += 3;
-}
-function requireTools(turn: EveEvalTurn, tools: string[]) {
-  if (tools.some((name) => !turn.toolCalls.some((call) => call.name === name)))
-    throw new Error("Planned mutation was not executed");
 }
 function assertSettled(turn: EveEvalTurn) {
   turn.expectOk();
@@ -275,6 +234,7 @@ function validateCounts(counts: Record<string, number>, workload: Workload) {
   const expected = {
     people: workload.people,
     source_records: workload.captures,
+    memories: Math.ceil(workload.captures / 4),
     followups: workload.followups,
     asset_evidence_files: workload.uploads,
   };

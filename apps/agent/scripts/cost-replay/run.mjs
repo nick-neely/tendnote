@@ -136,6 +136,9 @@ const metadata = {
   assumptions: {
     days: 30,
     sessionBoundary: "daily",
+    workloadRevision: "capture-contract-v2",
+    capturePattern:
+      "every fourth capture is confirmed; pair follow-ups only with confirmed captures; remaining follow-ups use non-capture turns",
     uploadBytes: 65536,
     syntheticGoogleConnection: true,
     externalDelivery: false,

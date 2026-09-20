@@ -19,9 +19,8 @@ heavy did not start, and no monthly cost estimate or variance is available.
 The first compound capture followed the current Global Capture route and returned
 a Saved Items Note instead of the requested Memory and Follow-Up. The harness's
 legacy-tool assertion failed; read-only database inspection independently confirmed
-zero Memories and zero Follow-Ups. The next preparation must reconcile the fixture
-and persisted-outcome validation with the current Capture contract before another
-paid sample. The sample was not retried. The ticket remains open and cannot yet
+zero Memories and zero Follow-Ups. The fixture and persisted-outcome validation
+have since been repaired as described below. The paid sample was not retried. The ticket remains open and cannot yet
 supply the pricing or fair-use decisions with usable monthly evidence.
 
 ## First approved attempt
@@ -82,7 +81,9 @@ seeded directly; captures and Follow-Ups go through the real Eve session and
 approval protocol. Activity is spread across thirty synthetic days, with a new
 conversation each day. Every fourth capture is an explicit confirmed Memory;
 the others are casual relationship notes with inline extraction. Remaining
-turns ask for grounded recall. Follow-Ups accompany the first eligible captures.
+turns are either standalone Follow-Ups or grounded recall. Only confirmed-memory
+captures are paired with Follow-Ups; casual notes stay single-purpose. This is the
+`capture-contract-v2` fixture revision, not a claim that the failed sample completed.
 Approval continuations, model steps, subagents, and retries are additional
 billable calls, not additional planned user turns.
 
@@ -104,6 +105,41 @@ remain real. This is an activity replay, not a time-travel test of cron timing,
 cache expiry, retention, or reminder delivery. Storage accounting records
 owner-scoped row sizes and exact uploaded bytes; it does not price storage or
 allocate shared indexes, infrastructure, and database overhead.
+
+## Capture fixture repair
+
+The original fixture combined a casual narrative, pronouns, numeric names, and an
+ISO due date in a compound request. The deterministic Global Capture router fell
+back to a Saved Item. Production Capture deliberately recognizes bounded explicit
+wording; this repair changes the eval fixture, not that product contract.
+
+The revised fixture uses unique two-word alphabetic names and explicit named
+Memory clauses. Paired Memory and Follow-Up clauses are semicolon-separated;
+Follow-Ups use a month and day three days after the synthetic activity date.
+Those dates resolve against the real process clock, including year rollover.
+The synthetic owner uses UTC. Casual captures remain person-linked logged notes,
+not confirmed Memories or generic Saved Items.
+
+| Variant | Confirmed captures paired with Follow-Ups | Standalone Follow-Up turns | Recall turns | Casual captures |
+| --- | ---: | ---: | ---: | ---: |
+| Light | 5 | 5 | 15 | 15 |
+| Typical | 20 | 10 | 60 | 60 |
+| Heavy | 75 | 25 | 275 | 225 |
+
+Total turns, captures, people, Follow-Ups, and uploads remain unchanged. The
+within-turn grouping changed, so a future result measures this revised hypothesis;
+it must not be presented as directly comparable to the failed original fixture.
+The replay checks new private database records for the intended owner and person,
+including approved Memory authority and the Follow-Up date. Old records, a
+successful tool name, a generic Note, or a suggested Memory cannot satisfy it.
+Partial storage is captured even when a turn fails.
+
+Unpaid routing checks cover every generated explicit request for each variant.
+The smoke also exercises the real database-backed Capture entry point for a
+grouped Memory plus Follow-Up and a standalone Follow-Up, plus the person-linked
+casual capture and extraction path, before checking their stored outcomes. This
+validates fixture routing and persistence, not future model reliability. Another
+paid sample requires separate approval; the prior paid evidence is unchanged.
 
 ## Web-search exclusion
 
@@ -178,7 +214,7 @@ or an explicitly accepted partial outcome. Harness readiness is not its resoluti
 ## Harness validation
 
 The unpaid end-to-end smoke passed against the real Eve and Postgres runtime.
-It exercised seven artificial Gateway requests across interactive, snapshot,
+The repaired smoke exercised twelve artificial Gateway requests across interactive, snapshot,
 extraction, embedding, and scheduled-summary categories. Artificial costs are
 not evidence of the paid service's economics. The focused suite covers budget
 reservation, concurrent calls, uncertain billing, model/routing restrictions,

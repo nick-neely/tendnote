@@ -7,15 +7,9 @@ import {
 } from "@tendnote/db/queries/calendar";
 import { people, providerConnections, reminderOptInStates, user } from "@tendnote/db/schema";
 import { sql } from "drizzle-orm";
+import { replayPersonName, type Workload } from "./workload";
 
 export const ownerUserId = "cost-replay-user";
-export type Workload = {
-  turns: number;
-  captures: number;
-  people: number;
-  followups: number;
-  uploads: number;
-};
 export async function seedMonth(workload: Workload) {
   const db = getDb();
   await db.insert(user).values({
@@ -26,9 +20,9 @@ export async function seedMonth(workload: Workload) {
   const persons = Array.from({ length: workload.people }, (_, i) => ({
     id: randomUUID(),
     ownerUserId,
-    displayName: `Replay Friend ${i + 1}`,
-    firstName: "Replay",
-    lastName: `Friend ${i + 1}`,
+    displayName: replayPersonName(i),
+    firstName: "Avery",
+    lastName: replayPersonName(i).split(" ")[1],
     birthday: `1990-09-${String((i % 28) + 1).padStart(2, "0")}`,
     relationshipType: "friend" as const,
     profileBlurb: "Fictional person for the Representative Month cost replay.",
