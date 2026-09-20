@@ -1,0 +1,23 @@
+{
+  "status": "partial",
+  "light": "complete: 40/40 turns; 94 scheduled checks",
+  "typical": "complete: 150/150 turns; 94 scheduled checks",
+  "heavy": "29/600 validated turns; failed on attempted turn 30",
+  "assertion": "Expected one new private person-linked source record",
+  "failedSession": "wrun_01M2YE490J85W8C4TSF5H2NJ76",
+  "failedTurn": "turn_18",
+  "observed": [
+    "Person lookup returned one matching person.",
+    "No capture_source_record call followed the lookup.",
+    "Final reply requested confirmation again; it did not claim the note was saved.",
+    "Source record count remained 14 rather than the expected 15.",
+    "Runtime logged an empty model response and one recovery call for this session and turn."
+  ],
+  "hypothesis": "Eve 0.47.7 empty-response recovery instructs the model to answer from tool results and not re-run tools. This may discourage a still-needed capture after lookup. Causality and a repair have not been verified.",
+  "limits": [
+    "Aggregate eval finalMessage belonged to an earlier session; diagnosis uses the failing session events.",
+    "metadata failure SIGTERM describes subprocess cleanup; the actionable failure is the database assertion.",
+    "No new paid run or automatic restart performed.",
+    "Raw prompts, replies and model traces remain excluded."
+  ]
+}

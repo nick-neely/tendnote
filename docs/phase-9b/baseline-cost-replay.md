@@ -311,3 +311,25 @@ all 2,148 active web tests), and the standalone production build passed.
 `FALLOW_AUDIT_BASE=origin/main pnpm fallow:ci` returned no findings. The full
 verification command itself was not rerun; its failed test was verified at the
 correct seam and all verification lanes completed successfully.
+
+## Approved $50 replay outcome
+
+The owner-approved single $50 run at source
+`c3bca6da4f87d945c8f3bbc9921aa0ac32482034` completed light and typical,
+then stopped heavy after 29/600 validated turns. Provider-reported charges were
+$2.45785735 for light, $6.35447800 for typical, and $1.09459747 for partial heavy.
+All 1,822 requests reconciled, totaling $9.90693282 plus a $0.015 allowance for
+three reporting queries. No charges are uncertain and no reservations remain.
+
+The stop was a capture assertion, not budget exhaustion or a transport failure.
+Eve found the intended person, then requested redundant confirmation instead of
+saving the explicitly requested note. Empty-response recovery occurred in that
+turn; its recovery instruction is a candidate cause, not a verified diagnosis.
+No paid restart or speculative runtime patch was applied.
+
+[The evidence bundle](../../evidence/cost/c3bca6da4f87d945c8f3bbc9921aa0ac32482034/README.md)
+contains the provider reconciliation and content-free failure observations.
+Typical now has one complete synthetic monthly sample; heavy still has none.
+The replay ticket remains open. The next step is a controlled reproduction of
+lookup followed by empty-response recovery before another paid heavy sample.
+The approved single run does not authorize automatic repeated $50 runs.
