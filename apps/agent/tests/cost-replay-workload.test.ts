@@ -1,7 +1,12 @@
 import { routeExplicitConversationalCapture } from "@tendnote/domain/conversational-capture";
 import { describe, expect, it } from "vitest";
 import { assertTurnOutcomes } from "../evals/cost-replay/outcomes";
-import { type PlannedTurn, plannedTurn, replayPersonName } from "../evals/cost-replay/workload";
+import {
+  dayIndices,
+  type PlannedTurn,
+  plannedTurn,
+  replayPersonName,
+} from "../evals/cost-replay/workload";
 
 const workloads = [
   { turns: 40, captures: 20, people: 15, followups: 10, uploads: 2 },
@@ -116,3 +121,36 @@ function assertRoute(step: PlannedTurn) {
       expect(outcome.dueAt.toISOString().slice(0, 10)).toBe(step.dueDate);
   }
 }
+
+it("partitions all heavy work without skipping or duplicating day-boundary activity", () => {
+  const workload = workloads[2];
+  const indices = Array.from({ length: 30 }, (_, day) => dayIndices(day, workload.turns));
+  expect(indices.every((day) => day.length === 20)).toBe(true);
+  expect(indices.flat()).toEqual(Array.from({ length: 600 }, (_, i) => i));
+  expect(Array.from({ length: 30 }, (_, day) => dayIndices(day, workload.uploads)).flat()).toEqual(
+    Array.from({ length: 30 }, (_, i) => i),
+  );
+  const names = Array.from({ length: workload.people }, (_, i) => replayPersonName(i));
+  expect(new Set(names).size).toBe(150);
+  const steps = indices.flatMap((dayIndices, day) =>
+    dayIndices.map((index) =>
+      plannedTurn(
+        workload,
+        index,
+        { id: String(index % 150), displayName: replayPersonName(index % 150) },
+        new Date(now.getTime() + day * 86400000),
+      ),
+    ),
+  );
+  expect(steps.filter((s) => s.capture && !s.explicit)).toHaveLength(225);
+  expect(steps.filter((s) => s.explicit)).toHaveLength(75);
+  expect(steps.filter((s) => s.followup && !s.capture)).toHaveLength(25);
+  expect(steps.filter((s) => !s.capture && !s.followup)).toHaveLength(275);
+  // Two real heavy days include the failed attempted turn 30, not a scaled-down mix.
+  expect(steps[29]).toMatchObject({ capture: true, explicit: false, followup: false });
+  expect(steps.slice(0, 40).filter((s) => s.capture)).toHaveLength(20);
+  expect(steps.slice(0, 40).filter((s) => s.followup)).toHaveLength(25);
+  // Day eight starts revisiting people; distinct captures must still be new writes.
+  expect(steps[151]?.personId).toBe(steps[1]?.personId);
+  expect(steps[151]?.prompt).not.toBe(steps[1]?.prompt);
+});

@@ -51,3 +51,8 @@ export function plannedTurn(
   return { prompt, personId: person.id, capture, explicit, followup, dueDate };
 }
 export type PlannedTurn = ReturnType<typeof plannedTurn>;
+
+export function dayIndices(day: number, total: number) {
+  const start = Math.floor((day * total) / 30);
+  return Array.from({ length: Math.floor(((day + 1) * total) / 30) - start }, (_, i) => start + i);
+}

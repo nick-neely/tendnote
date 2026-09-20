@@ -19,7 +19,7 @@ import {
   uploadEvidence,
 } from "./fixtures";
 import { assertTurnOutcomes, personOutcomes } from "./outcomes";
-import { plannedTurn, type Workload } from "./workload";
+import { dayIndices, plannedTurn, type Workload } from "./workload";
 
 export default defineEval({
   description:
@@ -60,6 +60,14 @@ type Progress = {
   scheduledChecks: number;
   simulated: boolean;
   workload: Workload;
+  lastAttempt?: {
+    day: number;
+    turn: number;
+    capture: boolean;
+    explicit: boolean;
+    followup: boolean;
+    stage: "sending" | "checking-outcomes" | "validated";
+  };
   storage?: Awaited<ReturnType<typeof storedActivity>>;
 };
 type Replay = {
@@ -183,10 +191,6 @@ async function runDay(t: EveEvalContext, run: Replay, day: number, now: Date) {
     run.result.scheduledChecks++;
   }
 }
-function dayIndices(day: number, total: number) {
-  const start = Math.floor((day * total) / 30);
-  return Array.from({ length: Math.floor(((day + 1) * total) / 30) - start }, (_, i) => start + i);
-}
 async function dayTurns(
   session: ReturnType<EveEvalContext["newSession"]>,
   run: Replay,
@@ -198,9 +202,22 @@ async function dayTurns(
     if (!person) throw new Error("Missing synthetic person");
     const step = plannedTurn(run.config.workload, index, person, now);
     const before = await personOutcomes(person.id);
+    // Preserve attempted work separately from validated progress. No prompt or reply.
+    run.result.lastAttempt = {
+      day: day + 1,
+      turn: index + 1,
+      capture: step.capture,
+      explicit: step.explicit,
+      followup: step.followup,
+      stage: "sending",
+    };
+    run.persist();
     const turn = await session.send(step.prompt);
     assertSettled(turn);
+    run.result.lastAttempt.stage = "checking-outcomes";
+    run.persist();
     assertTurnOutcomes(step, before, await personOutcomes(person.id));
+    run.result.lastAttempt.stage = "validated";
     run.result.turns++;
     run.result.captures += Number(step.capture);
     run.result.followups += Number(step.followup);

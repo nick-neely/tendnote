@@ -333,3 +333,16 @@ Typical now has one complete synthetic monthly sample; heavy still has none.
 The replay ticket remains open. The next step is a controlled reproduction of
 lookup followed by empty-response recovery before another paid heavy sample.
 The approved single run does not authorize automatic repeated $50 runs.
+
+## Capture recovery repair and heavy preflight
+
+The local Eve 0.47.7 patch now permits unfinished actions during empty-response
+recovery while forbidding repeated completed calls and preserving approval rules.
+The installed-runtime regression test fails on the original wording and passes
+with the patch. This is a deterministic contract check, not a measured live-model
+reliability improvement.
+
+[Heavy replay preflight](heavy-replay-preflight.md) records the verified workload
+mix, later-month risks, and a proposed two-day canary before another full heavy
+sample. Last-attempt metadata now distinguishes execution from outcome-validation
+failures. No further paid run was started.
