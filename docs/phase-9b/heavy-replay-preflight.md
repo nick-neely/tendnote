@@ -68,10 +68,10 @@ create a new source. First reuse occurs on day eight; first weekly review occurs
 on day seven. Final completion still requires all 94 scheduled checks, the full
 upload count, and zero unfinished background jobs.
 
-## Proposed paid sequence, not started
+## Paid sequence
 
 1. Run a **two-day heavy canary**, seeded with all 150 people, preserving the exact
-   first 40 turns, daily sessions, uploads and scheduled work. Proposed cap: **$10**
+   first 40 turns, daily sessions, uploads and scheduled work. Approved cap: **$10**
    including reporting-write allowances and reservations. This is a spending bound,
    not an expected price. Assert every outcome and reconcile every request.
 2. Only after reviewing that evidence, run **one full heavy month** from a fresh
@@ -134,3 +134,17 @@ Its final unpaid smoke, agent typecheck, affected tests, full `pnpm verify`
 (including build), and Fallow audit pass. The prior coverage report remains
 applicable to the unchanged product runtime; this step changes only replay
 scripts/evals, their tests and documentation.
+
+## Completed canary, 2026-09-20
+
+The [two-day canary evidence](../../evidence/cost/9eba1acd665a167d88902b129ad2738bafdad992/heavy-canary/README.md)
+records all 40 turns, 20 captures, 25 Follow-Ups, two uploads and six scheduled
+checks passing, including previously failing turn 30. There were 26 live
+empty-response recovery events, but no failed required outcomes. All 337
+requests settled without transport retries or uncertain charges.
+
+Provider counts, tokens and inference reconcile completely. Provider charges
+were $1.58550728; including the single $0.005 reporting-query allowance gives
+$1.59050728 against the approved $10 ceiling. Web search remains excluded.
+This completes the canary only. A full heavy-only runner and separately approved
+ceiling remain the next step; the 600-turn month has not run at this source.
