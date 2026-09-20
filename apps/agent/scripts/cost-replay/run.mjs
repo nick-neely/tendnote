@@ -11,7 +11,14 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertEvalDatabase, ceilingUsd, cleanEnvironment, models, variants } from "./plan.mjs";
+import {
+  assertEvalDatabase,
+  ceilingUsd,
+  cleanEnvironment,
+  models,
+  replayScope,
+  variants,
+} from "./plan.mjs";
 import { runProcess } from "./process.mjs";
 import { startProxy } from "./proxy.mjs";
 
@@ -20,12 +27,13 @@ const app = resolve(here, "../..");
 const repo = resolve(app, "../..");
 const args = process.argv.slice(2);
 const mode = args[0] ?? "--plan";
-if (args.length > 1 || !["--plan", "--smoke", "--paid"].includes(mode))
-  throw new Error("Use --plan, --smoke, or --paid");
+if (args.length > 1 || !["--plan", "--smoke", "--paid", "--canary"].includes(mode))
+  throw new Error("Use --plan, --smoke, --paid, or --canary");
 if (mode === "--plan") {
   console.log(
     JSON.stringify(
       {
+        canary: replayScope("--canary"),
         variants,
         models,
         ceilingUsd,
@@ -44,10 +52,11 @@ if (mode === "--plan") {
   );
   process.exit(0);
 }
-const paid = mode === "--paid";
-if (paid && process.env.TENDNOTE_COST_APPROVAL !== `baseline-${ceilingUsd}-usd`)
+const paid = mode === "--paid" || mode === "--canary";
+const scope = replayScope(mode);
+if (paid && process.env.TENDNOTE_COST_APPROVAL !== scope.approval)
   throw new Error(
-    `Paid run requires separate owner approval: TENDNOTE_COST_APPROVAL=baseline-${ceilingUsd}-usd`,
+    `Paid run requires separate owner approval: TENDNOTE_COST_APPROVAL=${scope.approval}`,
   );
 if (paid && !process.env.AI_GATEWAY_API_KEY)
   throw new Error("Paid run requires AI_GATEWAY_API_KEY; ambient OIDC is not used");
@@ -60,7 +69,9 @@ if (paid && execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding
   throw new Error("Commit the replay source before paid evidence is recorded");
 const runId = randomUUID();
 const workspace = join(app, ".eve", `cost-replay-${runId}`);
-const output = paid ? join(repo, "evidence/cost", source) : join(workspace, "evidence");
+const output = paid
+  ? join(repo, "evidence/cost", source, ...(mode === "--canary" ? ["heavy-canary"] : []))
+  : join(workspace, "evidence");
 if (existsSync(output))
   throw new Error("Evidence already exists; never overwrite or silently rerun a paid sample");
 mkdirSync(output, { recursive: true });
@@ -94,7 +105,7 @@ const proxy = await startProxy({
   apiKey: paid ? process.env.AI_GATEWAY_API_KEY : undefined,
   token,
   catalog,
-  ceilingUsd,
+  ceilingUsd: scope.ceilingUsd - scope.reportQueryAllowanceUsd,
   simulated: !paid,
   persist: (state) => write("ledger.json", { simulated: !paid, ...state }),
 });
@@ -104,6 +115,7 @@ const env = {
   TENDNOTE_EVAL_DATABASE_URL: database,
   TENDNOTE_COST_PROXY: proxy.url,
   TENDNOTE_COST_PROXY_TOKEN: token,
+  TENDNOTE_COST_DAYS: String(scope.days),
   TENDNOTE_COST_MODE: paid ? "paid" : "smoke",
   TENDNOTE_COST_OUTPUT: output,
   NODE_OPTIONS: `--import=${join(here, "preload.mjs")}`,
@@ -128,14 +140,17 @@ const metadata = {
   runId,
   simulated: !paid,
   mode,
-  ceilingUsd,
+  ceilingUsd: scope.ceilingUsd,
+  reportQueryAllowanceUsd: scope.reportQueryAllowanceUsd,
+  selectedVariants: scope.variants,
+  sampleKind: mode === "--canary" ? "heavy-canary" : "month",
   variants,
   models,
   command: `pnpm --filter @tendnote/agent eval:cost ${mode}`,
   startedAt: new Date().toISOString(),
   status: "running",
   assumptions: {
-    days: 30,
+    days: scope.days,
     sessionBoundary: "daily",
     workloadRevision: "capture-contract-v2",
     capturePattern:
@@ -167,7 +182,7 @@ for (const signal of ["SIGINT", "SIGTERM"])
     abort.abort();
   });
 try {
-  for (const variant of paid ? Object.keys(variants) : ["smoke"]) {
+  for (const variant of paid ? scope.variants : ["smoke"]) {
     await fetch(`${proxy.url}/phase`, {
       method: "POST",
       headers: { "x-cost-proxy-token": token },
@@ -237,7 +252,7 @@ try {
   write("summary.json", { simulated: !paid, status: metadata.status, table });
   writeFileSync(
     join(output, "README.md"),
-    `# Cost replay ${paid ? "evidence" : "UNPAID SIMULATION"}\n\nSource: ${source}\n\nStatus: ${metadata.status}. ${paid ? "One sample per completed variant; variance is not measured." : "Artificial usage and costs. Not pricing evidence."}\n\nCommand: \`${metadata.command}\`\n\nSee metadata.json for configuration, catalog.json for the catalog snapshot, ledger.json for every reservation and settlement, summary.json for category totals, and each variant JSON for completed activity and stored bytes. Partial or uncertain rows are not a complete monthly estimate. knownSpendUsd records response-reported inference cost; reportingWriteUsd is a conservative reporting-fee allowance, not a confirmed charge. accountedSpendUsd includes both plus unsettled reservations. Reconcile provider reporting before treating these as total charged cost. Storage bytes are measured, not priced. Raw prompts and replies are omitted.\n`,
+    `# Cost replay ${paid ? "evidence" : "UNPAID SIMULATION"}\n\nSource: ${source}\n\nStatus: ${metadata.status}. ${paid ? `One ${scope.days}-day sample per selected variant; variance is not measured.` : "Artificial usage and costs. Not pricing evidence."}\n\nCommand: \`${metadata.command}\`\n\nSee metadata.json for configuration, catalog.json for the catalog snapshot, ledger.json for every reservation and settlement, summary.json for category totals, and each variant JSON for completed activity and stored bytes. Partial or uncertain rows are not a complete monthly estimate. knownSpendUsd records response-reported inference cost; reportingWriteUsd is a conservative reporting-fee allowance, not a confirmed charge. accountedSpendUsd includes both plus unsettled reservations. Reconcile provider reporting before treating these as total charged cost. Storage bytes are measured, not priced. Raw prompts and replies are omitted.\n`,
   );
   console.log(`Cost replay ${metadata.status}: ${output}`);
 }

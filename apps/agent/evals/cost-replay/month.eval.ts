@@ -36,7 +36,12 @@ export default defineEval({
 });
 
 function configuration() {
+  const days = Number(required("TENDNOTE_COST_DAYS"));
+  if (![2, 30].includes(days)) throw new Error("Invalid replay duration");
+  if (days === 2 && required("TENDNOTE_COST_VARIANT") !== "heavy")
+    throw new Error("Canary requires the heavy workload");
   return {
+    days,
     variant: required("TENDNOTE_COST_VARIANT"),
     output: required("TENDNOTE_COST_OUTPUT"),
     proxy: required("TENDNOTE_COST_PROXY"),
@@ -53,6 +58,7 @@ function required(name: string) {
 type Config = ReturnType<typeof configuration>;
 type Progress = {
   status: string;
+  days: number;
   turns: number;
   captures: number;
   followups: number;
@@ -81,6 +87,7 @@ async function replay(t: EveEvalContext) {
   const config = configuration();
   const result: Progress = {
     status: "partial",
+    days: config.days,
     turns: 0,
     captures: 0,
     followups: 0,
@@ -165,7 +172,7 @@ async function smokeBackground(personId: string | undefined) {
 async function paid(t: EveEvalContext, run: Replay) {
   const start = new Date();
   start.setUTCHours(12, 0, 0, 0);
-  for (let day = 0; day < 30; day++) {
+  for (let day = 0; day < run.config.days; day++) {
     const now = new Date(start.getTime() + day * 86400000);
     await runDay(t, run, day, now);
     await checkMeter(run.config);
@@ -241,12 +248,24 @@ function assertSettled(turn: EveEvalTurn) {
     throw new Error("Tool did not complete; preserve partial sample");
 }
 function validateActivity(run: Replay) {
-  const storage = run.result.storage;
+  const storage = finishedStorage(run.result.storage);
+  if (run.config.smoke) return;
+  if (run.config.days === 2) validateCanary(run.result, storage.counts);
+  else validateCounts(storage.counts, run.config.workload);
+}
+function finishedStorage(storage: Progress["storage"]) {
   if (!storage) throw new Error("Missing stored activity");
   if (storage.unfinishedBackgroundJobs !== 0) throw new Error("Unfinished background jobs");
-  if (run.config.smoke) return;
-  validateCounts(storage.counts, run.config.workload);
+  return storage;
 }
+function validateCanary(result: Progress, counts: Record<string, number>) {
+  validateCounts(counts, { turns: 40, captures: 20, people: 150, followups: 25, uploads: 2 });
+  const keys = ["turns", "captures", "followups", "uploads", "scheduledChecks"] as const;
+  const expected = [40, 20, 25, 2, 6];
+  if (keys.some((key, index) => result[key] !== expected[index]))
+    throw new Error("Canary activity is incomplete");
+}
+
 function validateCounts(counts: Record<string, number>, workload: Workload) {
   const expected = {
     people: workload.people,

@@ -258,3 +258,26 @@ it("forwards decoded catalog metadata without upstream compression or length hea
     fetchSpy.mockRestore();
   }
 });
+
+it("isolates the approved canary from the full baseline scope and acknowledgement", async () => {
+  const { replayScope, variants } = await import("../scripts/cost-replay/plan.mjs");
+  expect(replayScope("--canary")).toEqual({
+    days: 2,
+    ceilingUsd: 10,
+    reportQueryAllowanceUsd: 0.005,
+    variants: ["heavy"],
+    approval: "heavy-canary-10-usd",
+  });
+  expect(variants.heavy).toEqual({
+    turns: 600,
+    captures: 300,
+    people: 150,
+    followups: 100,
+    uploads: 30,
+  });
+  expect(replayScope("--paid")).toMatchObject({
+    days: 30,
+    ceilingUsd: 50,
+    approval: "baseline-50-usd",
+  });
+});

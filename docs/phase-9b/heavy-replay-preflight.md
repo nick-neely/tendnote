@@ -82,12 +82,15 @@ upload count, and zero unfinished background jobs.
    reuse during the run. These are observational checkpoints, not permission to
    skip failures, change prompts, retry mutations, or resume from an uncertain turn.
 
-The current paid CLI still runs all three variants. Before requesting approval
-for this sequence, wire explicit canary/heavy-only selection and distinct evidence
-paths without changing workload ratios; record the selected days, source and
-ceiling in metadata. Do not run the existing all-variant command and manually
-interrupt it as a substitute. The earlier single-run approval has already been
-used; no new provider inference was performed for this repair.
+The owner subsequently approved one $10 canary. `eval:cost --canary` now selects
+only heavy and runs its first two days without rescaling the workload. It requires
+`TENDNOTE_COST_APPROVAL=heavy-canary-10-usd`; the old full-run acknowledgement is
+rejected. Its inference/reporting-write meter is capped at $9.995, reserving $0.005
+inside the $10 total for one provider reconciliation query. Output is isolated at
+`evidence/cost/<source>/heavy-canary/`, and existing evidence cannot be overwritten.
+Metadata identifies the two-day canary explicitly; completion is not a full-month
+result. The full heavy-only mode remains future work and is not authorized by this
+canary approval.
 
 ## Remaining risks and stop rules
 
@@ -125,3 +128,9 @@ and changed-file lint also passed after the final workload-test edits. The patch
 was reviewed to confirm that its only semantic change is the recovery instruction;
 its generated blank context line is excluded from trailing-whitespace review.
 No new paid inference or reporting query was made for this repair.
+
+The canary runner's admission and budget tests pass (41 focused replay tests).
+Its final unpaid smoke, agent typecheck, affected tests, full `pnpm verify`
+(including build), and Fallow audit pass. The prior coverage report remains
+applicable to the unchanged product runtime; this step changes only replay
+scripts/evals, their tests and documentation.

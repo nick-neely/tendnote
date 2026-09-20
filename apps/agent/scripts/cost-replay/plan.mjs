@@ -48,3 +48,21 @@ export function cleanEnvironment(source) {
     TENDNOTE_BRIEF_TIMEZONE: "UTC",
   };
 }
+
+export function replayScope(mode) {
+  if (mode === "--canary")
+    return {
+      days: 2,
+      ceilingUsd: 10,
+      reportQueryAllowanceUsd: 0.005,
+      variants: ["heavy"],
+      approval: "heavy-canary-10-usd",
+    };
+  return {
+    days: 30,
+    reportQueryAllowanceUsd: 0,
+    ceilingUsd,
+    variants: Object.keys(variants),
+    approval: `baseline-${ceilingUsd}-usd`,
+  };
+}

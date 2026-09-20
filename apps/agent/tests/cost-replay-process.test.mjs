@@ -72,3 +72,13 @@ describe("isolated cost replay lifecycle", () => {
     },
   );
 });
+
+it("requires the canary acknowledgement instead of accepting the full-run approval", () => {
+  expect(() =>
+    execFileSync(process.execPath, ["scripts/cost-replay/run.mjs", "--canary"], {
+      cwd: process.cwd(),
+      env: { PATH: process.env.PATH, TENDNOTE_COST_APPROVAL: "baseline-50-usd" },
+      stdio: "pipe",
+    }),
+  ).toThrow("heavy-canary-10-usd");
+});
