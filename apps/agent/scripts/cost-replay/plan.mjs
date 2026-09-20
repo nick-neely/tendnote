@@ -8,7 +8,7 @@ export const models = {
   extraction: "google/gemini-3.1-flash-lite",
   embedding: "openai/text-embedding-3-small",
 };
-export const ceilingUsd = 25;
+export const ceilingUsd = 50;
 export function assertEvalDatabase(value) {
   const url = new URL(value);
   if (

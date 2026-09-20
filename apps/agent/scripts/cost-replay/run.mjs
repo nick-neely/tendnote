@@ -45,9 +45,9 @@ if (mode === "--plan") {
   process.exit(0);
 }
 const paid = mode === "--paid";
-if (paid && process.env.TENDNOTE_COST_APPROVAL !== "baseline-25-usd")
+if (paid && process.env.TENDNOTE_COST_APPROVAL !== `baseline-${ceilingUsd}-usd`)
   throw new Error(
-    "Paid run requires separate owner approval: TENDNOTE_COST_APPROVAL=baseline-25-usd",
+    `Paid run requires separate owner approval: TENDNOTE_COST_APPROVAL=baseline-${ceilingUsd}-usd`,
   );
 if (paid && !process.env.AI_GATEWAY_API_KEY)
   throw new Error("Paid run requires AI_GATEWAY_API_KEY; ambient OIDC is not used");

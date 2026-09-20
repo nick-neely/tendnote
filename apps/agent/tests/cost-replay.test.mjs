@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { billingFromResponse, createMeter, reservationFor } from "../scripts/cost-replay/meter.mjs";
 import {
   assertEvalDatabase,
+  ceilingUsd,
   cleanEnvironment,
   models,
   variants,
@@ -17,6 +18,11 @@ const catalog = Object.values(models).map((id) => ({
 const billing = (costUsd) => ({ costUsd, inputTokens: 100, outputTokens: 20 });
 
 describe("cost replay paid boundary", () => {
+  it("pins the newly approved combined ceiling and refuses any larger allowance", () => {
+    expect(ceilingUsd).toBe(50);
+    expect(createMeter({ ceilingUsd, persist() {} }).snapshot().ceilingUsd).toBe(50);
+    expect(() => createMeter({ ceilingUsd: 50.01, persist() {} })).toThrow("within $50");
+  });
   it("keeps production credentials and non-eval databases out of the child", () => {
     expect(() => assertEvalDatabase("postgres://x@db.example.com/tendnote_eval")).toThrow();
     expect(() => assertEvalDatabase("postgres://x@localhost/tendnote")).toThrow();

@@ -57,12 +57,18 @@ describe("isolated cost replay lifecycle", () => {
     );
     expect(result).toContain("Cost replay blocked external fetch");
   });
-  it("refuses paid execution without the separate approval acknowledgement", () => {
-    expect(() =>
-      execFileSync(process.execPath, ["scripts/cost-replay/run.mjs", "--paid"], {
-        env: { PATH: process.env.PATH },
-        stdio: "pipe",
-      }),
-    ).toThrow("separate owner approval");
-  });
+  it.each([undefined, "baseline-25-usd"])(
+    "refuses missing or superseded approval: %s",
+    (approval) => {
+      expect(() =>
+        execFileSync(process.execPath, ["scripts/cost-replay/run.mjs", "--paid"], {
+          env: {
+            PATH: process.env.PATH,
+            ...(approval ? { TENDNOTE_COST_APPROVAL: approval } : {}),
+          },
+          stdio: "pipe",
+        }),
+      ).toThrow("separate owner approval");
+    },
+  );
 });

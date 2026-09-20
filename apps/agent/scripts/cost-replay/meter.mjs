@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { models } from "./plan.mjs";
+import { ceilingUsd as approvedCeilingUsd, models } from "./plan.mjs";
 import { failureDetails } from "./transport.mjs";
 
 const allowedModels = new Set(Object.values(models));
@@ -97,7 +97,8 @@ export function billingFromResponse(text, streaming, embedding) {
 }
 
 export function createMeter({ ceilingUsd, persist }) {
-  if (!(ceilingUsd > 0 && ceilingUsd <= 25)) throw new Error("Ceiling must be within $25");
+  if (!(ceilingUsd > 0 && ceilingUsd <= approvedCeilingUsd))
+    throw new Error(`Ceiling must be within $${approvedCeilingUsd}`);
   const rows = [];
   let stopped = null;
   let pendingRequests = 0;

@@ -103,6 +103,15 @@ responses. A regression test and an unpaid live catalog fetch verify the repair;
 neither sends model inference requests. The original evidence remains unchanged,
 and the ticket remains open pending usable monthly evidence.
 
+## Approved full replay after reconciliation
+
+The owner approved the proposed **one fresh $50 combined-cap replay** on
+2026-09-20, covering light, typical, and heavy in serial order with web search
+excluded. The code bound and operator acknowledgement now use $50. Prior paid
+samples remain separate; this approval does not authorize automatic reruns after
+an ambiguous failure. The capture-contract-v2 workload, model choices, reporting
+fee allowance, and uncertainty guard remain as documented above.
+
 ## Reviewable commands
 
 From the repository root:
@@ -123,7 +132,7 @@ After approval, from a clean committed checkout, with `AI_GATEWAY_API_KEY`
 provided through the environment:
 
 ```sh
-TENDNOTE_COST_APPROVAL=baseline-25-usd pnpm --filter @tendnote/agent eval:cost --paid
+TENDNOTE_COST_APPROVAL=baseline-50-usd pnpm --filter @tendnote/agent eval:cost --paid
 ```
 
 The approval variable is an operator acknowledgement, not a substitute for
@@ -218,10 +227,9 @@ must be qualified accordingly before using the result to set an offer.
 
 ## Spending controls
 
-One **$25 total ceiling covers all three variants combined**, in serial order.
-This is deliberately tighter than interpreting the earlier per-run wording as
-$25 for each variant. Stopping early produces partial evidence, not permission
-to spend another $25. Each source commit can have only one paid output directory;
+The newly approved **$50 total ceiling covers all three variants combined**, in serial order.
+Earlier attempts used a $25 combined ceiling. Stopping early produces partial
+evidence, not permission to spend another $50. Each source commit can have only one paid output directory;
 the runner refuses to overwrite it.
 
 Only the three configured models are accepted: `google/gemini-3.7-flash` for
@@ -243,7 +251,7 @@ Missing prices, unsupported models or provider tools, missing terminal billing,
 ambiguous transport failures, or a reported charge exceeding its reservation stop all
 further inference. An uncertain request retains its reservation in the ledger.
 No retry is allowed after uncertainty. Definite pre-connection failures may use the bounded attempts described above. A large reservation can therefore stop
-a run below $25, even if a small actual request might have fit.
+a run below $50, even if a small actual request might have fit.
 
 The bound depends on the catalog covering the allowed token charges and
 providers respecting their context/output limits; it is not a contractual
