@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { registerReplayInterrupt } from "./interrupt.mjs";
 import {
   assertEvalDatabase,
   ceilingUsd,
@@ -182,11 +183,7 @@ function run(command, args, cwd = workspace, childEnv = env, completionFile) {
     timeoutMs: paid ? 21660000 : 180000,
   });
 }
-for (const signal of ["SIGINT", "SIGTERM"])
-  process.once(signal, () => {
-    proxy.meter.stop("interrupted");
-    abort.abort();
-  });
+registerReplayInterrupt({ meter: proxy.meter, abort, metadata, write });
 try {
   for (const variant of paid ? scope.variants : ["smoke"]) {
     await fetch(`${proxy.url}/phase`, {
@@ -231,6 +228,7 @@ try {
   metadata.failure = error.message;
   process.exitCode = 1;
 } finally {
+  write("metadata.json", metadata);
   await proxy.close();
   metadata.finishedAt = new Date().toISOString();
   write("metadata.json", metadata);

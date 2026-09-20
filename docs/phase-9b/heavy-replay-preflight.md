@@ -219,3 +219,69 @@ production build, and fresh `pnpm coverage:ci` followed by
 2,148 active web tests, 2,392 database tests and 795 domain tests. No audit settings
 or outcome assertions were relaxed. Review confirmed the prior tool-loop patch is
 unchanged apart from generated patch index metadata.
+
+## Interrupted run and durable launch
+
+The [next full attempt](../../evidence/cost/5e309015166955ccf72b0747e4f5ec8c7a5e29a9/heavy-month/README.md)
+validated 225/600 turns, then received SIGINT or SIGTERM after about 2h25m.
+The sender is unknown; available logs do not establish an OOM kill or a Codex
+reset as the cause. The six-hour deadline and $50 cap were not reached.
+All 1,814 requests reconcile to $8.783983555 including the query allowance.
+The month remains incomplete.
+
+The command-session launch did not establish independence from that session's
+lifecycle. Use the existing user systemd manager for future approved long runs.
+The host has user lingering enabled. A transient service survives the launcher
+exiting; it does not survive every host failure. Do not automatically restart a
+paid replay: a partial run may already have committed mutations and charges.
+
+From the repository root, after committing the source and confirming the paid
+run is authorized, use a unique unit name and the existing approval gate:
+
+```sh
+systemd-run --user --unit="tendnote-heavy-$(date -u +%Y%m%dT%H%M%SZ)" \
+  --working-directory="$PWD" --setenv="PATH=$PATH" \
+  --setenv=TENDNOTE_COST_APPROVAL=heavy-month-50-usd \
+  --property=Restart=no --property=KillMode=control-group \
+  --property=TimeoutStopSec=15s --property=RuntimeMaxSec=7h \
+  "$(command -v node)" --env-file=apps/agent/.env.local \
+  apps/agent/scripts/cost-replay/run.mjs --heavy
+```
+
+The service inherits no provider credentials through these arguments; Node reads
+the existing local env file. Save the unit name printed at launch. Inspect with
+`systemctl --user show UNIT -p ActiveState -p Result -p ExecMainStatus` and
+`journalctl --user -u UNIT -n 30 --no-pager`. Use `systemctl --user stop UNIT`
+for deliberate cancellation. Avoid continuous assistant polling; the service
+owns execution and the evidence files retain progress between status checks.
+The seven-hour service ceiling allows the existing six-hour eval timeout and
+cleanup to finish first. `KillMode=control-group` also covers detached children.
+
+The repaired signal handler atomically saves partial status, signal and timestamp
+before stopping the meter or awaiting child/proxy cleanup. Repeated signals do
+not restore Node's default immediate termination. A real subprocess regression
+sends SIGTERM twice, then SIGKILL before cleanup completes, and verifies the
+persisted status. Uncatchable termination before the first handler still requires
+reconciliation from the ledger and live process state; raw historical metadata
+must not be rewritten to imply a graceful finish.
+
+The actual unpaid replay completed under `tendnote-replay-unpaid-lifecycle.service`
+after its launcher exited: systemd reported `Result=success`, `ExecMainStatus=0`,
+and the runner recorded `smoke-passed` for run
+`11f31522-0498-4c56-bbcb-c0c1e1838054`. No provider inference was used.
+This verifies service ownership and normal finalization, not the duration or
+performance of a full paid month.
+
+Before another full paid attempt, revisit runtime headroom: 225 validated turns
+took about 145 minutes. A simple linear projection is roughly 387 minutes for
+600 turns, already beyond the six-hour eval deadline. This is a planning signal,
+not a runtime forecast; later workload and local overhead can differ. Systemd
+ownership alone does not resolve that risk. Do not raise the paid budget or
+change workload assertions to compensate.
+
+Repair validation passed: seven focused interruption/process tests, the unpaid
+systemd smoke, `pnpm test:affected`, `pnpm verify`, and fresh `pnpm coverage:ci`
+followed by `FALLOW_AUDIT_BASE=origin/main pnpm fallow:ci`. Coverage passed 1,727
+agent tests, 2,148 active web tests, 2,392 database tests and 795 domain tests.
+The Fallow audit reported no findings. Review confirmed that workload assertions,
+provider behavior, the paid ceiling and the pinned Eve patch were unchanged.
