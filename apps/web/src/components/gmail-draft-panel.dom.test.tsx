@@ -213,7 +213,7 @@ describe("GmailDraftPanel write gate", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(
       "Reconnect Gmail to save this draft.",
     );
-    expect(screen.getByRole("button", { name: "Save to Gmail" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Save to Gmail" })).toBeTruthy();
     // Nothing was written, so the surface has no new counts to pick up.
     expect(onWrite).not.toHaveBeenCalled();
   });
@@ -226,7 +226,7 @@ describe("GmailDraftPanel write gate", () => {
     await openAndSubmit(user);
 
     expect((await screen.findByRole("alert")).textContent).toBe("Gmail is unavailable.");
-    expect(screen.getByRole("button", { name: "Save to Gmail" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Save to Gmail" })).toBeTruthy();
     expect(onWrite).toHaveBeenCalledTimes(1);
   });
 

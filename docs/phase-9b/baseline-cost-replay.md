@@ -40,6 +40,53 @@ outcome or exhaustion of the $25 ceiling. The ticket stays open: typical and hea
 monthly figures are still unavailable, and variance is unmeasured. Any further
 paid sample needs an explicit plan and approval after reconciling the uncertainty.
 
+## Reconciliation and transport repair
+
+The owner asked to reconcile and repair the interrupted run on 2026-09-20.
+Two read-only [Gateway reporting queries](https://vercel.com/docs/ai-gateway/observability-and-spend/custom-reporting)
+matched all 1,318 settled calls, inference charges, and tokens (including cached
+input and reasoning output). The [reconciliation artifact](../../evidence/cost/7569863d880a668061c6148c5bde09abfc3db87e/reconciliation.json)
+contains the query filters, response buckets, and checks. Gateway reported exactly
+216 typical extraction calls, matching the settled ledger; it showed no additional
+billed generation for the uncertain request. Reporting is asynchronous, so this
+is a dated observation rather than proof that a delayed charge is impossible.
+The original uncertain row and its reservation remain unchanged.
+
+The provider reports also exposed fees omitted from the inference-only ledger:
+**$0.27135** for reporting writes. Provider-charged totals are **$2.467865985**
+for complete light and **$5.256109180** for partial typical, totaling
+**$7.723975165**. The two reconciliation queries have a separate documented
+**$0.01** fee allowance. With that allowance and the original uncertain
+reservation, conservative accounted spend is **$8.984975165**, still below $25.
+
+The repaired proxy reserves **$0.000225 per request** for one reporting user and
+two tags, in addition to token costs. This is an allowance, separately labeled
+from confirmed inference costs, and conservatively includes embeddings even
+though the observed embedding reports charged no reporting writes. A run-specific
+reporting user replaces the shared user without adding another write.
+
+Requests now durably record a local ID, timestamps, attempt count, safe network
+error fields, and Gateway request/generation IDs when available. The old log
+retained only `fetch failed`, so its exact transport cause is unknown. A bounded
+retry handles only definite connection-establishment failures: `ECONNREFUSED`
+from `connect`, `EAI_AGAIN` from `getaddrinfo`, or `UND_ERR_CONNECT_TIMEOUT`.
+At most three attempts share one reservation and one 180-second deadline.
+Ambiguous disconnects, HTTP errors, response-body failures, and other timeouts
+still stop inference and retain the reservation. These repairs do not claim to
+eliminate all provider or network failures.
+
+The next paid sample remains a separate approved operation, with the $25 ceiling
+unchanged. A full baseline still needs complete typical and heavy results; the
+light sample already exists. A fresh replay cannot be assumed to fit the cap:
+extrapolating the observed typical prefix solely for spend planning suggests a
+three-variant replay could exceed $25. That is not a measured heavy-month cost or
+a pricing recommendation. The proposed next operation is one fresh, serial
+light/typical/heavy replay of the unchanged `capture-contract-v2` workload, web
+search excluded, with a **$50 combined ceiling** subject to owner approval.
+A simple budget-only extrapolation is about $35, so $50 leaves room for the
+full-context reservation and variation. This proposal does not change the live
+$25 code bound or authorize spending. No paid inference was made during this repair.
+
 ## First approved attempt
 
 The [preserved attempt](../../evidence/cost/1ad0b132b9464aa7e7483a9dbb538b4c67ec6f69/README.md)
@@ -193,9 +240,9 @@ rather than relying on a prompt-length estimate. Actual cost comes from
 
 A request whose full reservation does not fit is refused before forwarding.
 Missing prices, unsupported models or provider tools, missing terminal billing,
-transport failures, or a reported charge exceeding its reservation stop all
+ambiguous transport failures, or a reported charge exceeding its reservation stop all
 further inference. An uncertain request retains its reservation in the ledger.
-No retry is allowed after uncertainty. A large reservation can therefore stop
+No retry is allowed after uncertainty. Definite pre-connection failures may use the bounded attempts described above. A large reservation can therefore stop
 a run below $25, even if a small actual request might have fit.
 
 The bound depends on the catalog covering the allowed token charges and
@@ -240,3 +287,19 @@ external-fetch blocking, explicit paid opt-in, and child-process cleanup.
 Repository verification also required one inherited lint repair: adding an
 explicit button type to the existing signup prototype's reset button. No other
 prototype behavior changed.
+
+The reconciliation repair adds eleven focused transport/accounting tests; all
+34 replay tests pass. The unpaid end-to-end smoke completed twelve artificial
+requests with two Memories, two Follow-Ups, no Saved Items, and no unfinished
+background jobs. Repository verification exposed an inherited Gmail DOM-test
+race: two assertions checked the idle button before React's transition settled.
+Those assertions now await the idle label; all thirteen tests in that file pass.
+No Gmail product behavior changed.
+
+`pnpm test:affected` passed. `pnpm verify` passed typechecking and lint, then
+stopped at the inherited Gmail assertion race above. After its repair, the
+focused Gmail suite passed, the full `pnpm coverage:ci` run passed (including
+all 2,148 active web tests), and the standalone production build passed.
+`FALLOW_AUDIT_BASE=origin/main pnpm fallow:ci` returned no findings. The full
+verification command itself was not rerun; its failed test was verified at the
+correct seam and all verification lanes completed successfully.

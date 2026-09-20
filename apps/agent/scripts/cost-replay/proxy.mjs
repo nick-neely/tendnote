@@ -1,6 +1,11 @@
 import { createServer } from "node:http";
 import { billingFromResponse, createMeter, reservationFor } from "./meter.mjs";
 import { models } from "./plan.mjs";
+import { failureDetails, fetchInference } from "./transport.mjs";
+
+// Three reporting writes: one user and two tags, $0.075 / 1,000 writes.
+// Reserve even for embeddings, whose observed report currently charges no writes.
+const reportingWriteUsd = 0.000225;
 
 export async function startProxy(options) {
   const meter = createMeter(options);
@@ -25,7 +30,7 @@ export async function startProxy(options) {
       headers.delete("transfer-encoding");
       res.writeHead(response.status, Object.fromEntries(headers)).end(body);
     } catch (error) {
-      console.error("Cost proxy rejected request:", req.method, req.url, error.message);
+      console.error("Cost proxy rejected request:", req.method, req.url, failureDetails(error));
       meter.stop("proxy-stopped; inspect content-free ledger");
       res
         .writeHead(402, { "content-type": "application/json" })
@@ -121,13 +126,19 @@ function categoryFor({ embedding, model, streaming, phase }) {
 }
 async function inference(req, body, context) {
   const details = requestDetails(req, context.phase);
-  const reservationUsd = reservationFor(details.model, body, context.catalog);
+  const reportingAllowance = context.simulated ? 0 : reportingWriteUsd;
+  const reservationUsd = reservationFor(details.model, body, context.catalog) + reportingAllowance;
   const { model, category } = details;
-  const row = { variant: context.phase.variant, model, category };
-  return context.meter.run(row, reservationUsd, async () => {
+  const row = {
+    variant: context.phase.variant,
+    model,
+    category,
+    reportingWriteUsd: reportingAllowance,
+  };
+  return context.meter.run(row, reservationUsd, async (record, checkpoint) => {
     const response = context.simulated
       ? fakeResponse(details.streaming, details.embedding, body)
-      : await upstream(req, body, row, context);
+      : await upstream(req, body, record, context, checkpoint);
     if (!response.ok) throw new Error(`Gateway returned ${response.status}`);
     // Buffer one response so concurrent child calls cannot get ahead of settlement.
     const text = await response.text();
@@ -140,21 +151,26 @@ async function inference(req, body, context) {
     };
   });
 }
-async function upstream(req, body, row, context) {
+async function upstream(req, body, row, context, checkpoint) {
   const headers = gatewayHeaders(req, context.apiKey);
   body.providerOptions ??= {};
   body.providerOptions.gateway = {
     ...(body.providerOptions.gateway?.caching === "auto" ? { caching: "auto" } : {}),
-    user: "tendnote-synthetic-cost-replay",
+    user: `cost-replay:${context.runId}`,
     tags: [`cost:${row.variant}`, `category:${row.category}`],
   };
-  return fetch(`https://ai-gateway.vercel.sh${req.url}`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    redirect: "error",
-    signal: AbortSignal.any([context.abort.signal, AbortSignal.timeout(180000)]),
-  });
+  return fetchInference(
+    `https://ai-gateway.vercel.sh${req.url}`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      redirect: "error",
+      signal: AbortSignal.any([context.abort.signal, AbortSignal.timeout(180000)]),
+    },
+    row,
+    checkpoint,
+  );
 }
 function gatewayHeaders(req, apiKey) {
   const headers = new Headers({

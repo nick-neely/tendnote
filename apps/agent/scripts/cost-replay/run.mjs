@@ -90,6 +90,7 @@ write(
 );
 const token = randomUUID();
 const proxy = await startProxy({
+  runId,
   apiKey: paid ? process.env.AI_GATEWAY_API_KEY : undefined,
   token,
   catalog,
@@ -143,6 +144,10 @@ const metadata = {
     syntheticGoogleConnection: true,
     externalDelivery: false,
     excludedTool: "web_search",
+    reportingWriteAllowancePerRequestUsd: paid ? 0.000225 : 0,
+    reportingUser: `cost-replay:${runId}`,
+    transportPolicy:
+      "up to three connection-establishment attempts; no retries after ambiguous failure",
   },
 };
 write("metadata.json", metadata);
@@ -222,13 +227,17 @@ try {
           inputTokens: rows.reduce((sum, row) => sum + (row.inputTokens ?? 0), 0),
           outputTokens: rows.reduce((sum, row) => sum + (row.outputTokens ?? 0), 0),
           costUsd: rows.reduce((sum, row) => sum + (row.costUsd ?? 0), 0),
+          reportingWriteUsd: rows.reduce(
+            (sum, row) => sum + (row.costUsd === undefined ? 0 : row.reportingWriteUsd),
+            0,
+          ),
           incomplete: rows.some((row) => row.status !== "settled"),
         });
     }
   write("summary.json", { simulated: !paid, status: metadata.status, table });
   writeFileSync(
     join(output, "README.md"),
-    `# Cost replay ${paid ? "evidence" : "UNPAID SIMULATION"}\n\nSource: ${source}\n\nStatus: ${metadata.status}. ${paid ? "One sample per completed variant; variance is not measured." : "Artificial usage and costs. Not pricing evidence."}\n\nCommand: \`${metadata.command}\`\n\nSee metadata.json for configuration, catalog.json for the catalog snapshot, ledger.json for every reservation and settlement, summary.json for category totals, and each variant JSON for completed activity and stored bytes. Partial or uncertain rows are not a complete monthly estimate. Storage bytes are measured, not priced. Raw prompts and replies are omitted.\n`,
+    `# Cost replay ${paid ? "evidence" : "UNPAID SIMULATION"}\n\nSource: ${source}\n\nStatus: ${metadata.status}. ${paid ? "One sample per completed variant; variance is not measured." : "Artificial usage and costs. Not pricing evidence."}\n\nCommand: \`${metadata.command}\`\n\nSee metadata.json for configuration, catalog.json for the catalog snapshot, ledger.json for every reservation and settlement, summary.json for category totals, and each variant JSON for completed activity and stored bytes. Partial or uncertain rows are not a complete monthly estimate. knownSpendUsd records response-reported inference cost; reportingWriteUsd is a conservative reporting-fee allowance, not a confirmed charge. accountedSpendUsd includes both plus unsettled reservations. Reconcile provider reporting before treating these as total charged cost. Storage bytes are measured, not priced. Raw prompts and replies are omitted.\n`,
   );
   console.log(`Cost replay ${metadata.status}: ${output}`);
 }

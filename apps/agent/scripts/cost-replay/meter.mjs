@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { models } from "./plan.mjs";
+import { failureDetails } from "./transport.mjs";
 
 const allowedModels = new Set(Object.values(models));
 const number = (value, label) => {
@@ -83,7 +85,15 @@ export function billingFromResponse(text, streaming, embedding) {
   const output = embedding
     ? 0
     : number(usage?.outputTokens?.total ?? usage?.outputTokens, "output tokens");
-  return { costUsd: cost, inputTokens: input, outputTokens: output };
+  const generationId = final.providerMetadata?.gateway?.generationId;
+  return {
+    costUsd: cost,
+    inputTokens: input,
+    outputTokens: output,
+    ...(typeof generationId === "string" && /^[\w.-]{1,200}$/.test(generationId)
+      ? { generationId }
+      : {}),
+  };
 }
 
 export function createMeter({ ceilingUsd, persist }) {
@@ -92,16 +102,23 @@ export function createMeter({ ceilingUsd, persist }) {
   let stopped = null;
   let pendingRequests = 0;
   let pending = Promise.resolve();
+  const knownSpend = () => rows.reduce((sum, row) => sum + (row.costUsd ?? 0), 0);
+  const reportingSpend = () =>
+    rows.reduce(
+      (sum, row) => sum + (row.costUsd === undefined ? 0 : (row.reportingWriteUsd ?? 0)),
+      0,
+    );
+  const reservedSpend = () =>
+    rows.reduce((sum, row) => sum + (row.costUsd === undefined ? row.reservationUsd : 0), 0);
   const snapshot = () => ({
     ceilingUsd,
     stopped,
     pendingRequests,
     rows,
-    knownSpendUsd: rows.reduce((sum, row) => sum + (row.costUsd ?? 0), 0),
-    reservedUsd: rows.reduce(
-      (sum, row) => sum + (row.costUsd === undefined ? row.reservationUsd : 0),
-      0,
-    ),
+    knownSpendUsd: knownSpend(),
+    reportingWriteUsd: reportingSpend(),
+    reservedUsd: reservedSpend(),
+    accountedSpendUsd: knownSpend() + reportingSpend() + reservedSpend(),
   });
   return {
     snapshot,
@@ -126,25 +143,37 @@ export function createMeter({ ceilingUsd, persist }) {
         if (
           !Number.isFinite(reservationUsd) ||
           reservationUsd <= 0 ||
-          current.knownSpendUsd + current.reservedUsd + reservationUsd > ceilingUsd
+          current.accountedSpendUsd + reservationUsd > ceilingUsd
         ) {
           stopped = "budget-reservation-refused";
           persist(snapshot());
           throw new Error(stopped);
         }
-        const row = { ...details, reservationUsd, status: "reserved" };
+        const row = {
+          ...details,
+          requestId: randomUUID(),
+          startedAt: new Date().toISOString(),
+          reservationUsd,
+          status: "reserved",
+        };
         rows.push(row);
         persist(snapshot()); // Durable before crossing the paid boundary.
         try {
-          const result = await call();
+          const result = await call(row, () => persist(snapshot()));
           if (!Number.isFinite(result.billing.costUsd) || result.billing.costUsd < 0)
             throw new Error("Invalid cost");
-          Object.assign(row, result.billing, { status: "settled" });
-          if (row.costUsd > reservationUsd) throw new Error("Catalog reservation exceeded");
+          Object.assign(row, result.billing, {
+            status: "settled",
+            finishedAt: new Date().toISOString(),
+          });
+          if (row.costUsd + (row.reportingWriteUsd ?? 0) > reservationUsd)
+            throw new Error("Catalog reservation exceeded");
           persist(snapshot());
           return result.response;
         } catch (error) {
           row.status = "uncertain";
+          row.finishedAt = new Date().toISOString();
+          row.failure = failureDetails(error);
           stopped = "request-failed-or-billing-incomplete";
           persist(snapshot());
           throw error;

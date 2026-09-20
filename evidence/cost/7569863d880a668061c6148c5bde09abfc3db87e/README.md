@@ -94,3 +94,24 @@ remains open; the map receives no resolution entry yet.
 
 The captured JSON data is unchanged apart from repository formatting. Raw prompts
 and replies remain in the ignored local Eve workspace, not this bundle.
+
+## Reconciliation, 2026-09-20
+
+See [reconciliation.json](reconciliation.json) for the two read-only Gateway
+reporting queries and reconciled totals. All 1,318 settled generations match the
+provider report in count, inference cost, and token usage when cache and reasoning
+components are included. The report shows no additional billed generation for
+the uncertain extraction request. The original ledger is unchanged; asynchronous
+reporting means this observation does not rule out a delayed charge.
+
+Provider-charged cost includes reporting-write fees omitted from the earlier
+inference-only totals: **$2.467865985 light**, **$5.256109180 partial typical**,
+and **$7.723975165 combined**, including **$0.27135** in reporting writes.
+The two reporting queries add a separate documented **$0.01 allowance**.
+Conservative accounting including that allowance and the original $1.251
+reservation is **$8.984975165**. Typical remains partial and heavy unmeasured.
+
+No inference was retried during reconciliation. The next harness revision adds
+reporting-fee reservations, run-specific attribution, content-free diagnostics,
+and bounded retries only for proven connection-establishment failures. The exact
+old transport cause cannot be determined from the original `fetch failed` log.

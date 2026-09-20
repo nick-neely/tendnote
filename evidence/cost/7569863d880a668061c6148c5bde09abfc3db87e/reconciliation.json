@@ -1,0 +1,133 @@
+{
+  "status": "reported-spend-reconciled; original transport cause unavailable",
+  "sourceRunId": "b3a50f86-c801-4c7d-a2fd-d2ef94f6606f",
+  "endpoint": "https://ai-gateway.vercel.sh/v1/report",
+  "reports": [
+    {
+      "variant": "light",
+      "queriedAt": "2026-09-20T01:45:33.846539+00:00",
+      "query": {
+        "start_date": "2026-09-20",
+        "end_date": "2026-09-20",
+        "group_by": "model",
+        "api_key_id": "self",
+        "user_id": "tendnote-synthetic-cost-replay",
+        "tags": "cost:light"
+      },
+      "providerResponse": {
+        "results": [
+          {
+            "model": "google/gemini-3.1-flash-lite",
+            "total_cost": "0.0247285",
+            "market_cost": "0.0089785",
+            "input_tokens": 20020,
+            "output_tokens": 2649,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0,
+            "request_count": 70
+          },
+          {
+            "model": "google/gemini-3.7-flash",
+            "total_cost": "2.443122825",
+            "market_cost": "2.382372825",
+            "input_tokens": 2180092,
+            "output_tokens": 9163,
+            "cached_input_tokens": 6075101,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 68616,
+            "request_count": 270
+          },
+          {
+            "model": "openai/text-embedding-3-small",
+            "total_cost": "0.00001466",
+            "market_cost": "0.00001466",
+            "input_tokens": 733,
+            "output_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0,
+            "request_count": 29
+          }
+        ]
+      },
+      "inferenceUsd": "2.391365985",
+      "providerChargedUsd": "2.467865985",
+      "reportingWriteFeesUsd": "0.076500000",
+      "settledCallsMatch": true,
+      "inferenceCostsMatch": true,
+      "tokensIncludingCacheAndReasoningMatch": true
+    },
+    {
+      "variant": "typical",
+      "queriedAt": "2026-09-20T01:44:58.459530+00:00",
+      "query": {
+        "start_date": "2026-09-20",
+        "end_date": "2026-09-20",
+        "group_by": "model",
+        "api_key_id": "self",
+        "user_id": "tendnote-synthetic-cost-replay",
+        "tags": "cost:typical"
+      },
+      "providerResponse": {
+        "results": [
+          {
+            "model": "google/gemini-3.1-flash-lite",
+            "total_cost": "0.075245",
+            "market_cost": "0.026645",
+            "input_tokens": 61982,
+            "output_tokens": 7433,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0,
+            "request_count": 216
+          },
+          {
+            "model": "google/gemini-3.7-flash",
+            "total_cost": "5.1808215",
+            "market_cost": "5.0345715",
+            "input_tokens": 3875950,
+            "output_tokens": 25391,
+            "cached_input_tokens": 21329870,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 115374,
+            "request_count": 650
+          },
+          {
+            "model": "openai/text-embedding-3-small",
+            "total_cost": "0.00004268",
+            "market_cost": "0.00004268",
+            "input_tokens": 2134,
+            "output_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0,
+            "request_count": 83
+          }
+        ]
+      },
+      "inferenceUsd": "5.06125918",
+      "providerChargedUsd": "5.25610918",
+      "reportingWriteFeesUsd": "0.19485000",
+      "settledCallsMatch": true,
+      "inferenceCostsMatch": true,
+      "tokensIncludingCacheAndReasoningMatch": true
+    }
+  ],
+  "knownInferenceUsd": "7.452625165",
+  "providerChargedUsd": "7.723975165",
+  "reportingWriteFeesUsd": "0.271350000",
+  "reconciliationQueries": 2,
+  "queryFeeAllowanceUsd": "0.010",
+  "totalIncludingQueryFeeAllowanceUsd": "7.733975165",
+  "additionalBilledGenerationsReported": 0,
+  "originalUncertainReservationUsd": "1.251",
+  "conservativeTotalIncludingOriginalReservationUsd": "8.984975165",
+  "limitations": [
+    "Provider reports are asynchronous snapshots, not proof a delayed charge is impossible.",
+    "No extra billed extraction generation is present: the report has exactly the 216 settled typical extraction calls and their costs/tokens.",
+    "The old ledger has no request timestamp, provider ID, or underlying network code; the exact historical transport failure cannot be recovered from it.",
+    "Original ledger and partial results are unchanged. This reconciliation does not make typical complete.",
+    "Reporting query fee is a documented allowance, not a charge item in these inference reports."
+  ]
+}
