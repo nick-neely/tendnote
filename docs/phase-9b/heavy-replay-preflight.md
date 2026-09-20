@@ -243,7 +243,7 @@ systemd-run --user --unit="tendnote-heavy-$(date -u +%Y%m%dT%H%M%SZ)" \
   --working-directory="$PWD" --setenv="PATH=$PATH" \
   --setenv=TENDNOTE_COST_APPROVAL=heavy-month-50-usd \
   --property=Restart=no --property=KillMode=control-group \
-  --property=TimeoutStopSec=15s --property=RuntimeMaxSec=7h \
+  --property=TimeoutStopSec=15s --property=RuntimeMaxSec=25h \
   "$(command -v node)" --env-file=apps/agent/.env.local \
   apps/agent/scripts/cost-replay/run.mjs --heavy
 ```
@@ -254,7 +254,7 @@ the existing local env file. Save the unit name printed at launch. Inspect with
 `journalctl --user -u UNIT -n 30 --no-pager`. Use `systemctl --user stop UNIT`
 for deliberate cancellation. Avoid continuous assistant polling; the service
 owns execution and the evidence files retain progress between status checks.
-The seven-hour service ceiling allows the existing six-hour eval timeout and
+The 25-hour service ceiling allows the 24-hour eval timeout and
 cleanup to finish first. `KillMode=control-group` also covers detached children.
 
 The repaired signal handler atomically saves partial status, signal and timestamp
@@ -285,3 +285,20 @@ followed by `FALLOW_AUDIT_BASE=origin/main pnpm fallow:ci`. Coverage passed 1,72
 agent tests, 2,148 active web tests, 2,392 database tests and 795 domain tests.
 The Fallow audit reported no findings. Review confirmed that workload assertions,
 provider behavior, the paid ceiling and the pinned Eve patch were unchanged.
+
+## Authorized fresh heavy retry
+
+The owner authorized a full retry after interruption repair. Start heavy from
+turn one: progress JSON is an observation, not a resumable checkpoint; turn 226
+may have committed writes, and the later smoke reset the isolated database.
+Reconstructing session, fixture, scheduled-work and billing state is not supported.
+Light and typical remain untouched; preserve the earlier partial evidence.
+
+Allow 24 hours for the eval and one additional minute for its subprocess, with a
+25-hour service ceiling. This provides headroom beyond the prior six-hour limit
+without changing the $50 cap, workload, provider policy or assertions. It is a
+maximum, not a runtime estimate. Use systemd with no automatic restart.
+
+Retry preparation passed the unpaid systemd smoke, seven focused lifecycle tests,
+`pnpm test:affected`, `pnpm verify`, fresh coverage and the Fallow audit. No findings
+were reported by Fallow. The runtime-only diff was reviewed before paid launch.

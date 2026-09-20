@@ -157,6 +157,7 @@ const metadata = {
   startedAt: new Date().toISOString(),
   status: "running",
   assumptions: {
+    evalTimeoutMs: 86400000,
     days: scope.days,
     sessionBoundary: "daily",
     workloadRevision: "capture-contract-v2",
@@ -180,7 +181,8 @@ function run(command, args, cwd = workspace, childEnv = env, completionFile) {
     env: childEnv,
     completionFile,
     signal: abort.signal,
-    timeoutMs: paid ? 21660000 : 180000,
+    // Heavy replay can outlast six hours; the spend ceiling remains independent.
+    timeoutMs: paid ? 86460000 : 180000,
   });
 }
 registerReplayInterrupt({ meter: proxy.meter, abort, metadata, write });
@@ -207,7 +209,7 @@ try {
         "--max-concurrency",
         "1",
         "--timeout",
-        "21600000",
+        "86400000",
       ],
       workspace,
       {
