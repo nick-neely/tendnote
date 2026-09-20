@@ -148,3 +148,12 @@ were $1.58550728; including the single $0.005 reporting-query allowance gives
 $1.59050728 against the approved $10 ceiling. Web search remains excluded.
 This completes the canary only. A full heavy-only runner and separately approved
 ceiling remain the next step; the 600-turn month has not run at this source.
+
+## Full heavy replay authorization
+
+After reviewing the successful canary, the owner instructed us to continue with
+one full run. `eval:cost --heavy` selects only the original 30-day heavy workload,
+using the existing $50 replay ceiling and a distinct `heavy-month-50-usd`
+acknowledgement. The meter reserves $0.005 inside that ceiling for one report
+query. It starts from a fresh isolated database and writes `heavy-month` evidence;
+light and typical do not rerun. Existing outcome assertions and stop rules remain.

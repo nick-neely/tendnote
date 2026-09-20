@@ -27,13 +27,14 @@ const app = resolve(here, "../..");
 const repo = resolve(app, "../..");
 const args = process.argv.slice(2);
 const mode = args[0] ?? "--plan";
-if (args.length > 1 || !["--plan", "--smoke", "--paid", "--canary"].includes(mode))
-  throw new Error("Use --plan, --smoke, --paid, or --canary");
+if (args.length > 1 || !["--plan", "--smoke", "--paid", "--canary", "--heavy"].includes(mode))
+  throw new Error("Use --plan, --smoke, --paid, --canary, or --heavy");
 if (mode === "--plan") {
   console.log(
     JSON.stringify(
       {
         canary: replayScope("--canary"),
+        heavy: replayScope("--heavy"),
         variants,
         models,
         ceilingUsd,
@@ -52,7 +53,7 @@ if (mode === "--plan") {
   );
   process.exit(0);
 }
-const paid = mode === "--paid" || mode === "--canary";
+const paid = ["--paid", "--canary", "--heavy"].includes(mode);
 const scope = replayScope(mode);
 if (paid && process.env.TENDNOTE_COST_APPROVAL !== scope.approval)
   throw new Error(
@@ -70,7 +71,12 @@ if (paid && execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding
 const runId = randomUUID();
 const workspace = join(app, ".eve", `cost-replay-${runId}`);
 const output = paid
-  ? join(repo, "evidence/cost", source, ...(mode === "--canary" ? ["heavy-canary"] : []))
+  ? join(
+      repo,
+      "evidence/cost",
+      source,
+      ...(mode === "--canary" ? ["heavy-canary"] : mode === "--heavy" ? ["heavy-month"] : []),
+    )
   : join(workspace, "evidence");
 if (existsSync(output))
   throw new Error("Evidence already exists; never overwrite or silently rerun a paid sample");

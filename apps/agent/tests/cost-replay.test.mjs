@@ -281,3 +281,14 @@ it("isolates the approved canary from the full baseline scope and acknowledgemen
     approval: "baseline-50-usd",
   });
 });
+
+it("isolates the full heavy month with reporting inside its ceiling", async () => {
+  const { replayScope } = await import("../scripts/cost-replay/plan.mjs");
+  expect(replayScope("--heavy")).toEqual({
+    days: 30,
+    ceilingUsd: 50,
+    reportQueryAllowanceUsd: 0.005,
+    variants: ["heavy"],
+    approval: "heavy-month-50-usd",
+  });
+});

@@ -50,6 +50,14 @@ export function cleanEnvironment(source) {
 }
 
 export function replayScope(mode) {
+  if (mode === "--heavy")
+    return {
+      days: 30,
+      ceilingUsd,
+      reportQueryAllowanceUsd: 0.005,
+      variants: ["heavy"],
+      approval: "heavy-month-50-usd",
+    };
   if (mode === "--canary")
     return {
       days: 2,
