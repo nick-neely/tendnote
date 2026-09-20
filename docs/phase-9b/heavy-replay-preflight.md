@@ -171,3 +171,51 @@ All 444 requests reconcile. Provider charges were $2.15668920; including the
 single reporting-query allowance gives $2.16168920 against the $50 cap. There are
 no uncertain requests or unfinished jobs. The full month remains incomplete, and
 no automatic retry was launched.
+
+## Session-boundary repair
+
+Inspection of the failed run's local durable chunks found 518 distinct events.
+The eval received 518 events too, but one persisted `message.appended` event was
+missing and the last `session.waiting` event appeared twice. The missing event's
+physical index was 512; the repeated waiting event was
+`evt_01M2YSR89NXT7AV0JY4H3Q157W`. This is a delivery/count mismatch, not a duplicate
+persisted event. Eve advances its client cursor by received-event count, so the
+first read ended one event behind; the next send read the old boundary and the
+eval accepted it as completion before the new capture ran.
+
+The existing version-pinned Eve patch now also changes `ClientSession`'s
+send/respond iterator. It remembers the last delivered boundary ID, counts every
+raw event toward the cursor, and skips an exact repeat of that boundary before
+exposing it to `MessageResponse` or the eval driver. A different boundary remains
+visible, including a legitimate input/approval pause with no `turn.started` event.
+It sends no extra POST, retries no mutation, and adds no sleep or timing assumption.
+It stores one ID per client session, not an unbounded event history.
+
+The regression uses the installed client and eval driver against a deterministic
+HTTP fixture. The first live read omits a persisted text delta; the next GET uses
+the client's real cursor to read the old boundary. Before the patch, the new
+capture returned no response and a new approval pause was missed. After the patch,
+three sequential requests receive their own responses with exactly one POST each;
+approval continuation and cancellation of the current turn also work. The original
+empty-response regression remains separate and passing.
+
+Command: `pnpm --filter @tendnote/agent exec vitest run tests/cost-replay-session-boundary.test.mjs tests/cost-replay-empty-response.test.mjs`.
+
+This repairs the observed premature-completion failure. It does not claim to fix
+all local live-stream ordering/delivery behavior or restore a missing incremental
+text event; the recorded completed message already contained the full text. Raw
+stream/snapshot APIs are unchanged. Recheck this pinned client patch on an Eve
+upgrade, alongside the existing tool-loop patch. No new paid sample was run for
+this repair, and the full-month result remains outstanding.
+
+The one General Action stored by the failed sample was an owner-scoped,
+source-linked **suggestion**, not an accepted/open action. That distinction was
+verified by a read-only query scoped to `cost-replay-user` before smoke reset.
+
+Repair validation passed: six focused boundary/recovery tests, the unpaid isolated
+smoke, all 52 browser contract tests, affected tests, `pnpm verify` including the
+production build, and fresh `pnpm coverage:ci` followed by
+`FALLOW_AUDIT_BASE=origin/main pnpm fallow:ci`. Coverage included 1,726 agent tests,
+2,148 active web tests, 2,392 database tests and 795 domain tests. No audit settings
+or outcome assertions were relaxed. Review confirmed the prior tool-loop patch is
+unchanged apart from generated patch index metadata.
