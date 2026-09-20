@@ -9,7 +9,7 @@ cost or price is established by that startup failure. Because no inference was
 sent, continuation after the startup repair uses the existing approval and the
 same unspent $25 allowance. No paid sample or uncertain charge may be retried.
 
-## Paid sample outcome
+## First paid sample outcome
 
 The [continuation on the repaired source](../../evidence/cost/1b6b9f1adf90815b3df8bc7e1216bc7dc927dd6a/README.md)
 ran on 2026-09-19 and stopped during the light workload. All fifteen calls settled
@@ -22,6 +22,23 @@ legacy-tool assertion failed; read-only database inspection independently confir
 zero Memories and zero Follow-Ups. The fixture and persisted-outcome validation
 have since been repaired as described below. The paid sample was not retried. The ticket remains open and cannot yet
 supply the pricing or fair-use decisions with usable monthly evidence.
+
+## Repaired paid replay outcome
+
+The owner approved a new run of `capture-contract-v2` on 2026-09-20. Its
+[preserved evidence](../../evidence/cost/7569863d880a668061c6148c5bde09abfc3db87e/README.md)
+contains a complete light month at **$2.391365985** and a partial typical month
+at **$5.061259180 known spend** after 121 of 150 turns. Heavy did not start.
+A Gateway transport failure left one extraction request's billing uncertain;
+the meter retained **$1.251** and blocked further inference. Known run spend is
+**$7.452625165**, or **$8.703625165 including the conservative reservation**.
+The reservation is not a confirmed charge. No uncertain request was retried.
+
+The Capture repair passed through the completed light workload and the typical
+prefix. This stop was a transport/billing-uncertainty guard, not a failed Capture
+outcome or exhaustion of the $25 ceiling. The ticket stays open: typical and heavy
+monthly figures are still unavailable, and variance is unmeasured. Any further
+paid sample needs an explicit plan and approval after reconciling the uncertainty.
 
 ## First approved attempt
 

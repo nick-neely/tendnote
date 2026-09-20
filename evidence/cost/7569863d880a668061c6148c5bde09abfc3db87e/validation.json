@@ -1,0 +1,56 @@
+{
+  "knownSpendUsd": "7.452625165",
+  "uncertainReservationUsd": "1.251",
+  "conservativeAccountedUsd": "8.703625165",
+  "pendingRequests": 0,
+  "variants": [
+    {
+      "variant": "light",
+      "status": "complete",
+      "settledCalls": 369,
+      "uncertainCalls": 0,
+      "knownSpendUsd": "2.391365985",
+      "reservedUsd": "0",
+      "inputTokens": 8275946,
+      "outputTokens": 80428,
+      "completedTurns": 40
+    },
+    {
+      "variant": "typical",
+      "status": "partial",
+      "settledCalls": 949,
+      "uncertainCalls": 1,
+      "knownSpendUsd": "5.061259180",
+      "reservedUsd": "1.251",
+      "inputTokens": 25269936,
+      "outputTokens": 148198,
+      "completedTurns": 121
+    },
+    {
+      "variant": "heavy",
+      "status": "not-started",
+      "settledCalls": 0,
+      "uncertainCalls": 0,
+      "knownSpendUsd": "0",
+      "reservedUsd": "0",
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "completedTurns": 0
+    }
+  ],
+  "stopReason": "request-failed-or-billing-incomplete",
+  "evalVerdict": "failed",
+  "evalError": "Meter stopped or unsettled",
+  "observedTransportError": "fetch failed",
+  "uncertainRequest": {
+    "variant": "typical",
+    "category": "extraction",
+    "model": "google/gemini-3.1-flash-lite"
+  },
+  "limitations": [
+    "The reservation is not a confirmed charge. The failed request has no terminal billing record.",
+    "Typical token and cost totals omit the unknown request, and describe partial activity only.",
+    "Heavy did not start. One completed light sample does not measure variance.",
+    "Runtime empty-response retries were metered; stream-listener warnings did not themselves stop execution."
+  ]
+}
