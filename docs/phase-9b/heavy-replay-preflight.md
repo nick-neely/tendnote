@@ -388,3 +388,24 @@ affected tests; full `pnpm verify`; and fresh coverage (1,742 agent, 2,148 activ
 web, 2,392 database and 795 domain tests). After the final mechanical split of
 eval setup helpers, all 1,742 agent tests, typecheck and lint passed again. Fallow
 reported zero findings. Audit rules and coverage settings were not relaxed.
+
+### DNS interruption after turn 266
+
+The first checkpointed continuation stopped at 2026-09-21T02:31:55Z after 266
+validated turns. Day 13 (260 turns) remained durable. The extraction request
+`52bf6a76-41bf-480a-b02a-2833b85e5892` exhausted three attempts, each reporting
+`EAI_AGAIN` from `getaddrinfo`, before any connection. The meter incorrectly left
+this provably unsent request uncertain. Its original ledger is retained beside
+`dns-reconciliation.json`; the reconciled row records zero inference/reporting
+cost. No provider query was needed to establish that DNS resolution never
+completed. All other historical costs remain included.
+
+The transport now allows eight connection-establishment attempts, with exponential
+backoff capped at ten seconds, within the existing 180-second request deadline.
+Only proven pre-connection failures qualify. The marker is cleared durably before
+every new attempt, so a later ambiguous disconnect still retains its reservation
+and stops the run. Exhausted unsent requests settle at zero but still stop the
+attempt; resuming restores the last completed day. This does not authorize retrying
+HTTP errors, partially read responses, or ambiguous sends. Regression tests exercise
+the real proxy boundary, including recovery after three DNS failures, exhaustion,
+and a DNS failure followed by an ambiguous disconnect.

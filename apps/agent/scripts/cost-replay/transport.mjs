@@ -26,8 +26,9 @@ export function failureDetails(error) {
 }
 
 export async function fetchInference(url, init, row, checkpoint) {
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 8; attempt++) {
     row.attempts = attempt;
+    delete row.failureStage;
     checkpoint();
     try {
       const response = await fetch(url, init);
@@ -37,11 +38,15 @@ export async function fetchInference(url, init, row, checkpoint) {
       checkpoint();
       return response;
     } catch (error) {
-      if (!failedBeforeConnect(error) || init.signal.aborted || attempt === 3) throw error;
+      if (!failedBeforeConnect(error)) throw error;
+      row.failureStage = "before-connect";
       row.connectionFailures ??= [];
       row.connectionFailures.push(failureDetails(error));
       checkpoint();
-      await setTimeout(250 * attempt, undefined, { signal: init.signal });
+      if (init.signal.aborted || attempt === 8) throw error;
+      await setTimeout(Math.min(1000 * 2 ** (attempt - 1), 10000), undefined, {
+        signal: init.signal,
+      });
     }
   }
 }

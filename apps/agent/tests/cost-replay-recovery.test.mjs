@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { models } from "../scripts/cost-replay/plan.mjs";
 import { startProxy } from "../scripts/cost-replay/proxy.mjs";
 
+vi.mock("node:timers/promises", () => ({ setTimeout: async () => {} }));
+
 const catalog = Object.values(models).map((id) => ({
   id,
   context_window: 1000000,
@@ -78,6 +80,46 @@ describe("cost replay transport recovery and reconciliation", () => {
         attempts: 2,
       });
       expect(state.knownSpendUsd).toBe(0.01);
+    } finally {
+      await test.close();
+    }
+  });
+  it("survives a DNS outage lasting three attempts without billing duplicate requests", async () => {
+    let attempts = 0;
+    const upstream = vi.fn().mockImplementation(() => {
+      if (++attempts <= 3)
+        throw new TypeError("fetch failed", {
+          cause: { code: "EAI_AGAIN", syscall: "getaddrinfo" },
+        });
+      return response();
+    });
+    const test = await exercise(upstream);
+    try {
+      expect((await test.request()).status).toBe(200);
+      expect(upstream).toHaveBeenCalledTimes(4);
+      expect(test.proxy.meter.snapshot().knownSpendUsd).toBe(0.01);
+    } finally {
+      await test.close();
+    }
+  });
+  it("keeps billing uncertain when a DNS retry is followed by an ambiguous disconnect", async () => {
+    const upstream = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new TypeError("fetch failed", { cause: { code: "EAI_AGAIN", syscall: "getaddrinfo" } }),
+      )
+      .mockRejectedValue(
+        new TypeError("fetch failed", { cause: { code: "ECONNRESET", syscall: "read" } }),
+      );
+    const test = await exercise(upstream);
+    try {
+      expect((await test.request()).status).toBe(402);
+      expect(upstream).toHaveBeenCalledTimes(2);
+      expect(test.proxy.meter.snapshot().rows[0]).toMatchObject({
+        status: "uncertain",
+        attempts: 2,
+      });
+      expect(test.proxy.meter.snapshot().reservedUsd).toBeGreaterThan(0);
     } finally {
       await test.close();
     }
@@ -160,10 +202,17 @@ describe("cost replay transport recovery and reconciliation", () => {
       const test = await exercise(upstream);
       try {
         expect((await test.request()).status).toBe(402);
-        expect(upstream).toHaveBeenCalledTimes(3);
-        expect(test.proxy.meter.snapshot().rows[0].attempts).toBe(3);
+        expect(upstream).toHaveBeenCalledTimes(8);
+        expect(test.proxy.meter.snapshot().rows[0]).toMatchObject({
+          attempts: 8,
+          status: "settled",
+          costUsd: 0,
+          reportingWriteUsd: 0,
+          failureStage: "before-connect",
+        });
+        expect(test.proxy.meter.snapshot().reservedUsd).toBe(0);
         expect((await test.request()).status).toBe(402);
-        expect(upstream).toHaveBeenCalledTimes(3);
+        expect(upstream).toHaveBeenCalledTimes(8);
       } finally {
         await test.close();
       }

@@ -1,0 +1,8 @@
+{
+  "at": "2026-09-21T15:20:26.616170+00:00",
+  "requestId": "52bf6a76-41bf-480a-b02a-2833b85e5892",
+  "originalLedgerSha256": "0cada44e717dae9c23b491870e22361e09083ea9eef651867e103f3c6625e265",
+  "basis": "All three recorded attempts failed getaddrinfo with EAI_AGAIN before any connection. No HTTP response or provider request identity. No inference or reporting write reached the provider. Original ledger retained. Historical stop reason unchanged.",
+  "costUsd": 0,
+  "providerQueryPerformed": false
+}

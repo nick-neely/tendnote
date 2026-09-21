@@ -183,10 +183,14 @@ export function createMeter({ ceilingUsd, persist, initialRows = [] }) {
           persist(snapshot());
           return result.response;
         } catch (error) {
-          row.status = "uncertain";
+          const notSent = row.failureStage === "before-connect";
+          row.status = notSent ? "settled" : "uncertain";
+          if (notSent) Object.assign(row, { costUsd: 0, reportingWriteUsd: 0 });
           row.finishedAt = new Date().toISOString();
           row.failure = failureDetails(error);
-          stopped = "request-failed-or-billing-incomplete";
+          stopped = notSent
+            ? "connection-retries-exhausted"
+            : "request-failed-or-billing-incomplete";
           persist(snapshot());
           throw error;
         }
