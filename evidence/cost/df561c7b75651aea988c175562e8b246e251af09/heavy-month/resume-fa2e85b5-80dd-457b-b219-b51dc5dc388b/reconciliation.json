@@ -1,0 +1,51 @@
+{
+  "verifiedAt": "2026-09-21T17:47:04.618169+00:00",
+  "runId": "f8936abe-54ac-4261-b1c0-7529d08f0978",
+  "complete": true,
+  "checkpointDay": 30,
+  "turns": 600,
+  "ledgerRows": 4535,
+  "billedRequests": 4534,
+  "provenUnsentRequests": 1,
+  "checks": [
+    {
+      "model": "google/gemini-3.1-flash-lite",
+      "requests": 1076,
+      "requestCountMatches": true,
+      "inferenceUsd": 0.128024,
+      "providerInferenceUsd": 0.128024,
+      "inputTokensMatch": true,
+      "outputTokensMatch": true,
+      "inferenceMatches": true
+    },
+    {
+      "model": "google/gemini-3.7-flash",
+      "requests": 3062,
+      "requestCountMatches": true,
+      "inferenceUsd": 21.932663325,
+      "providerInferenceUsd": 21.932663325,
+      "inputTokensMatch": true,
+      "outputTokensMatch": true,
+      "inferenceMatches": true
+    },
+    {
+      "model": "openai/text-embedding-3-small",
+      "requests": 396,
+      "requestCountMatches": true,
+      "inferenceUsd": 0.00021062,
+      "providerInferenceUsd": 0.00021062,
+      "inputTokensMatch": true,
+      "outputTokensMatch": true,
+      "inferenceMatches": true
+    }
+  ],
+  "providerInferenceUsd": 22.060897945,
+  "providerReportingWritesUsd": 0.931049999999999,
+  "providerChargedUsd": 22.991947945,
+  "queryFeeAllowanceUsd": 0.005,
+  "totalIncludingQueryAllowanceUsd": 22.996947945,
+  "ceilingUsd": 50,
+  "allBackgroundJobsFinished": true,
+  "finalSnapshotHashVerified": true,
+  "scope": "Completed synthetic heavy month with checkpoint recovery. Includes all failed-attempt and rolled-back partial-day charges for this logical run; not a pristine uninterrupted sample. Earlier independent runs are outside this logical-run total. Web search, storage pricing, and other hosting costs excluded. One sample; variance unmeasured."
+}

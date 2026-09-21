@@ -409,3 +409,22 @@ attempt; resuming restores the last completed day. This does not authorize retry
 HTTP errors, partially read responses, or ambiguous sends. Regression tests exercise
 the real proxy boundary, including recovery after three DNS failures, exhaustion,
 and a DNS failure followed by an ambiguous disconnect.
+
+
+### Completed checkpointed month
+
+The logical run `f8936abe-54ac-4261-b1c0-7529d08f0978` completed on
+2026-09-21 at 17:42 UTC. Its final attempt uses source `df561c7b`; all workload
+assertions passed and the day-30 snapshot hash was verified. All 4,534 billed
+requests reconcile to provider reporting; one additional ledger row is the
+proven unsent DNS request. Provider charges are $22.991947945, or $22.996947945
+including the single reporting-query allowance, with all recovery costs retained.
+See [the completed baseline](baseline-cost-replay.md#completed-baseline-2026-09-21)
+for the comparison and limitations.
+
+A later eval-client socket disconnect at 410 validated turns was recovered from
+the 400-turn checkpoint after verifying settled billing and absence of surviving
+workers. No additional runtime change was needed to complete the month. Its exact
+socket cause remains unknown. Ten-minute Codex checks caught and handled this
+failure in the active session; the independent timer remains an alert mechanism,
+not an autonomous repair agent. No further paid run is started by completion.

@@ -1,5 +1,52 @@
 # Baseline cost replay harness
 
+## Completed baseline: 2026-09-21
+
+All three workloads now have a completed synthetic sample. The heavy month
+finished at 17:42 UTC with all 600 turns, 300 captures, 150 people, 100 follow-ups,
+30 uploads, and 94 scheduled checks validated. Day 30 is durably checkpointed;
+no background jobs, unsettled billing rows, or reservations remain.
+
+| Workload | Provider-reported charges | Evidence qualification |
+| --- | ---: | --- |
+| Light | $2.45785735 | Complete sample from the approved $50 combined replay |
+| Typical | $6.35447800 | Complete sample from that same replay |
+| Heavy | $22.991947945 | Complete checkpointed month, including recovery overhead |
+
+Light and typical are preserved in the
+[combined replay evidence](../../evidence/cost/c3bca6da4f87d945c8f3bbc9921aa0ac32482034/README.md).
+The [completed heavy evidence](../../evidence/cost/df561c7b75651aea988c175562e8b246e251af09/heavy-month/resume-fa2e85b5-80dd-457b-b219-b51dc5dc388b/README.md)
+contains the final workload, ledger, provider report, and reconciliation. These
+figures exclude reporting-query allowances: the earlier combined run reserved
+$0.015 for three queries; the completed heavy logical run used one $0.005
+allowance, bringing its accounted total to **$22.996947945** against its $50 cap.
+They are not the total spend across every historical diagnostic attempt.
+
+Heavy's 4,534 billed requests reconcile by model for request counts, input tokens
+(including cache), output tokens (including reasoning), and inference charges.
+Its 4,535 ledger rows also include one proven unsent DNS request at zero cost.
+Provider charges comprise $22.060897945 inference and $0.93105 reporting writes.
+The report filters the original logical run across September 20 and 21, so all
+checkpoint continuations and interrupted-day costs are included.
+
+The heavy sample preserves successful days across four attempts of the same
+logical run. It includes failed-attempt overhead and repeats six validated turns
+after the DNS failure and ten after a later eval-client socket disconnect. It
+is a completed workload with recovery overhead, not a pristine uninterrupted
+monthly-cost estimate. During the final continuation, Codex checked about every
+ten minutes, caught the socket failure about one minute after it occurred, and
+resumed from the 400-turn checkpoint within about two minutes of detection.
+The underlying socket cause was not established; safe checkpoint recovery did
+not require retrying an ambiguous POST.
+
+Web search remains excluded, as authorized. Storage bytes are measured but not
+priced; other hosting costs are outside these model-provider totals. There is
+one completed sample per workload, so sample variance and production reliability
+are unmeasured. Typical's figure and the qualified heavy figure can inform the
+pricing and bounded-usage decisions; they do not establish a final subscription
+price or production margin. The historical sections below retain earlier states
+and approvals; this section records the completed outcome.
+
 Preparation for [Run the approved baseline cost replay](https://github.com/nick-neely/tendnote/issues/578).
 The owner authorized building and validating this harness with synthetic data
 and unpaid checks, then separately approved one paid replay on 2026-09-18,

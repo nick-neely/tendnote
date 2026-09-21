@@ -1,0 +1,56 @@
+{
+  "simulated": false,
+  "status": "complete",
+  "table": [
+    {
+      "variant": "heavy",
+      "category": "interactive",
+      "calls": 2786,
+      "inputTokens": 152562238,
+      "outputTokens": 277689,
+      "costUsd": 21.437907825000025,
+      "reportingWriteUsd": 0.6268499999999926,
+      "incomplete": false
+    },
+    {
+      "variant": "heavy",
+      "category": "snapshot",
+      "calls": 107,
+      "inputTokens": 34249,
+      "outputTokens": 39722,
+      "costUsd": 0.17464425000000006,
+      "reportingWriteUsd": 0.02407499999999997,
+      "incomplete": false
+    },
+    {
+      "variant": "heavy",
+      "category": "extraction",
+      "calls": 1077,
+      "inputTokens": 309944,
+      "outputTokens": 33692,
+      "costUsd": 0.12802399999999997,
+      "reportingWriteUsd": 0.24210000000000273,
+      "incomplete": false
+    },
+    {
+      "variant": "heavy",
+      "category": "embedding",
+      "calls": 396,
+      "inputTokens": 10531,
+      "outputTokens": 0,
+      "costUsd": 0.00021062000000000034,
+      "reportingWriteUsd": 0.08910000000000072,
+      "incomplete": false
+    },
+    {
+      "variant": "heavy",
+      "category": "scheduled",
+      "calls": 169,
+      "inputTokens": 31765,
+      "outputTokens": 79010,
+      "costUsd": 0.32011125,
+      "reportingWriteUsd": 0.038025000000000045,
+      "incomplete": false
+    }
+  ]
+}
