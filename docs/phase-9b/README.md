@@ -97,3 +97,8 @@ entry point, not a second decision index.
   operator alerting, the audited Operator Actions and Admission Exceptions,
   Temporary Suspension and Termination, and the recovery procedure, with
   suspension billing and Recovery Journal mechanics left to research.
+- [Stripe billing semantics during Temporary Suspension](../research/phase-9b-stripe-suspension-billing.md):
+  why pausing payment collection is the wrong instrument, the preview-only
+  pause endpoint, leaving Stripe untouched while the suspension record denies
+  admission, one credit note for prepaid days on the audited exit, Stripe Tax
+  on that adjustment, and the sandbox check and policy questions left open.
