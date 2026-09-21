@@ -96,10 +96,21 @@ export function billingFromResponse(text, streaming, embedding) {
   };
 }
 
-export function createMeter({ ceilingUsd, persist }) {
+export function createMeter({ ceilingUsd, persist, initialRows = [] }) {
   if (!(ceilingUsd > 0 && ceilingUsd <= approvedCeilingUsd))
     throw new Error(`Ceiling must be within $${approvedCeilingUsd}`);
-  const rows = [];
+  if (
+    initialRows.some(
+      (row) =>
+        row.status !== "settled" ||
+        !Number.isFinite(row.costUsd) ||
+        row.costUsd < 0 ||
+        !Number.isFinite(row.reportingWriteUsd ?? 0) ||
+        (row.reportingWriteUsd ?? 0) < 0,
+    )
+  )
+    throw new Error("Cannot resume uncertain or invalid billing");
+  const rows = structuredClone(initialRows);
   let stopped = null;
   let pendingRequests = 0;
   let pending = Promise.resolve();

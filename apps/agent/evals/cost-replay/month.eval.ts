@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { closeDb } from "@tendnote/db/client";
 import { generateBirthdayGiftPlanning } from "@tendnote/db/queries/birthday-gift-planning";
@@ -19,13 +19,14 @@ import {
   uploadEvidence,
 } from "./fixtures";
 import { assertTurnOutcomes, personOutcomes } from "./outcomes";
+import { sendReplayTurn } from "./session";
 import { dayIndices, plannedTurn, type Workload } from "./workload";
 
 export default defineEval({
   description:
     "Explicitly opted-in Representative Month replay; never part of policy/deterministic tags.",
   tags: ["cost-replay"],
-  timeoutMs: 21600000,
+  timeoutMs: 86400000,
   async test(t) {
     if (!process.env.TENDNOTE_COST_PROXY || !process.env.TENDNOTE_COST_OUTPUT) {
       t.skip("Use eval:cost; a metered isolated app is required.");
@@ -41,6 +42,9 @@ function configuration() {
   if (days === 2 && required("TENDNOTE_COST_VARIANT") !== "heavy")
     throw new Error("Canary requires the heavy workload");
   return {
+    day: configuredDay(),
+    fixture: process.env.TENDNOTE_COST_FIXTURE,
+    resumeProgress: process.env.TENDNOTE_COST_PROGRESS,
     days,
     variant: required("TENDNOTE_COST_VARIANT"),
     output: required("TENDNOTE_COST_OUTPUT"),
@@ -49,6 +53,11 @@ function configuration() {
     smoke: required("TENDNOTE_COST_MODE") === "smoke",
     workload: JSON.parse(required("TENDNOTE_COST_WORKLOAD")) as Workload,
   };
+}
+function configuredDay() {
+  return process.env.TENDNOTE_COST_DAY === undefined
+    ? undefined
+    : Number(process.env.TENDNOTE_COST_DAY);
 }
 function required(name: string) {
   const value = process.env[name];
@@ -81,31 +90,22 @@ type Replay = {
   result: Progress;
   persons: Awaited<ReturnType<typeof seedMonth>>;
   persist: () => void;
+  start: string;
 };
 
 async function replay(t: EveEvalContext) {
   const config = configuration();
-  const result: Progress = {
-    status: "partial",
-    days: config.days,
-    turns: 0,
-    captures: 0,
-    followups: 0,
-    uploads: 0,
-    scheduledChecks: 0,
-    simulated: config.smoke,
-    workload: config.workload,
-  };
+  const result = replayProgress(config);
   const persist = () =>
     writeFileSync(join(config.output, `${config.variant}.json`), JSON.stringify(result, null, 2));
   try {
-    const run = { config, result, persist, persons: await seedMonth(config.workload) };
+    const fixture = await replayFixture(config);
+    const run = { config, result, persist, persons: fixture.persons, start: fixture.start };
     if (config.smoke) await smoke(t, run);
     else await paid(t, run);
     await checkMeter(config);
     result.storage = await storedActivity();
-    validateActivity(run);
-    result.status = "complete";
+    finishReplay(run);
     t.succeeded();
   } finally {
     try {
@@ -116,6 +116,44 @@ async function replay(t: EveEvalContext) {
     persist();
     await closeDb();
   }
+}
+function replayProgress(config: Config) {
+  const result: Progress = config.resumeProgress
+    ? (JSON.parse(readFileSync(config.resumeProgress, "utf8")) as Progress)
+    : {
+        status: "partial",
+        days: config.days,
+        turns: 0,
+        captures: 0,
+        followups: 0,
+        uploads: 0,
+        scheduledChecks: 0,
+        simulated: config.smoke,
+        workload: config.workload,
+      };
+  result.status = "partial";
+  return result;
+}
+async function replayFixture(config: Config) {
+  if (config.day === undefined || config.day === 0) return seedReplayFixture(config);
+  if (!config.fixture) throw new Error("Missing checkpoint fixture");
+  return JSON.parse(readFileSync(config.fixture, "utf8")) as {
+    start: string;
+    persons: Awaited<ReturnType<typeof seedMonth>>;
+  };
+}
+async function seedReplayFixture(config: Config) {
+  const start = new Date();
+  start.setUTCHours(12, 0, 0, 0);
+  const fixture = { start: start.toISOString(), persons: await seedMonth(config.workload) };
+  if (config.fixture) writeFileSync(config.fixture, JSON.stringify(fixture));
+  return fixture;
+}
+function finishReplay(run: Replay) {
+  const final = run.config.day === undefined || run.config.day === run.config.days - 1;
+  if (final) validateActivity(run);
+  else finishedStorage(run.result.storage);
+  run.result.status = final ? "complete" : "checkpoint-ready";
 }
 async function phase(config: Config, category: string) {
   const response = await fetch(`${config.proxy}/phase`, {
@@ -170,18 +208,25 @@ async function smokeBackground(personId: string | undefined) {
   if (extraction.processResult?.outcome !== "completed") throw new Error("Smoke extraction failed");
 }
 async function paid(t: EveEvalContext, run: Replay) {
-  const start = new Date();
-  start.setUTCHours(12, 0, 0, 0);
-  for (let day = 0; day < run.config.days; day++) {
+  const start = new Date(run.start);
+  const { first, end } = replayDays(run.config);
+  for (let day = first; day < end; day++) {
     const now = new Date(start.getTime() + day * 86400000);
     await runDay(t, run, day, now);
     await checkMeter(run.config);
     run.persist();
   }
 }
+function replayDays(config: Config) {
+  const first = config.day ?? 0;
+  const end = config.day === undefined ? config.days : first + 1;
+  if (!Array.from({ length: config.days }, (_, index) => index).includes(first))
+    throw new Error("Invalid replay day");
+  return { first, end };
+}
 async function runDay(t: EveEvalContext, run: Replay, day: number, now: Date) {
   await phase(run.config, "interactive");
-  await dayTurns(t.newSession(), run, day, now);
+  await dayTurns(t, run, day, now);
   for (const index of dayIndices(day, run.config.workload.uploads)) {
     await uploadEvidence(index + 1);
     run.result.uploads++;
@@ -198,12 +243,8 @@ async function runDay(t: EveEvalContext, run: Replay, day: number, now: Date) {
     run.result.scheduledChecks++;
   }
 }
-async function dayTurns(
-  session: ReturnType<EveEvalContext["newSession"]>,
-  run: Replay,
-  day: number,
-  now: Date,
-) {
+async function dayTurns(t: EveEvalContext, run: Replay, day: number, now: Date) {
+  let session = t.newSession();
   for (const index of dayIndices(day, run.config.workload.turns)) {
     const person = run.persons[index % run.persons.length];
     if (!person) throw new Error("Missing synthetic person");
@@ -219,7 +260,11 @@ async function dayTurns(
       stage: "sending",
     };
     run.persist();
-    const turn = await session.send(step.prompt);
+    const recovered = await sendReplayTurn(session, step.prompt, (id) =>
+      t.target.watchTurn(id, { startIndex: 0 }),
+    );
+    session = recovered.session;
+    const turn = recovered.turn;
     assertSettled(turn);
     run.result.lastAttempt.stage = "checking-outcomes";
     run.persist();

@@ -1,16 +1,10 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertNoReplayWorkers, evalDatabaseArchive, loadCheckpoint } from "./checkpoint.mjs";
+import { runHeavyDays } from "./heavy.mjs";
 import { registerReplayInterrupt } from "./interrupt.mjs";
 import {
   assertEvalDatabase,
@@ -22,13 +16,18 @@ import {
 } from "./plan.mjs";
 import { runProcess } from "./process.mjs";
 import { startProxy } from "./proxy.mjs";
+import { createReplayWorkspace } from "./workspace.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const app = resolve(here, "../..");
 const repo = resolve(app, "../..");
 const args = process.argv.slice(2);
 const mode = args[0] ?? "--plan";
-if (args.length > 1 || !["--plan", "--smoke", "--paid", "--canary", "--heavy"].includes(mode))
+const resumeRoot = args[1] === "--resume" && args[2] ? resolve(args[2]) : undefined;
+if (
+  (args.length > 1 && !(args.length === 3 && mode === "--heavy" && resumeRoot)) ||
+  !["--plan", "--smoke", "--paid", "--canary", "--heavy"].includes(mode)
+)
   throw new Error("Use --plan, --smoke, --paid, --canary, or --heavy");
 if (mode === "--plan") {
   console.log(
@@ -54,6 +53,29 @@ if (mode === "--plan") {
   );
   process.exit(0);
 }
+// One OS-held lock covers all replay/reset modes and releases even on SIGKILL.
+// It protects the shared isolated database, including against concurrent smoke.
+if (process.env.TENDNOTE_COST_LOCKED !== "1") {
+  mkdirSync(join(app, ".eve"), { recursive: true });
+  const result = spawnSync(
+    "flock",
+    [
+      "--nonblock",
+      "--conflict-exit-code",
+      "73",
+      join(app, ".eve/cost-replay.lock"),
+      process.execPath,
+      ...process.execArgv,
+      ...process.argv.slice(1),
+    ],
+    { stdio: "inherit", env: { ...process.env, TENDNOTE_COST_LOCKED: "1" } },
+  );
+  if (result.status === 73) console.error("Another replay owns the isolated database");
+  if (result.error) throw result.error;
+  process.exit(result.status ?? 1);
+}
+assertNoReplayWorkers(app);
+const history = resumeRoot ? loadCheckpoint(resumeRoot) : undefined;
 const paid = ["--paid", "--canary", "--heavy"].includes(mode);
 const scope = replayScope(mode);
 if (paid && process.env.TENDNOTE_COST_APPROVAL !== scope.approval)
@@ -69,14 +91,18 @@ const database = assertEvalDatabase(
 const source = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
 if (paid && execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" }).trim())
   throw new Error("Commit the replay source before paid evidence is recorded");
-const runId = randomUUID();
-const workspace = join(app, ".eve", `cost-replay-${runId}`);
+const attemptId = randomUUID();
+const runId = history?.checkpoint.runId ?? attemptId;
+const workspace = join(app, ".eve", `cost-replay-${attemptId}`);
+const checkpointRoot = resumeRoot ?? join(app, ".eve", "replay-checkpoints", runId);
+const archive = mode === "--heavy" ? evalDatabaseArchive(database) : undefined;
 const output = paid
   ? join(
       repo,
       "evidence/cost",
       source,
       ...(mode === "--canary" ? ["heavy-canary"] : mode === "--heavy" ? ["heavy-month"] : []),
+      ...(history ? [`resume-${attemptId}`] : []),
     )
   : join(workspace, "evidence");
 if (existsSync(output))
@@ -109,10 +135,12 @@ write(
 const token = randomUUID();
 const proxy = await startProxy({
   runId,
+  initialRows: history?.rows,
   apiKey: paid ? process.env.AI_GATEWAY_API_KEY : undefined,
   token,
   catalog,
-  ceilingUsd: scope.ceilingUsd - scope.reportQueryAllowanceUsd,
+  ceilingUsd:
+    scope.ceilingUsd - scope.reportQueryAllowanceUsd - (history?.reportQuerySpendUsd ?? 0),
   simulated: !paid,
   persist: (state) => write("ledger.json", { simulated: !paid, ...state }),
 });
@@ -127,33 +155,28 @@ const env = {
   TENDNOTE_COST_OUTPUT: output,
   NODE_OPTIONS: `--import=${join(here, "preload.mjs")}`,
 };
-// This copy has no .env files and no schedules that can race the manual replay.
-// Its agent/tools/hooks are otherwise the exact current source and tool surface.
-cpSync(join(app, "agent"), join(workspace, "agent"), {
-  recursive: true,
-  filter: (path) => !path.includes("/schedules"),
-});
-cpSync(join(app, "evals"), join(workspace, "evals"), { recursive: true });
-// No provider-executed web research in this synthetic relationship workload.
-writeFileSync(
-  join(workspace, "agent/tools/web_search.ts"),
-  'import { disableTool } from "eve/tools";\nexport default disableTool();\n',
-);
-for (const file of ["package.json", "tsconfig.json"])
-  cpSync(join(app, file), join(workspace, file));
-symlinkSync(join(app, "node_modules"), join(workspace, "node_modules"), "dir");
+createReplayWorkspace(app, workspace);
 const metadata = {
   source,
   runId,
+  attemptId,
+  ...(mode === "--heavy"
+    ? {
+        checkpointRoot,
+        resumedFrom: history?.previousOutput ?? null,
+        resumedAfterDay: history?.checkpoint.day ?? 0,
+      }
+    : {}),
   simulated: !paid,
   mode,
   ceilingUsd: scope.ceilingUsd,
   reportQueryAllowanceUsd: scope.reportQueryAllowanceUsd,
+  reportQuerySpendUsd: history?.reportQuerySpendUsd ?? 0,
   selectedVariants: scope.variants,
   sampleKind: mode === "--canary" ? "heavy-canary" : "month",
   variants,
   models,
-  command: `pnpm --filter @tendnote/agent eval:cost ${mode}`,
+  command: `pnpm --filter @tendnote/agent eval:cost ${mode}${history ? ` --resume ${checkpointRoot}` : ""}`,
   startedAt: new Date().toISOString(),
   status: "running",
   assumptions: {
@@ -174,6 +197,7 @@ const metadata = {
   },
 };
 write("metadata.json", metadata);
+write("ledger.json", { simulated: !paid, ...proxy.meter.snapshot() });
 const abort = new AbortController();
 function run(command, args, cwd = workspace, childEnv = env, completionFile) {
   return runProcess(command, args, {
@@ -194,7 +218,24 @@ try {
       body: JSON.stringify({ variant, category: "interactive" }),
     });
     // Existing reset has its own database-name guard; ours also refuses remote hosts.
-    await run("pnpm", ["eval:prepare"], app);
+    if (history) archive.restore(history.bytes);
+    else await run("pnpm", ["eval:prepare"], app);
+    if (mode === "--heavy") {
+      await runHeavyDays({
+        app,
+        workspace,
+        output,
+        env,
+        source,
+        runId,
+        root: checkpointRoot,
+        history,
+        archive,
+        proxy,
+        run,
+      });
+      continue;
+    }
     await run(
       "pnpm",
       [

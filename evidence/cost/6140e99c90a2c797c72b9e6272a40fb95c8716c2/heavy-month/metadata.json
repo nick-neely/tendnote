@@ -1,0 +1,57 @@
+{
+  "source": "6140e99c90a2c797c72b9e6272a40fb95c8716c2",
+  "runId": "f8936abe-54ac-4261-b1c0-7529d08f0978",
+  "simulated": false,
+  "mode": "--heavy",
+  "ceilingUsd": 50,
+  "reportQueryAllowanceUsd": 0.005,
+  "selectedVariants": ["heavy"],
+  "sampleKind": "month",
+  "variants": {
+    "light": {
+      "turns": 40,
+      "captures": 20,
+      "people": 15,
+      "followups": 10,
+      "uploads": 2
+    },
+    "typical": {
+      "turns": 150,
+      "captures": 80,
+      "people": 40,
+      "followups": 30,
+      "uploads": 8
+    },
+    "heavy": {
+      "turns": 600,
+      "captures": 300,
+      "people": 150,
+      "followups": 100,
+      "uploads": 30
+    }
+  },
+  "models": {
+    "agent": "google/gemini-3.7-flash",
+    "extraction": "google/gemini-3.1-flash-lite",
+    "embedding": "openai/text-embedding-3-small"
+  },
+  "command": "pnpm --filter @tendnote/agent eval:cost --heavy",
+  "startedAt": "2026-09-20T21:29:15.859Z",
+  "status": "partial",
+  "assumptions": {
+    "evalTimeoutMs": 86400000,
+    "days": 30,
+    "sessionBoundary": "daily",
+    "workloadRevision": "capture-contract-v2",
+    "capturePattern": "every fourth capture is confirmed; pair follow-ups only with confirmed captures; remaining follow-ups use non-capture turns",
+    "uploadBytes": 65536,
+    "syntheticGoogleConnection": true,
+    "externalDelivery": false,
+    "excludedTool": "web_search",
+    "reportingWriteAllowancePerRequestUsd": 0.000225,
+    "reportingUser": "cost-replay:f8936abe-54ac-4261-b1c0-7529d08f0978",
+    "transportPolicy": "up to three connection-establishment attempts; no retries after ambiguous failure"
+  },
+  "failure": "Replay subprocess failed (SIGTERM)",
+  "finishedAt": "2026-09-21T00:29:04.628Z"
+}

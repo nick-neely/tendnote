@@ -302,3 +302,89 @@ maximum, not a runtime estimate. Use systemd with no automatic restart.
 Retry preparation passed the unpaid systemd smoke, seven focused lifecycle tests,
 `pnpm test:affected`, `pnpm verify`, fresh coverage and the Fallow audit. No findings
 were reported by Fallow. The runtime-only diff was reviewed before paid launch.
+
+## Day checkpoints and the turn-241 stream failure
+
+The next [partial sample](../../evidence/cost/6140e99c90a2c797c72b9e6272a40fb95c8716c2/heavy-month/README.md)
+validated 240 turns before the first stream read for day 13 failed with
+`Session not found.` This was not another termination signal or a budget stop.
+The day-13 workflow was created at 00:27:45 UTC; its first persisted event arrived
+at 00:28:56 UTC, about 71 seconds later. Eve maps any stream-open exception to
+404, and the client has a finite retry window. The persisted stream was readable
+in a fresh process. The lost underlying exception prevents a more precise claim
+about the local storage/runtime fault; rising overhead and listener warnings are
+supporting observations, not proof of a particular leak.
+
+The fast regression uses the installed Eve endpoint and eval client: twelve
+stream-open failures previously produced `ClientError: Session not found.` in
+39 ms with retry delays removed. The replay now watches the acknowledged session
+once more only when no stream events were consumed. It does not repeat the POST.
+The recovered session handles subsequent turns and the existing approval helper.
+Ambiguous POST failures and partly consumed streams still fail closed.
+
+Only `--heavy` is checkpointed. Each synthetic day runs in its own local Eve
+process and workspace, retaining the same database, person IDs, initial synthetic
+date and model/workload settings. After JUnit success, the whole child process
+group is reaped, the meter settles, and the day's storage must have no unfinished
+jobs. A PostgreSQL snapshot is then written, synced and hashed before an atomic
+checkpoint publication. The next day starts a fresh local runtime; the workload
+already used a fresh session each day, so this does not truncate an intended
+multi-day conversation.
+
+Resume restores the latest complete day's database and starts the following day.
+A failed partial day is discarded and may cost up to 20 turns to replay; there is
+no attempt to repeat or infer the outcome of an ambiguous individual mutation.
+The first checkpoint exists after day one. Snapshots stay private under
+`apps/agent/.eve/replay-checkpoints/<run-id>/`; copy that directory along with its
+referenced evidence if moving hosts. This does not protect against losing the host
+and all local backups. PostgreSQL restore uses a transaction and only the guarded
+local `tendnote_eval` database. One OS lock prevents concurrent replay/smoke resets;
+a check also refuses reset/restore while an orphan replay worker remains alive.
+
+Billing is cumulative across attempts, including work later rolled back. Resume
+loads the latest attempt ledger, verifies the checkpoint's billing prefix, refuses
+uncertain/unsettled rows and preserves the original run ID. Previous report-query
+allowances are deducted too. Restoring the database never resets the $50 budget.
+Each attempt has new evidence and source provenance; old evidence is untouched.
+The workload/model/schema contract and database digest must match before restore.
+No paid retry occurs automatically.
+
+The failed sample was manually adopted at day 12 after read-only inspection of all
+11 day-13 events found only a `load-skill` action, with no relationship mutation.
+All background jobs subsequently settled and the owner-scoped counts matched
+120 sources, 55 follow-ups and 12 uploads. Its fixed date and all 150 person IDs
+were recovered from the preserved database. Turn 241 stays unvalidated. Ancillary
+session/job records and all failed-attempt costs are retained as retry overhead;
+this is a recovered baseline with overhead, not a pristine uninterrupted sample.
+See `recovery.json` for the checkpoint digest and attestation.
+
+After committing the repair, the concrete resume command is:
+
+```sh
+systemd-run --user --unit="tendnote-heavy-resume-$(date -u +%Y%m%dT%H%M%SZ)" \
+  --working-directory="$PWD" --setenv="PATH=$PATH" \
+  --setenv=TENDNOTE_COST_APPROVAL=heavy-month-50-usd \
+  --property=Restart=no --property=KillMode=control-group \
+  --property=TimeoutStopSec=15s --property=RuntimeMaxSec=25h \
+  "$(command -v node)" --env-file=apps/agent/.env.local \
+  apps/agent/scripts/cost-replay/run.mjs --heavy --resume \
+  apps/agent/.eve/replay-checkpoints/f8936abe-54ac-4261-b1c0-7529d08f0978
+```
+
+The original one-attempt monitor has stopped after its failure alert. Point a new
+monitor at the new service and evidence path when an authorized resume launches.
+No further paid inference was used to build or verify this repair.
+
+Keep the private checkpoint directory until the baseline is complete; deleting
+`.eve` also deletes those local snapshots. Before a later resume, commit the
+finished attempt's content-free evidence so the existing clean-source guard can
+record an auditable source revision. Evidence-only commits do not require another
+paid sample or repeating code verification when the implementation is unchanged.
+
+Checkpoint repair validation passed: 15 focused recovery/checkpoint cases; real
+unpaid Eve smoke in both ordinary and nested day workspaces; real PostgreSQL
+snapshot/rollback/restore in a separate temporary database; lock contention;
+affected tests; full `pnpm verify`; and fresh coverage (1,742 agent, 2,148 active
+web, 2,392 database and 795 domain tests). After the final mechanical split of
+eval setup helpers, all 1,742 agent tests, typecheck and lint passed again. Fallow
+reported zero findings. Audit rules and coverage settings were not relaxed.
