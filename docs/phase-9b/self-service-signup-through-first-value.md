@@ -53,6 +53,10 @@ interface, or the marketing site.
    expired, beta ended. It states what happened in one line ("nothing was
    charged"), offers exactly Finish subscribing, Export, Delete, Sign out, and
    carries the signed-in identity so the customer knows which account this is.
+   [The Household Guest experience](household-guest-experience.md) later
+   revised the action set: actions follow what the account owns, so an account
+   with nothing to export is not offered Export, and Delete and Sign out are
+   always present.
 6. **First run.** One prompt on admission: "Who did you talk to this week? Tell
    Eve one thing they said." Skippable. Home repeats the prompt once in the
    empty Today rail and Eve composer. A life-admin first capture is saved as a
@@ -135,7 +139,9 @@ each question below is answered by what the prototype does.
 
 - **The pending-area contract:** one home for every signed-in, not-admitted,
   not-Lapsed state; one line of what happened; Finish subscribing, Export,
-  Delete, Sign out.
+  Delete, Sign out. Revised by
+  [The Household Guest experience](household-guest-experience.md): actions
+  follow what the account owns, with Delete and Sign out always present.
 - **The confirming page's local-read rule:** it polls Tendnote's admission
   record and never calls Stripe; admission follows the projected paid invoice,
   not the redirect.
@@ -146,6 +152,5 @@ each question below is answered by what the prototype does.
 
 The prototype stays on this branch as the primary source. Its reducer is the
 liftable part; the page around it is throwaway. The Household Guest interface
-stays with [Prototype the Household Guest
-experience](https://github.com/nick-neely/tendnote/issues/577), which this
-resolution unblocks.
+was then decided in [The Household Guest
+experience](household-guest-experience.md).

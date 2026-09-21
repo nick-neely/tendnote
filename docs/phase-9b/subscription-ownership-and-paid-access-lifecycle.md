@@ -190,9 +190,9 @@ without authority, with no assistant and no capture, is a different product
 experience and gets its own interface: its own entry, orientation, read-only
 surfaces over the guest read set, a visible reason it is read-only, a path to
 subscribe, and an honest state when the household loses its last paying Owner.
-Its shape is decided by [Prototype the Household Guest
-experience](https://github.com/nick-neely/tendnote/issues/577), which sits
-behind the newcomer signup prototype so the paid path is settled first.
+Its shape is decided in [The Household Guest
+experience](household-guest-experience.md): a read-only library with its own
+chrome, paid features absent rather than locked.
 
 ## A lapsed member inside a Household
 

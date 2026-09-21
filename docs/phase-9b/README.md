@@ -91,6 +91,11 @@ entry point, not a second decision index.
   ([HTML](prototypes/self-service-signup-through-first-value.html)), the
   pending-area and confirming-page contracts, the first-run prompt, the
   Newcomer Walkthrough protocol, and the questions settled as prototyped.
+- [The Household Guest experience](household-guest-experience.md): the
+  owner-chosen read-only library; the three-variant prototype
+  ([HTML](prototypes/household-guest-experience.html)), paid features absent
+  rather than locked, the single subscribe link, the revised pending-area
+  action set, and the name-nobody sponsor-lapsed and removal states.
 - [Bounded usage and the author-operated support contract](bounded-usage-and-support-contract.md):
   the per-function usage states and recovery conditions, the Account Ceiling,
   the hosted support contract and refund workflow, the static status page,
