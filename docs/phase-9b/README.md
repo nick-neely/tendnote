@@ -102,3 +102,9 @@ entry point, not a second decision index.
   pause endpoint, leaving Stripe untouched while the suspension record denies
   admission, one credit note for prepaid days on the audited exit, Stripe Tax
   on that adjustment, and the sandbox check and policy questions left open.
+- [Recovery Journal mechanics](../research/phase-9b-recovery-journal.md):
+  one private Vercel Blob store with an immutable blob per record, intent row
+  then journal blob then deletion, cron retry when the journal write fails,
+  marker-based cutover drain, narrow fencing that never suppresses reminders,
+  the rejected stores, and the retention arithmetic against Neon's history
+  window.
