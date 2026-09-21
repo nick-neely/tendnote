@@ -457,7 +457,7 @@ The content-free, per-account daily rollup of model id, cost category, tokens in
 _Avoid_: Token log, usage analytics, metering table
 
 **Fair-Use Budget**:
-The soft monthly per-account allowance per cost category, set where the heavy Representative Month is still profitable at the price. Crossing it changes pace and model with a visible notice and never changes access or tool authority.
+The soft per-account allowance per cost category for one Usage Period, marking where full quality ends. Profitability is guaranteed by the Account Ceiling, not by this budget. Crossing it changes pace and model with a visible notice and never changes access or tool authority.
 _Avoid_: Quota, hard cap, plan limit, overage
 
 **Spend Breaker**:
@@ -469,8 +469,12 @@ The cheaper, policy-qualified model an account's interactive turns run on while 
 _Avoid_: Degraded mode, lite model, backup model
 
 **Account Ceiling**:
-The hard per-account monthly spend limit per cost category that sits above the Fair-Use Budget and pauses that function until the billing reset. It changes pace only; records, reminders, export, billing, and cancellation keep working.
+The hard per-account spend limit per cost category for one Usage Period. It sits above the Fair-Use Budget, pauses that function until the Usage Period resets, and is derived so that no admitted account costs more to serve than it pays. It changes pace only; records, reminders, export, billing, and cancellation keep working.
 _Avoid_: Hard cap, quota, overage limit, ban
+
+**Usage Period**:
+The month over which an account's Fair-Use Budget and Account Ceiling are counted, anchored to the day of the month its subscription started. It is the same for monthly and annual subscribers and is not the payment provider's billing period.
+_Avoid_: Billing period, billing cycle, calendar month
 
 **Operator Action**:
 One of the enumerated changes the operator may make to a hosted account by hand, each performed by runbook and each producing an audited, scoped record. It is not an admin permission, a support macro, or a direct database edit.

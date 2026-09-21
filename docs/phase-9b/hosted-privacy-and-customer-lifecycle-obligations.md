@@ -401,6 +401,7 @@ reviews it. This is a planning table, not policy text.
 | Model provider offers no-training, bounded retention | Provider terms on the configured path | Unverified | agent research ([#581](https://github.com/nick-neely/tendnote/issues/581)) |
 | Google data stays minimized | ADRs 0090, 0094, 0113, 0121 and the Google API user data policy | Enforced today | owner-decided |
 | Stripe Tax enabled with threshold monitoring | Stripe configuration; pricing work in [#573](https://github.com/nick-neely/tendnote/issues/573) | Decided, unbuilt | accountant review |
+| Renewal reminder email before every annual renewal | Launch email set; [The paid offer and price](paid-offer-and-price.md). Whether state automatic-renewal law requires it, and the notice window, is unverified | Decided, unbuilt | counsel review |
 | Home-state registration before the first sale | Registration, if required; blocks the first sale | Open question | accountant review |
 | One published support address | Marketing site footer and both documents | Decided, unbuilt | owner-decided |
 | No postal address published | No marketing email is sent | Decided | counsel review if a newsletter starts |

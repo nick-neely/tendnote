@@ -142,6 +142,10 @@ demo completion never writes an Activation Milestone.
 
 ## Pricing and purchase handoff
 
+[The paid offer and price](paid-offer-and-price.md) has since resolved these
+placeholders: one plan at $20 a month or $200 a year, plus applicable sales
+tax, with fair use published in approximate turns.
+
 Show price and billing interval only after the measured-offer decision. In
 planning artifacts use explicit unresolved placeholders, not invented prices
 or a presumed monthly/annual package. The public launch requires real values.

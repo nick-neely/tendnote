@@ -95,9 +95,11 @@ the ceiling; a price set against it cannot be undercut by them.
 ## Profitability rule and fair use
 
 The **Fair-Use Budget** is a per-account monthly allowance per cost category.
-It is set where the heavy variant's variable cost is still below the price by
-a margin the pricing ticket records. No admitted account inside fair use is
-loss-making. The budget is soft: crossing it changes pace and model, never
+[The paid offer and price](paid-offer-and-price.md) sets it where full quality
+ends, about 1.65 times the typical variant, rather than where the heavy variant
+is still profitable; the heavy variant exceeds it by design. No admitted
+account is loss-making because the hard Account Ceiling, derived from the
+lowest effective monthly revenue, holds above it. The budget is soft: crossing it changes pace and model, never
 access, and never authority.
 
 An account over its budget sees a visible notice in the Eve composer and on

@@ -30,7 +30,8 @@ interface, or the marketing site.
 ## The approved journey
 
 1. **Landing and pricing.** Readable everywhere, including from blocked
-   regions. One plan, one account, the price, the fourteen-day guarantee, US
+   regions. One plan in a monthly or annual interval
+   ([The paid offer and price](paid-offer-and-price.md)), one account, the price, the fourteen-day guarantee, US
    eighteen-plus eligibility, the fair-use budget, and the support promise are
    stated on the pricing page.
 2. **Account before payment.** Choosing the offer creates the Better Auth

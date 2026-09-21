@@ -68,7 +68,7 @@ that is not a delivery guarantee.
 
 **Recovery conditions.** Every reduced or paused notice states exactly one:
 
-- "Resets on <date>": the billing period reset, shown for the Fair-Use Budget
+- "Resets on <date>": the Usage Period reset, shown for the Fair-Use Budget
   and the Account Ceiling.
 - "Resumes when service is restored", with no date: the Spend Breaker or an
   operator-declared incident.
@@ -79,14 +79,16 @@ and that state's recovery condition. If the breaker is active, no billing date
 is shown for any function it covers. When one restriction clears, the notice
 is recomputed against the rest.
 
-**Period.** Budgets and ceilings reset on the Stripe billing period, not the
-calendar month, and the reset date is displayed.
+**Period.** Budgets and ceilings reset on the Usage Period: one month anchored
+to the subscription's start day, for monthly and annual subscribers alike, not
+the calendar month and not the Stripe billing period. The reset date is
+displayed. See [The paid offer and price](paid-offer-and-price.md).
 
 ## The Account Ceiling
 
 The Fair-Use Budget is soft. Above it sits the **Account Ceiling**: a hard
 per-account monthly spend limit per cost category. Reaching it pauses that
-function until the billing reset. It changes pace, never access or tool
+function until the Usage Period resets. It changes pace, never access or tool
 authority: records, reminders, export, billing, and cancellation keep
 working.
 

@@ -108,3 +108,8 @@ entry point, not a second decision index.
   marker-based cutover drain, narrow fencing that never suppresses reminders,
   the rejected stores, and the retention arithmetic against Neon's history
   window.
+- [The paid offer and price](paid-offer-and-price.md): the accepted evidence,
+  one plan at $20 a month or $200 a year, the Usage Period, the per-category
+  Fair-Use Budget and Account Ceiling numbers, the fixed-cost break-even
+  estimate, interval-specific refund and renewal terms, the deferred second
+  plan and its trigger, and fair use published in approximate turns.
