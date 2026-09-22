@@ -54,6 +54,10 @@ entry point, not a second decision index.
 - [Hosted telemetry provider evidence](../research/phase-9b-hosted-telemetry-providers.md):
   GlitchTip capabilities and issue-deletion limits, the hosted archive and
   completion questions, and the PostHog/Sentry comparison.
+- [Hosted GlitchTip erasure qualification](glitchtip-erasure-qualification.md):
+  what public sources settle about hosted deletion, the owner's inquiry to
+  the provider, the pass bar, an evidence record, and the three-tier
+  disclosure template; awaiting the provider's written answers.
 - [Marketing site and demo experience](marketing-site-and-demo-experience.md):
   the public page inventory, main-domain marketing and app-subdomain product,
   demo-first navigation, fictional scripted Marketing Demo, pricing
