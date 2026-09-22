@@ -81,3 +81,15 @@ function autoApproving<T extends Wrappable>(context: T): T {
 function rawContext(t: EveEvalContext): EveEvalContext {
   return (t as { [RAW_CONTEXT]?: EveEvalContext })[RAW_CONTEXT] ?? t;
 }
+
+/**
+ * A lifecycle checkpoint spanning the request and any owner-approval responses.
+ * Eve's returned turn covers only the last response, which can contain a tool's
+ * result without its original input. Session assertions snapshot all events seen
+ * so far; use them at the checkpoint, before sending the next user message.
+ */
+export async function sendWithApprovalScope(t: EveEvalContext, message: string) {
+  const live = await t.start(message);
+  const turn = await approveToolApprovals(live.session, await live.result());
+  return { turn, session: live.session };
+}

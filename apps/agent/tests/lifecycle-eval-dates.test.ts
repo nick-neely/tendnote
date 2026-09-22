@@ -21,6 +21,10 @@ describe("lifecycle evaluation dates", () => {
         );
         const context = new Proxy(
           {
+            start: async (prompt: string) => {
+              prompts.push(prompt);
+              return { session: scope, result: async () => scope };
+            },
             send: async (prompt: string) => {
               prompts.push(prompt);
               return scope;

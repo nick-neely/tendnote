@@ -38,7 +38,7 @@
     // The replay child loads this with NODE_OPTIONS --import; Vitest also
     // discovers its .test.mjs checks, which Fallow's test plugin does not infer.
     "apps/agent/scripts/cost-replay/preload.mjs",
-    "apps/agent/tests/cost-replay*.test.mjs",
+    "apps/agent/tests/*.test.mjs",
     "apps/agent/agent/channels/**/*.ts",
     "apps/agent/agent/connections/**/*.ts",
     "apps/agent/agent/hooks/**/*.ts",

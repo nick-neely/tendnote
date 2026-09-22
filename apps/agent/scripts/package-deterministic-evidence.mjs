@@ -233,24 +233,29 @@ function runtimeEvents(entry) {
 }
 
 function observedRuntimeIdentity(reports, expectedModel) {
-  const identities = reports.flatMap((report) =>
-    (report.evals ?? []).flatMap((entry) =>
-      runtimeEvents(entry)
-        .filter((event) => event?.type === "session.started")
-        .map((event) => event?.data?.runtime)
-        .filter(Boolean),
-    ),
-  );
+  const events = reports.flatMap((report) => (report.evals ?? []).flatMap(runtimeEvents));
+  const identities = events
+    .filter((event) => event?.type === "session.started")
+    .map((event) => event?.data?.runtime)
+    .filter(Boolean);
   if (identities.length === 0) throw new Error("No session.started runtime identity was observed.");
-  const distinct = new Set(
-    identities.map((identity) => `${identity.modelId ?? ""}\0${identity.eveVersion ?? ""}`),
-  );
-  if (distinct.size !== 1) throw new Error("Multiple runtime identities were observed.");
-  const identity = identities[0];
-  if (!identity.modelId || identity.modelId !== expectedModel) {
-    throw new Error(`Observed model ${identity.modelId ?? "missing"}, expected ${expectedModel}.`);
+  // Eve 0.47 reports the selected model on each step instead of session.started.
+  // Read both formats, and reject disagreement rather than trusting the CLI flag.
+  const models = new Set([
+    ...identities.map((identity) => identity.modelId).filter(Boolean),
+    ...events
+      .filter((event) => event?.type === "step.started")
+      .map((event) => event?.data?.modelId)
+      .filter(Boolean),
+  ]);
+  const versions = new Set(identities.map((identity) => identity.eveVersion ?? null));
+  if (models.size > 1 || versions.size !== 1)
+    throw new Error("Multiple runtime identities were observed.");
+  const modelId = [...models][0];
+  if (!modelId || modelId !== expectedModel) {
+    throw new Error(`Observed model ${modelId ?? "missing"}, expected ${expectedModel}.`);
   }
-  return { modelId: identity.modelId, eveVersion: identity.eveVersion ?? null };
+  return { modelId, eveVersion: [...versions][0] };
 }
 
 function jsonlCounts(rows) {

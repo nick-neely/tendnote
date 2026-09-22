@@ -1,5 +1,5 @@
 import { includes } from "eve/evals/expect";
-import { defineEval } from "../define-eval";
+import { defineEval, sendWithApprovalScope } from "../define-eval";
 import { followupIdFromToolOutput, hasFollowupLifecycleState, without } from "../expectations";
 import { futureFixtureDate } from "../fixture-dates";
 
@@ -32,16 +32,17 @@ export default defineEval({
     const snoozedDueDate = new RegExp(`^${snoozedDate}`);
     // Dana deliberately: every other seeded person already carries a follow-up, and a
     // second one about the same person turns the third turn into a disambiguation.
-    const created = await t.send(
+    const { turn: created, session } = await sendWithApprovalScope(
+      t,
       `Remind me to send Dana Kim my follow-up question about the ops notes on ${createdDate}.`,
     );
     const createdFollowupId = followupIdFromToolOutput(created.events, "create_followup");
 
     created.expectOk();
-    created.calledTool("search_people", { input: { query: /Dana/i } });
+    session.calledTool("search_people", { input: { query: /Dana/i } });
     // Explicit intent writes an active follow-up directly; the review-gated seam is for
     // reminders Eve thought of on its own.
-    created.calledTool("create_followup", {
+    session.calledTool("create_followup", {
       input: {
         personId: UUID,
         reason: /Dana|ops notes|question/i,

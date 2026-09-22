@@ -1,7 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildEvidenceMetadata,
   reportWithRuntimeDetails,
@@ -255,4 +258,90 @@ describe("Eve runtime detail hydration", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+});
+
+it("packages a local report through the CLI with verifiable checksums", async () => {
+  const root = mkdtempSync(join(tmpdir(), "tendnote-local-evidence-"));
+  const report = join(root, "report");
+  const output = join(root, "bundle");
+  mkdirSync(report);
+  writeFileSync(join(report, "summary.json"), JSON.stringify(base.reports[0]));
+  writeFileSync(
+    join(report, "results.jsonl"),
+    (base.resultRows[0] ?? []).map((row) => JSON.stringify(row)).join("\n"),
+  );
+  writeFileSync(
+    join(root, "junit.xml"),
+    `<testsuite tests="62" failures="0" skipped="0">${base.junit.ids
+      .map((id) => `<testcase name="${id}"/>`)
+      .join("")}</testsuite>`,
+  );
+  writeFileSync(join(root, "exit-code"), "0");
+  const source = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const argv = process.argv;
+  const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+  try {
+    process.argv = [
+      process.execPath,
+      fileURLToPath(new URL("../scripts/package-deterministic-evidence.mjs", import.meta.url)),
+      "--source-sha",
+      source,
+      "--eval-root",
+      root,
+      "--report-dir",
+      report,
+      "--output",
+      output,
+      "--workflow-url",
+      "https://github.com/nick-neely/tendnote/issues/579",
+      "--trigger",
+      "local",
+      "--command",
+      "eve eval --tag deterministic --strict",
+      "--agent-model",
+      base.agentModel,
+      "--exit-code-file",
+      join(root, "exit-code"),
+    ];
+    vi.resetModules();
+    await import("../scripts/package-deterministic-evidence.mjs");
+    expect(JSON.parse(readFileSync(join(output, "metadata.json"), "utf8"))).toMatchObject({
+      clean: true,
+      sourceCommit: source,
+      workflow: { trigger: "local" },
+    });
+    const checksums = readFileSync(join(output, "SHA256SUMS"), "utf8").trim().split("\n");
+    expect(checksums).toHaveLength(5);
+    for (const line of checksums) {
+      const [hash, name] = line.split("  ");
+      expect(
+        createHash("sha256")
+          .update(readFileSync(join(output, name ?? "")))
+          .digest("hex"),
+      ).toBe(hash);
+    }
+  } finally {
+    process.argv = argv;
+    stdout.mockRestore();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("reads Eve 0.47 model identity from step.started without inventing it", () => {
+  const current = structuredClone(base);
+  for (const entry of current.reports[0]?.evals ?? []) {
+    entry.result.events = [
+      { type: "session.started", data: { runtime: { eveVersion: "0.47.7" } } },
+      { type: "step.started", data: { modelId: base.agentModel } },
+    ] as never;
+  }
+  expect(buildEvidenceMetadata(current).configuration).toMatchObject({
+    agentModel: base.agentModel,
+    eveVersion: "0.47.7",
+  });
+  current.reports[0]?.evals[0]?.result.events.push({
+    type: "step.started",
+    data: { modelId: "different/model" },
+  } as never);
+  expect(() => buildEvidenceMetadata(current)).toThrow("Multiple runtime identities");
 });
