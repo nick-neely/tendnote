@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "suite": "deterministic-focused",
+  "sourceCommit": "68569444802c33a1011b865d0809f7435371bb08",
+  "workflow": {
+    "trigger": "local",
+    "url": "https://github.com/nick-neely/tendnote/issues/579",
+    "command": "eve eval policy/phase-seven-no-invented-priority-alert --strict --skip-report --max-concurrency 1 --timeout 180000 --json --junit junit.xml"
+  },
+  "configuration": {
+    "agentModel": "google/gemini-3.7-flash",
+    "eveVersion": "0.47.7",
+    "database": "fresh reset, committed migrations, and synthetic seed before every sample"
+  },
+  "timestamps": {
+    "startedAt": "2026-09-22T15:09:00.792Z",
+    "completedAt": "2026-09-22T15:09:29.863Z",
+    "packagedAt": "2026-09-22T15:10:17.752Z"
+  },
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "errored": 0,
+    "total": 1
+  },
+  "evalIds": ["policy/phase-seven-no-invented-priority-alert"],
+  "statuses": {
+    "waiting": 1
+  },
+  "retry": {
+    "attempted": false,
+    "rounds": 0
+  },
+  "exitCode": 0,
+  "clean": true,
+  "qualification": {
+    "scope": "policy/phase-seven-no-invented-priority-alert only",
+    "fullSuiteClean": false
+  }
+}

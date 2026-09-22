@@ -39,6 +39,10 @@ entry point, not a second decision index.
 
 ## Artifacts
 
+- [Local deterministic eval repair and evidence](deterministic-eval-repair.md):
+  two complete local passes, harness failure diagnoses, a focused confirmation,
+  measured costs, and the remaining clean-full-run prerequisite.
+
 - [Baseline cost replay harness](baseline-cost-replay.md): the isolated synthetic
   workload, unpaid verification, spending reservations, web-search exclusion,
   and exact command awaiting separate paid-run approval.
