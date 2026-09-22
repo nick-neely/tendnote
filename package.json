@@ -40,11 +40,11 @@
     "loc:inventory": "node scripts/loc-inventory.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.11",
+    "@biomejs/biome": "^2.5.14",
     "@vitest/coverage-v8": "4.1.11",
-    "fallow": "^3.20.0",
+    "fallow": "^3.27.0",
     "istanbul-lib-coverage": "^3.2.2",
-    "turbo": "^2.10.12",
+    "turbo": "^2.11.2",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   },
