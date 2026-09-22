@@ -135,6 +135,7 @@ function isCleanRun({
 export function buildEvidenceMetadata({
   sourceCommit,
   workflowUrl,
+  trigger = "workflow_dispatch",
   command,
   agentModel,
   exitCode,
@@ -170,7 +171,7 @@ export function buildEvidenceMetadata({
     schemaVersion: 1,
     suite: "deterministic",
     sourceCommit,
-    workflow: { trigger: "workflow_dispatch", url: workflowUrl, command },
+    workflow: { trigger, url: workflowUrl, command },
     configuration: {
       agentModel: runtime.modelId,
       eveVersion: runtime.eveVersion,
@@ -289,7 +290,7 @@ function retryStatus(retry) {
 function readme(metadata) {
   const day = metadata.timestamps.completedAt?.slice(0, 10) ?? "unknown date";
   const eveVersion = metadata.configuration.eveVersion ?? "unknown";
-  return `# Eve deterministic evaluation — ${day}\n\n## Result\n\n**${evidenceVerdict(metadata.clean)}**\n\n| Field | Value |\n| --- | --- |\n| Source commit | \`${metadata.sourceCommit}\` |\n| Workflow | ${metadata.workflow.url} |\n| Trigger | \`${metadata.workflow.trigger}\` |\n| Command | \`${metadata.workflow.command}\` |\n| Execution window | ${metadata.timestamps.startedAt}–${metadata.timestamps.completedAt} |\n| Agent model | \`${metadata.configuration.agentModel}\` |\n| Eve version | \`${eveVersion}\` |\n| Counts | ${metadata.counts.passed} passed, ${metadata.counts.failed} failed, ${metadata.counts.skipped} skipped, ${metadata.counts.errored} errored, ${metadata.counts.total} total |\n| Retry status | ${retryStatus(metadata.retry)} |\n| Wrapper exit code | ${metadata.exitCode} |\n\nMachine-readable details are in \`metadata.json\`, \`junit.xml\`, and \`raw/\`. Verify every preserved file with \`sha256sum -c SHA256SUMS\`. Workflow artifacts supplement this repository bundle; they do not replace it.\n`;
+  return `# Eve deterministic evaluation — ${day}\n\n## Result\n\n**${evidenceVerdict(metadata.clean)}**\n\n| Field | Value |\n| --- | --- |\n| Source commit | \`${metadata.sourceCommit}\` |\n| Run record | ${metadata.workflow.url} |\n| Trigger | \`${metadata.workflow.trigger}\` |\n| Command | \`${metadata.workflow.command}\` |\n| Execution window | ${metadata.timestamps.startedAt}–${metadata.timestamps.completedAt} |\n| Agent model | \`${metadata.configuration.agentModel}\` |\n| Eve version | \`${eveVersion}\` |\n| Counts | ${metadata.counts.passed} passed, ${metadata.counts.failed} failed, ${metadata.counts.skipped} skipped, ${metadata.counts.errored} errored, ${metadata.counts.total} total |\n| Retry status | ${retryStatus(metadata.retry)} |\n| Wrapper exit code | ${metadata.exitCode} |\n\nMachine-readable details are in \`metadata.json\`, \`junit.xml\`, and \`raw/\`. Verify every preserved file with \`sha256sum -c SHA256SUMS\`. Run artifacts supplement this repository bundle; they do not replace it.\n`;
 }
 
 function repositoryRoot() {
@@ -391,6 +392,7 @@ function main() {
   const metadata = buildEvidenceMetadata({
     sourceCommit,
     workflowUrl: required("--workflow-url"),
+    trigger: value("--trigger") ?? "workflow_dispatch",
     command: required("--command"),
     agentModel: required("--agent-model"),
     exitCode: Number(readFileSync(required("--exit-code-file"), "utf8").trim()),
