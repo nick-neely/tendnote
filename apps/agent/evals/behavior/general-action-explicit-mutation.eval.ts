@@ -1,6 +1,7 @@
 import { includes } from "eve/evals/expect";
 import { defineEval } from "../define-eval";
 import { without } from "../expectations";
+import { futureFixtureDate } from "../fixture-dates";
 
 /**
  * The positive half of ADR 0159, which nothing checked.
@@ -27,7 +28,7 @@ export default defineEval({
   timeoutMs: 120_000,
   async test(t) {
     const created = await t.send(
-      "Add an action to test the smoke alarm batteries on Saturday, August 22, 2026.",
+      `Add an action to test the smoke alarm batteries on ${futureFixtureDate(7)}.`,
     );
 
     created.expectOk();
