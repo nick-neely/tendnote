@@ -104,13 +104,21 @@ entry point, not a second decision index.
   the per-function usage states and recovery conditions, the Account Ceiling,
   the hosted support contract and refund workflow, the static status page,
   operator alerting, the audited Operator Actions and Admission Exceptions,
-  Temporary Suspension and Termination, and the recovery procedure, with
-  suspension billing and Recovery Journal mechanics left to research.
+  Temporary Suspension and Termination, and the recovery procedure. Suspension
+  billing is now settled in its own artifact; Recovery Journal mechanics went
+  to research.
 - [Stripe billing semantics during Temporary Suspension](../research/phase-9b-stripe-suspension-billing.md):
   why pausing payment collection is the wrong instrument, the preview-only
   pause endpoint, leaving Stripe untouched while the suspension record denies
   admission, one credit note for prepaid days on the audited exit, Stripe Tax
   on that adjustment, and the sandbox check and policy questions left open.
+- [Billing during a Temporary Suspension](temporary-suspension-billing-policy.md):
+  nothing touched in Stripe while a review is open, dunning left to run, the
+  rule stated at suspension and the amount at exit, the Suspension Credit and
+  its time-based arithmetic and instrument, refund revocation keyed to the
+  Operator Action record, record-before-act ordering, mid-suspension
+  cancellation, the refunded termination remainder, and the sandbox checks
+  handed to launch evidence.
 - [Recovery Journal mechanics](../research/phase-9b-recovery-journal.md):
   one private Vercel Blob store with an immutable blob per record, intent row
   then journal blob then deletion, cron retry when the journal write fails,

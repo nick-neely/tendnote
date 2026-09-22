@@ -8,8 +8,8 @@ are handled, which interventions the operator may make by hand, and what a
 database recovery must do before customers are let back in. It builds on
 [Cost and reliability evidence](cost-and-reliability-evidence.md) and
 [Subscription ownership and paid-access lifecycle](subscription-ownership-and-paid-access-lifecycle.md)
-and leaves two areas explicitly unresolved, listed at the end, for targeted
-technical verification rather than further discussion.
+and leaves the Recovery Journal design explicitly unresolved, listed at the
+end, for targeted technical verification rather than further discussion.
 
 The numeric limits are not set here. They come from the heavy Representative
 Month once [Run the approved baseline cost replay](https://github.com/nick-neely/tendnote/issues/578)
@@ -175,11 +175,12 @@ each producing an audit entry. There is no admin UI at launch.
 | --- | --- | --- |
 | Extend dunning once | Dunning extension grant naming the failed invoice, with an expiry | Overrides expiry of that invoice's dunning window only |
 | Re-admit after a won dispute | Re-admission grant naming the resolved dispute | Void against any later dispute |
-| Refund | Stripe refund; revocation scoped to the refunded subscription | A fresh subscription is unaffected |
+| Refund | Refund record written before the Stripe call, then the refund id stored on it | Revokes Paid Access on the subscription that record names; a fresh subscription is unaffected |
 | Raise the Account Ceiling for the current period | Ceiling override with expiry at period end | That period only |
 | Temporary Suspension | Suspension record with reason and internal review date | See below |
 | Termination | Termination record with reason | See below |
 | Lift a suspension | Audited transition; history retained | |
+| Suspension Credit | Suspension Credit record naming the suspension, invoice(s), amount, and instrument, written before the Stripe call | One credit note per overlapping paid invoice at the audited exit; never revokes Paid Access |
 | Legal Hold | Hold record naming the data it covers and its expiry | Blocks deletion of that data only |
 | Delete on request | Deletion Record, then row deletion | See recovery |
 
@@ -218,17 +219,19 @@ renewal of the deadline is audited with its reason.
 **Termination** is permanent. Renewal is cancelled, sessions are revoked, the
 restricted area offers export and deletion only, Household access is denied
 with membership preserved, and the ninety-day retention clock starts. The
-refund policy for an already-paid remainder is a counsel item on the Hosted
-Obligations Register, not decided here.
+already-paid remainder, from the termination time to the period end, is
+refunded to the card on the same credit note that carries the suspended time.
+Termination is the operator's choice, unlike cancellation and deletion, so
+keeping money for a period the operator closed is not a position to hold.
+This is a counsel-reviewed default on the Hosted Obligations Register.
 
-**Billing during Temporary Suspension is unresolved.** Pausing Stripe
-collection still generates invoices and leaves subscription status unchanged,
-and it does not compensate already-paid suspension days
-([Stripe: pause payment collection](https://docs.stripe.com/billing/subscriptions/pause-payment)).
-Invoice handling, treatment of prepaid days, resumption behaviour, and
-preservation of Stripe Tax on any adjustment need verification against
-Stripe's actual behaviour before the policy is written. This is handed to a
-research ticket.
+**Billing during Temporary Suspension.** Nothing in Stripe is touched while
+a suspension is open: the subscription stays active, invoices finalize and are
+paid on the existing anchor, dunning runs normally, and the suspension record
+alone denies admission. Already-paid suspended days are compensated once, at
+the audited exit, by a Suspension Credit against the overlapping paid
+invoices. [Billing during a Temporary Suspension](temporary-suspension-billing-policy.md)
+holds the arithmetic, the instrument, and the customer wording.
 
 ## Recovery
 
@@ -279,8 +282,8 @@ fenced after restore. This is handed to a research ticket.
 ## Glossary
 
 `CONTEXT.md` gains Account Ceiling, Operator Action, Admission Exception,
-Temporary Suspension, Termination, Legal Hold, Deletion Record, and Recovery
-Journal.
+Temporary Suspension, Termination, Suspension Credit, Legal Hold, Deletion
+Record, and Recovery Journal.
 
 ## Hand-offs
 
@@ -293,13 +296,15 @@ Journal.
   procedure.
 - [Define the complete marketing-site and demo experience](https://github.com/nick-neely/tendnote/issues/572):
   the support page, fair-use page, and status page link.
-- Hosted Obligations Register: the termination refund policy and the Privacy
-  Policy access wording, both counsel review.
-- Research: billing semantics during Temporary Suspension.
+- Hosted Obligations Register: the termination remainder default, the
+  suspended-time credit wording, and the Privacy Policy access wording, all
+  counsel review.
+- [Billing during a Temporary Suspension](temporary-suspension-billing-policy.md):
+  resolves what happens to the subscription, dunning, prepaid days, and refund
+  revocation while a suspension is open.
 - Research: Recovery Journal mechanics.
 
 ## Not decided here
 
-The budget and ceiling numbers, the Deletion Record Retention value, billing
-behaviour during Temporary Suspension, the Recovery Journal design, automatic
-status publication, and the termination refund policy.
+The budget and ceiling numbers, the Deletion Record Retention value, the
+Recovery Journal design, and automatic status publication.

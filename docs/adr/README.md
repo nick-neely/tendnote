@@ -77,6 +77,7 @@ the bounded publication evidence path.
 - [0246 - Hosted inference is metered content-free and shed in a fixed order](0246-hosted-inference-is-metered-content-free-and-shed-in-a-fixed-order.md)
 - [0247 - Non-user requests are neither searched nor relayed](0247-non-user-requests-are-neither-searched-nor-relayed.md)
 - [0248 - Admission exceptions live inside their condition](0248-admission-exceptions-live-inside-their-condition.md)
+- [0249 - Refund revocation is matched to its Operator Action record](0249-refund-revocation-is-matched-to-its-operator-action-record.md)
 
 The catalog intentionally omits the Phase 9a planning workspace. That
 workspace remains useful to maintainers, but it is not a newcomer evidence

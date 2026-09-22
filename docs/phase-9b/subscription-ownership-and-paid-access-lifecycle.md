@@ -98,9 +98,14 @@ what they paid for and nothing is clawed back.
 
 **Refunds.** A stated fourteen-day money-back guarantee on a first purchase,
 refunded on request. A refund revokes Paid Access immediately and the account
-becomes Lapsed. The guarantee is the answer to "no free trial" - someone can
-buy, try the real product, and get their money back, without Tendnote operating
-a trial state.
+becomes Lapsed. Revocation is matched to the Refund Operator Action record
+that asked for it, not to the refund's amount: a Suspension Credit is money
+returned for denied service, not the unwinding of a sale, so it is not a
+refund for admission purposes, and a refund matching no record alerts rather
+than changing access
+([ADR 0249](../adr/0249-refund-revocation-is-matched-to-its-operator-action-record.md)).
+The guarantee is the answer to "no free trial" - someone can buy, try the real
+product, and get their money back, without Tendnote operating a trial state.
 
 **Disputes and chargebacks.** Treated like a refund: Paid Access is revoked
 immediately. Winning the dispute later does not re-admit the account

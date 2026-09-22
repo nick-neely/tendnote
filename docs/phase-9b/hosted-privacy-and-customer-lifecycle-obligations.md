@@ -396,6 +396,8 @@ reviews it. This is a planning table, not policy text.
 | Deletion is immediate, self-service, no forced export | Existing `deleteUser.beforeDelete` hook and disposition table | Enforced today; UI by [#569](https://github.com/nick-neely/tendnote/issues/569) | owner-decided |
 | Deletion promise matches the disposition table | Copy written from `packages/domain/src/household-account-deletion.ts` | Decided, undrafted | owner-decided |
 | Deletion cancels the subscription immediately, no refund | Stripe cancellation in the deletion path | Decided, unbuilt | owner-decided |
+| Termination refunds the unused remainder to the card | Suspension Credit note carrying the remainder, [Billing during a Temporary Suspension](temporary-suspension-billing-policy.md) | Decided default, unbuilt | counsel review of the Terms wording |
+| Suspended days are credited when the review ends | One credit note per overlapping paid invoice at the audited exit, recorded before the Stripe call | Decided, unbuilt | counsel review of the Terms wording |
 | Household-native records stay with the household | ADR 0214 and the disposition table | Enforced today | owner-decided |
 | Sub-processor list committed to the repository | Versioned list beside the Privacy Policy | Decided, unbuilt | owner-decided |
 | Model provider offers no-training, bounded retention | Provider terms on the configured path | Unverified | agent research ([#581](https://github.com/nick-neely/tendnote/issues/581)) |
