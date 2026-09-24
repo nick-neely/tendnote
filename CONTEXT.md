@@ -488,6 +488,14 @@ _Avoid_: Override, precedence rule, whitelist, grant flag
 The reviewable state in which a hosted account is denied admission while the operator investigates, keeps a restricted area for export, deletion, and billing, and retains Household membership with access denied. It is neither Lapsed nor Termination and ends only by an audited lift or conversion.
 _Avoid_: Ban, lock, freeze, disabled account
 
+**Suspected Incident**:
+Any suspicion of unauthorized access, a misused credential, or data crossing an outbound boundary, opened as an Incident Record at discovery. Whether it was a breach is decided later by the notification decision, never required to open one.
+_Avoid_: Confirmed breach (as an entry condition), alert
+
+**Service-Wide Hold**:
+The single audited switch that takes the hosted product offline for every account during an incident of unknown scope, leaving only the status page and billing event intake. It is not a Temporary Suspension, which applies to one account.
+_Avoid_: Maintenance mode, kill switch, global suspension
+
 **Termination**:
 The permanent removal of a hosted account's admission by the operator, cancelling renewal, keeping export and deletion available, and starting the retention clock. It is not a cancellation by the customer and not a Lapsed Account.
 _Avoid_: Ban, deactivation, account closure

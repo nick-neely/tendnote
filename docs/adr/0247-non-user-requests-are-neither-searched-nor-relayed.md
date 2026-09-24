@@ -45,6 +45,10 @@ The same reasoning applies to breach notification. Tendnote can notify affected
 customers by email and cannot notify non-users directly, because it has no
 contact details for them and will not search content to find any.
 
+Legally compelled breach notice is outside this decision. When counsel
+determines notice is owed to non-users, the incident runbook extracts only
+email-address fields from the breached dataset, reading no content (#582).
+
 EU data subject rights remain deferred by the Region Block under ADR 0226, not
 answered by this ADR. This decision covers the requests that reach a US-only
 service, which ADR 0226 already said would still exist.
