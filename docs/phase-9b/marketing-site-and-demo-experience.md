@@ -198,11 +198,11 @@ promises follow the Hosted Obligations Register and its review requirements.
 The marketing site creates no extra newsletter, cookie banner, or cross-site
 tracking under the already agreed launch boundary.
 
-There is an unresolved conflict between the privacy artifact's one-day backup
-deletion promise and the support artifact's proposed verified seven-day
-recovery window. Do not copy either number into marketing as settled. The
-retention policy must be reconciled with the Recovery Journal decision and
-then reflected consistently in the policy, obligations register, and copy.
+The backup and recovery promise is settled as one seven-day Backup Window
+([The Backup Window and the deletion tail](backup-window-and-deletion-tail.md)).
+Marketing uses that decision's wording once the Hosted Obligations Register
+clears it, and drops the recovery sentence whenever the restore drill is
+overdue or failed.
 
 ## Remaining decisions and handoffs
 
@@ -213,9 +213,6 @@ then reflected consistently in the policy, obligations register, and copy.
   [Decide the paid offer and price from measured evidence](https://github.com/nick-neely/tendnote/issues/573).
 - Signup: preserve this demo-to-pricing-to-subscription entry in
   [Prototype self-service signup through first value](https://github.com/nick-neely/tendnote/issues/569).
-- [Reconcile backup deletion and recovery-window promises](https://github.com/nick-neely/tendnote/issues/585):
-  settle the conflicting retention promises before final policy and marketing
-  publication, after the Recovery Journal research.
 
 No blog, comparison-page program, new documentation platform, additional
 capability pages, or customer case studies are required for this launch.

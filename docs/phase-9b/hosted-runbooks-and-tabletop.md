@@ -22,7 +22,7 @@ the template below.
   every Operator Action runbook, the Service Notice procedure, and the
   tabletop.
 - Moved: the restore drill belongs to
-  [Reconcile backup deletion and recovery-window promises](https://github.com/nick-neely/tendnote/issues/585),
+  [The Backup Window and the deletion tail](backup-window-and-deletion-tail.md),
   because a drill is only meaningful against the backup design it proves.
 
 ## Where runbooks live

@@ -199,22 +199,27 @@ and what actually gets deleted cannot drift.
 | --- | --- |
 | Active account content | While the account exists |
 | Lapsed Account content | Ninety days from entering Lapsed, then deleted |
-| Deleted account | Removed from the live database at deletion; gone from backups within one day |
+| Deleted account | Account closes at once and content leaves the live database within minutes; residual backup copies expire within the seven-day [Backup Window](backup-window-and-deletion-tail.md); a restore never brings it back |
 | Billing records | Held by Stripe and the LLC for the period tax law requires; never contain content |
 | Support email | Two years, matching the audit retention in ADR 0223 |
 | Optional telemetry | [Telemetry decision](hosted-telemetry-and-data-boundary.md): account-linked funnel events erased on deletion or after ninety days; GlitchTip receives no customer-linked identifiers and retains unlinked diagnostics under its normal event policy; anonymous daily totals thirteen months; provider backups disclosed separately |
 
-The published backup window is one day. The real Neon setting is six hours, and
-the register records it as monitored configuration rather than as the promise.
-The gap is deliberate: promising the exact provider setting means every
-provider change is a policy change. Raising the setting past the published
-window is a reviewed change to a published promise, not a knob.
+The published backup window is the seven-day [Backup Window](backup-window-and-deletion-tail.md),
+one domain constant that also bounds the recovery window. The Neon history
+setting is configured to it on the Launch plan, whose maximum it is, and
+monitoring compares the live setting against the constant. No snapshot or
+restore branch may outlive it. The earlier one-day draft is retired because
+anything Neon can restore is still a backup copy, so a one-day tail and a
+seven-day recovery window could not both hold.
 
 ## The account deletion promise
 
-Deletion is self-service and immediate. No waiting period, no cooling-off, no
-forced export first. Export is offered on the same screen so that the customer
-who wants their data can take it without deletion being blocked on doing so.
+Deletion is self-service and immediate: the account closes when the request
+commits and its content leaves the live service within minutes, per
+[the Backup Window decision](backup-window-and-deletion-tail.md). No waiting
+period, no cooling-off, no forced export first. Export is offered on the same
+screen so that the customer who wants their data can take it without deletion
+being blocked on doing so.
 
 The promise states exactly what the code in
 `packages/domain/src/household-account-deletion.ts` does, in the customer's
@@ -224,7 +229,8 @@ words:
 - Household-native records stay with the household, under its Owners, per
   [ADR 0214](../adr/0214-household-native-records-are-owned-by-the-workspace.md).
 - The departing person's name is removed from shared history.
-- Backups age out within the stated window.
+- Backups age out within the seven-day Backup Window, and a restore never
+  brings the account back.
 
 Writing the promise from the disposition table rather than from an ideal is the
 whole point. A deletion promise that overstates what happens is a false
@@ -324,10 +330,9 @@ GlitchTip US as the preferred error service, conditional on proving sanitized
 capture without customer-linked identifiers. It keeps funnel reporting in Tendnote,
 prohibits replay and analytics cookies, suppresses optional collection outside
 known-US requests, and provides an account opt-out. The provider's documented
-seven-day backup retention is a separate window, not a revision of the
-product-database promise above. The existing
-[backup reconciliation decision](https://github.com/nick-neely/tendnote/issues/585)
-must reconcile the public wording before publication.
+seven-day backup retention is a separate window with its own Privacy Policy
+row, not part of the product-database promise above, per
+[the Backup Window decision](backup-window-and-deletion-tail.md).
 
 ## Breach handling
 
@@ -390,7 +395,8 @@ reviews it. This is a planning table, not policy text.
 | Assistant reads only within the customer's scopes | Existing scope enforcement and Privacy Guard, already built and tested | Enforced today | owner-decided |
 | Retention table matches the sweep | Single domain constant set, ADR 0221 pattern | Decided, unbuilt | owner-decided |
 | Lapsed content deleted after ninety days | Retention deadline plus background sweep | Decided, unbuilt | owner-decided |
-| Deleted account gone from backups within one day | Neon `history_retention_seconds` currently 21600 | Monitored configuration | owner-decided; raising it is a reviewed change to a published promise |
+| Deleted content gone from backups within the seven-day Backup Window | Neon history set to the Backup Window constant (currently 21600 seconds, raised at launch); no scheduled snapshots, expiring manual snapshots, restore branches removed; scripted surface check; Deletion Records for every purge ([decision](backup-window-and-deletion-tail.md)) | Decided, unbuilt | owner-decided; changing the constant is a reviewed change to a published promise |
+| Service restorable within the Backup Window | Restore drill passed before launch, after triggering changes, and every six months; recovery sentence withdrawn while a drill is overdue or failed | Decided, unbuilt | owner-decided |
 | Support email retained two years | Mailbox policy, matching ADR 0223 | Decided, unbuilt | owner-decided |
 | Billing records never contain content | Stripe integration carries no record data | Decided, unbuilt | accountant review |
 | Deletion is immediate, self-service, no forced export | Existing `deleteUser.beforeDelete` hook and disposition table | Enforced today; UI by [#569](https://github.com/nick-neely/tendnote/issues/569) | owner-decided |

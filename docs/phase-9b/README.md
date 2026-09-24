@@ -134,3 +134,8 @@ entry point, not a second decision index.
   Fair-Use Budget and Account Ceiling numbers, the fixed-cost break-even
   estimate, interval-specific refund and renewal terms, the deferred second
   plan and its trigger, and fair use published in approximate turns.
+- [The Backup Window and the deletion tail](backup-window-and-deletion-tail.md):
+  one seven-day window bounding recovery and the deletion tail, snapshots and
+  restore branches held inside it, the account closing at once, Deletion
+  Records for every purge, thirty-day record and fourteen-day fence retention,
+  separate telemetry backups, and the restore drill that gates launch.

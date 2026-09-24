@@ -509,8 +509,12 @@ A record naming specific account data whose deletion is blocked until a stated e
 _Avoid_: Freeze, retention flag, suspension
 
 **Deletion Record**:
-The durable, content-free fact (account id and time) written to the Recovery Journal before an account's rows are deleted, so a database restore can re-apply the deletion. It is not a tombstone row inside the product database.
+The durable, content-free fact (subject kind, subject id, and time) written to the Recovery Journal before an account's or a dissolved household's rows are irreversibly purged, so a database restore can re-apply the purge. It is not a tombstone row inside the product database.
 _Avoid_: Tombstone, soft delete, audit entry
+
+**Backup Window**:
+The single period within which the hosted service can be restored and after which deleted content no longer exists in any Tendnote backup. It bounds both the recovery promise and the deletion tail.
+_Avoid_: Recovery window, PITR window, history retention
 
 **Recovery Journal**:
 The durable store outside the product database that holds Deletion Records and the records recovery needs to reconcile admission after a restore. It is a recovery aid, not a second authoritative event store.

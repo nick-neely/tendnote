@@ -100,7 +100,7 @@ rather than introducing an alert for every exception or an on-call promise.
 | GlitchTip error events | Provider's documented ninety-day event retention; no account identifier is sent, so account-specific deletion is not offered. Account deletion stops future capture. |
 | Anonymous daily totals in Tendnote | Thirteen months; fixed low-detail count dimensions only, without identifiers or a mapping back to accounts |
 | GlitchTip backups | Provider documents daily snapshots retained for seven days, separate from event retention |
-| Tendnote database backups | Follow the shared backup/deletion policy being reconciled in the existing backup decision |
+| Tendnote database backups | The seven-day [Backup Window](backup-window-and-deletion-tail.md); a separate constant from GlitchTip's snapshots |
 
 The ninety-day period is active-storage retention, not a promise that every
 backup copy disappears at that instant. Archives that remain usable as event
@@ -177,9 +177,9 @@ Existing counsel review of the no-cookie-banner policy remains in place.
   boundary. Reopen the provider or identifier choice if sanitized capture
   cannot be proven.
 - [Reconcile backup deletion and recovery-window promises](https://github.com/nick-neely/tendnote/issues/585)
-  includes the telemetry provider's separate backup window in the unified
-  disclosure. This decision does not settle the existing conflict between
-  Tendnote's one-day backup-deletion claim and proposed seven-day recovery.
+  settled the Tendnote Backup Window and gives the telemetry provider's backups
+  their own disclosure row
+  ([The Backup Window and the deletion tail](backup-window-and-deletion-tail.md)).
 - [Define the hosted incident, data-request, and deletion-notice runbooks and the pre-launch tabletop](https://github.com/nick-neely/tendnote/issues/582)
   covers containment if the outbound boundary is breached; it does not assume
   an account-specific provider erasure workflow.

@@ -235,19 +235,19 @@ holds the arithmetic, the instrument, and the customer wording.
 
 ## Recovery
 
-**Published wording**, only after a passed drill: "Tendnote maintains a
-verified seven-day database recovery window. Recovery is a whole-service
-operation, not per account." No success guarantee and no per-point promise.
-Raising the configured Neon history retention from six hours to seven days is
-a launch checklist item; the published number is read from the verified
-configuration.
+**Published wording**, only while a drill has passed: "Tendnote can restore
+the service to a point within the last seven days. Recovery is a whole-service
+operation, not per account, and no specific restore point is guaranteed."
+The seven days is the Backup Window, which also bounds the deletion tail;
+[The Backup Window and the deletion tail](backup-window-and-deletion-tail.md)
+owns the value, the surface bounds, and the drill cadence.
 
-**Deletion Records.** Before an account's rows are deleted, a Deletion Record
-(account id, deletion time) is written to a **Recovery Journal** kept outside
-the product database and confirmed. Only then are rows deleted. The record is
-retained for a **Deletion Record Retention** period, a distinct parameter set
-to cover every retained branch, snapshot, or backup that could resurrect the
-account, not the Lapsed retention constant.
+**Deletion Records.** Before an account's or a dissolved household's rows
+are purged, a Deletion Record (subject kind, subject id, time) is written to a
+**Recovery Journal** kept outside the product database and confirmed. Only
+then are rows deleted. The record is retained for a **Deletion Record
+Retention** period of thirty days, a distinct parameter derived from the
+Backup Window, not the Lapsed retention constant.
 
 **Restore procedure**, in outline:
 
