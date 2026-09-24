@@ -48,16 +48,16 @@ entry point, not a second decision index.
   and exact command awaiting separate paid-run approval.
 
 - [Hosted telemetry and data boundary](hosted-telemetry-and-data-boundary.md):
-  hosted GlitchTip as the preferred error service pending erasure qualification,
+  hosted GlitchTip as the preferred error service pending outbound payload proof,
   Tendnote-owned funnel reports, a closed content-free event and diagnostic
   boundary, US-only collection, opt-out, and separate live/backup retention.
 - [Hosted telemetry provider evidence](../research/phase-9b-hosted-telemetry-providers.md):
   GlitchTip capabilities and issue-deletion limits, the hosted archive and
   completion questions, and the PostHog/Sentry comparison.
-- [Hosted GlitchTip erasure qualification](glitchtip-erasure-qualification.md):
-  what public sources settle about hosted deletion, the owner's inquiry to
-  the provider, the pass bar, an evidence record, and the three-tier
-  disclosure template; awaiting the provider's written answers.
+- [GlitchTip erasure qualification record](glitchtip-erasure-qualification.md):
+  the owner removed account identifiers from error reports, eliminating the
+  provider erasure inquiry; launch still requires outbound payload proof and
+  accurate ordinary-retention disclosure.
 - [Marketing site and demo experience](marketing-site-and-demo-experience.md):
   the public page inventory, main-domain marketing and app-subdomain product,
   demo-first navigation, fictional scripted Marketing Demo, pricing

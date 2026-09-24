@@ -202,7 +202,7 @@ and what actually gets deleted cannot drift.
 | Deleted account | Removed from the live database at deletion; gone from backups within one day |
 | Billing records | Held by Stripe and the LLC for the period tax law requires; never contain content |
 | Support email | Two years, matching the audit retention in ADR 0223 |
-| Optional telemetry | [Telemetry decision](hosted-telemetry-and-data-boundary.md): ninety-day active retention for account-linked events and errors; anonymous daily totals thirteen months; provider erasure timing and separate backup windows must be qualified and disclosed |
+| Optional telemetry | [Telemetry decision](hosted-telemetry-and-data-boundary.md): account-linked funnel events erased on deletion or after ninety days; GlitchTip receives no customer-linked identifiers and retains unlinked diagnostics under its normal event policy; anonymous daily totals thirteen months; provider backups disclosed separately |
 
 The published backup window is one day. The real Neon setting is six hours, and
 the register records it as monitored configuration rather than as the promise.
@@ -265,7 +265,7 @@ an environment variable.
 | Model provider via the Vercel AI SDK | Inference | Live, terms under review |
 | Google APIs | Only when a customer connects them | Live, customer-initiated |
 | Stripe | Payments and tax | Pending |
-| GlitchTip / Burke Software | Approved content-free error diagnostics; conversion events remain in Tendnote | Preferred US hosted provider; [erasure qualification](https://github.com/nick-neely/tendnote/issues/586) required before adoption |
+| GlitchTip / Burke Software | Approved content-free error diagnostics without customer-linked identifiers; conversion events remain in Tendnote | Preferred US hosted provider; outbound payload proof required before adoption |
 
 Better Auth is a library running inside the deployment, not a processor, and
 the policy says so rather than padding the list.
@@ -320,8 +320,8 @@ The boundary is fixed here; the provider choice inside it belongs to
   consequence of the boundary, not a decision to skip one.
 
 The [telemetry decision](hosted-telemetry-and-data-boundary.md) selects hosted
-GlitchTip US as the preferred error service, conditional on hosted erasure
-qualification and sanitized capture. It keeps funnel reporting in Tendnote,
+GlitchTip US as the preferred error service, conditional on proving sanitized
+capture without customer-linked identifiers. It keeps funnel reporting in Tendnote,
 prohibits replay and analytics cookies, suppresses optional collection outside
 known-US requests, and provides an account opt-out. The provider's documented
 seven-day backup retention is a separate window, not a revision of the
@@ -410,7 +410,7 @@ reviews it. This is a planning table, not policy text.
 | Launch email set, content-free except reminders | Resend templates | Decided, unbuilt | owner-decided |
 | No third-party advertising or cross-site tracking | [Telemetry boundary](hosted-telemetry-and-data-boundary.md): no replay, persistent public visitor identifiers, marketing/account stitching, or analytics cookies | Decided, unbuilt | owner-decided |
 | Optional telemetry is content-free, US-only, and supports opt-out | Closed diagnostic/event set and pre-forwarding eligibility checks in the [telemetry decision](hosted-telemetry-and-data-boundary.md) | Decided, unbuilt | owner-decided |
-| Optional telemetry expires and supports account erasure | Ninety-day active events/errors, thirteen-month anonymous totals, separate backup disclosure; provider completion and archive behavior in [GlitchTip qualification](https://github.com/nick-neely/tendnote/issues/586) | Decided; provider evidence pending | owner-decided; counsel review of final disclosure |
+| Optional telemetry expires and supports account erasure | Account-linked Tendnote funnel events erased on deletion or after ninety days; GlitchTip diagnostics contain no customer-linked identifiers, follow normal event expiry, and have a separate backup disclosure; thirteen-month anonymous totals | Decided; outbound payload proof pending | owner-decided; counsel review of final disclosure |
 | No cookie banner | Strictly necessary cookies plus content-free first-party telemetry | Decided | counsel review |
 | Notify affected customers by email without undue delay | Incident runbook [#582](https://github.com/nick-neely/tendnote/issues/582) | Decided, unbuilt | counsel review |
 | Tabletop exercise before launch | [#582](https://github.com/nick-neely/tendnote/issues/582) | Decided, unbuilt | owner-decided |
@@ -457,8 +457,9 @@ otherwise try to "fix".
 - [Decide the hosted telemetry provider and its data
   boundary](https://github.com/nick-neely/tendnote/issues/575): selects preferred
   GlitchTip error reporting and Tendnote-owned funnels, with bounded payloads,
-  retention, region gating, opt-out, and disclosure; hosted provider erasure
-  evidence remains in [its qualification task](https://github.com/nick-neely/tendnote/issues/586).
+  retention, region gating, opt-out, and disclosure; the later
+  [GlitchTip qualification record](glitchtip-erasure-qualification.md) removes
+  account identifiers and the provider erasure inquiry.
 - [Define bounded usage and the author-operated support
   contract](https://github.com/nick-neely/tendnote/issues/571): the published
   support address and the two-business-day response promise this artifact

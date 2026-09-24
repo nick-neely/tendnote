@@ -4,12 +4,12 @@ Decision artifact for [Decide the hosted telemetry provider and its data
 boundary](https://github.com/nick-neely/tendnote/issues/575).
 
 The owner selected hosted GlitchTip US as the preferred error service,
-subject to verifying deletion and sanitized capture, and Tendnote-owned
-funnel reports with no third-party product-analytics service. Whole-issue
-deletion's loss of unrelated error history is an accepted launch tradeoff.
-This is a planning decision, not a deployed integration or a claim that the
-provider is already qualified. The remaining hosted erasure evidence has its
-own [qualification task](https://github.com/nick-neely/tendnote/issues/586).
+subject to proving sanitized capture, and Tendnote-owned funnel reports with
+no third-party product-analytics service. For launch, GlitchTip reports carry
+no account identifier or other customer-linked field. This is a planning
+decision, not a deployed integration or a claim that capture is already safe.
+The [qualification task](https://github.com/nick-neely/tendnote/issues/586)
+records why an account-specific erasure inquiry is no longer needed.
 
 ## Purpose and collection boundary
 
@@ -20,10 +20,12 @@ Walkthrough remains the way to investigate usability in depth.
 
 Public activity has no persistent visitor identifier and is never joined to
 authenticated account history. Public conversion ratios are approximate
-activity ratios, not unique-person conversion rates. Authenticated telemetry
-may use a dedicated opaque account identifier, never names, email addresses,
-relationship-record identifiers, or content. An opaque identifier still makes
-these events account-linked; it does not make them anonymous.
+activity ratios, not unique-person conversion rates. Tendnote-owned
+authenticated funnel events may use a dedicated opaque account identifier,
+never names, email addresses, relationship-record identifiers, or content.
+Those events remain account-linked. GlitchTip error reports carry no account
+identifier, user identifier, session identifier, or other customer-linked
+field; this gives up account-level error lookup.
 
 There is no advertising, cross-site tracking, visitor fingerprinting, or
 analytics cookie. GlitchTip receives approved diagnostics only; conversion
@@ -71,8 +73,8 @@ the telemetry incomplete. It is not a billing or admission ledger.
 ## Diagnostic boundary
 
 Allowed error fields are predefined error codes, sanitized stack locations,
-release version, operation name, coarse browser/runtime information, and the
-opaque account identifier where applicable. Exclude raw exception messages,
+release version, operation name, and coarse browser/runtime information.
+Exclude all account, user, and session identifiers; raw exception messages,
 console output, request bodies, headers, breadcrumbs, and customer content.
 The owner accepts reduced diagnostic detail in exchange for a testable
 boundary. Existing raw application logging is not safe to forward wholesale.
@@ -95,15 +97,15 @@ rather than introducing an alert for every exception or an on-call promise.
 | Data | Launch retention and deletion policy |
 | --- | --- |
 | Tendnote account-linked funnel events | Delete from live storage after ninety days, or immediately on account deletion |
-| GlitchTip error events | Ninety-day active retention; on account deletion, stop capture and initiate verified provider erasure, with completion timing still to be qualified |
+| GlitchTip error events | Provider's documented ninety-day event retention; no account identifier is sent, so account-specific deletion is not offered. Account deletion stops future capture. |
 | Anonymous daily totals in Tendnote | Thirteen months; fixed low-detail count dimensions only, without identifiers or a mapping back to accounts |
-| GlitchTip backups | Provider documents daily snapshots retained for seven days, separate from active retention and subject to the qualification task |
+| GlitchTip backups | Provider documents daily snapshots retained for seven days, separate from event retention |
 | Tendnote database backups | Follow the shared backup/deletion policy being reconciled in the existing backup decision |
 
 The ninety-day period is active-storage retention, not a promise that every
 backup copy disappears at that instant. Archives that remain usable as event
 storage are not automatically exempted as backups. Provider metadata and
-archive deletion must be checked explicitly. The telemetry policy does not
+archive retention must be described accurately. The telemetry policy does not
 change the separate retention rules for Activation Milestones, Usage Ledger,
 audit records, billing records, or support email. Derive local enforcement
 and public retention copy from the same canonical constants, following the
@@ -119,10 +121,10 @@ payment, admission, and their necessary records continue normally.
 
 One customer setting disables account-linked analytics and third-party error
 reporting. Tendnote continues to record its own Activation Milestones and
-necessary operational records. Account deletion stops collection immediately
-and initiates deletion of linked provider data. The provider's actual deletion
-completion window must be verified and disclosed rather than described as
-immediate.
+necessary operational records. Account deletion stops optional collection
+immediately and erases linked Tendnote-owned funnel events. Previously sent
+GlitchTip reports remain until the provider's ordinary retention expiry;
+the product must disclose this and must not promise per-account erasure there.
 
 Check collection eligibility before forwarding queued events as well as when
 capturing them, so a stale queue cannot defeat an opt-out or deletion. Do not
@@ -133,7 +135,7 @@ deletion also erases linked history under the policy above.
 ## Preferred error service and remaining qualification
 
 The owner selected hosted GlitchTip as the preferred error-tracking service,
-subject to verifying deletion and sanitized capture. Dedicated aggregation,
+subject to proving sanitized capture. Dedicated aggregation,
 inspection, and triage of errors are valuable launch capabilities; simple
 database queries are not an agreed replacement for that workflow.
 
@@ -142,17 +144,13 @@ retained for seven days. This distinguishes active retention from a backup
 tail; it does not establish immediate account-specific erasure. See
 [hosted architecture](https://glitchtip.com/documentation/hosted-architecture/).
 
-Its live API advertises whole-issue deletion rather than individual-event or
-ingested-end-user deletion. Source inspection shows queued deletion, so an
-accepted request does not establish completion. Hosted deletion timing,
-archive handling, and restoration behavior remain qualification questions.
-See the [live API schema](https://app.glitchtip.com/api/openapi.json).
-
-The owner accepts deleting other customers' events in the same issue when
-necessary for one account's erasure. That does not waive the need to find
-every affected issue across the entire retained dataset or to verify completed
-deletion. Deleting one issue is not evidence that an account has no events in
-other issues. Error history may consequently be incomplete.
+The provider's issue-deletion API does not support a reliable account-specific
+erasure workflow. The owner removed account identifiers from outbound error
+reports rather than making that workflow a launch prerequisite. The cost is
+losing account-level diagnostic correlation. If the implementation cannot
+prove that reports contain no customer-linked fields, this decision must be
+reopened before GlitchTip is enabled. See the
+[qualification record](glitchtip-erasure-qualification.md).
 
 PostHog is the original candidate, but its documented retention does not fit
 the approved policy: Free specifies one year and paid plans seven years;
@@ -167,31 +165,32 @@ Detailed current-provider findings and their limitations are recorded in
 The Privacy Policy and Privacy & AI page must distinguish product-owned
 Activation Milestones, optional funnel reporting, and third-party error
 diagnostics. Name GlitchTip/Burke Software as the planned error processor,
-describe the approved payload and opaque identifier, show the opt-out, and
-disclose active retention separately from backup expiry and provider erasure
-completion. Do not describe account-linked events as anonymous or promise
-immediate deletion from a vendor whose completion window is unverified.
+describe the approved payload without customer identifiers, show the opt-out,
+and disclose ordinary event retention separately from backup expiry. State
+that already-sent unlinked error reports remain until normal expiry after an
+account is deleted. Do not describe account-linked Tendnote funnel events as
+anonymous or promise immediate deletion of provider reports.
 Existing counsel review of the no-cookie-banner policy remains in place.
 
 - [Qualify hosted GlitchTip's account-erasure contract](https://github.com/nick-neely/tendnote/issues/586)
-  obtains the hosted completion, archive, matching, metadata, and restoration
-  commitments. If they cannot satisfy the boundary, return the provider or
-  identifier design to the owner; do not silently drop dedicated error
-  tracking, change the privacy policy, or switch to self-hosting.
+  records the removed provider inquiry and the owner's revised no-identifier
+  boundary. Reopen the provider or identifier choice if sanitized capture
+  cannot be proven.
 - [Reconcile backup deletion and recovery-window promises](https://github.com/nick-neely/tendnote/issues/585)
   includes the telemetry provider's separate backup window in the unified
   disclosure. This decision does not settle the existing conflict between
   Tendnote's one-day backup-deletion claim and proposed seven-day recovery.
 - [Define the hosted incident, data-request, and deletion-notice runbooks and the pre-launch tabletop](https://github.com/nick-neely/tendnote/issues/582)
-  includes the qualified provider erasure sequence and containment procedure.
+  covers containment if the outbound boundary is breached; it does not assume
+  an account-specific provider erasure workflow.
 
 Implementation verification must observe outgoing payloads for browser and
 server errors; inject synthetic sensitive values into error messages, URLs,
 headers, and breadcrumbs; prove those values do not reach GlitchTip; check
 unknown/non-US suppression and opt-out; verify queue handling on deletion;
-and prove both event deduplication and retention expiry. Provider erasure
-verification must cover every affected issue, archives, metadata, and the
-accepted collateral deletion. API success alone does not pass that check.
+and prove both event deduplication and retention expiry. Assert that no
+account, user, session, IP, URL, or other customer-linked value reaches the
+provider in either normal or failure paths.
 
 No provider has been contacted or provisioned, no paid plan has been approved,
 and no customer data has been sent. Implementation and service setup remain
