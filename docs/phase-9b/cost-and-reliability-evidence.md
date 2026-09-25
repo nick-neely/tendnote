@@ -204,6 +204,7 @@ pace and never authority.
 
 ## Not decided here
 
-The price, the margin, the Fair-Use Budget numbers, the fallback model's
-identity, the production model, the breaker's dollar ceiling, the support
-contract wording, and the Usage Ledger schema.
+The price, the margin, the Fair-Use Budget numbers, the support contract
+wording, and the Usage Ledger schema. The models and the breaker's dollar
+ceiling are settled in
+[Production and Fallback models](production-and-fallback-models.md).

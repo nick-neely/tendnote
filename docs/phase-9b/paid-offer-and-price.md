@@ -5,8 +5,9 @@ evidence](https://github.com/nick-neely/tendnote/issues/573). It fixes what
 evidence the launch price rests on, the plan, the price and billing intervals,
 the usage numbers that the price derives, how those limits are published, and
 the refund and cancellation terms as they apply to each interval. It does not
-choose the Fallback Model or the production model, build anything, or create
-Stripe products; those are separate decisions and execution actions.
+choose the Fallback Model or the production model (settled in
+[Production and Fallback models](production-and-fallback-models.md)), build
+anything, or create Stripe products.
 
 All decisions below were confirmed by the owner in the grilling session of
 2026-09-21.
@@ -106,8 +107,9 @@ soft budget. `CONTEXT.md` and
 to say so.
 
 How many turns the $1.50 of fallback headroom buys depends on the Fallback
-Model's identity, which is not decided here. At a quarter of today's per-turn
-cost it is roughly 150 further turns.
+Model. [Production and Fallback models](production-and-fallback-models.md)
+chooses GPT-6 Luna, estimated at 200 to 300 further turns and unpublished until
+qualification measures it.
 
 **Contribution at the typical month.** About $9.30 for an annual subscriber
 and $12.20 for a monthly one, after $6.35 of model spend and an assumed $0.30
@@ -184,7 +186,5 @@ are already in ADR 0246 and ADR 0248.
 
 ## Not decided here
 
-The Fallback Model's identity and the production model, which wait on
-disclosure and a preserved clean deterministic run; the Spend Breaker's dollar
-ceiling; the Usage Ledger schema; the second plan's allowance and price; the
+The Usage Ledger schema; the second plan's allowance and price; the
 pricing page's wording and design.

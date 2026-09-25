@@ -139,3 +139,8 @@ entry point, not a second decision index.
   restore branches held inside it, the account closing at once, Deletion
   Records for every purge, thirty-day record and fourteen-day fence retention,
   separate telemetry backups, and the restore drill that gates launch.
+- [Production and Fallback models](production-and-fallback-models.md):
+  Gemini 3.7 Flash in production and GPT-6 Luna as the Fallback Model, the
+  flagged and pinned gateway path, the candidates considered, the budget
+  arithmetic, the derived Spend Breaker ceiling, and the $15 qualification run
+  that gates launch.

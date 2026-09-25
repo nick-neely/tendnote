@@ -268,7 +268,7 @@ an environment variable.
 | Vercel | Hosting, feature flags, queues | Live |
 | Neon | Postgres | Live |
 | Resend | Transactional email | Live |
-| Model provider via the Vercel AI SDK | Inference | Live, terms under review |
+| Vercel AI Gateway, routing to Google Vertex and OpenAI | Inference | Live; zero-retention and no-training flags unbuilt, see [Production and Fallback models](production-and-fallback-models.md) |
 | Google APIs | Only when a customer connects them | Live, customer-initiated |
 | Stripe | Payments and tax | Pending |
 | GlitchTip / Burke Software | Approved content-free error diagnostics without customer-linked identifiers; conversion events remain in Tendnote | Preferred US hosted provider; outbound payload proof required before adoption |
@@ -281,7 +281,10 @@ The model provider must offer written no-training and bounded-retention terms.
 checks the specific configured path rather than the provider's marketing page.
 A provider that cannot offer those terms is not eligible for the paid release,
 which makes the no-training promise above a contractual fact rather than a
-hope.
+hope. [Production and Fallback models](production-and-fallback-models.md)
+meets the condition by setting the gateway's zero-data-retention and
+no-training flags on every hosted call; the owner decided no separate written
+confirmation from Vercel is needed.
 
 Google data stays under the existing minimized-state ADRs (0090, 0094, 0113,
 0121) and the Google API user data policy. Nothing here widens that.
@@ -406,7 +409,7 @@ reviews it. This is a planning table, not policy text.
 | Suspended days are credited when the review ends | One credit note per overlapping paid invoice at the audited exit, recorded before the Stripe call | Decided, unbuilt | counsel review of the Terms wording |
 | Household-native records stay with the household | ADR 0214 and the disposition table | Enforced today | owner-decided |
 | Sub-processor list committed to the repository | Versioned list beside the Privacy Policy | Decided, unbuilt | owner-decided |
-| Model provider offers no-training, bounded retention | Provider terms on the configured path | Unverified | agent research ([#581](https://github.com/nick-neely/tendnote/issues/581)) |
+| Model provider offers no-training, bounded retention | Gateway zero-retention and no-training flags on every hosted call, one pinned provider per model ([Production and Fallback models](production-and-fallback-models.md)) | Decided, unbuilt | owner-decided |
 | Google data stays minimized | ADRs 0090, 0094, 0113, 0121 and the Google API user data policy | Enforced today | owner-decided |
 | Stripe Tax enabled with threshold monitoring | Stripe configuration; pricing work in [#573](https://github.com/nick-neely/tendnote/issues/573) | Decided, unbuilt | accountant review |
 | Renewal reminder email before every annual renewal | Launch email set; [The paid offer and price](paid-offer-and-price.md). Whether state automatic-renewal law requires it, and the notice window, is unverified | Decided, unbuilt | counsel review |
