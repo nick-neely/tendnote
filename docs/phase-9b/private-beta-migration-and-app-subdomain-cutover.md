@@ -71,6 +71,9 @@ restore drill + tabletop run here        4. marketing takes tendnote.com last
 
 ### Stage 1: the product moves while private
 
+The executable procedure is the
+[app-subdomain move runbook](../operations/app-subdomain-move.md).
+
 The product moves to `app.tendnote.com` as its own release, with
 `tendnote.com` redirecting every path to the same path on the app. It happens
 once the product runs correctly on a subdomain, and before the restore drill

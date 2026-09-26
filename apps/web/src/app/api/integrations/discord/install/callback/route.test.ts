@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   admittedOwnerOrNull,
@@ -49,6 +49,7 @@ function redirectLocation(response: Response): URL {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("BETTER_AUTH_URL", "https://tendnote.test");
   admittedOwnerOrNull.mockResolvedValue("owner-1");
   cookies.mockResolvedValue({ get: () => ({ value: "nonce-1" }) });
   discordEnvFromProcess.mockReturnValue({ clientId: "client-1", clientSecret: "secret-1" });
@@ -68,7 +69,20 @@ beforeEach(() => {
   syncDiscordGuildCommands.mockResolvedValue({ status: "registered" });
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("GET /api/integrations/discord/install/callback", () => {
+  it("returns the owner to the configured base URL, whatever host the callback arrived on", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "https://app.tendnote.test");
+
+    const location = redirectLocation(await callback());
+
+    expect(location.origin).toBe("https://app.tendnote.test");
+    expect(location.pathname).toBe("/account/discord");
+  });
+
   it("exchanges the code and records the install with the provider-authoritative guild", async () => {
     const response = await callback();
 

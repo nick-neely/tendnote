@@ -29,7 +29,9 @@ export function ForgotPasswordForm() {
     try {
       const { error: requestError } = await authClient.requestPasswordReset({
         email,
-        redirectTo: `${window.location.origin}/reset-password`,
+        // Relative, so Better Auth resolves it against the configured base URL
+        // rather than whichever host this page was served from.
+        redirectTo: "/reset-password",
       });
 
       if (requestError) {

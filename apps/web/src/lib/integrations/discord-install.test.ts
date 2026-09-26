@@ -2,7 +2,7 @@ import {
   createDiscordInstallQueries,
   createInMemoryDiscordInstallStore,
 } from "@tendnote/db/queries/discord-installs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildDiscordInstallAuthorizeUrl,
   DISCORD_BOT_INSTALL_PERMISSIONS,
@@ -11,6 +11,7 @@ import {
   evaluateDiscordInstallCallback,
   isDiscordChannelId,
   parseDiscordInstallState,
+  resolveDiscordInstallRedirectUri,
   signDiscordInstallState,
 } from "./discord-install";
 
@@ -26,6 +27,20 @@ function statePayload(
     issuedAt: overrides.issuedAt ?? NOW,
   };
 }
+
+describe("resolveDiscordInstallRedirectUri", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("returns the install to the configured base URL, so the product can move origin", () => {
+    vi.stubEnv("BETTER_AUTH_URL", "https://app.tendnote.test/ignored-path");
+
+    expect(resolveDiscordInstallRedirectUri()).toBe(
+      "https://app.tendnote.test/api/integrations/discord/install/callback",
+    );
+  });
+});
 
 describe("buildDiscordInstallAuthorizeUrl", () => {
   it("requests bot install scopes with the guild-install integration type", () => {
