@@ -1,8 +1,8 @@
-import { ForbiddenError } from "eve/channels/auth";
 import {
   createAccessProfileQueries,
   createInMemoryAccessProfileStore,
 } from "@tendnote/db/queries/access-profiles";
+import { ForbiddenError } from "eve/channels/auth";
 import { describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness, createAdmissionPair } from "./admission-harness";
 import type { createPrivateBetaAccessResolver } from "./resolve-access";

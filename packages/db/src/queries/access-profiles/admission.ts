@@ -169,13 +169,13 @@ export function createAdmissionResolver(deps: AdmissionResolverDependencies) {
 
   return {
     async resolveAccess(entity: AdmissionEntity): Promise<AccessDecision> {
-      const sources = await resolveSources(entity);
-      if (!sources.admitted) return sources;
+      const sourceDecision = await resolveSources(entity);
+      if (!sourceDecision.admitted) return sourceDecision;
 
       const blocks = await listAdmissionBlocks({ userId: entity.userId });
       return decideAdmission({ sourceAdmits: true, blocks })
-        ? sources
-        : { admitted: false, status: "denied", profile: sources.profile };
+        ? sourceDecision
+        : { admitted: false, status: "denied", profile: sourceDecision.profile };
     },
   };
 }

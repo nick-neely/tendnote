@@ -1,8 +1,8 @@
-import type { AdmissionBlock } from "@tendnote/domain";
 import {
   createAccessProfileQueries,
   createInMemoryAccessProfileStore,
 } from "@tendnote/db/queries/access-profiles";
+import type { AdmissionBlock } from "@tendnote/domain";
 import { createTendnoteAdmissionAuth } from "../../../../agent/agent/lib/eve-auth";
 import { createPrivateBetaAccessResolver } from "./resolve-access";
 
