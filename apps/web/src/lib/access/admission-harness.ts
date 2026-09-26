@@ -2,6 +2,7 @@ import {
   createAccessProfileQueries,
   createInMemoryAccessProfileStore,
 } from "@tendnote/db/queries/access-profiles";
+import type { AdmissionBlock } from "@tendnote/domain";
 import { createTendnoteAdmissionAuth } from "../../../../agent/agent/lib/eve-auth";
 import { createPrivateBetaAccessResolver } from "./resolve-access";
 
@@ -29,7 +30,10 @@ export function createAdmissionPair(
   };
 }
 
-/** The same pair over a fresh in-memory Access Profile store. */
+/**
+ * The same pair over a fresh in-memory Access Profile store. `blocks` holds each
+ * user's active admission blocks with the exception records that name them.
+ */
 export function createAdmissionHarness(input: {
   policy: Admission["policy"];
   evaluateFlag: Admission["evaluateFlag"];
@@ -37,10 +41,12 @@ export function createAdmissionHarness(input: {
   queries?: ReturnType<typeof createAccessProfileQueries>;
 }) {
   const queries = input.queries ?? createAccessProfileQueries(createInMemoryAccessProfileStore());
+  const blocks = new Map<string, readonly AdmissionBlock[]>();
   const admission: Admission = {
     accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
     evaluateFlag: input.evaluateFlag,
+    listAdmissionBlocks: async ({ userId }) => blocks.get(userId) ?? [],
     policy: input.policy,
   };
-  return { queries, admission, ...createAdmissionPair(admission, input.user) };
+  return { queries, blocks, admission, ...createAdmissionPair(admission, input.user) };
 }

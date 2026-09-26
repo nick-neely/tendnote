@@ -1,5 +1,6 @@
 import {
   type AccessProfileGateway,
+  type AdmissionBlockReader,
   type AdmissionEntity,
   createAdmissionResolver,
   type HostedFlagEvaluator,
@@ -25,6 +26,7 @@ export type { AccessProfileGateway };
 export function createPrivateBetaAccessResolver(deps: {
   accessProfiles: AccessProfileGateway;
   evaluateFlag: PrivateBetaFlagEvaluator;
+  listAdmissionBlocks?: AdmissionBlockReader;
   policy?: AdmissionPolicy;
   environment?: AdmissionEnvironment;
   reportConfiguration?: (diagnostic: AdmissionConfigurationDiagnostic) => void;

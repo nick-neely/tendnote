@@ -4,6 +4,7 @@ import type { AccessSource, EveApprovalMode } from "./access-profiles/types";
 
 export type {
   AccessProfileGateway,
+  AdmissionBlockReader,
   AdmissionEntity,
   AdmissionResolverDependencies,
   HostedFlagEvaluator,
