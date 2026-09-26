@@ -52,7 +52,7 @@ export const notebookStyles = {
     lineHeight: "1",
     margin: "0",
   },
-  invitation: { paddingBottom: "32px" },
+  content: { paddingBottom: "32px" },
   invitationLine: {
     color: emailColors.mutedForeground,
     fontFamily: emailFonts.sans,

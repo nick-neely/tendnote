@@ -13,10 +13,7 @@ import {
   Text,
 } from "react-email";
 import { INVITATION_DATE_FORMAT_UTC } from "@/lib/household/invitation-copy";
-import {
-  NOTEBOOK_DARK_MODE_CSS as DARK_MODE_CSS,
-  notebookStyles as styles,
-} from "../notebook-styles";
+import { NOTEBOOK_DARK_MODE_CSS, notebookStyles as styles } from "../notebook-styles";
 import type { TransactionalEmailContent } from "../transactional";
 
 export type HouseholdInvitationEmailProps = {
@@ -111,7 +108,7 @@ function HouseholdInvitationEmail({
           these rules hand them the real tokens instead of a machine's guess.
           Inline styles outrank a stylesheet, so each rule has to insist.
         */}
-        <style>{DARK_MODE_CSS}</style>
+        <style>{NOTEBOOK_DARK_MODE_CSS}</style>
       </Head>
       {/*
         Reinforces rather than repeats the subject: the subject names the
@@ -132,7 +129,7 @@ function HouseholdInvitationEmail({
               Tendnote
             </Text>
           </Section>
-          <Section style={styles.invitation}>
+          <Section style={styles.content}>
             <Text className="tn-muted" style={styles.invitationLine}>
               {invitationLine}
             </Text>

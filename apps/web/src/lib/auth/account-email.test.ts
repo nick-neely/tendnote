@@ -16,7 +16,7 @@ vi.mock("next/server", () => ({
 }));
 
 import { EmailTransportUnavailableError } from "@/lib/email/transactional";
-import { sendAccountEmail, sendAccountEmailAfterResponse } from "./account-email";
+import { accountEmailHooks, sendAccountEmail } from "./account-email";
 
 const VERIFY = {
   purpose: "verify-email" as const,
@@ -114,11 +114,36 @@ describe("account emails through the transactional seam", () => {
   });
 });
 
-describe("sending after the response", () => {
-  it("defers the send, so response time says nothing about the address", async () => {
+describe("the Better Auth hooks", () => {
+  it("send each purpose's email to the account's address", async () => {
     sendThroughResend();
 
-    sendAccountEmailAfterResponse(VERIFY);
+    await accountEmailHooks.sendVerificationEmail({
+      user: { email: VERIFY.to },
+      url: VERIFY.url,
+      token: VERIFY.token,
+    });
+    await accountEmailHooks.sendResetPassword({
+      user: { email: RESET.to },
+      url: RESET.url,
+      token: RESET.token,
+    });
+    for (const callback of afterCallbacks) await callback();
+
+    expect(resendSend.mock.calls.map(([payload]) => [payload.subject, payload.to])).toEqual([
+      ["Confirm your email for Tendnote", "sam@example.com"],
+      ["Reset your Tendnote password", "sam@example.com"],
+    ]);
+  });
+
+  it("defer the send, so response time says nothing about the address", async () => {
+    sendThroughResend();
+
+    await accountEmailHooks.sendVerificationEmail({
+      user: { email: VERIFY.to },
+      url: VERIFY.url,
+      token: VERIFY.token,
+    });
     expect(resendSend).not.toHaveBeenCalled();
 
     await afterCallbacks[0]?.();
@@ -129,7 +154,11 @@ describe("sending after the response", () => {
     vi.stubEnv("NODE_ENV", "production");
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    sendAccountEmailAfterResponse(RESET);
+    await accountEmailHooks.sendResetPassword({
+      user: { email: RESET.to },
+      url: RESET.url,
+      token: RESET.token,
+    });
     await afterCallbacks[0]?.();
 
     const logged = error.mock.calls.flat().map(String).join(" ");

@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { after } from "next/server";
 import { selectTransactionalSender } from "@/lib/email/select-sender";
 import { type AccountEmailPurpose, renderAccountEmail } from "@/lib/email/templates/account-email";
-import { EmailTransportUnavailableError, resolveSupportEmail } from "@/lib/email/transactional";
+import { requireSupportEmail } from "@/lib/email/transactional";
 
 export type AccountEmail = {
   purpose: AccountEmailPurpose;
@@ -20,17 +20,10 @@ export type AccountEmail = {
  * transactional email module, on whichever transport this deployment gets.
  */
 export async function sendAccountEmail(email: AccountEmail): Promise<void> {
-  const supportEmail = resolveSupportEmail(process.env);
-  if (!supportEmail) {
-    throw new EmailTransportUnavailableError(
-      "TENDNOTE_EMAIL_REPLY_TO is not set, so Tendnote cannot send or display a recovery contact. Add the operator support mailbox to this deployment's environment (see docs/email-setup.md).",
-    );
-  }
-
   const content = await renderAccountEmail({
     purpose: email.purpose,
     actionUrl: email.url,
-    supportEmail,
+    supportEmail: requireSupportEmail(),
   });
 
   await selectTransactionalSender()({
@@ -47,7 +40,7 @@ export async function sendAccountEmail(email: AccountEmail): Promise<void> {
  * the response time reveal whether an address has an account. A failure is
  * logged by its class only, never with the link or the address.
  */
-export function sendAccountEmailAfterResponse(email: AccountEmail): void {
+function sendAccountEmailAfterResponse(email: AccountEmail): void {
   after(async () => {
     try {
       await sendAccountEmail(email);
@@ -58,3 +51,15 @@ export function sendAccountEmailAfterResponse(email: AccountEmail): void {
     }
   });
 }
+
+type BetterAuthEmailHookInput = { user: { email: string }; url: string; token: string };
+
+/** Better Auth's two email hooks, each bound to its own purpose. */
+export const accountEmailHooks = {
+  sendResetPassword: async ({ user, url, token }: BetterAuthEmailHookInput) => {
+    sendAccountEmailAfterResponse({ purpose: "reset-password", to: user.email, url, token });
+  },
+  sendVerificationEmail: async ({ user, url, token }: BetterAuthEmailHookInput) => {
+    sendAccountEmailAfterResponse({ purpose: "verify-email", to: user.email, url, token });
+  },
+};

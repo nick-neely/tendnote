@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AUDIT_LOG_DEFAULT_RETENTION_YEARS } from "./audit-retention";
 import { householdPurgeCutoff, householdRecoveryDeadline } from "./household-governance";
-import { RETENTION, RETENTION_TABLE_ROWS, renderRetentionTable } from "./retention";
+import { publishedRetentionKeys, RETENTION, renderRetentionTable } from "./retention";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -37,8 +37,7 @@ describe("retention constants", () => {
 
 describe("published retention table", () => {
   it("publishes every constant", () => {
-    const published = RETENTION_TABLE_ROWS.flatMap((row) => row.periods);
-    expect([...published].sort()).toEqual(Object.keys(RETENTION).sort());
+    expect(publishedRetentionKeys().sort()).toEqual(Object.keys(RETENTION).sort());
   });
 
   it("states each period in words the reader can check against the constant", () => {

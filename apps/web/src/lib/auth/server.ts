@@ -11,7 +11,7 @@ import { assertHouseholdAccountDeletionAllowed } from "@tendnote/db/queries/hous
 import * as schema from "@tendnote/db/schema";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getRedis } from "@/lib/cache/redis";
-import { sendAccountEmailAfterResponse } from "./account-email";
+import { accountEmailHooks } from "./account-email";
 import {
   discordEnvFromProcess,
   discordSocialProvider,
@@ -103,9 +103,7 @@ function createAuth() {
     }),
     emailAndPassword: {
       enabled: true,
-      sendResetPassword: async ({ user, url, token }) => {
-        sendAccountEmailAfterResponse({ purpose: "reset-password", to: user.email, url, token });
-      },
+      sendResetPassword: accountEmailHooks.sendResetPassword,
     },
     emailVerification: {
       // Public credential signup issues an unverified session, and admission
@@ -115,9 +113,7 @@ function createAuth() {
       // when configured, the local server log in development, and a named
       // refusal in production without one.
       sendOnSignUp: true,
-      sendVerificationEmail: async ({ user, url, token }) => {
-        sendAccountEmailAfterResponse({ purpose: "verify-email", to: user.email, url, token });
-      },
+      sendVerificationEmail: accountEmailHooks.sendVerificationEmail,
     },
     // GitHub (sign-in), Google (Phase 2C Calendar linking), and Discord (identity
     // linking) — each wired only when its credentials are configured.

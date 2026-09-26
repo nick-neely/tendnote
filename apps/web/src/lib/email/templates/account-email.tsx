@@ -82,7 +82,7 @@ function AccountEmail({ purpose, actionUrl, supportEmail }: AccountEmailProps) {
               Tendnote
             </Text>
           </Section>
-          <Section style={styles.invitation}>
+          <Section style={styles.content}>
             <Heading as="h1" className="tn-ink" style={styles.heading}>
               {copy.heading}
             </Heading>

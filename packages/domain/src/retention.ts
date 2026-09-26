@@ -1,9 +1,11 @@
 /**
  * Every retention period Tendnote promises, held once.
  *
- * The sweeps that delete data and the Privacy Policy's retention table read
- * these same values (the ADR 0221 pattern), so what the policy promises and
- * what actually gets deleted cannot drift apart. Changing a value here is a
+ * The Privacy Policy's retention table is generated from these values, and
+ * every sweep that deletes data reads its period from here (the ADR 0221
+ * pattern), so what the policy promises and what actually gets deleted cannot
+ * drift apart. Today the household purge and audit retention sweeps read it;
+ * the Lapsed, Deletion Record, fence, and telemetry sweeps must when built. Changing a value here is a
  * reviewed change to a published promise: the committed table in
  * `docs/legal/privacy-retention-table.md` fails its test until it is
  * regenerated from here.
@@ -42,8 +44,6 @@ function formatPeriod(period: RetentionPeriod): string {
 
 type RetentionTableRow = {
   data: string;
-  /** Every constant the row states, so a test can prove none is left unpublished. */
-  periods: readonly RetentionKey[];
   retained: (period: (key: RetentionKey) => string) => string;
 };
 
@@ -53,68 +53,69 @@ type RetentionTableRow = {
  * Wording follows the hosted-privacy decision artifact; each number is read
  * from {@link RETENTION} rather than typed into the sentence.
  */
-export const RETENTION_TABLE_ROWS: readonly RetentionTableRow[] = [
+const RETENTION_TABLE_ROWS: readonly RetentionTableRow[] = [
   {
     data: "Active account content",
-    periods: [],
     retained: () => "While the account exists",
   },
   {
     data: "Lapsed account content",
-    periods: ["lapsedAccount"],
     retained: (p) => `${p("lapsedAccount")} from entering Lapsed, then deleted`,
   },
   {
     data: "Deleted account",
-    periods: ["backupWindow"],
     retained: (p) =>
       `The account closes at once and its content leaves the live database within minutes; residual backup copies expire within the Backup Window of ${p("backupWindow")}, and a restore never brings it back`,
   },
   {
     data: "Deletion Records",
-    periods: ["deletionRecord", "deletionFence"],
     retained: (p) =>
       `${p("deletionRecord")}; the restore fences for email and export, ${p("deletionFence")}. Neither holds content`,
   },
   {
     data: "Shared household records after the household ends",
-    periods: ["householdRecoveryWindow"],
     retained: (p) =>
       `${p("householdRecoveryWindow")} after the household ends, then deleted; what each member wrote privately stays theirs`,
   },
   {
     data: "Billing records",
-    periods: [],
     retained: () =>
       "Held by Stripe and the operator for the period tax law requires; never contain content",
   },
   {
     data: "Usage records",
-    periods: ["usageLedger"],
     retained: (p) => `${p("usageLedger")}; content-free`,
   },
   {
     data: "Support email",
-    periods: ["supportEmail"],
     retained: (p) => p("supportEmail"),
   },
   {
     data: "Audit log",
-    periods: ["auditLog"],
     retained: (p) => p("auditLog"),
   },
   {
     data: "Incident records",
-    periods: ["incidentRecord"],
     retained: (p) => `${p("incidentRecord")} from closure`,
   },
   {
     data: "Optional telemetry",
-    periods: ["accountLinkedFunnelEvents", "anonymousDailyTotals"],
     retained: (p) =>
       `Account-linked funnel events erased on deletion or after ${p("accountLinkedFunnelEvents")}; anonymous daily totals ${p("anonymousDailyTotals")}`,
   },
 ];
+
+/** Every constant the published table actually states, read from its rows. */
+export function publishedRetentionKeys(): RetentionKey[] {
+  const stated: RetentionKey[] = [];
+  for (const row of RETENTION_TABLE_ROWS) {
+    row.retained((key) => {
+      stated.push(key);
+      return "";
+    });
+  }
+  return stated;
+}
 
 /** The retention table as published Markdown. */
 export function renderRetentionTable(): string {
