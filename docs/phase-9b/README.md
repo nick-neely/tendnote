@@ -144,3 +144,9 @@ entry point, not a second decision index.
   flagged and pinned gateway path, the candidates considered, the budget
   arithmetic, the derived Spend Breaker ceiling, and the $15 qualification run
   that gates launch.
+- [Private-beta migration and app-subdomain cutover](private-beta-migration-and-app-subdomain-cutover.md):
+  the closed beta and its conditional notice policy, the Beta Sunset in the
+  Checkout release, the two-stage move with the product on `app.tendnote.com`
+  first, host-only cookies, callback re-registration and verification, the
+  separate marketing project, the narrow apex redirects, and both rollback
+  points.

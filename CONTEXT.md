@@ -204,6 +204,10 @@ _Avoid_: Version number, etag, content hash of the raw provider record
 The account-level gate that decides whether a signed-up user may enter Tendnote during the early hosted product phase. It controls product access only; it is not the same as relationship data ownership, integration authorization, or payment status.
 _Avoid_: Public signup, environment allowlist, owner scope
 
+**Beta Sunset**:
+The single moment hosted beta grants end, tied to payment becoming available rather than to a calendar date, so no account is ever left with neither a beta grant nor a way to pay. An ex-beta account keeps its data and waits to subscribe; only the operator's own account keeps access without paying.
+_Avoid_: Beta expiry, grandfathering, beta migration date
+
 **Paid Access**:
 The durable record that a hosted Tendnote account holds verified payment standing, admitting it to the product alongside a signed-in session. It is a sibling of Private Beta Access rather than a replacement, it is Tendnote's own record rather than a payment provider's subscription state, and it does not exist on a self-hosted deployment.
 _Avoid_: Subscription status, billing flag, seat, licence, entitlement sync
