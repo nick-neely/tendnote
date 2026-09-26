@@ -95,16 +95,16 @@
   },
   "dependencies": {
     "@tendnote/domain": "workspace:*",
-    "ai": "7.0.84",
-    "drizzle-orm": "^0.45.2",
+    "ai": "7.0.112",
+    "drizzle-orm": "^0.45.3",
     "postgres": "^3.4.7",
-    "zod": "^4.5.2"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tendnote/config": "workspace:*",
-    "@types/node": "^26.4.0",
-    "drizzle-kit": "^0.31.8",
-    "tsx": "^4.23.12",
+    "@types/node": "^26.6.2",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   }
