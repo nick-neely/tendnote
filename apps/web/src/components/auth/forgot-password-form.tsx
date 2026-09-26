@@ -51,8 +51,8 @@ export function ForgotPasswordForm() {
     return (
       <div className="flex flex-col gap-4">
         <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-          If an account exists for that email, we've generated a reset link. During the private beta
-          we'll deliver it to you shortly. Reach out if you don't hear back.
+          If an account exists for that email, we've sent it a reset link. Check your inbox, and
+          your spam folder if it hasn't arrived in a few minutes.
         </p>
         <Button asChild className="w-full" size="lg" variant="outline">
           <Link href="/sign-in">Back to sign in</Link>

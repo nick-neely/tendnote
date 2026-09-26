@@ -13,7 +13,10 @@ import {
   Text,
 } from "react-email";
 import { INVITATION_DATE_FORMAT_UTC } from "@/lib/household/invitation-copy";
-import { emailColors, emailColorsDark, emailFonts, emailLayout, emailText } from "../theme";
+import {
+  NOTEBOOK_DARK_MODE_CSS as DARK_MODE_CSS,
+  notebookStyles as styles,
+} from "../notebook-styles";
 import type { TransactionalEmailContent } from "../transactional";
 
 export type HouseholdInvitationEmailProps = {
@@ -183,153 +186,6 @@ function HouseholdInvitationEmail({
     </Html>
   );
 }
-
-const DARK_MODE_CSS = `@media (prefers-color-scheme: dark) {
-  .tn-page { background-color: ${emailColorsDark.background} !important; }
-  .tn-ink { color: ${emailColorsDark.foreground} !important; }
-  .tn-muted { color: ${emailColorsDark.mutedForeground} !important; }
-  .tn-rule { border-top-color: ${emailColorsDark.border} !important; }
-  .tn-panel { background-color: ${emailColorsDark.surface} !important; }
-  .tn-link { color: ${emailColorsDark.foreground} !important; }
-  .tn-action {
-    background-color: ${emailColorsDark.primary} !important;
-    color: ${emailColorsDark.primaryForeground} !important;
-  }
-}
-@media only screen and (max-width: 480px) {
-  .tn-action { display: block !important; text-align: center !important; }
-}`;
-
-const styles = {
-  body: {
-    backgroundColor: emailColors.background,
-    color: emailColors.foreground,
-    fontFamily: emailFonts.sans,
-    margin: "0",
-    padding: "0",
-  },
-  container: {
-    backgroundColor: emailColors.background,
-    margin: "0 auto",
-    maxWidth: emailLayout.width,
-    padding: `40px ${emailLayout.gutter} 36px`,
-  },
-  masthead: { paddingBottom: "40px" },
-  /** Live text, weight 600, tracking -0.01em - the lockup rule from DESIGN.md. */
-  wordmark: {
-    color: emailColors.foreground,
-    fontFamily: emailFonts.sans,
-    fontSize: "19px",
-    fontWeight: 600,
-    letterSpacing: "-0.01em",
-    lineHeight: "1",
-    margin: "0",
-  },
-  invitation: { paddingBottom: "32px" },
-  invitationLine: {
-    color: emailColors.mutedForeground,
-    fontFamily: emailFonts.sans,
-    fontSize: emailText.body.fontSize,
-    lineHeight: emailText.body.lineHeight,
-    margin: "0 0 4px",
-  },
-  /** Every rule on the page. One hairline weight, one hairline color. */
-  rule: {
-    border: "none",
-    borderTop: `1px solid ${emailColors.border}`,
-    margin: "20px 0",
-    width: "100%",
-  },
-  heading: {
-    color: emailColors.foreground,
-    fontFamily: emailFonts.sans,
-    fontSize: emailText.h1.fontSize,
-    fontWeight: 600,
-    lineHeight: emailText.h1.lineHeight,
-    margin: "0 0 16px",
-  },
-  // `body` is taken by the outer element's style; this is the prose step.
-  body_: {
-    color: emailColors.foreground,
-    fontFamily: emailFonts.sans,
-    fontSize: emailText.body.fontSize,
-    lineHeight: emailText.body.lineHeight,
-    margin: "0 0 16px",
-  },
-  actionRow: { padding: "8px 0 10px" },
-  /**
-   * The one sage moment. Inline-block rather than full width: a banner-width
-   * button is a marketing reflex, and this is a notebook asking a question. The
-   * padding alone clears the 44px tap target.
-   */
-  action: {
-    backgroundColor: emailColors.primary,
-    borderRadius: "8px",
-    color: emailColors.primaryForeground,
-    display: "inline-block",
-    fontFamily: emailFonts.sans,
-    fontSize: emailText.body.fontSize,
-    fontWeight: 500,
-    lineHeight: "24px",
-    padding: "12px 24px",
-    textDecoration: "none",
-  },
-  small: {
-    color: emailColors.mutedForeground,
-    fontFamily: emailFonts.sans,
-    fontSize: emailText.small.fontSize,
-    lineHeight: emailText.small.lineHeight,
-    margin: "0 0 8px",
-  },
-  deadline: {
-    color: emailColors.mutedForeground,
-    fontFamily: emailFonts.sans,
-    fontSize: emailText.small.fontSize,
-    lineHeight: emailText.small.lineHeight,
-    margin: "0",
-  },
-  fallback: {
-    backgroundColor: emailColors.surface,
-    borderRadius: "10px",
-    padding: "16px",
-  },
-  fallbackTitle: {
-    color: emailColors.foreground,
-    fontFamily: emailFonts.sans,
-    fontSize: emailText.small.fontSize,
-    fontWeight: 600,
-    lineHeight: emailText.small.lineHeight,
-    margin: "0 0 4px",
-  },
-  fallbackLink: {
-    color: emailColors.foreground,
-    textDecoration: "underline",
-  },
-  /** A machine fact, so mono - and it has to survive a narrow phone intact. */
-  url: {
-    color: emailColors.mutedForeground,
-    fontFamily: emailFonts.mono,
-    fontSize: emailText.caption.fontSize,
-    lineHeight: emailText.caption.lineHeight,
-    margin: "0",
-    wordBreak: "break-all" as const,
-  },
-  caption: {
-    color: emailColors.mutedForeground,
-    fontFamily: emailFonts.sans,
-    fontSize: emailText.caption.fontSize,
-    lineHeight: emailText.caption.lineHeight,
-    margin: "0 0 8px",
-  },
-  captionLast: {
-    color: emailColors.mutedForeground,
-    fontFamily: emailFonts.sans,
-    fontSize: emailText.caption.fontSize,
-    lineHeight: emailText.caption.lineHeight,
-    margin: "0",
-  },
-  footerLink: { color: emailColors.mutedForeground, textDecoration: "underline" },
-};
 
 /**
  * React Email's preview server discovers templates through a default export.

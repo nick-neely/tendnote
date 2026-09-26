@@ -1,17 +1,9 @@
 import "server-only";
 
 import { resolveBetterAuthBaseUrl } from "@tendnote/auth";
-import { createResendSender } from "@/lib/email/resend";
+import { selectTransactionalSender } from "@/lib/email/select-sender";
 import { renderHouseholdInvitationEmail } from "@/lib/email/templates/household-invitation";
-import {
-  decideTransactionalTransport,
-  EmailTransportUnavailableError,
-  operatorLogSender,
-  resolveSenderIdentity,
-  resolveSupportEmail,
-  type TransactionalSender,
-  unavailableSender,
-} from "@/lib/email/transactional";
+import { EmailTransportUnavailableError, resolveSupportEmail } from "@/lib/email/transactional";
 
 /**
  * The canonical acceptance URL for one invitation.
@@ -53,7 +45,7 @@ export type HouseholdInvitationTransport = (
  * why swapping Resend for something else touches one file.
  */
 export function getHouseholdInvitationTransport(): HouseholdInvitationTransport {
-  const send = selectSender();
+  const send = selectTransactionalSender();
   const supportEmail = resolveSupportEmail(process.env);
 
   return async (message) => {
@@ -73,20 +65,4 @@ export function getHouseholdInvitationTransport(): HouseholdInvitationTransport 
 
     return send({ ...content, to: message.to, idempotencyKey: message.deliveryId });
   };
-}
-
-function selectSender(): TransactionalSender {
-  const choice = decideTransactionalTransport(process.env);
-
-  switch (choice.kind) {
-    case "resend":
-      return createResendSender({
-        apiKey: choice.apiKey,
-        identity: resolveSenderIdentity(process.env),
-      });
-    case "unavailable":
-      return unavailableSender(choice.reason);
-    default:
-      return operatorLogSender;
-  }
 }

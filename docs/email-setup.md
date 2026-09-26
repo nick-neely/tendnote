@@ -7,17 +7,19 @@
 > domain. This runbook assumes Cloudflare DNS; other providers need their own
 > equivalent record-entry procedure.
 
-Tendnote sends one kind of email today - a **Household Invitation**. It is
-transactional in the strict sense: a person typed an address, an explicit Owner
-action created a durable delivery attempt, and the message carries a capability
-that person needs in order to act. There is no list, no marketing stream, and no
-tracking.
+Tendnote sends two kinds of email today: a **Household Invitation**, and the
+**account emails** Better Auth asks for - the sign-up verification link and the
+password-reset link. Both are transactional in the strict sense: a person typed
+an address, and the message carries a capability that person needs in order to
+act. Account emails are content-free: the link, why it arrived, and the support
+address, nothing about the account. There is no list, no marketing stream, and
+no tracking.
 
 Provider choice is an adapter detail (see
 [`docs/phase-8/research/transactional-email-provider-reassessment.md`](phase-8/research/transactional-email-provider-reassessment.md)).
 Everything provider-shaped lives in `apps/web/src/lib/email/resend.ts`; swapping
 providers touches that file and the selection in
-`apps/web/src/lib/email/transactional.ts`, and nothing else.
+`apps/web/src/lib/email/select-sender.ts`, and nothing else.
 
 ---
 
@@ -167,11 +169,11 @@ than mailing real people from a branch.
 | `test` | anything | Operator log. The test runner never sends, whatever is in your shell. |
 | any | set, with `TENDNOTE_EMAIL_REPLY_TO` | **Resend.** Both explicit operator values are required; otherwise it refuses. |
 | not production | unset | Operator log: the message is written to the server log, link and all. |
-| production | unset | **Refuses**, by name, naming the variable and this document. The attempt is recorded `failed` and the Owner is told delivery did not happen. |
+| production | unset | **Refuses**, by name, naming the variable and this document. An invitation attempt is recorded `failed` and the Owner is told delivery did not happen; an account email is logged as not sent, by failure class only. |
 
 The production refusal is deliberate. Falling back to the operator log there
-would write a working household invitation into a hosted log, which is a live
-capability somewhere the recipient's mailbox is not.
+would write a working household invitation or password-reset link into a
+hosted log, which is a live capability somewhere the recipient's mailbox is not.
 
 ## 5. Smoke-test one send
 
@@ -184,7 +186,7 @@ pnpm email:dev
 ```
 
 Open [http://localhost:3001](http://localhost:3001). The sidebar should contain
-`household-invitation`; select it to preview the same React Email component used
+`household-invitation` and `account-email`; select one to preview the same React Email component used
 by the transactional sender. The preview uses a fixed local fixture and never
 calls Resend. Port `3001` keeps the preview beside Tendnote's web app on port
 `3000`.
