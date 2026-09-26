@@ -1,34 +1,11 @@
 import { generateText } from "ai";
-import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it } from "vitest";
+import { fakeGatewayProvider } from "./model-call-fixtures";
 import { hostedModel } from "./model-calls";
-
-function fakeProvider() {
-  const models: MockLanguageModelV4[] = [];
-  const provider = (modelId: string) => {
-    const model = new MockLanguageModelV4({
-      modelId,
-      doGenerate: {
-        content: [{ type: "text", text: "ok" }],
-        finishReason: { unified: "stop", raw: "stop" },
-        usage: {
-          inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-          outputTokens: { total: 1, text: 1, reasoning: 0 },
-        },
-        warnings: [],
-      },
-    });
-    models.push(model);
-    return model;
-  };
-  const sentProviderOptions = () =>
-    models.flatMap((m) => m.doGenerateCalls).map((c) => c.providerOptions);
-  return { provider, models, sentProviderOptions };
-}
 
 describe("hostedModel", () => {
   it("sends Gemini models to Vertex only, with the privacy flags and the cost category", async () => {
-    const fake = fakeProvider();
+    const fake = fakeGatewayProvider();
 
     await generateText({
       model: hostedModel(
@@ -52,7 +29,7 @@ describe("hostedModel", () => {
   });
 
   it("sends OpenAI models to OpenAI only", async () => {
-    const fake = fakeProvider();
+    const fake = fakeGatewayProvider();
 
     await generateText({
       model: hostedModel(
@@ -75,7 +52,7 @@ describe("hostedModel", () => {
   });
 
   it("replaces caller-authored gateway routing but keeps other provider options", async () => {
-    const fake = fakeProvider();
+    const fake = fakeGatewayProvider();
 
     await generateText({
       model: hostedModel(
@@ -103,7 +80,7 @@ describe("hostedModel", () => {
   });
 
   it("refuses a model with no pinned provider", () => {
-    const fake = fakeProvider();
+    const fake = fakeGatewayProvider();
 
     expect(() =>
       hostedModel({ modelId: "anthropic/claude-test", costCategory: "background" }, fake.provider),
