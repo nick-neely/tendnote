@@ -2535,14 +2535,25 @@ Vertical slice issue seeds:
 - Add owner data export.
 - Write the case study and publish the repository.
 
-Gate: **Phase 9b does not begin until unprompted requests for a hosted option
-arrive from people who are not the author.** If they do not arrive, the
-commercial buildout is never paid for, which is the gate working rather than
-failing.
+Gate (superseded): **Phase 9b does not begin until unprompted requests for a
+hosted option arrive from people who are not the author.** The owner lifted
+this gate: commercialization also serves the explicit goal of gaining
+experience building and operating a product with real payments, and no demand
+validation is claimed. See the amendment to ADR 0228.
 
 ##### Phase 9b: Commercialization
 
-Goal: Sell a hosted Tendnote to people who asked for one.
+The implementation-ready specification is
+[Spec: Phase 9b Commercialization](https://github.com/nick-neely/tendnote/issues/591), synthesized from
+[Wayfinder: Phase 9b Commercialization](https://github.com/nick-neely/tendnote/issues/564)
+and its decision artifacts under `docs/phase-9b/`. Where the list below
+differs, the specification governs: the price is set on the current tool
+surface as a ceiling rather than after the ADR 0227 reduction, the observed
+Newcomer Walkthrough is a launch gate rather than a prerequisite to building,
+and whether a DBA filing is needed is a counsel item.
+
+Goal: Sell a small, author-operated hosted Tendnote to individuals who find
+it, without manual admission.
 
 Deliverables:
 
@@ -2587,7 +2598,7 @@ Vertical slice issue seeds:
 | Full CRM scope creep | MVP stalls | Keep sales CRM features out of scope. |
 | Open source leaks private context | Security and privacy issue | Keep personal data, `.env`, and admission configuration out of the repo. Prompts and ADRs are published deliberately (ADR 0224); only secrets and personal data are withheld. |
 | Hosted service holds data about non-consenting third parties | Legal exposure and unusually severe breach impact | US-only launch with EU geo-blocking, minimized retention, scope enforced in the query layer rather than in prompts (ADR 0226). |
-| No demand signal from anyone but the author | Months of commercial buildout for a market that may not exist | Publish first and gate commercialization on unprompted hosted-version requests (ADR 0228). |
+| No demand signal from anyone but the author | Months of commercial buildout for a market that may not exist | Published first (ADR 0228); the owner then lifted the demand gate for learning value, so the buildout is kept small, author-operated, and bounded so no admitted account is loss-making. |
 
 ---
 

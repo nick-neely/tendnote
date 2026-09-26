@@ -52,3 +52,15 @@ Publication is close to irreversible. A public repository, its inbound links,
 and its build-in-public posts cannot be recalled, so anything that must be
 settled before strangers read the repository has to be settled in 9a. Naming is
 the clearest example and is resolved in favor of keeping Tendnote.
+
+## Amendment: the demand gate is lifted for Phase 9b
+
+No unprompted hosted-version requests have arrived. The
+owner then lifted the gate for Phase 9b: commercialization also serves the
+explicit goal of gaining experience building and operating a product with
+real payments. This supersedes only the demand prerequisite above. It does not
+claim demand validation, and the Phase 9b offer is shaped accordingly: small,
+author-operated, and bounded so no admitted account costs more than it pays.
+The publication-first ordering and the eval-execution rule stand as recorded.
+The specification is
+[Spec: Phase 9b Commercialization](https://github.com/nick-neely/tendnote/issues/591).

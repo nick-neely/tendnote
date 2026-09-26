@@ -1,6 +1,8 @@
 # Phase 9b planning workspace
 
 The canonical decision map is [Wayfinder: Phase 9b Commercialization](https://github.com/nick-neely/tendnote/issues/564).
+The synthesized implementation specification is
+[Spec: Phase 9b Commercialization](https://github.com/nick-neely/tendnote/issues/591).
 
 ## Shared branch and pull request
 
