@@ -1,3 +1,5 @@
+import { RETENTION } from "./retention";
+
 /**
  * Audit entries are internal evidence, never a member-facing activity feed.
  *
@@ -8,7 +10,7 @@
  * audit table; the audit trail is not product state.
  */
 
-export const AUDIT_LOG_DEFAULT_RETENTION_YEARS = 2;
+export const AUDIT_LOG_DEFAULT_RETENTION_YEARS = RETENTION.auditLog.years;
 
 export type AuditLogRetentionPolicy = {
   retentionYears: number;

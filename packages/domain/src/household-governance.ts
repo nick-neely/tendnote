@@ -1,5 +1,6 @@
 import { HouseholdValidationError } from "./household-policy";
 import type { HouseholdMembership, HouseholdRole } from "./households";
+import { RETENTION } from "./retention";
 
 /**
  * One person's standing in a household, as governance sees them.
@@ -38,7 +39,7 @@ export type HouseholdRoster = readonly GovernanceMember[];
  * a gap between them would be a period in which Tendnote holds a household's
  * content it has already told everyone it can no longer put back.
  */
-export const HOUSEHOLD_RECOVERY_WINDOW_DAYS = 30;
+export const HOUSEHOLD_RECOVERY_WINDOW_DAYS = RETENTION.householdRecoveryWindow.days;
 
 export function householdRecoveryDeadline(dissolvedAt: Date): Date {
   return new Date(dissolvedAt.getTime() + HOUSEHOLD_RECOVERY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
