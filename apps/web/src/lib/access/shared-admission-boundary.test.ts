@@ -1,4 +1,8 @@
 import { ForbiddenError } from "eve/channels/auth";
+import {
+  createAccessProfileQueries,
+  createInMemoryAccessProfileStore,
+} from "@tendnote/db/queries/access-profiles";
 import { describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness, createAdmissionPair } from "./admission-harness";
 import type { createPrivateBetaAccessResolver } from "./resolve-access";
@@ -158,5 +162,87 @@ describe("shared Web/Eve admission boundary", () => {
     });
     await expect(eve(request)).resolves.toMatchObject({ principalId: "granted-1" });
     expect(evaluateFlag).not.toHaveBeenCalled();
+  });
+
+  it("refuses a granted account at both boundaries while an unexcepted block is active", async () => {
+    const evaluateFlag = vi.fn().mockResolvedValue(false);
+    const user = { id: "blocked-1", email: "blocked@example.com" };
+    const { blocks, eve, queries, web } = createAdmissionHarness({
+      evaluateFlag,
+      policy: { mode: "hosted", valid: true },
+      user,
+    });
+    await queries.grantAccess({ userId: user.id, source: "manual_grant" });
+    blocks.set(user.id, [{ kind: "dunning_expiry", event: "in_failed", exceptions: [] }]);
+
+    await expect(web.resolveAccess({ userId: user.id, email: user.email })).resolves.toMatchObject({
+      admitted: false,
+      status: "denied",
+      profile: { source: "manual_grant" },
+    });
+    await expect(eve(request)).rejects.toBeInstanceOf(ForbiddenError);
+    expect(evaluateFlag).not.toHaveBeenCalled();
+  });
+
+  it("re-admits at both boundaries only through an exception naming the blocked event", async () => {
+    const user = { id: "excepted-1", email: "excepted@example.com" };
+    const { blocks, eve, queries, web } = createAdmissionHarness({
+      evaluateFlag: vi.fn().mockResolvedValue(false),
+      policy: { mode: "hosted", valid: true },
+      user,
+    });
+    await queries.grantAccess({ userId: user.id, source: "manual_grant" });
+
+    blocks.set(user.id, [
+      { kind: "dispute_revocation", event: "dp_2", exceptions: [{ event: "dp_1" }] },
+    ]);
+    await expect(web.resolveAccess({ userId: user.id, email: user.email })).resolves.toMatchObject({
+      admitted: false,
+    });
+    await expect(eve(request)).rejects.toBeInstanceOf(ForbiddenError);
+
+    blocks.set(user.id, [
+      { kind: "dispute_revocation", event: "dp_2", exceptions: [{ event: "dp_2" }] },
+    ]);
+    await expect(web.resolveAccess({ userId: user.id, email: user.email })).resolves.toMatchObject({
+      admitted: true,
+      profile: { source: "manual_grant" },
+    });
+    await expect(eve(request)).resolves.toMatchObject({ principalId: user.id });
+  });
+
+  it("applies blocks to a self-hosted owner at both boundaries", async () => {
+    const owner = { id: "owner-1", email: "owner@example.com", emailVerified: true };
+    const { blocks, eve, web } = createAdmissionHarness({
+      evaluateFlag: vi.fn().mockResolvedValue(false),
+      policy: { mode: "self-hosted", valid: true, bootstrapOwnerEmail: owner.email },
+      user: owner,
+    });
+    blocks.set(owner.id, [{ kind: "termination", event: "termination-1", exceptions: [] }]);
+
+    await expect(
+      web.resolveAccess({ userId: owner.id, email: owner.email, emailVerified: true }),
+    ).resolves.toMatchObject({ admitted: false, status: "denied" });
+    await expect(eve(request)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("does not read blocks for an account no source admits", async () => {
+    const readBlocks = vi.fn().mockResolvedValue([]);
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    const { eve, web } = createAdmissionPair(
+      {
+        accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
+        evaluateFlag: vi.fn().mockResolvedValue(false),
+        listAdmissionBlocks: readBlocks,
+        policy: { mode: "hosted", valid: true },
+      },
+      { id: "pending-1", email: "pending@example.com" },
+    );
+
+    await expect(
+      web.resolveAccess({ userId: "pending-1", email: "pending@example.com" }),
+    ).resolves.toMatchObject({ admitted: false, status: "pending" });
+    await expect(eve(request)).rejects.toBeInstanceOf(ForbiddenError);
+    expect(readBlocks).not.toHaveBeenCalled();
   });
 });

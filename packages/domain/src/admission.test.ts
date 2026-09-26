@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseAdmissionPolicy } from "./admission";
+import { decideAdmission, parseAdmissionPolicy } from "./admission";
 
 describe("self-hosted admission policy", () => {
   it("defaults to hosted when admission mode is absent", () => {
@@ -65,5 +65,59 @@ describe("self-hosted admission policy", () => {
       valid: false,
       diagnostic: { code: "invalid_bootstrap_owner_email" },
     });
+  });
+});
+
+describe("admission decision (ADR 0248)", () => {
+  const dunning = { kind: "dunning_expiry", event: "in_failed" };
+
+  it("admits when a source admits and no block is active", () => {
+    expect(decideAdmission({ sourceAdmits: true, blocks: [] })).toBe(true);
+  });
+
+  it("never admits without a source, even with no blocks", () => {
+    expect(decideAdmission({ sourceAdmits: false, blocks: [] })).toBe(false);
+  });
+
+  it("refuses an admitted source while an unexcepted block is active", () => {
+    expect(decideAdmission({ sourceAdmits: true, blocks: [{ ...dunning, exceptions: [] }] })).toBe(
+      false,
+    );
+  });
+
+  it("lifts a block only with an exception naming the event it excepts", () => {
+    expect(
+      decideAdmission({
+        sourceAdmits: true,
+        blocks: [{ ...dunning, exceptions: [{ event: "in_failed" }] }],
+      }),
+    ).toBe(true);
+    expect(
+      decideAdmission({
+        sourceAdmits: true,
+        blocks: [{ ...dunning, exceptions: [{ event: "in_other" }] }],
+      }),
+    ).toBe(false);
+  });
+
+  it("requires every active block to be excepted", () => {
+    expect(
+      decideAdmission({
+        sourceAdmits: true,
+        blocks: [
+          { ...dunning, exceptions: [{ event: "in_failed" }] },
+          { kind: "suspension", event: "suspension-1", exceptions: [] },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("never lets an exception stand in for a source", () => {
+    expect(
+      decideAdmission({
+        sourceAdmits: false,
+        blocks: [{ ...dunning, exceptions: [{ event: "in_failed" }] }],
+      }),
+    ).toBe(false);
   });
 });
