@@ -273,7 +273,11 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
       };
     },
 
-    /** Return only durable admitted principals for owner-scoped background work. */
+    /**
+     * Return only durable admitted principals for owner-scoped background work.
+     * This reads sources alone; the first admission block reader (ADR 0248) must
+     * also be applied here so a blocked owner receives no scheduled work.
+     */
     async listAdmittedOwnerUserIds(): Promise<string[]> {
       return (await store.listByStatus("granted")).map((profile) => profile.userId);
     },
