@@ -1,6 +1,6 @@
 import type { BriefCadence } from "@tendnote/domain";
 import { generateDeterministicBriefSummary } from "@tendnote/domain";
-import { gateway, generateText } from "ai";
+import { generateText } from "ai";
 import {
   affectedScopesForBriefs,
   affectedScopesForOwnerSurfaces,
@@ -19,6 +19,7 @@ import { type BriefSummaryAdapter, createLlmBriefSummaryAdapter } from "./briefs
 import type { CalendarReaderForOwner } from "./calendar";
 import { runCalendarSuggestionWorkflow } from "./calendar-followups";
 import { acceptSuggestedFollowup } from "./followups";
+import { hostedModel } from "./model-calls";
 import { getRelationshipAgenda } from "./relationship-agenda";
 
 export {
@@ -71,8 +72,8 @@ type BriefSummaryEnv = Record<string, string | undefined>;
  * Default decorative summary adapter (PRD #65, issue #73), mirroring the snapshot
  * generator's CI-safe wiring: with no AI gateway credentials it returns a
  * deterministic summary so dev and standard verification need no live model;
- * with credentials it calls the gateway model. Either way the generator treats it
- * as fail-open decoration.
+ * with credentials it calls the model through the model-call entry point. Either
+ * way the generator treats it as fail-open decoration.
  */
 export function createDefaultBriefSummaryAdapter(
   env: BriefSummaryEnv = process.env,
@@ -88,7 +89,10 @@ export function createDefaultBriefSummaryAdapter(
   return createLlmBriefSummaryAdapter({
     version: `llm:${modelId}`,
     model: async ({ prompt }) => {
-      const { text } = await generateText({ model: gateway(modelId), prompt });
+      const { text } = await generateText({
+        model: hostedModel({ modelId, costCategory: "background" }),
+        prompt,
+      });
       return text;
     },
   });
