@@ -1,5 +1,5 @@
 import { satisfies } from "eve/evals/expect";
-import { defineEval } from "../define-eval";
+import { defineEval, sendWithApprovalScope } from "../define-eval";
 import { NO_RAW_IDS, someToolOutputHasFields, toolOutputs } from "../expectations";
 import { isDraftRevisionReplyCanonical } from "./draft-revision-assertions";
 
@@ -24,7 +24,10 @@ export default defineEval({
   // 3 turns against a live model, so the run-wide single-turn budget does not fit.
   timeoutMs: 180_000,
   async test(t) {
-    const listed = await t.send("What message drafts do I have?");
+    const { turn: listed, session } = await sendWithApprovalScope(
+      t,
+      "What message drafts do I have?",
+    );
 
     listed.expectOk();
     listed.calledTool("list_message_drafts");
@@ -41,7 +44,7 @@ export default defineEval({
 
     edited.expectOk();
     // A revision edits the draft that exists; it does not write a second one beside it.
-    edited.calledTool("edit_draft_body", { input: { body: /coffee/i }, count: 1 });
+    session.calledTool("edit_draft_body", { input: { body: /coffee/i }, count: 1 });
     edited.notCalledTool("create_message_draft");
     edited.notCalledTool("save_draft_to_gmail");
     edited.eventsSatisfy("the edit returned an active unapproved text draft", (events) =>

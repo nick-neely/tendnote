@@ -1,0 +1,14 @@
+{
+  "status": "partial",
+  "reason": "interrupted",
+  "validatedTurns": 225,
+  "plannedTurns": 600,
+  "lastAttemptTurn": 226,
+  "lastAttemptStage": "checking-outcomes",
+  "processesAbsent": true,
+  "signal": "SIGINT or SIGTERM; historical handler did not distinguish",
+  "signalSender": "unknown",
+  "rawMetadataPreserved": true,
+  "pendingRequests": 0,
+  "uncertainRequests": 0
+}

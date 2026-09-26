@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="eve evals" tests="1" failures="0" skipped="0" time="29.071">
+  <testcase classname="eve.eval" name="policy/phase-seven-no-invented-priority-alert" time="29.071"/>
+</testsuite>

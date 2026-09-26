@@ -204,6 +204,38 @@ _Avoid_: Version number, etag, content hash of the raw provider record
 The account-level gate that decides whether a signed-up user may enter Tendnote during the early hosted product phase. It controls product access only; it is not the same as relationship data ownership, integration authorization, or payment status.
 _Avoid_: Public signup, environment allowlist, owner scope
 
+**Beta Sunset**:
+The single moment hosted beta grants end, tied to payment becoming available rather than to a calendar date, so no account is ever left with neither a beta grant nor a way to pay. An ex-beta account keeps its data and waits to subscribe; only the operator's own account keeps access without paying.
+_Avoid_: Beta expiry, grandfathering, beta migration date
+
+**Paid Access**:
+The durable record that a hosted Tendnote account holds verified payment standing, admitting it to the product alongside a signed-in session. It is a sibling of Private Beta Access rather than a replacement, it is Tendnote's own record rather than a payment provider's subscription state, and it does not exist on a self-hosted deployment.
+_Avoid_: Subscription status, billing flag, seat, licence, entitlement sync
+
+**Household Guest**:
+A hosted account that accepted a Household Invitation without paying, and may only read that household's shared records for as long as one of its Household Owners holds Paid Access. A guest never sees another member's private records, never captures or edits, and never reaches the assistant. A guest uses a distinct read-only experience rather than the full product with controls hidden.
+_Avoid_: Free tier, trial account, viewer seat, limited member, read-only subscriber, hidden-controls member
+
+**Lapsed Account**:
+A hosted account that once held Paid Access and no longer does. It stays signed in and unadmitted with a limited area for resubscribing, exporting, and deleting, and its data is kept for a stated retention period before deletion.
+_Avoid_: Cancelled subscription, suspended user, expired trial, deleted account
+
+**Acceptance Record**:
+The stored fact that a hosted account accepted a specific version of a Tendnote legal document. It holds the account, the document, the version, and the time of acceptance, and nothing else.
+_Avoid_: Consent log, signature, terms flag, audit entry, IP record
+
+**Hosted Obligations Register**:
+The planning table that maps each hosted service commitment to the mechanism enforcing it, its current status, and the route by which it is reviewed. It is a planning artifact, not published policy text.
+_Avoid_: Compliance matrix, privacy policy, control catalog, risk register
+
+**Non-User Data Subject**:
+A person described in a customer's records who holds no Tendnote account and cannot be authenticated by the service. Tendnote holds information about them on a customer's behalf and has no relationship with them.
+_Avoid_: Third party, contact, data subject, non-customer user, unregistered user
+
+**Region Block**:
+The hosted-only refusal, at the edge, of sign-up, sign-in, checkout, and app routes for requests from the EU, the EEA, the UK, and Switzerland. It is a filter rather than a legal shield, it excludes marketing pages, and it does not exist on a self-hosted deployment.
+_Avoid_: Geo-fence, IP ban, compliance control, country allowlist, firewall rule
+
 **Authenticated App Shell**:
 The recognizable Tendnote navigation and layout frame available only after Better Auth and Private Beta Access admit an owner. It contains no relationship records, Today or Eve content, or other owner-specific data.
 _Avoid_: Public app shell, dashboard data, owner cache
@@ -395,3 +427,99 @@ _Avoid_: Open signup, managed beta gate, missing-configuration fallback, multi-t
 **Self-Hosted Bootstrap Owner**:
 The one Tendnote account whose authenticated email is configured by a deployment operator to receive the initial admission grant in Self-Hosted Admission Mode. It is neither the first visitor nor an application-wide administrator, and it does not make the deployment a hosted multi-tenant service.
 _Avoid_: First-signup bootstrap, root user, Vercel account, service administrator
+
+**Personal OS**:
+Tendnote's private, owner-scoped, multi-domain operating layer for one person's life, with relationship memory and follow-up as its founding domain and General Actions, Routines, and Assets as further domains. It is not a productivity suite, task manager, life dashboard, or CRM.
+_Avoid_: Productivity app, second brain, life dashboard, CRM
+
+**Launch Customer**:
+The individual adult the first paid hosted release is written for: someone with a full personal and professional life who wants to keep what people tell them and reach out at the right time, and who need not care how Tendnote was built. It is a persona, not a specific person, a Household, a technical reader, or anyone the author coaches.
+_Avoid_: First paid customer, beta user, early adopter, lead
+
+**First Value**:
+The milestone at which a newcomer, in their first sitting, has a real person saved with a Memory they confirmed and a Follow-Up they scheduled, has seen where it will resurface, and has had Eve give something back about that person grounded in what they said. It is not a completed onboarding checklist, a provider connection, a delivered reminder, or a General Action capture.
+_Avoid_: Activation, aha moment, onboarding completion
+
+**Marketing Demo**:
+A guided, fictional relationship story that lets a visitor preview capture, confirmed Memory, scheduled Follow-Up, and Eve recall before purchase. It is not a hosted trial, a real account, or evidence that the visitor reached First Value.
+_Avoid_: Free trial, sandbox account, First Value
+
+**Newcomer Walkthrough**:
+An observed, unaided run by someone who is not the author from the public landing page through payment, admission, and First Value, where the marketing site, in-app copy, the first-run path, and Eve are the only help. It is a launch-readiness check, not demand evidence, a usability study, or a coached demo.
+_Avoid_: User test, demo, beta invite, demand validation
+
+**Activation Milestone**:
+A content-free, per-account, operator-facing timestamp recording that a newcomer first reached one fixed step toward or at First Value. It is not record content, a user-facing productivity statistic, a third-party analytics event, or a streak.
+_Avoid_: Analytics event, activation metric, funnel step, streak
+
+**Representative Month**:
+A synthetic month of Launch Customer activity, built from the First Value loop plus the Return, replayed through Eve's real session protocol to measure what one account costs to serve. It comes in light, typical, and heavy variants and is not a real account's history, a load test, or an eval case.
+_Avoid_: Persona workload, load test, usage scenario
+
+**Usage Ledger**:
+The content-free, per-account daily rollup of model id, cost category, tokens in and out, call count, and stored bytes that checks a real hosted account against the Representative Month. It is not a conversation log, a billing meter, an analytics event, or a record of what Eve was asked.
+_Avoid_: Token log, usage analytics, metering table
+
+**Fair-Use Budget**:
+The soft per-account allowance per cost category for one Usage Period, marking where full quality ends. Profitability is guaranteed by the Account Ceiling, not by this budget. Crossing it changes pace and model with a visible notice and never changes access or tool authority.
+_Avoid_: Quota, hard cap, plan limit, overage
+
+**Spend Breaker**:
+The deployment-wide daily spend ceiling that sheds inference in a fixed order, background extraction first and interactive Eve last, and never sheds reminder delivery. It is a pace control beside the Eve mode gate, not part of it.
+_Avoid_: Kill switch, rate limit, outage mode
+
+**Fallback Model**:
+The cheaper, policy-qualified model an account's interactive turns run on while it is over its Fair-Use Budget, always with a visible notice. It is not the production model, a silent downgrade, or a trial tier.
+_Avoid_: Degraded mode, lite model, backup model
+
+**Account Ceiling**:
+The hard per-account spend limit per cost category for one Usage Period. It sits above the Fair-Use Budget, pauses that function until the Usage Period resets, and is derived so that no admitted account costs more to serve than it pays. It changes pace only; records, reminders, export, billing, and cancellation keep working.
+_Avoid_: Hard cap, quota, overage limit, ban
+
+**Usage Period**:
+The month over which an account's Fair-Use Budget and Account Ceiling are counted, anchored to the day of the month its subscription started. It is the same for monthly and annual subscribers and is not the payment provider's billing period.
+_Avoid_: Billing period, billing cycle, calendar month
+
+**Operator Action**:
+One of the enumerated changes the operator may make to a hosted account by hand, each performed by runbook and each producing an audited, scoped record. It is not an admin permission, a support macro, or a direct database edit.
+_Avoid_: Admin override, manual fix, backdoor
+
+**Admission Exception**:
+A record that names one specific blocking event, such as a failed invoice or a resolved dispute, and overrides only that event's effect on admission. It is evaluated inside its condition and never outranks a later event.
+_Avoid_: Override, precedence rule, whitelist, grant flag
+
+**Temporary Suspension**:
+The reviewable state in which a hosted account is denied admission while the operator investigates, keeps a restricted area for export, deletion, and billing, and retains Household membership with access denied. It is neither Lapsed nor Termination and ends only by an audited lift or conversion.
+_Avoid_: Ban, lock, freeze, disabled account
+
+**Suspected Incident**:
+Any suspicion of unauthorized access, a misused credential, or data crossing an outbound boundary, opened as an Incident Record at discovery. Whether it was a breach is decided later by the notification decision, never required to open one.
+_Avoid_: Confirmed breach (as an entry condition), alert
+
+**Service-Wide Hold**:
+The single audited switch that takes the hosted product offline for every account during an incident of unknown scope, leaving only the status page and billing event intake. It is not a Temporary Suspension, which applies to one account.
+_Avoid_: Maintenance mode, kill switch, global suspension
+
+**Termination**:
+The permanent removal of a hosted account's admission by the operator, cancelling renewal, keeping export and deletion available, and starting the retention clock. It is not a cancellation by the customer and not a Lapsed Account.
+_Avoid_: Ban, deactivation, account closure
+
+**Suspension Credit**:
+The compensation a hosted account receives for days it paid for and was denied, issued once at the audited end of a Temporary Suspension against the paid invoices whose periods it overlapped. It is compensation for denied service rather than the unwinding of a sale, and it is not a cancellation proration.
+_Avoid_: Refund, proration, service credit, discount, make-good
+
+**Legal Hold**:
+A record naming specific account data whose deletion is blocked until a stated expiry. It blocks that deletion only and nothing else about the account's exit.
+_Avoid_: Freeze, retention flag, suspension
+
+**Deletion Record**:
+The durable, content-free fact (subject kind, subject id, and time) written to the Recovery Journal before an account's or a dissolved household's rows are irreversibly purged, so a database restore can re-apply the purge. It is not a tombstone row inside the product database.
+_Avoid_: Tombstone, soft delete, audit entry
+
+**Backup Window**:
+The single period within which the hosted service can be restored and after which deleted content no longer exists in any Tendnote backup. It bounds both the recovery promise and the deletion tail.
+_Avoid_: Recovery window, PITR window, history retention
+
+**Recovery Journal**:
+The durable store outside the product database that holds Deletion Records and the records recovery needs to reconcile admission after a restore. It is a recovery aid, not a second authoritative event store.
+_Avoid_: Event store, event log, backup, audit log

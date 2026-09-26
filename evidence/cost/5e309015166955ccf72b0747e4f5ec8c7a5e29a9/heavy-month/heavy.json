@@ -1,0 +1,25 @@
+{
+  "status": "partial",
+  "days": 30,
+  "turns": 225,
+  "captures": 112,
+  "followups": 53,
+  "uploads": 11,
+  "scheduledChecks": 34,
+  "simulated": false,
+  "workload": {
+    "turns": 600,
+    "captures": 300,
+    "people": 150,
+    "followups": 100,
+    "uploads": 30
+  },
+  "lastAttempt": {
+    "day": 12,
+    "turn": 226,
+    "capture": true,
+    "explicit": true,
+    "followup": true,
+    "stage": "checking-outcomes"
+  }
+}

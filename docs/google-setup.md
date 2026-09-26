@@ -103,7 +103,7 @@ unset and Google connect flows stay disabled. Hosted Eve and local scheduled or
 non-request Calendar reads also need the same pair in `apps/agent/.env.local` so
 its lifecycle-only Better Auth instance can refresh encrypted account tokens;
 Eve exposes no Google OAuth UI, callback, sign-in, or account-linking route
-(ADR 0224).
+(ADR 0243).
 
 ```bash
 # apps/web/.env.local (local)

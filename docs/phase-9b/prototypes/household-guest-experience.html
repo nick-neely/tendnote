@@ -1,0 +1,841 @@
+<!doctype html>
+<!-- PLAN: one guest state model + one household fixture, rendered three structurally different ways (A digest, B library, C shell preview), driven by a scenario panel through entry, browsing, refusal, subscribe, sponsor lapse, return, and removal. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PROTOTYPE - The Household Guest experience</title>
+<style>
+  :root {
+    --ink: #1c1b19; --muted: #6b6760; --line: #e6e2da; --paper: #fbfaf7; --card: #ffffff;
+    --accent: #2f6f4e; --accent-ink: #ffffff; --soft: #eef4f0; --warn: #8a5a00; --warn-bg: #fff6e0;
+    --bad: #9b2c2c; --bad-bg: #fdecec; --lock: #7a6f9b; --lock-bg: #f1eef8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: var(--ink); background: var(--paper); padding-bottom: 76px; }
+  header { padding: 28px 32px 16px; border-bottom: 1px solid var(--line); background: var(--card); }
+  header h1 { margin: 0 0 6px; font-size: 22px; }
+  header p { margin: 0 0 10px; color: var(--muted); max-width: 980px; }
+  header .tag { display: inline-block; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px; margin-bottom: 10px; }
+  details.qs { max-width: 980px; font-size: 14px; }
+  details.qs summary { cursor: pointer; color: var(--accent); }
+  details.qs ol { margin: 8px 0 0; padding-left: 20px; color: #3d3a35; }
+  details.qs li { margin-bottom: 4px; }
+  main { display: grid; grid-template-columns: 360px 1fr; gap: 24px; padding: 24px 32px 48px; max-width: 1620px; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  section.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+  section.card + section.card { margin-top: 16px; }
+  h2 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 13.5px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--soft); color: var(--accent); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.off { background: #f1efea; color: var(--muted); }
+  .pill.lock { background: var(--lock-bg); color: var(--lock); }
+  .changed { margin-top: 12px; padding: 10px 12px; background: var(--soft); border-radius: 8px; font-size: 13.5px; }
+  .changed.bad { background: var(--bad-bg); }
+  .group { margin-bottom: 14px; }
+  .group .g { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  button.act { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); background: var(--card); border-radius: 8px; cursor: pointer; color: var(--ink); text-align: left; }
+  button.act:hover { border-color: var(--accent); }
+  button.act.done { background: var(--soft); border-color: var(--accent); }
+  button.act.next { outline: 2px solid var(--accent); }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .tabs button { font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); cursor: pointer; }
+  .tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .steps { display: flex; flex-direction: column; gap: 6px; }
+  .steps .n { color: var(--muted); margin-right: 6px; }
+  .desc { color: #3d3a35; font-size: 14px; margin: 0 0 12px; }
+  .watch { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+  .log { font-size: 12px; color: var(--muted); max-height: 150px; overflow: auto; margin: 0; padding-left: 18px; }
+
+  /* the stage: the guest's own screen, framed as a device-free browser window */
+  .stage { border: 1px solid var(--line); border-radius: 14px; background: var(--card); overflow: hidden; box-shadow: 0 12px 32px rgba(0,0,0,.05); min-height: 660px; }
+  .stage .chromebar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: #f3f1ec; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  .stage .chromebar .dot { width: 9px; height: 9px; border-radius: 50%; background: #d9d4ca; }
+  .surface { min-height: 610px; }
+
+  /* ---------- shared small pieces ---------- */
+  .ro { font-size: 12.5px; color: var(--warn); background: var(--warn-bg); border-radius: 8px; padding: 8px 12px; }
+  .refusal { border-left: 3px solid var(--lock); background: var(--lock-bg); color: #4a4165; padding: 10px 12px; border-radius: 0 8px 8px 0; font-size: 13.5px; }
+  .kicker { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  .muted { color: var(--muted); }
+  .sub { font-size: 13px; color: var(--muted); }
+  .cta { font: inherit; font-size: 14px; padding: 9px 14px; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  .cta.ghost { background: transparent; color: var(--accent); }
+  .cta.quiet { background: transparent; color: var(--ink); border-color: var(--line); }
+  .deadbtn { font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px dashed #cfc9bd; background: #faf8f4; color: var(--muted); cursor: pointer; }
+  .pend { max-width: 520px; margin: 90px auto; text-align: left; }
+  .pend h3 { font-size: 21px; margin: 0 0 10px; }
+  .pend p { color: #3d3a35; }
+  .pend .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+
+  /* ---------- VARIANT A: household digest ---------- */
+  .A { max-width: 620px; margin: 0 auto; padding: 30px 26px 60px; }
+  .A .top { border-bottom: 1px solid var(--line); padding-bottom: 14px; margin-bottom: 18px; }
+  .A .top h3 { margin: 4px 0 6px; font-size: 24px; }
+  .A .day { margin: 26px 0 8px; font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 5px; }
+  .A .entry { padding: 12px 0; border-bottom: 1px solid #f1eee8; cursor: pointer; }
+  .A .entry:hover { background: #fcfbf8; }
+  .A .entry .h { font-weight: 600; }
+  .A .entry .m { font-size: 12.5px; color: var(--muted); }
+  .A .entry .body { margin-top: 8px; font-size: 13.5px; color: #3d3a35; border-left: 2px solid var(--line); padding-left: 12px; }
+  .A .foot { margin-top: 36px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: #fcfbf8; }
+
+  /* ---------- VARIANT B: read-only library ---------- */
+  .B { display: flex; flex-direction: column; height: 610px; }
+  .B .band { background: var(--warn-bg); color: var(--warn); font-size: 12.5px; padding: 7px 18px; border-bottom: 1px solid #efe2c2; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  .B .hd { padding: 14px 18px 0; border-bottom: 1px solid var(--line); }
+  .B .hd h3 { margin: 0 0 2px; font-size: 18px; }
+  .B .domtabs { display: flex; gap: 2px; overflow-x: auto; margin-top: 12px; }
+  .B .domtabs button { font: inherit; font-size: 13px; padding: 8px 12px; border: none; border-bottom: 2px solid transparent; background: none; cursor: pointer; color: var(--muted); white-space: nowrap; }
+  .B .domtabs button.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .B .cols { display: grid; grid-template-columns: 300px 1fr; flex: 1; min-height: 0; }
+  .B .list { border-right: 1px solid var(--line); overflow: auto; }
+  .B .list .it { padding: 11px 16px; border-bottom: 1px solid #f3f0ea; cursor: pointer; font-size: 13.5px; }
+  .B .list .it:hover { background: #fcfbf8; }
+  .B .list .it.on { background: var(--soft); }
+  .B .list .it .s { font-size: 11.5px; color: var(--muted); }
+  .B .det { padding: 22px 26px; overflow: auto; }
+  .B .det h4 { margin: 4px 0 6px; font-size: 20px; }
+  .B .det .meta { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; font-size: 13px; margin: 16px 0; }
+  .B .det .meta span:nth-child(odd) { color: var(--muted); }
+  .B .det .actions { display: flex; gap: 6px; flex-wrap: wrap; margin: 18px 0 12px; }
+
+  /* ---------- VARIANT C: shell preview ---------- */
+  .C { display: grid; grid-template-columns: 216px 1fr; height: 610px; }
+  .C .side { background: #f7f5f0; border-right: 1px solid var(--line); padding: 14px 10px; overflow: auto; display: flex; flex-direction: column; }
+  .C .side .brand { font-weight: 600; padding: 4px 8px 12px; font-size: 14px; }
+  .C .side .brand .g { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
+  .C .capture { width: 100%; font: inherit; font-size: 13px; padding: 8px; border-radius: 8px; border: 1px dashed #cfc9bd; background: #fff; color: var(--muted); cursor: pointer; margin-bottom: 12px; text-align: left; }
+  .C .nav { display: flex; flex-direction: column; gap: 1px; }
+  .C .nav .sep { font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: #a49d91; padding: 14px 8px 5px; }
+  .C .nav button { font: inherit; font-size: 13.5px; text-align: left; padding: 7px 8px; border: none; background: none; border-radius: 7px; cursor: pointer; color: var(--ink); display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .C .nav button:hover { background: #ede9e1; }
+  .C .nav button.on { background: var(--ink); color: #fff; }
+  .C .nav button.locked { color: #8f8879; }
+  .C .nav button .lk { font-size: 10px; color: var(--lock); background: var(--lock-bg); border-radius: 999px; padding: 0 6px; }
+  .C .side .sell { margin-top: auto; padding: 12px 8px 4px; font-size: 12px; color: var(--muted); }
+  .C .main { display: flex; flex-direction: column; min-width: 0; }
+  .C .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 20px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .C .bar .left { display: flex; align-items: center; gap: 10px; }
+  .C .pane { padding: 22px 26px; overflow: auto; flex: 1; }
+  .C .pane h3 { margin: 0 0 4px; font-size: 20px; }
+  .C .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-top: 16px; }
+  .C .tile { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; cursor: pointer; background: #fff; }
+  .C .tile:hover { border-color: var(--accent); }
+  .C .tile .t { font-weight: 600; font-size: 14px; }
+  .C .tile .d { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .C .lockpane { max-width: 520px; }
+  .C .lockpane .why { margin: 14px 0 20px; }
+
+  /* plan chooser (shared markup, different frames) */
+  .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 18px 0; max-width: 520px; }
+  .plan { border: 1px solid var(--line); border-radius: 12px; padding: 14px; cursor: pointer; background: #fff; }
+  .plan.on { border-color: var(--accent); background: var(--soft); }
+  .plan .p { font-size: 20px; font-weight: 600; }
+  .plan .n { font-size: 12.5px; color: var(--muted); }
+
+  /* variant switcher pill */
+  .switcher { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; align-items: stretch; background: #161513; color: #fff; border-radius: 999px; box-shadow: 0 8px 26px rgba(0,0,0,.35); overflow: hidden; }
+  .switcher button { font: inherit; font-size: 16px; background: none; border: none; color: #fff; cursor: pointer; padding: 0 16px; }
+  .switcher button:hover { background: #33312c; }
+  .switcher .lbl { padding: 11px 14px; font-size: 13.5px; border-left: 1px solid #3a3833; border-right: 1px solid #3a3833; white-space: nowrap; }
+  .switcher .lbl b { color: #9fd9b9; }
+  .switcher .hint { font-size: 11px; color: #a9a49a; padding: 11px 14px 11px 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="tag">Prototype · throwaway · Phase 9b · ticket #577</div>
+  <h1>What does the Household Guest experience look and feel like?</h1>
+  <p>
+    Tilly accepted a Household Invitation to a household somebody else pays for. She is a Household Guest: an unpaid hosted account with read-only sight of what the household shares, no Eve, no capture, no reminders, no exports, and no private records of any member. This page proposes three structurally different answers to what she actually opens. Use the pill at the bottom to switch between them, and the scenario panel on the left to drive whichever one is showing through entry, browsing, a refusal, subscribing, the household losing its last paying Owner, its return, and removal. Nothing here talks to a database or to Stripe; the copy is a proposal for reaction.
+  </p>
+  <details class="qs">
+    <summary>Questions this prototype asks the owner</summary>
+    <ol>
+      <li><b>Which surface?</b> A single digest page, a domain-tabbed read-only library, or a preview of the real shell.</li>
+      <li><b>How much should it resemble the product?</b> Familiarity sells the subscription; resemblance also invites the guest to expect authority they do not have.</li>
+      <li><b>Should paid-only features be visible at all?</b> Variant C lists Eve, capture, Saved Items and reminders as locked entries. A and B omit them entirely. Visible means honest and persuasive; absent means calm and never teasing.</li>
+      <li><b>Where does the subscribe path live, and how insistent is it?</b> A: one card at the bottom of the scroll. B: one line in the persistent read-only band. C: a standing sidebar pitch plus every locked entry.</li>
+      <li><b>What does the sponsor-lapsed page say?</b> The draft states the fact without blame, gives no billing detail about anyone else, and offers the guest only their own subscribe path.</li>
+      <li><b>Does the guest see who the Owners are in that state?</b> The draft says no: no names, no "ask Adaeze to fix it". Confirm that, or soften it to "the household's Owners have been told".</li>
+      <li><b>Does the guest keep any presence at all after removal</b>, or does the household simply vanish from their account?</li>
+    </ol>
+  </details>
+</header>
+
+<main>
+  <div>
+    <section class="card">
+      <h2>Current state</h2>
+      <dl id="state"></dl>
+      <div id="changed" class="changed"></div>
+    </section>
+
+    <section class="card">
+      <h2>Scenario controls (prototype chrome)</h2>
+      <div id="free"></div>
+    </section>
+
+    <section class="card">
+      <h2>Guided walkthroughs</h2>
+      <div id="tabs" class="tabs"></div>
+      <p id="desc" class="desc"></p>
+      <p id="watch" class="watch"></p>
+      <div id="steps" class="steps"></div>
+    </section>
+
+    <section class="card">
+      <h2>What happened</h2>
+      <ol id="log" class="log"></ol>
+    </section>
+  </div>
+
+  <div>
+    <div class="stage">
+      <div class="chromebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span id="url">tendnote.com</span></div>
+      <div class="surface" id="surface"></div>
+    </div>
+  </div>
+</main>
+
+<div class="switcher">
+  <button type="button" data-cycle="-1" aria-label="Previous variant">&#8592;</button>
+  <div class="lbl"><b id="vkey">A</b> · <span id="vname"></span></div>
+  <button type="button" data-cycle="1" aria-label="Next variant">&#8594;</button>
+  <span class="hint">arrow keys</span>
+</div>
+
+<script>
+// ============================================================================
+// FIXTURE - one believable household. Two Household Owners, one Household Guest.
+// `hidden: true` records exist only to prove they never render for the guest.
+// ============================================================================
+const HOUSE = {
+  name: "The Reyes-Okonkwo household",
+  owners: [
+    { name: "Adaeze Okonkwo", role: "Household Owner", paying: true },
+    { name: "Marcus Reyes", role: "Household Owner", paying: false },
+  ],
+  guest: { name: "Tilly Brennan", email: "tilly@example.com", invitedBy: "Adaeze Okonkwo", relation: "Adaeze's sister, living in the back room since June" },
+};
+
+const DOMAINS = [
+  ["people", "People"], ["memories", "Memories"], ["followUps", "Follow-Ups"],
+  ["actions", "General Actions"], ["assets", "Assets"], ["giftPlans", "Gift Plans"],
+  ["context", "Household Context"], ["events", "Household Calendar Events"],
+];
+const DOMAIN_NAME = Object.fromEntries(DOMAINS);
+
+const RECORDS = [
+  // People
+  { id: "p1", d: "people", t: "June Okonkwo", sub: "Adaeze's grandmother", scope: "household-scope", by: "Adaeze Okonkwo", when: "", sort: 90,
+    body: "Eighty in March. Lives in Galway, in the house she has been in since 1971, and is being talked into a ground-floor flat." },
+  { id: "p2", d: "people", t: "Adaeze Okonkwo", sub: "Household Owner", scope: "household-native", by: "the household", when: "", sort: 91,
+    body: "A member of this household. You can see her because she is in the household, not because she shared herself with you." },
+  { id: "p3", d: "people", t: "Marcus Reyes", sub: "Household Owner", scope: "household-native", by: "the household", when: "", sort: 92,
+    body: "A member of this household." },
+  { id: "p4", d: "people", t: "Ruth Halvorsen", sub: "Vet at Ferndale Clinic", scope: "household-scope", by: "Marcus Reyes", when: "", sort: 93,
+    body: "Sees Biscuit. Prefers a call to an email. Closed on Wednesdays." },
+  { id: "pX", d: "people", t: "Adaeze's therapist", hidden: true, scope: "private", body: "Private to Adaeze. A guest must never see this row, this name, or a count that implies it." },
+
+  // Memories
+  { id: "m1", d: "memories", t: "June is moving to a ground-floor flat in April", sub: "about June Okonkwo", scope: "shared-scope", by: "Adaeze Okonkwo", when: "12 Sep", sort: 12,
+    body: "Shared with you and Marcus. Confirmed by Adaeze from a phone call, not inferred." },
+  { id: "m2", d: "memories", t: "The boiler service contract renews every October", sub: "about the house", scope: "household-scope", by: "Marcus Reyes", when: "2 Sep", sort: 8,
+    body: "Household-scope, so every member sees it without anyone sharing it deliberately." },
+  { id: "m3", d: "memories", t: "Ruth only does house calls on Fridays", sub: "about Ruth Halvorsen", scope: "shared-scope", by: "Marcus Reyes", when: "28 Aug", sort: 6,
+    body: "Shared with you because you are the one usually in when the vet comes." },
+  { id: "mX", d: "memories", t: "A Memory Marcus kept to himself", hidden: true, scope: "private", body: "Private. Never rendered, never counted." },
+
+  // Follow-Ups
+  { id: "f1", d: "followUps", t: "Ring June about the flat", sub: "Adaeze · due 4 Oct", scope: "shared-scope", by: "Adaeze Okonkwo", when: "4 Oct", sort: 2,
+    body: "Adaeze's Follow-Up, shared with you so you know it is handled. You will not be reminded about it: reminders belong to paid accounts." },
+  { id: "f2", d: "followUps", t: "Confirm the caterer for June's eightieth", sub: "household · due 12 Feb", scope: "household-scope", by: "the household", when: "12 Feb", sort: 30,
+    body: "Household-scope Follow-Up attached to the birthday lunch." },
+
+  // General Actions
+  { id: "a1", d: "actions", t: "Bleed the upstairs radiators", sub: "Home · no due date", scope: "household-scope", by: "the household", when: "", sort: 40,
+    body: "A household-scope General Action. You can read it. You cannot tick it off." },
+  { id: "a2", d: "actions", t: "Renew the house insurance", sub: "Admin · due 30 Nov", scope: "household-scope", by: "the household", when: "30 Nov", sort: 20,
+    body: "Renewal quote came in at 412 pounds. Marcus is comparing." },
+
+  // Assets
+  { id: "s1", d: "assets", t: "Worcester Bosch boiler", sub: "Utility cupboard", scope: "household-native", by: "the household", when: "3 Oct", sort: 1,
+    body: "Serviced annually. Warranty runs to March 2029. Next service is booked for 3 Oct, 09:00." },
+  { id: "s2", d: "assets", t: "Volvo V60", sub: "Driveway", scope: "household-native", by: "the household", when: "8 Jan", sort: 26,
+    body: "MOT due 8 Jan. Marcus drives it; you are on the insurance." },
+  { id: "s3", d: "assets", t: "Miele W1 washing machine", sub: "Kitchen", scope: "household-native", by: "the household", when: "", sort: 60,
+    body: "Bought 2021. The door seal was replaced in May." },
+
+  // Gift Plans
+  { id: "g1", d: "giftPlans", t: "June's eightieth", sub: "co-planners: Adaeze, Marcus, you", scope: "shared-scope", by: "Adaeze Okonkwo", when: "14 Mar", sort: 32,
+    body: "You are a co-planner, so you can read the ideas and who claimed what. You cannot add an idea or claim one: that is a write." },
+  { id: "gX", d: "giftPlans", t: "Tilly's birthday", hidden: true, scope: "private",
+    body: "A Gift Plan the guest is not a co-planner on, and is in fact the Surprise Subject of. It is absent from every surface here. Not greyed out, not counted, not hinted at." },
+
+  // Household Context
+  { id: "c1", d: "context", t: "The household eats together on Sunday evenings", sub: "Household Context", scope: "household-native", by: "the household", when: "", sort: 70,
+    body: "Accepted Household Context. A guest reads it; a guest never sees Suggested Context Facts awaiting review." },
+  { id: "c2", d: "context", t: "Bins go out on Tuesday night, recycling on alternate weeks", sub: "Household Context", scope: "household-native", by: "the household", when: "", sort: 71,
+    body: "Accepted Household Context." },
+
+  // Household Calendar Events
+  { id: "e1", d: "events", t: "June's eightieth birthday lunch", sub: "14 Mar · The Moorings", scope: "household-native", by: "the household", when: "14 Mar", sort: 31,
+    body: "A Household Calendar Event. Twelve at the table, booked in February." },
+  { id: "e2", d: "events", t: "Boiler service", sub: "3 Oct · 09:00 to 11:00", scope: "household-native", by: "the household", when: "3 Oct", sort: 3,
+    body: "Someone needs to be in. Marcus is at work, so this one tends to land on you." },
+];
+
+const VISIBLE = RECORDS.filter(r => !r.hidden);
+const HIDDEN = RECORDS.filter(r => r.hidden);
+const byId = (id) => RECORDS.find(r => r.id === id);
+const inDomain = (d) => VISIBLE.filter(r => r.d === d);
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// Why a guest cannot do a thing. Same words wherever a variant chooses to show them.
+const REFUSALS = {
+  capture: ["Capture belongs to a paid account", "A Household Guest reads this household; nothing here writes. Capture, edits and confirmations all create records, and records are what a subscription pays for."],
+  eve: ["Eve is not available to guests", "A guest account consumes no inference at all - not a token. That is the line that keeps guest access free for the household that already pays."],
+  edit: ["This is read-only", "Adaeze and Marcus own these records. A guest can read what the household shares and nothing else. Editing, confirming and discarding stay with the people whose records they are."],
+  remind: ["Reminders belong to a paid account", "You can see when this is due. Tendnote will not chase you about it, because delivery and scheduling are part of the paid product."],
+  export: ["Export belongs to the record's owner", "These records are the household's, not yours. Exporting is offered on your own account, once you have one."],
+  connect: ["Connecting a calendar or contacts is a paid feature", "There is nothing of yours in this household yet, so there is nothing to sync."],
+  private: ["There is nothing hidden here to open", "Private records of any member are not shown to a guest, not greyed out, and not counted. What you can see is the whole of what you can see."],
+};
+
+const VARIANTS = [
+  { key: "A", name: "Household digest", blurb: "One scrolling page, upcoming first. No domain navigation, nothing that resembles the product shell." },
+  { key: "B", name: "Read-only library", blurb: "Domain-tabbed browsing with record detail and a persistent read-only band. Its own chrome." },
+  { key: "C", name: "Shell preview", blurb: "The real sidebar, with guest areas live and paid-only areas locked and explained." },
+];
+
+// ============================================================================
+// STATE MODEL - shared by all three variants.
+// ============================================================================
+function initial() {
+  return {
+    accepted: false, paid: false, removed: false, sponsorPaying: true,
+    view: "orientation",           // orientation | browse | record | locked | subscribe
+    tab: "people",                 // variant B domain tab
+    nav: "today",                  // variant C sidebar destination
+    recordId: null, refusal: null, plan: "monthly",
+    last: null, lastBad: false, log: [],
+  };
+}
+function accountState(s) {
+  if (s.paid) return "Paid";
+  if (s.removed) return "Unpaid (no household membership)";
+  if (s.accepted && s.sponsorPaying) return "Household Guest";
+  if (s.accepted) return "Unpaid (membership intact)";
+  return "Unpaid";
+}
+// The one precedence rule every variant obeys.
+function surface(s) {
+  if (s.paid) return "paid";
+  if (s.view === "subscribe") return "subscribe";
+  if (s.removed) return "removed";
+  if (!s.accepted) return "invite";
+  if (!s.sponsorPaying) return "pending";
+  return s.view;
+}
+function note(s, text, bad) {
+  s.last = text; s.lastBad = !!bad; s.log.push(text); return s;
+}
+
+function reduce(s0, action, arg) {
+  const s = JSON.parse(JSON.stringify(s0));
+  switch (action) {
+    case "openInvitation":
+      s.accepted = false; s.removed = false; s.paid = false; s.view = "orientation";
+      return note(s, "Opened the emailed Household Invitation. No app shell, no household content yet - just who it is from and what accepting means.");
+    case "accept":
+      if (s.accepted) return note(s, "Not possible: already a member of this household.", true);
+      s.accepted = true; s.removed = false; s.view = "orientation";
+      return note(s, "Accepted. The membership is real immediately (accept-first), and because no payment is attached the account is a Household Guest.");
+    case "orient":
+      s.view = "browse";
+      return note(s, "Finished orientation. The guest knows what they can see, what they cannot do, and why, before seeing any record.");
+    case "browse":
+      s.view = "browse"; s.recordId = null;
+      if (arg) { s.tab = arg; s.nav = arg; }
+      return note(s, `Browsing ${arg ? DOMAIN_NAME[arg] : "the household"}. Only household-native, household-scope and shared-scope records addressed to this guest.`);
+    case "openRecord": {
+      const r = byId(arg);
+      if (!r || r.hidden) return note(s, "Not possible: that record is not in the guest read set.", true);
+      s.view = "record"; s.recordId = arg; s.tab = r.d; s.nav = r.d;
+      return note(s, `Opened ${DOMAIN_NAME[r.d]} record "${r.t}" (${r.scope}). Read-only detail, with the reason stated on the record itself.`);
+    }
+    case "attempt": {
+      const kind = arg || "edit";
+      s.refusal = kind; s.view = "locked";
+      return note(s, `Tried something a guest cannot do (${kind}). ${REFUSALS[kind][0]}. The reason is given in place; the subscribe path is offered once, not shouted.`);
+    }
+    case "subscribe":
+      s.view = "subscribe";
+      return note(s, "Opened the subscribe path. One plan, two billing periods, tax exclusive, payment before product access, no trial.");
+    case "plan":
+      s.plan = arg;
+      return note(s, `Chose the ${arg} billing period (${arg === "annual" ? "$200/year" : "$20/month"}, plus tax).`);
+    case "pay":
+      if (s.view !== "subscribe") return note(s, "Not possible: no plan chosen.", true);
+      s.paid = true; s.view = "browse"; s.refusal = null;
+      return note(s, "Paid (stub - no real payment). The account is now Paid and keeps its household membership exactly as it was. Nothing about the household changed.");
+    case "sponsorLapses":
+      if (!s.sponsorPaying) return note(s, "Not possible: the household already has no paying Owner.", true);
+      s.sponsorPaying = false;
+      return note(s, s.paid
+        ? "The household's last paying Owner lapsed. This account pays for itself, so nothing changes for it."
+        : "The household's last paying Owner lapsed. Checked live, never cached: the guest collapses to the pending area this instant. No billing detail about anyone else, no call to action aimed at the Owners.", !s.paid);
+    case "sponsorPays":
+      if (s.sponsorPaying) return note(s, "Not possible: an Owner is already paying.", true);
+      s.sponsorPaying = true;
+      return note(s, "An Owner holds Paid Access again. The guest view returns to exactly where it was. The transition is reversible in both directions.");
+    case "remove":
+      if (s.removed) return note(s, "Not possible: already removed.", true);
+      s.removed = true; s.accepted = false;
+      return note(s, "A Household Owner removed the guest through the normal member removal flow. Access is revoked; household history is untouched; nothing of the household remains readable.", true);
+    case "reset":
+      return note(initial(), "Reset.");
+    default:
+      return note(s, `Not possible: unknown action ${action}`, true);
+  }
+}
+
+// ============================================================================
+// VARIANT A - Household digest. One column, upcoming first, no navigation.
+// ============================================================================
+function renderA(s) {
+  const k = surface(s);
+  if (k === "invite") return wrapA(`
+    <div class="top"><div class="kicker">Household Invitation</div>
+      <h3>Adaeze invited you into ${esc(HOUSE.name)}.</h3>
+      <div class="sub">Sent to ${esc(HOUSE.guest.email)}</div></div>
+    <p>Accepting gives you a free, read-only view of what this household shares: who is in it, what it is keeping track of, and what is coming up. It does not give you Tendnote for yourself.</p>
+    <p class="sub">You will not be able to write anything, ask the assistant anything, or see anything private. Adaeze can remove you at any time. There is no time limit on this.</p>
+    <p style="margin-top:22px"><button class="cta" data-a="accept">Accept and look around</button>
+    <button class="cta quiet" data-a="noop">Not now</button></p>`);
+
+  if (k === "orientation") return wrapA(`
+    <div class="top"><div class="kicker">You are in</div>
+      <h3>This is a digest of ${esc(HOUSE.name)}.</h3></div>
+    <p>One page. What is coming up, then what has been shared with you recently. It does not need learning and there is nothing to set up.</p>
+    <div class="ro" style="margin:16px 0">You can read this page. You cannot change anything on it, and nothing here is yours. That is what a guest is.</div>
+    <p class="sub">No assistant, no capture, no reminders, nothing private. If you want Tendnote for your own life, there is a way to do that at the bottom of the page.</p>
+    <p style="margin-top:22px"><button class="cta" data-a="orient">Read the digest</button></p>`);
+
+  if (k === "pending") return pendingArea();
+  if (k === "removed") return removedArea();
+  if (k === "subscribe") return subscribeArea(s, "back to the digest");
+  if (k === "paid") return paidArea();
+
+  // browse / record / locked all live on the same scroll in A
+  const upcoming = VISIBLE.filter(r => r.when).sort((a, b) => a.sort - b.sort);
+  const rest = VISIBLE.filter(r => !r.when).sort((a, b) => a.sort - b.sort);
+  const entry = (r) => {
+    const open = s.view === "record" && s.recordId === r.id;
+    return `<div class="entry" data-a="openRecord" data-arg="${r.id}">
+      <div class="h">${esc(r.t)}</div>
+      <div class="m">${r.when ? esc(r.when) + " · " : ""}${esc(DOMAIN_NAME[r.d])} · ${esc(r.scope)} · from ${esc(r.by)}</div>
+      ${open ? `<div class="body">${esc(r.body)}<br><br><span class="muted">Read-only. This belongs to ${esc(r.by)}.</span></div>` : ""}
+    </div>`;
+  };
+  const ref = s.view === "locked" && s.refusal ? `<div class="refusal" style="margin:14px 0"><b>${esc(REFUSALS[s.refusal][0])}.</b> ${esc(REFUSALS[s.refusal][1])}</div>` : "";
+  return wrapA(`
+    <div class="top"><div class="kicker">Guest digest · ${esc(HOUSE.guest.name)}</div>
+      <h3>${esc(HOUSE.name)}</h3>
+      <div class="sub">Everything this household shares with you, newest need first. Read-only - nothing on this page accepts input.</div></div>
+    ${ref}
+    <div class="day">Coming up</div>
+    ${upcoming.map(entry).join("")}
+    <div class="day">Standing</div>
+    ${rest.map(entry).join("")}
+    <div class="foot">
+      <div style="font-weight:600;margin-bottom:4px">Want Tendnote for your own life?</div>
+      <div class="sub" style="margin-bottom:12px">One plan, $20 a month or $200 a year, plus tax. Fourteen-day money-back guarantee. You would keep your place in this household exactly as it is.</div>
+      <button class="cta" data-a="subscribe">See the plan</button>
+    </div>
+    <p class="sub" style="margin-top:26px">Guest of ${esc(HOUSE.name)} · ${esc(HOUSE.guest.email)} · <span class="muted">Sign out</span></p>`);
+}
+function wrapA(inner) { return `<div class="A">${inner}</div>`; }
+
+// ============================================================================
+// VARIANT B - Read-only library. Domain tabs, list plus detail, standing band.
+// ============================================================================
+function renderB(s) {
+  const k = surface(s);
+  if (k === "invite") return `<div class="A">
+    <div class="top"><div class="kicker">Household Invitation</div>
+      <h3>${esc(HOUSE.guest.invitedBy)} invited you to read ${esc(HOUSE.name)}.</h3></div>
+    <p>You would get a free, read-only library of what this household shares, organised the way Tendnote organises it: People, Memories, Follow-Ups, General Actions, Assets, Gift Plans you co-plan, Household Context, Household Calendar Events.</p>
+    <p class="sub">Reading only. No assistant, no capture, no edits, no reminders, nothing private, no time limit.</p>
+    <p style="margin-top:22px"><button class="cta" data-a="accept">Accept the invitation</button>
+    <button class="cta quiet" data-a="noop">Not now</button></p></div>`;
+  if (k === "orientation") return `<div class="A">
+    <div class="top"><div class="kicker">Orientation · once</div><h3>Here is what you can read, and what you cannot do.</h3></div>
+    <p><b>You can read</b> everything this household holds in common, plus anything a member shared with you specifically. It is filed by kind, so you can go looking rather than scrolling.</p>
+    <p><b>You cannot</b> write, edit, confirm, be reminded, export, connect anything, or use Eve. Private records of any member are not here at all - not hidden behind a lock, simply not here.</p>
+    <div class="ro" style="margin:16px 0">A band at the top of every page will keep saying this. You should never have to guess why a button is missing.</div>
+    <p style="margin-top:22px"><button class="cta" data-a="orient">Open the library</button></p></div>`;
+  if (k === "pending") return pendingArea();
+  if (k === "removed") return removedArea();
+  if (k === "paid") return paidArea();
+
+  const items = inDomain(s.tab);
+  const sel = s.view === "record" && s.recordId && byId(s.recordId).d === s.tab ? byId(s.recordId) : null;
+  let det;
+  if (k === "subscribe") {
+    det = subscribeInner(s, true);
+  } else if (s.view === "locked" && s.refusal) {
+    det = `<div class="kicker">Not available to a guest</div>
+      <h4>${esc(REFUSALS[s.refusal][0])}</h4>
+      <p>${esc(REFUSALS[s.refusal][1])}</p>
+      <div class="actions"><button class="cta" data-a="subscribe">Get my own Tendnote</button>
+      <button class="cta quiet" data-a="browse" data-arg="${s.tab}">Back to ${esc(DOMAIN_NAME[s.tab])}</button></div>`;
+  } else if (sel) {
+    det = `<div class="kicker">${esc(DOMAIN_NAME[sel.d])} · ${esc(sel.scope)}</div>
+      <h4>${esc(sel.t)}</h4>
+      <div class="sub">${esc(sel.sub || "")}</div>
+      <p style="margin-top:14px">${esc(sel.body)}</p>
+      <div class="meta"><span>Belongs to</span><span>${esc(sel.by)}</span>
+        <span>Visible to you because</span><span>it is ${esc(sel.scope)}</span>
+        ${sel.when ? `<span>Date</span><span>${esc(sel.when)}</span>` : ""}
+        <span>Your rights</span><span>read</span></div>
+      <div class="actions">
+        <button class="deadbtn" data-a="attempt" data-arg="edit">Edit</button>
+        <button class="deadbtn" data-a="attempt" data-arg="remind">Remind me</button>
+        <button class="deadbtn" data-a="attempt" data-arg="eve">Ask Eve about this</button>
+        <button class="deadbtn" data-a="attempt" data-arg="export">Export</button>
+      </div>
+      <div class="sub">Those four are here so you can see they exist and why they are not yours. Press one.</div>`;
+  } else {
+    det = `<div class="kicker">${esc(DOMAIN_NAME[s.tab])}</div>
+      <h4>${items.length} record${items.length === 1 ? "" : "s"} you can read</h4>
+      <p class="sub">Pick one on the left. Everything in this list is household-native, household-scope, or shared with you by name.</p>`;
+  }
+  return `<div class="B">
+    <div class="band"><span><b>Read-only.</b> You are a guest of ${esc(HOUSE.name)}. These records belong to its members.</span>
+      <span><button class="cta ghost" style="padding:2px 8px;font-size:12.5px" data-a="subscribe">Get my own Tendnote</button></span></div>
+    <div class="hd">
+      <h3>${esc(HOUSE.name)}</h3>
+      <div class="sub">Guest library · ${esc(HOUSE.guest.name)}</div>
+      <div class="domtabs">${DOMAINS.map(([d, n]) =>
+        `<button class="${d === s.tab && k !== "subscribe" ? "on" : ""}" data-a="browse" data-arg="${d}">${esc(n)} <span class="muted">${inDomain(d).length}</span></button>`).join("")}</div>
+    </div>
+    <div class="cols">
+      <div class="list">${items.map(r => `<div class="it ${sel && sel.id === r.id ? "on" : ""}" data-a="openRecord" data-arg="${r.id}">
+        <div>${esc(r.t)}</div><div class="s">${esc(r.sub || r.scope)}</div></div>`).join("")
+        || `<div class="it muted">Nothing in this domain is shared with you.</div>`}</div>
+      <div class="det">${det}</div>
+    </div>
+  </div>`;
+}
+
+// ============================================================================
+// VARIANT C - Shell preview. The real sidebar; paid areas locked and explained.
+// ============================================================================
+const C_NAV = [
+  { group: null, items: [
+    { key: "today", label: "Today", guest: true },
+    { key: "eve", label: "Assistant", guest: false, refusal: "eve" },
+    { key: "household", label: "Household", guest: true },
+    { key: "people", label: "People", guest: true },
+    { key: "actions", label: "Actions", guest: true },
+    { key: "assets", label: "Assets", guest: true },
+    { key: "saved", label: "Saved Items", guest: false, refusal: "private" },
+  ]},
+  { group: "More", items: [
+    { key: "giftPlans", label: "Gift plans", guest: true },
+    { key: "reminders", label: "Reminders", guest: false, refusal: "remind" },
+    { key: "account", label: "Account", guest: true },
+  ]},
+];
+const C_ALL = C_NAV.flatMap(g => g.items);
+
+function renderC(s) {
+  const k = surface(s);
+  if (k === "invite") return `<div class="A">
+    <div class="top"><div class="kicker">Household Invitation</div>
+      <h3>${esc(HOUSE.guest.invitedBy)} added you to ${esc(HOUSE.name)}.</h3></div>
+    <p>You will get a free account that opens straight into Tendnote, with this household's shared side already in it. The parts that need a subscription will be visible and marked, so you can see exactly what you would be buying.</p>
+    <p class="sub">Read-only, no assistant, no capture, no reminders, nothing private, no time limit.</p>
+    <p style="margin-top:22px"><button class="cta" data-a="accept">Accept and open Tendnote</button>
+    <button class="cta quiet" data-a="noop">Not now</button></p></div>`;
+  if (k === "orientation") return `<div class="A">
+    <div class="top"><div class="kicker">First time in</div><h3>You are looking at the real thing, with most of it switched off.</h3></div>
+    <p>The menu you are about to see is Tendnote's menu. Three entries on it are lit: the household's shared records, the people in it, and what is coming up. The rest have a lock on them, and each one will tell you what it does and what it costs, rather than hiding.</p>
+    <div class="ro" style="margin:16px 0">Everything lit is read-only. You are a guest of this household, not the owner of anything in it.</div>
+    <p class="sub">If the honesty of the locks feels like a sales pitch, that is the question this variant is asking.</p>
+    <p style="margin-top:22px"><button class="cta" data-a="orient">Open Tendnote</button></p></div>`;
+  if (k === "pending") return pendingArea();
+  if (k === "removed") return removedArea();
+  if (k === "paid") return paidArea();
+
+  let pane;
+  if (k === "subscribe") pane = `<div class="C-sub">${subscribeInner(s, true)}</div>`;
+  else if (s.view === "locked" && s.refusal) pane = `<div class="lockpane">
+      <div class="kicker">Locked · needs a subscription</div>
+      <h3>${esc(REFUSALS[s.refusal][0])}</h3>
+      <div class="why"><p>${esc(REFUSALS[s.refusal][1])}</p></div>
+      <button class="cta" data-a="subscribe">See the plan - $20/month or $200/year</button>
+      <button class="cta quiet" data-a="browse" data-arg="today">Back</button>
+    </div>`;
+  else if (s.view === "record" && s.recordId) {
+    const r = byId(s.recordId);
+    pane = `<div class="kicker">${esc(DOMAIN_NAME[r.d])} · ${esc(r.scope)} · ${esc(r.by)}</div>
+      <h3>${esc(r.t)}</h3><div class="sub">${esc(r.sub || "")}</div>
+      <p style="margin-top:14px">${esc(r.body)}</p>
+      <div class="ro" style="margin:18px 0;max-width:560px">Read-only. In a paid account this record would have Edit, Confirm, Share and Remind me here.</div>
+      <button class="deadbtn" data-a="attempt" data-arg="edit">Edit</button>
+      <button class="deadbtn" data-a="attempt" data-arg="capture">Add something</button>
+      <button class="cta quiet" data-a="browse" data-arg="${s.nav}">Back</button>`;
+  } else {
+    pane = cPane(s.nav);
+  }
+  const navBtn = (it) => `<button class="${it.guest ? "" : "locked"} ${s.nav === it.key && s.view !== "locked" && k !== "subscribe" ? "on" : ""}"
+      data-a="${it.guest ? "browse" : "attempt"}" data-arg="${it.guest ? it.key : it.refusal}">
+      <span>${esc(it.label)}</span>${it.guest ? "" : `<span class="lk">locked</span>`}</button>`;
+  return `<div class="C">
+    <div class="side">
+      <div class="brand">Tendnote<span class="g">Guest of ${esc(HOUSE.name)}</span></div>
+      <button class="capture" data-a="attempt" data-arg="capture">Capture something &nbsp;<span class="lk" style="font-size:10px">locked</span></button>
+      ${C_NAV.map(g => `${g.group ? `<div class="nav"><div class="sep">${esc(g.group)}</div></div>` : ""}<div class="nav">${g.items.map(navBtn).join("")}</div>`).join("")}
+      <div class="sell">Six of the eleven things in this menu need a subscription.<br><br>
+        <button class="cta" style="width:100%" data-a="subscribe">Unlock all of it</button></div>
+    </div>
+    <div class="main">
+      <div class="bar">
+        <div class="left"><span class="pill warn">Guest · read-only</span>
+          <span class="sub">${esc(HOUSE.guest.name)}</span></div>
+        <div><button class="deadbtn" data-a="attempt" data-arg="eve">Ask Eve</button>
+          <button class="deadbtn" data-a="attempt" data-arg="connect">Connect calendar</button></div>
+      </div>
+      <div class="pane">${pane}</div>
+    </div>
+  </div>`;
+}
+function cPane(nav) {
+  const tile = (r) => `<div class="tile" data-a="openRecord" data-arg="${r.id}">
+    <div class="t">${esc(r.t)}</div><div class="d">${esc(r.sub || DOMAIN_NAME[r.d])}${r.when ? " · " + esc(r.when) : ""}</div></div>`;
+  if (nav === "today") {
+    const up = VISIBLE.filter(r => r.when).sort((a, b) => a.sort - b.sort).slice(0, 6);
+    return `<h3>Today</h3><div class="sub">Nothing is due from you - guests are not given anything to do. This is what the household has coming.</div>
+      <div class="grid">${up.map(tile).join("")}</div>`;
+  }
+  if (nav === "household") {
+    return `<h3>Household</h3><div class="sub">${esc(HOUSE.name)} · ${HOUSE.owners.length} Owners and you</div>
+      <div class="grid">${HOUSE.owners.map(o => `<div class="tile"><div class="t">${esc(o.name)}</div><div class="d">${esc(o.role)}</div></div>`).join("")}
+      <div class="tile"><div class="t">${esc(HOUSE.guest.name)}</div><div class="d">Household Guest · that is you</div></div></div>
+      <h3 style="margin-top:26px;font-size:16px">Household Context</h3>
+      <div class="grid">${inDomain("context").map(tile).join("")}</div>
+      <h3 style="margin-top:26px;font-size:16px">Household Calendar Events</h3>
+      <div class="grid">${inDomain("events").map(tile).join("")}</div>
+      <h3 style="margin-top:26px;font-size:16px">Memories and Follow-Ups shared with you</h3>
+      <div class="grid">${inDomain("memories").concat(inDomain("followUps")).map(tile).join("")}</div>`;
+  }
+  if (nav === "account") {
+    return `<h3>Account</h3><div class="sub">${esc(HOUSE.guest.email)}</div>
+      <div class="ro" style="margin:16px 0;max-width:600px">This account is a Household Guest. It has no subscription, holds no records of its own, and consumes no inference. It stays a guest for as long as ${esc(HOUSE.name)} has a paying Owner, with no time limit of its own.</div>
+      <button class="cta" data-a="subscribe">Subscribe - $20/month or $200/year</button>
+      <button class="deadbtn" data-a="attempt" data-arg="export">Export my data</button>`;
+  }
+  const items = inDomain(nav);
+  return `<h3>${esc(DOMAIN_NAME[nav] || nav)}</h3>
+    <div class="sub">${items.length} shared with you. Read-only.</div>
+    <div class="grid">${items.map(tile).join("") || `<div class="sub">Nothing here is shared with you.</div>`}</div>`;
+}
+
+// ============================================================================
+// SHARED SURFACES - the pending area, removal, subscribe, and the paid landing.
+// These are deliberately identical across variants: they are product states,
+// not guest-interface choices. Only the chrome around them differs.
+// ============================================================================
+function pendingArea() {
+  return `<div class="pend">
+    <div class="kicker">tendnote.com/pending</div>
+    <h3>This household is not currently active on Tendnote.</h3>
+    <p>Your guest view of ${esc(HOUSE.name)} depends on the household having an active subscription, and it does not have one right now. Nothing has been deleted, and nothing about your membership has changed. If that changes, your view comes back exactly as it was.</p>
+    <p class="sub">Signed in as ${esc(HOUSE.guest.email)}.</p>
+    <div class="acts">
+      <button class="cta" data-a="subscribe">Get my own Tendnote</button>
+      <button class="cta quiet" data-a="noop">Sign out</button>
+    </div>
+    <p class="sub" style="margin-top:22px">Draft decisions on this page: no Owner is named, no billing detail is given, no date is promised, and the only action offered is the guest's own. The guest is not asked to go and chase anybody.</p>
+  </div>`;
+}
+function removedArea() {
+  return `<div class="pend">
+    <div class="kicker">tendnote.com/pending</div>
+    <h3>You are no longer a member of ${esc(HOUSE.name)}.</h3>
+    <p>An Owner removed you from the household. You no longer have access to its records. Nothing you could see was yours, and nothing of the household's was deleted.</p>
+    <p class="sub">Signed in as ${esc(HOUSE.guest.email)}. This account still exists and holds nothing.</p>
+    <div class="acts">
+      <button class="cta" data-a="subscribe">Start my own Tendnote</button>
+      <button class="cta quiet" data-a="noop">Delete my account</button>
+      <button class="cta quiet" data-a="noop">Sign out</button>
+    </div>
+    <p class="sub" style="margin-top:22px">Open question: does removal say who did it, or is "an Owner" the whole of it?</p>
+  </div>`;
+}
+function subscribeInner(s, embedded) {
+  return `<div class="kicker">Subscribe</div>
+    <h3 style="font-size:21px;margin:4px 0 6px">Tendnote for your own life.</h3>
+    <p class="sub" style="max-width:540px">One plan. Everything in it: Eve, capture, your own private records, reminders, exports, provider connections. Your place in ${esc(HOUSE.name)} stays exactly as it is - subscribing does not change the household, and the household does not pay for you.</p>
+    <div class="plans">
+      <div class="plan ${s.plan === "monthly" ? "on" : ""}" data-a="plan" data-arg="monthly">
+        <div class="p">$20</div><div class="n">per month, plus tax</div></div>
+      <div class="plan ${s.plan === "annual" ? "on" : ""}" data-a="plan" data-arg="annual">
+        <div class="p">$200</div><div class="n">per year, plus tax</div></div>
+    </div>
+    <p class="sub" style="max-width:540px">Tax is added at checkout. Payment comes before product access - there is no trial. Fourteen-day money-back guarantee on the first payment.</p>
+    <div style="margin-top:16px">
+      <button class="cta" data-a="pay">Pay ${s.plan === "annual" ? "$200" : "$20"} (stub - no real payment)</button>
+      <button class="cta quiet" data-a="browse">${embedded ? "Back" : "Back"}</button>
+    </div>`;
+}
+function subscribeArea(s) {
+  return `<div class="A" style="padding-top:44px">${subscribeInner(s, false)}</div>`;
+}
+function paidArea() {
+  return `<div class="pend">
+    <div class="kicker">tendnote.com</div>
+    <h3>You are in. Your membership is untouched.</h3>
+    <p>This account now holds Paid Access. It is no longer a Household Guest - it is a Paid account that happens to be a member of ${esc(HOUSE.name)}, with the same membership it had a minute ago.</p>
+    <p>From here the real Authenticated App Shell takes over, and the first-run path from the signup prototype begins. Nothing about the guest interface applies any more.</p>
+    <p class="sub">This account no longer depends on anybody else's payment. Try lapsing the household's Owner now: nothing happens to it.</p>
+  </div>`;
+}
+
+// ============================================================================
+// PAGE SHELL (throwaway)
+// ============================================================================
+const RENDERERS = { A: renderA, B: renderB, C: renderC };
+const ACTIONS = [
+  ["1 - Entry and orientation", [["openInvitation", "Open the Household Invitation"], ["accept", "Accept the invitation"], ["orient", "Finish orientation"]]],
+  ["2 - Normal browsing", [["browse:memories", "Browse Memories"], ["browse:assets", "Browse Assets"], ["browse:giftPlans", "Browse Gift Plans"], ["openRecord:m1", "Open a shared Memory"], ["openRecord:g1", "Open the Gift Plan they co-plan"], ["openRecord:s1", "Open an Asset"]]],
+  ["3 - Something a guest cannot do", [["attempt:edit", "Try to edit"], ["attempt:eve", "Try to ask Eve"], ["attempt:capture", "Try to capture"], ["attempt:remind", "Try to set a reminder"], ["attempt:export", "Try to export"], ["attempt:private", "Look for private records"]]],
+  ["4 - Subscribe", [["subscribe", "Open the subscribe path"], ["plan:monthly", "Choose $20/month"], ["plan:annual", "Choose $200/year"], ["pay", "Pay (stub)"]]],
+  ["5-7 - Sponsor and removal", [["sponsorLapses", "Last paying Owner lapses"], ["sponsorPays", "An Owner is paid again"], ["remove", "An Owner removes the guest"], ["reset", "Reset everything"]]],
+];
+const LABEL = Object.fromEntries(ACTIONS.flatMap(([, l]) => l));
+
+const SCENARIOS = [
+  { name: "Accept and look around", desc: "The whole ordinary arc: the invitation, orientation, browsing a list, opening a record, and finding out what is not allowed.",
+    watch: "Whether the guest ever has to guess why something is missing, and how much of the product each variant implies they already have.",
+    steps: ["openInvitation", "accept", "orient", "browse:memories", "openRecord:m1", "attempt:edit", "attempt:eve"] },
+  { name: "The whole read set", desc: "Every domain a guest can read, ending on the Gift Plan they co-plan. The Gift Plan they are not a co-planner on never appears.",
+    watch: "Counts and lists. The hidden Gift Plan and the private records are absent, not greyed out, and not counted anywhere.",
+    steps: ["openInvitation", "accept", "orient", "browse:memories", "browse:assets", "browse:giftPlans", "openRecord:g1", "attempt:private"] },
+  { name: "Guest decides to subscribe", desc: "A guest who liked what they saw buys their own account and keeps the household membership.",
+    watch: "How hard each variant pushes, and that the paid state says the membership is untouched.",
+    steps: ["openInvitation", "accept", "orient", "browse:assets", "openRecord:s1", "subscribe", "plan:annual", "pay"] },
+  { name: "The household stops paying", desc: "The last paying Household Owner lapses mid-session, then pays again a week later.",
+    watch: "The collapse is immediate because the dependency is checked and not cached; the page names nobody and asks the guest to chase nobody; the return is exact.",
+    steps: ["openInvitation", "accept", "orient", "browse:memories", "sponsorLapses", "sponsorPays", "browse:memories"] },
+  { name: "Lapsed, and the guest buys their way out", desc: "The sponsor lapses and the guest subscribes from the pending area rather than waiting.",
+    watch: "The pending area's only call to action is the guest's own, and paying makes the account independent of the household's billing.",
+    steps: ["openInvitation", "accept", "orient", "sponsorLapses", "subscribe", "plan:monthly", "pay", "sponsorLapses"] },
+  { name: "An Owner removes the guest", desc: "Removal through the normal member removal flow, from the middle of a browse.",
+    watch: "Access goes, history does not, and what the page is willing to say about who did it.",
+    steps: ["openInvitation", "accept", "orient", "browse:giftPlans", "openRecord:g1", "remove"] },
+];
+
+let variantIdx = 0, state = initial(), scenarioIdx = 0, stepIdx = 0;
+
+function setVariant(i, push) {
+  variantIdx = (i + VARIANTS.length) % VARIANTS.length;
+  const v = VARIANTS[variantIdx];
+  if (push !== false) {
+    const u = new URL(window.location.href);
+    u.searchParams.set("variant", v.key);
+    history.replaceState(null, "", u.toString());
+  }
+  render();
+}
+function dispatch(a, arg) { state = reduce(state, a, arg); render(); }
+
+function render() {
+  const v = VARIANTS[variantIdx], s = state, k = surface(s);
+  document.getElementById("vkey").textContent = v.key;
+  document.getElementById("vname").textContent = v.name;
+  document.getElementById("surface").innerHTML = RENDERERS[v.key](s);
+  document.getElementById("url").textContent =
+    k === "invite" ? "tendnote.com/invitations/8f2c" :
+    k === "pending" || k === "removed" ? "tendnote.com/pending" :
+    k === "subscribe" ? "tendnote.com/subscribe" :
+    k === "paid" ? "tendnote.com/today" : "tendnote.com/household/reyes-okonkwo";
+
+  const rec = s.recordId ? byId(s.recordId) : null;
+  document.getElementById("state").innerHTML = [
+    ["Account state", `<span class="pill ${s.paid ? "" : k === "pending" || k === "removed" ? "bad" : s.accepted ? "warn" : "off"}">${accountState(s)}</span>`],
+    ["Household membership", s.removed ? `<span class="pill bad">removed by an Owner</span>` : s.accepted ? "active member of " + HOUSE.name : "not a member"],
+    ["Sponsor status", s.sponsorPaying ? `<span class="pill">an Owner holds Paid Access</span>` : `<span class="pill bad">no Owner holds Paid Access</span>`],
+    ["Checked how", "live on every request, never cached"],
+    ["Guest expiry", "none"],
+    ["Inference consumed", "0 tokens"],
+    ["Variant", `${v.key} · ${v.name}`],
+    ["Current surface", `<span class="pill off">${k}</span>`],
+    ["Open record", rec ? `${rec.t} (${rec.scope})` : "none"],
+    ["Refusal showing", s.view === "locked" && s.refusal ? `<span class="pill lock">${s.refusal}</span>` : "none"],
+    ["Plan chosen", s.plan === "annual" ? "$200/year, tax exclusive" : "$20/month, tax exclusive"],
+    ["Readable records", `${VISIBLE.length} across ${DOMAINS.length} domains`],
+    ["Withheld from guest", `${HIDDEN.length} (never rendered, never counted to them)`],
+  ].map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join("");
+
+  const ch = document.getElementById("changed");
+  ch.textContent = s.last || "Nothing yet. Pick a walkthrough or press a scenario button.";
+  ch.className = "changed" + (s.lastBad ? " bad" : "");
+
+  document.getElementById("free").innerHTML = ACTIONS.map(([g, list]) =>
+    `<div class="group"><div class="g">${g}</div><div class="btns">${list.map(([id, label]) =>
+      `<button class="act" data-do="${id}">${esc(label)}</button>`).join("")}</div></div>`).join("");
+
+  document.getElementById("log").innerHTML = s.log.map(l => `<li>${esc(l)}</li>`).join("");
+  const le = document.getElementById("log"); le.scrollTop = le.scrollHeight;
+
+  document.getElementById("tabs").innerHTML = SCENARIOS.map((sc, i) =>
+    `<button class="${i === scenarioIdx ? "on" : ""}" data-scn="${i}">${esc(sc.name)}</button>`).join("");
+  const scn = SCENARIOS[scenarioIdx];
+  document.getElementById("desc").textContent = scn.desc;
+  document.getElementById("watch").textContent = "Watch for: " + scn.watch;
+  document.getElementById("steps").innerHTML = scn.steps.map((id, i) =>
+    `<button class="act ${i < stepIdx ? "done" : ""} ${i === stepIdx ? "next" : ""}" data-step="${i}"><span class="n">${i + 1}.</span>${esc(LABEL[id] || id)}</button>`).join("")
+    + `<button class="act" data-restart="1">Restart this walkthrough</button>`;
+}
+
+function runStepId(id) { const [a, arg] = id.split(":"); dispatch(a, arg); }
+function startScenario(i) { scenarioIdx = i; stepIdx = 0; state = initial(); render(); }
+
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-a],[data-do],[data-step],[data-scn],[data-restart],[data-cycle]");
+  if (!el) return;
+  if (el.dataset.cycle) return setVariant(variantIdx + Number(el.dataset.cycle));
+  if (el.dataset.do) return runStepId(el.dataset.do);
+  if (el.dataset.scn !== undefined) return startScenario(Number(el.dataset.scn));
+  if (el.dataset.restart) return startScenario(scenarioIdx);
+  if (el.dataset.step !== undefined) {
+    const i = Number(el.dataset.step);
+    runStepId(SCENARIOS[scenarioIdx].steps[i]); stepIdx = i + 1; render(); return;
+  }
+  if (el.dataset.a === "noop") return;
+  if (el.dataset.a) dispatch(el.dataset.a, el.dataset.arg);
+});
+document.addEventListener("keydown", (e) => {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+  if (e.key === "ArrowLeft") setVariant(variantIdx - 1);
+  else if (e.key === "ArrowRight") setVariant(variantIdx + 1);
+});
+
+const want = (new URL(window.location.href).searchParams.get("variant") || "A").toUpperCase();
+const found = VARIANTS.findIndex(v => v.key === want);
+setVariant(found === -1 ? 0 : found);
+startScenario(0);
+</script>
+</body>
+</html>

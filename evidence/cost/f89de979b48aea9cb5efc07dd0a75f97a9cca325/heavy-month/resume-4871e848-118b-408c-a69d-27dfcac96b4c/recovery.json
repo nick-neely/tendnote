@@ -1,0 +1,8 @@
+{
+  "checkedAt": "2026-09-21T16:32:27.895460+00:00",
+  "failure": "Eval client socket hang up at turn 411; 410 validated. JUnit contains no deeper stack or connection identity.",
+  "recovery": "Restore durable day-20 checkpoint at 400 turns and resume at 401. All provider ledger rows settled; preserve all partial-day costs. No workers remain.",
+  "checkpointTurns": 400,
+  "providerBillingUncertain": false,
+  "sourceChangeRequired": false
+}

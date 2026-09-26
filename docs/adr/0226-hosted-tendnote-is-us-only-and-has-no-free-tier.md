@@ -53,3 +53,14 @@ The severity of a breach remains higher than for typical SaaS regardless of
 jurisdiction, because the exposed data describes people who never accepted the
 risk. Retention minimization, scope enforcement in the query layer, and the
 sensitivity tiers are load-bearing controls rather than product polish.
+
+## Amendment
+
+[ADR 0245](0245-paid-access-is-a-hosted-admission-source-owned-by-the-account.md)
+amends the "no free hosted tier" clause with one bounded exception, the
+Household Guest: an unpaid hosted account that accepted a Household Invitation
+may read that household's shared records, consumes no inference, and exists
+only while an active Household Owner of that household is paying. ADR 0245 also
+fixes what "payment precedes product access" means in evidence terms - the
+first invoice paid, card-only at launch - and records that the geo-block, the
+absence of a trial state, and self-hosting as the free tier are unchanged.

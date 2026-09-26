@@ -72,6 +72,13 @@ the bounded publication evidence path.
 - [0236 - Pull request verification is one full-fidelity path](0236-pull-request-verification-is-one-full-fidelity-path.md)
 
 - [0241 — Person profile updates have one owner-scoped inverse](0241-person-profile-updates-have-one-owner-scoped-inverse.md)
+- [0242 - Activation Milestones are content-free and product-owned](0242-activation-milestones-are-content-free-and-product-owned.md)
+- [0245 - Paid Access is a hosted admission source owned by the account](0245-paid-access-is-a-hosted-admission-source-owned-by-the-account.md)
+- [0246 - Hosted inference is metered content-free and shed in a fixed order](0246-hosted-inference-is-metered-content-free-and-shed-in-a-fixed-order.md)
+- [0247 - Non-user requests are neither searched nor relayed](0247-non-user-requests-are-neither-searched-nor-relayed.md)
+- [0248 - Admission exceptions live inside their condition](0248-admission-exceptions-live-inside-their-condition.md)
+- [0249 - Refund revocation is matched to its Operator Action record](0249-refund-revocation-is-matched-to-its-operator-action-record.md)
+- [0250 - One Backup Window bounds recovery and the deletion tail](0250-one-backup-window-bounds-recovery-and-the-deletion-tail.md)
 
 The catalog intentionally omits the Phase 9a planning workspace. That
 workspace remains useful to maintainers, but it is not a newcomer evidence

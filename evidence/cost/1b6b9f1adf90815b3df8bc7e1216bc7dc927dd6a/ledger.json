@@ -1,0 +1,160 @@
+{
+  "simulated": false,
+  "ceilingUsd": 25,
+  "stopped": null,
+  "pendingRequests": 0,
+  "rows": [
+    {
+      "variant": "light",
+      "model": "google/gemini-3.7-flash",
+      "category": "interactive",
+      "reservationUsd": 3.5847360000000004,
+      "status": "settled",
+      "costUsd": 0.0304335,
+      "inputTokens": 39938,
+      "outputTokens": 128
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.1-flash-lite",
+      "category": "extraction",
+      "reservationUsd": 1.251,
+      "status": "settled",
+      "costUsd": 0.0000875,
+      "inputTokens": 326,
+      "outputTokens": 4
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.7-flash",
+      "category": "interactive",
+      "reservationUsd": 3.5847360000000004,
+      "status": "settled",
+      "costUsd": 0.006840075,
+      "inputTokens": 42870,
+      "outputTokens": 254
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.7-flash",
+      "category": "interactive",
+      "reservationUsd": 3.5847360000000004,
+      "status": "settled",
+      "costUsd": 0.00712755,
+      "inputTokens": 43443,
+      "outputTokens": 213
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.7-flash",
+      "category": "snapshot",
+      "reservationUsd": 3.5847360000000004,
+      "status": "settled",
+      "costUsd": 0.0016515,
+      "inputTokens": 382,
+      "outputTokens": 364
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.7-flash",
+      "category": "interactive",
+      "reservationUsd": 3.5847360000000004,
+      "status": "settled",
+      "costUsd": 0.0078612,
+      "inputTokens": 43985,
+      "outputTokens": 297
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.7-flash",
+      "category": "interactive",
+      "reservationUsd": 3.5847360000000004,
+      "status": "settled",
+      "costUsd": 0.0052257,
+      "inputTokens": 44306,
+      "outputTokens": 169
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.7-flash",
+      "category": "snapshot",
+      "reservationUsd": 3.5847360000000004,
+      "status": "settled",
+      "costUsd": 0.001143,
+      "inputTokens": 224,
+      "outputTokens": 260
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.7-flash",
+      "category": "scheduled",
+      "reservationUsd": 3.5847360000000004,
+      "status": "settled",
+      "costUsd": 0.002586,
+      "inputTokens": 53,
+      "outputTokens": 679
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.7-flash",
+      "category": "interactive",
+      "reservationUsd": 3.5847360000000004,
+      "status": "settled",
+      "costUsd": 0.03107025,
+      "inputTokens": 39972,
+      "outputTokens": 291
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.1-flash-lite",
+      "category": "extraction",
+      "reservationUsd": 1.251,
+      "status": "settled",
+      "costUsd": 0.000156,
+      "inputTokens": 360,
+      "outputTokens": 44
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.7-flash",
+      "category": "interactive",
+      "reservationUsd": 3.5847360000000004,
+      "status": "settled",
+      "costUsd": 0.033705,
+      "inputTokens": 42410,
+      "outputTokens": 506
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.7-flash",
+      "category": "snapshot",
+      "reservationUsd": 3.5847360000000004,
+      "status": "settled",
+      "costUsd": 0.00135825,
+      "inputTokens": 181,
+      "outputTokens": 326
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.7-flash",
+      "category": "interactive",
+      "reservationUsd": 3.5847360000000004,
+      "status": "settled",
+      "costUsd": 0.00677205,
+      "inputTokens": 43197,
+      "outputTokens": 162
+    },
+    {
+      "variant": "light",
+      "model": "google/gemini-3.7-flash",
+      "category": "interactive",
+      "reservationUsd": 3.5847360000000004,
+      "status": "settled",
+      "costUsd": 0.00665325,
+      "inputTokens": 43380,
+      "outputTokens": 93
+    }
+  ],
+  "knownSpendUsd": 0.142670825,
+  "reservedUsd": 0
+}

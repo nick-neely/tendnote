@@ -1,0 +1,48 @@
+{
+  "status": "reconciled",
+  "method": "Match model request counts, input including cache tokens, output including reasoning tokens, and inference cost within 1e-12 USD serialization tolerance.",
+  "models": [
+    {
+      "model": "google/gemini-3.1-flash-lite",
+      "requests": 70,
+      "requestCountMatches": true,
+      "inputTokensMatch": true,
+      "outputTokensMatch": true,
+      "ledgerInferenceUsd": "0.00872875",
+      "providerInferenceUsd": "0.00872875",
+      "inferenceMatchesWithinTolerance": true,
+      "providerTotalUsd": "0.02447875"
+    },
+    {
+      "model": "google/gemini-3.7-flash",
+      "requests": 242,
+      "requestCountMatches": true,
+      "inputTokensMatch": true,
+      "outputTokensMatch": true,
+      "ledgerInferenceUsd": "1.506565350",
+      "providerInferenceUsd": "1.50656535",
+      "inferenceMatchesWithinTolerance": true,
+      "providerTotalUsd": "1.56101535"
+    },
+    {
+      "model": "openai/text-embedding-3-small",
+      "requests": 25,
+      "requestCountMatches": true,
+      "inputTokensMatch": true,
+      "outputTokensMatch": true,
+      "ledgerInferenceUsd": "0.00001318",
+      "providerInferenceUsd": "0.00001318",
+      "inferenceMatchesWithinTolerance": true,
+      "providerTotalUsd": "0.00001318"
+    }
+  ],
+  "providerInferenceUsd": "1.51530728",
+  "providerReportingWritesUsd": "0.07020000",
+  "providerTotalUsd": "1.58550728",
+  "reportQueryFeeAllowanceUsd": "0.005",
+  "totalIncludingQueryAllowanceUsd": "1.59050728",
+  "approvedCeilingUsd": "10",
+  "withinApprovedCeiling": true,
+  "uncertainRequests": 0,
+  "reportingSource": "https://vercel.com/docs/ai-gateway/observability-and-spend/custom-reporting"
+}

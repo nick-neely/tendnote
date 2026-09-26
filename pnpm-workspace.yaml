@@ -1,3 +1,5 @@
 packages:
   - "apps/*"
   - "packages/*"
+patchedDependencies:
+  eve@0.47.7: patches/eve@0.47.7.patch

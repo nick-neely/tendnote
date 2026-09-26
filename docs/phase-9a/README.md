@@ -39,7 +39,9 @@ These are inputs to the map, not questions in it. Do not relitigate them.
   is text. `tendnote.com` only: `.dev` and the `tennote.com` defensive
   registration were both declined.
 - **Phase 9b is gated** on unprompted hosted-version requests from people who
-  are not the author.
+  are not the author. *Superseded:* the owner later lifted this gate for Phase
+  9b without claiming demand validation; see ADR 0228's amendment and
+  [Spec: Phase 9b Commercialization](https://github.com/nick-neely/tendnote/issues/591).
 
 ## Working agreement
 

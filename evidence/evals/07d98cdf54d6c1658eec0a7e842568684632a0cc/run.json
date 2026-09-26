@@ -1,0 +1,54 @@
+{
+  "source": "07d98cdf54d6c1658eec0a7e842568684632a0cc",
+  "ceilingUsd": 10,
+  "priorSpendUsd": 3.659374855,
+  "timeoutMs": 180000,
+  "inputReservation": "2 * serialized UTF-8 request bytes + 8192 tokens, capped at model window; existing meter doubles highest rates and reserves entire output window",
+  "startedAt": "2026-09-22T14:32:11.859Z",
+  "model": "google/gemini-3.7-flash",
+  "workspace": "/home/neely/dev/tendnote/apps/agent/.eve/deterministic-579-final/workspace",
+  "commands": [
+    {
+      "args": ["eval:prepare"],
+      "cwd": "/home/neely/dev/tendnote/apps/agent",
+      "startedAt": "2026-09-22T14:32:11.873Z",
+      "exitCode": 0,
+      "signal": null,
+      "completedAt": "2026-09-22T14:32:14.487Z"
+    },
+    {
+      "args": ["exec", "eve", "eval", "--tag", "deterministic", "--list"],
+      "cwd": "/home/neely/dev/tendnote/apps/agent/.eve/deterministic-579-final/workspace",
+      "startedAt": "2026-09-22T14:32:14.487Z",
+      "exitCode": 0,
+      "signal": null,
+      "completedAt": "2026-09-22T14:32:20.363Z"
+    },
+    {
+      "args": [
+        "exec",
+        "eve",
+        "eval",
+        "--tag",
+        "deterministic",
+        "--strict",
+        "--skip-report",
+        "--max-concurrency",
+        "1",
+        "--timeout",
+        "180000",
+        "--json",
+        "--junit",
+        "/home/neely/dev/tendnote/apps/agent/.eve/deterministic-579-final/junit.xml"
+      ],
+      "cwd": "/home/neely/dev/tendnote/apps/agent/.eve/deterministic-579-final/workspace",
+      "startedAt": "2026-09-22T14:32:20.363Z",
+      "exitCode": 1,
+      "signal": null,
+      "completedAt": "2026-09-22T15:01:58.207Z"
+    }
+  ],
+  "environment": "Fresh loopback tendnote_eval; demo-user seed; no inherited credentials or external transports; existing cost proxy/preload; schedules omitted; authored tools unchanged; built-in provider web_search disabled as in cost replay (no deterministic case requires live web search)",
+  "completedAt": "2026-09-22T15:01:58.208Z",
+  "exitCode": 1
+}

@@ -1,0 +1,76 @@
+{
+  "target": {
+    "capabilities": {
+      "devRoutes": true
+    },
+    "kind": "local",
+    "url": "http://127.0.0.1:40959/"
+  },
+  "startedAt": "2026-09-22T15:09:00.792Z",
+  "completedAt": "2026-09-22T15:09:29.863Z",
+  "passed": 1,
+  "failed": 0,
+  "scored": 0,
+  "skipped": 0,
+  "errored": 0,
+  "totalEvals": 1,
+  "evals": [
+    {
+      "id": "policy/phase-seven-no-invented-priority-alert",
+      "verdict": "passed",
+      "status": "waiting",
+      "assertions": [
+        {
+          "name": "notCalledTool(create_general_action)",
+          "score": 1,
+          "severity": "gate",
+          "passed": true
+        },
+        {
+          "name": "notCalledTool(update_general_action_status)",
+          "score": 1,
+          "severity": "gate",
+          "passed": true
+        },
+        {
+          "name": "notCalledTool(capture_saved_item)",
+          "score": 1,
+          "severity": "gate",
+          "passed": true
+        },
+        {
+          "name": "notCalledTool(create_followup)",
+          "score": 1,
+          "severity": "gate",
+          "passed": true
+        },
+        {
+          "name": "eventsSatisfy(any attempted edit is a typed non-mutating denial)",
+          "score": 1,
+          "severity": "gate",
+          "passed": true
+        },
+        {
+          "name": "includes(/^(?![\\s\\S]*(?:I(’|')?ve (set|created|scheduled)|(?<!(?:should|could|can|may|shall|would|will|must) )I (set|created|scheduled) (an|the|your) alert|alert is set|highest priority is|highest[- ]priority pick|I(’|')?m treating[^.]{0,80}priority|I pinned[^.]{0,80}due time|(?:otherwise|so),? \\d{1,2}(?::\\d{2})? ?(?:AM|PM)[^.]{0,40}it is))[\\s\\S]*$/i)",
+          "score": 1,
+          "severity": "gate",
+          "passed": true
+        }
+      ],
+      "traceContexts": [
+        {
+          "decision": {
+            "action": "record",
+            "recordInputs": true,
+            "recordOutputs": true
+          },
+          "spanId": "e2bbf847071bcf6e",
+          "traceFlags": 1,
+          "traceId": "d39055fc48b99efaa1f69c36f685baba",
+          "primary": true,
+          "sessionId": "wrun_01M34TKGGH6NPWJEPSGPZS4QSH"
+        }
+      ]
+    }
+  ]
+}

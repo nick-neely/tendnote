@@ -1,6 +1,7 @@
 import { includes } from "eve/evals/expect";
-import { defineEval } from "../define-eval";
+import { defineEval, sendWithApprovalScope } from "../define-eval";
 import { without } from "../expectations";
+import { futureFixtureDate } from "../fixture-dates";
 
 /**
  * The positive half of ADR 0159, which nothing checked.
@@ -26,12 +27,13 @@ export default defineEval({
   // 2 turns against a live model, so the run-wide single-turn budget does not fit.
   timeoutMs: 120_000,
   async test(t) {
-    const created = await t.send(
-      "Add an action to test the smoke alarm batteries on Saturday, August 22, 2026.",
+    const { turn: created, session } = await sendWithApprovalScope(
+      t,
+      `Add an action to test the smoke alarm batteries on ${futureFixtureDate(7)}.`,
     );
 
     created.expectOk();
-    created.calledTool("create_general_action", { input: { title: /smoke alarm/i } });
+    session.calledTool("create_general_action", { input: { title: /smoke alarm/i } });
 
     await t.send("I did the smoke alarm one - mark it done.");
 

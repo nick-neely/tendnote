@@ -1,0 +1,30 @@
+{
+  "status": "canary-complete",
+  "sampleDays": 2,
+  "fullHeavyMonthComplete": false,
+  "validatedActivity": {
+    "turns": 40,
+    "captures": 20,
+    "followups": 25,
+    "uploads": 2,
+    "scheduledChecks": 6
+  },
+  "storedSourceRecords": 20,
+  "storedMemoryRows": 12,
+  "memoryInterpretation": "Five explicit Memory captures passed fresh approved-row assertions; stored row totals also include extraction suggestions.",
+  "settledRequests": 337,
+  "uncertainRequests": 0,
+  "retainedReservationUsd": "0",
+  "transportRetries": 0,
+  "emptyResponseRecoveryLogEvents": 26,
+  "previouslyFailingTurn30": "passed: private person-linked Source Record created",
+  "unfinishedBackgroundJobs": 0,
+  "savedItems": 0,
+  "logicalRowBytes": 344930,
+  "uploadedBytesIncludedInLogicalRows": 131072,
+  "limitations": [
+    "One two-day canary, not a 600-turn heavy-month estimate.",
+    "Later weekly review and person reuse remain outside this canary.",
+    "Recovery count comes from runtime logs; no prompts, replies or model traces are published."
+  ]
+}

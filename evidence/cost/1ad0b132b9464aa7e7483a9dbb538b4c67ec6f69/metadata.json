@@ -1,0 +1,48 @@
+{
+  "source": "1ad0b132b9464aa7e7483a9dbb538b4c67ec6f69",
+  "runId": "bed77641-0b58-4ff9-9ff7-6f4cb6292b8d",
+  "simulated": false,
+  "mode": "--paid",
+  "ceilingUsd": 25,
+  "variants": {
+    "light": {
+      "turns": 40,
+      "captures": 20,
+      "people": 15,
+      "followups": 10,
+      "uploads": 2
+    },
+    "typical": {
+      "turns": 150,
+      "captures": 80,
+      "people": 40,
+      "followups": 30,
+      "uploads": 8
+    },
+    "heavy": {
+      "turns": 600,
+      "captures": 300,
+      "people": 150,
+      "followups": 100,
+      "uploads": 30
+    }
+  },
+  "models": {
+    "agent": "google/gemini-3.7-flash",
+    "extraction": "google/gemini-3.1-flash-lite",
+    "embedding": "openai/text-embedding-3-small"
+  },
+  "command": "pnpm --filter @tendnote/agent eval:cost --paid",
+  "startedAt": "2026-09-18T23:45:14.940Z",
+  "status": "partial",
+  "assumptions": {
+    "days": 30,
+    "sessionBoundary": "daily",
+    "uploadBytes": 65536,
+    "syntheticGoogleConnection": true,
+    "externalDelivery": false,
+    "excludedTool": "web_search"
+  },
+  "failure": "Replay subprocess failed (1)",
+  "finishedAt": "2026-09-18T23:45:28.353Z"
+}

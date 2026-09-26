@@ -1,0 +1,53 @@
+{
+  "source": "68569444802c33a1011b865d0809f7435371bb08",
+  "ceilingUsd": 10,
+  "priorSpendUsd": 7.323567,
+  "timeoutMs": 180000,
+  "inputReservation": "2 * serialized UTF-8 request bytes + 8192 tokens, capped at model window; existing meter doubles highest rates and reserves entire output window",
+  "startedAt": "2026-09-22T15:08:34.931Z",
+  "model": "google/gemini-3.7-flash",
+  "workspace": "/home/neely/dev/tendnote/apps/agent/.eve/deterministic-579-focused/workspace",
+  "commands": [
+    {
+      "args": ["eval:prepare"],
+      "cwd": "/home/neely/dev/tendnote/apps/agent",
+      "startedAt": "2026-09-22T15:08:34.945Z",
+      "exitCode": 0,
+      "signal": null,
+      "completedAt": "2026-09-22T15:08:37.565Z"
+    },
+    {
+      "args": ["exec", "eve", "eval", "--tag", "deterministic", "--list"],
+      "cwd": "/home/neely/dev/tendnote/apps/agent/.eve/deterministic-579-focused/workspace",
+      "startedAt": "2026-09-22T15:08:37.566Z",
+      "exitCode": 0,
+      "signal": null,
+      "completedAt": "2026-09-22T15:08:41.751Z"
+    },
+    {
+      "args": [
+        "exec",
+        "eve",
+        "eval",
+        "policy/phase-seven-no-invented-priority-alert",
+        "--strict",
+        "--skip-report",
+        "--max-concurrency",
+        "1",
+        "--timeout",
+        "180000",
+        "--json",
+        "--junit",
+        "/home/neely/dev/tendnote/apps/agent/.eve/deterministic-579-focused/junit.xml"
+      ],
+      "cwd": "/home/neely/dev/tendnote/apps/agent/.eve/deterministic-579-focused/workspace",
+      "startedAt": "2026-09-22T15:08:41.751Z",
+      "exitCode": 0,
+      "signal": null,
+      "completedAt": "2026-09-22T15:09:43.382Z"
+    }
+  ],
+  "environment": "Fresh loopback tendnote_eval; demo-user seed; no inherited credentials or external transports; existing cost proxy/preload; schedules omitted; authored tools unchanged; built-in provider web_search disabled as in cost replay (no deterministic case requires live web search)",
+  "completedAt": "2026-09-22T15:09:43.383Z",
+  "exitCode": 0
+}

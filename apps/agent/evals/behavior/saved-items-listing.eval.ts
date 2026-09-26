@@ -1,5 +1,5 @@
 import { includes } from "eve/evals/expect";
-import { defineEval } from "../define-eval";
+import { defineEval, sendWithApprovalScope } from "../define-eval";
 import { NO_RAW_IDS, without } from "../expectations";
 
 /**
@@ -18,12 +18,13 @@ export default defineEval({
   // 2 turns against a live model, so the run-wide single-turn budget does not fit.
   timeoutMs: 120_000,
   async test(t) {
-    const captured = await t.send(
+    const { turn: captured, session } = await sendWithApprovalScope(
+      t,
       "Use Capture: save a note that the gutters need clearing before autumn.",
     );
 
     captured.expectOk();
-    captured.calledTool("capture_saved_item", { input: { originalText: /gutters/i }, count: 1 });
+    session.calledTool("capture_saved_item", { input: { originalText: /gutters/i }, count: 1 });
 
     const browsed = await t.send("What have I saved recently?");
 

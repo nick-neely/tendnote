@@ -1,0 +1,47 @@
+{
+  "status": "reconciled",
+  "method": "Per-model count and token matching; inference tolerance 1e-12 USD for serialization.",
+  "models": [
+    {
+      "model": "google/gemini-3.1-flash-lite",
+      "requests": 394,
+      "requestCountMatches": true,
+      "inputTokensMatch": true,
+      "outputTokensMatch": true,
+      "ledgerInferenceUsd": "0.04750550",
+      "providerInferenceUsd": "0.0475055",
+      "inferenceMatchesWithinTolerance": true,
+      "providerTotalUsd": "0.1361555"
+    },
+    {
+      "model": "google/gemini-3.7-flash",
+      "requests": 1275,
+      "requestCountMatches": true,
+      "inputTokensMatch": true,
+      "outputTokensMatch": true,
+      "ledgerInferenceUsd": "8.355876075",
+      "providerInferenceUsd": "8.355876075",
+      "inferenceMatchesWithinTolerance": true,
+      "providerTotalUsd": "8.642751075"
+    },
+    {
+      "model": "openai/text-embedding-3-small",
+      "requests": 145,
+      "requestCountMatches": true,
+      "inputTokensMatch": true,
+      "outputTokensMatch": true,
+      "ledgerInferenceUsd": "0.00007698",
+      "providerInferenceUsd": "0.00007698",
+      "inferenceMatchesWithinTolerance": true,
+      "providerTotalUsd": "0.00007698"
+    }
+  ],
+  "providerInferenceUsd": "8.403458555",
+  "providerReportingWritesUsd": "0.375525000",
+  "providerTotalUsd": "8.778983555",
+  "reportQueryFeeAllowanceUsd": "0.005",
+  "totalIncludingQueryAllowanceUsd": "8.783983555",
+  "approvedCeilingUsd": "50",
+  "withinApprovedCeiling": true,
+  "uncertainRequests": 0
+}

@@ -1,0 +1,20 @@
+{
+  "status": "checkpoint-ready",
+  "validatedTurns": 240,
+  "resumeAfterDay": 12,
+  "checkpointRoot": "/home/exedev/dev/tendnote/apps/agent/.eve/replay-checkpoints/f8936abe-54ac-4261-b1c0-7529d08f0978",
+  "databaseSha256": "88567709f92389cc850a158798649665e4a3d7f471225dfcf847b51157d00570",
+  "originalEvidencePreserved": true,
+  "unfinishedBackgroundJobs": 0,
+  "retainedFailedAttemptOverhead": true,
+  "justification": "Read-only inspection of all 11 persisted day-13 events found only load-skill; no relationship mutation. Owner-scoped source/follow-up/upload counts match the validated prefix. All inference settled. Preserve ancillary session/context-job records and all costs as attempt overhead; turn 241 is not promoted to validated.",
+  "diagnosis": {
+    "error": "Session not found.",
+    "sessionCreatedAt": "2026-09-21T00:27:45.034Z",
+    "firstEventAt": "2026-09-21T00:28:56.395Z",
+    "persistedEventsInspected": 11,
+    "observedActionKinds": ["load-skill"],
+    "streamReadableInFreshProcess": true,
+    "underlyingStreamException": "discarded by Eve; unknown"
+  }
+}
