@@ -142,6 +142,16 @@ async function resolveStep(
     event: { type: "turn.started", data: { sequence: 0, turnId: "turn_0" } },
     messages,
   });
+  return resolveNextStep(runtime, ctx, 0, messages);
+}
+
+/** Runs disclosure for one more step of the same turn and reads eve's merged dynamic set. */
+async function resolveNextStep(
+  runtime: EveRuntime,
+  ctx: EveContext,
+  stepIndex: number,
+  messages: readonly unknown[],
+) {
   await runtime.dispatchDynamicToolEvent({
     ctx,
     resolvers: [
@@ -152,7 +162,10 @@ async function resolveStep(
         disclosure.events["step.started"] as Handler,
       ),
     ],
-    event: { type: "step.started", data: { sequence: 1, turnId: "turn_0", stepIndex: 0 } },
+    event: {
+      type: "step.started",
+      data: { sequence: stepIndex + 1, turnId: "turn_0", stepIndex },
+    },
     messages,
   });
 
@@ -162,7 +175,7 @@ async function resolveStep(
     runtime.contextStorage.run(ctx, async () =>
       byName.get(name)?.execute({}, { toolCallId: `call-${name}` }),
     );
-  return { names: tools.map((tool) => tool.name), byName, run };
+  return { ctx, names: tools.map((tool) => tool.name), byName, run };
 }
 
 const WEB_OWNER: Principal = { principalType: "user", attributes: { channel: "eve" } };
@@ -192,6 +205,35 @@ describe("progressive disclosure at eve's dynamic tool lifecycle", () => {
     const step = await resolveStep(runtime, WEB_OWNER, EVERY_SKILL_LOADED);
 
     expect(step.names).toEqual([]);
+  });
+
+  it("discloses a family on the next step of the same turn once its skill loads", async () => {
+    // The transition the feature exists for: step 0 withholds the family, the
+    // model loads the skill, and step 1 in the same context must drop the stale
+    // step-0 binding so the authored tool is what the model calls.
+    const runtime = await loadRuntime();
+    const first = await resolveStep(runtime, WEB_OWNER, []);
+    expect(first.names).toContain("add_gift_idea");
+
+    const loaded = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-gifts",
+            toolName: "load_skill",
+            input: { skill: "household-and-gifts" },
+          },
+        ],
+      },
+    ];
+    const second = await resolveNextStep(runtime, first.ctx, 1, loaded);
+
+    for (const tool of toolFamilyMembers("household-and-gifts")) {
+      expect(second.names, tool).not.toContain(tool);
+    }
+    expect(second.names).toContain("create_message_draft");
   });
 
   it("keeps a scheduled run's forbidden family tools gated even with every skill loaded", async () => {
