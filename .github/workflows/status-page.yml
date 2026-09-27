@@ -1,0 +1,54 @@
+name: Publish status page
+
+# The status page must stay readable when the product is down, so it is built
+# from `status/notice.json` and served by GitHub Pages: independent of the
+# product's Vercel project, its database, and the RunsOn runners. Enabling Pages
+# with "GitHub Actions" as the source is a one-time repository setting.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - status/**
+      - scripts/build-status-page.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: status-page
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish status page
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Build status page
+        run: node scripts/build-status-page.mjs _site
+
+      - name: Upload status page
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+      - name: Deploy status page
+        id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

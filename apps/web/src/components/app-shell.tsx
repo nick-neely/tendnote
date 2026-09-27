@@ -36,6 +36,7 @@ export function AppShell({
    * that need a Household link wait behind their own boundaries.
    */
   viewerStandings = NO_VIEWER_STANDINGS_RESOLVED,
+  notice,
 }: {
   /**
    * This route brings its own rail, so the shell mounts no sidebar provider and
@@ -48,11 +49,14 @@ export function AppShell({
   ownerUserId?: string;
   searchHandler?: GlobalRecallHandler;
   viewerStandings?: Promise<ViewerStandings>;
+  /** The Service Notice banner, passed by the admitted layouts. */
+  notice?: ReactNode;
 }) {
   return (
     <div className="min-h-dvh overflow-x-clip bg-background text-foreground">
       <AppShellFrame
         canvas={canvas}
+        notice={notice}
         standings={viewerStandings}
         tools={
           <>
