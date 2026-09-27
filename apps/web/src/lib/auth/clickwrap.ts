@@ -11,7 +11,7 @@ import { APIError, getOAuthState } from "better-auth/api";
  * The request field, in the email sign-up body or the OAuth flow's
  * `additionalData`, that carries the sign-up form's clickwrap acceptance.
  */
-export const LEGAL_ACCEPTANCE_FIELD = "legalAcceptance";
+const LEGAL_ACCEPTANCE_FIELD = "legalAcceptance";
 
 /** The part of a Better Auth endpoint context the clickwrap reads. */
 type EndpointContext = { body?: unknown } | null | undefined;

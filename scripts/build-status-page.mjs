@@ -22,16 +22,26 @@ export function parseNoticeSource(source) {
     throw new Error('"notice" must be null or an object.');
   }
   const { message, updatedAt } = /** @type {Record<string, unknown>} */ (notice);
+  return { message: parseMessage(message), updatedAt: parseUpdatedAt(updatedAt) };
+}
+
+/** @param {unknown} message */
+function parseMessage(message) {
   if (typeof message !== "string" || !message.trim()) {
     throw new Error('"notice.message" must be non-empty text.');
   }
   if (message.length > MAX_MESSAGE_LENGTH) {
     throw new Error(`"notice.message" must be at most ${MAX_MESSAGE_LENGTH} characters.`);
   }
+  return message.trim();
+}
+
+/** @param {unknown} updatedAt */
+function parseUpdatedAt(updatedAt) {
   if (typeof updatedAt !== "string" || Number.isNaN(Date.parse(updatedAt))) {
     throw new Error('"notice.updatedAt" must be an ISO 8601 timestamp.');
   }
-  return { message: message.trim(), updatedAt: new Date(updatedAt).toISOString() };
+  return new Date(updatedAt).toISOString();
 }
 
 function escapeHtml(text) {
