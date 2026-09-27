@@ -236,6 +236,10 @@ _Avoid_: Third party, contact, data subject, non-customer user, unregistered use
 The hosted-only refusal, at the edge, of sign-up, sign-in, checkout, and app routes for requests from the EU, the EEA, the UK, and Switzerland. It is a filter rather than a legal shield, it excludes marketing pages, and it does not exist on a self-hosted deployment.
 _Avoid_: Geo-fence, IP ban, compliance control, country allowlist, firewall rule
 
+**Service Notice**:
+Operator-written, content-free text about the hosted service's condition, posted from one repository file to the independently hosted status page and shown as an in-app banner while the product is reachable. It never names a customer.
+_Avoid_: Incident report, outage banner, status update, maintenance message
+
 **Authenticated App Shell**:
 The recognizable Tendnote navigation and layout frame available only after Better Auth and Private Beta Access admit an owner. It contains no relationship records, Today or Eve content, or other owner-specific data.
 _Avoid_: Public app shell, dashboard data, owner cache
