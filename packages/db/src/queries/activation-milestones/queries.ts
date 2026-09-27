@@ -8,10 +8,9 @@ export function createActivationMilestoneQueries(store: ActivationMilestoneStore
      * Value itself the first time every step has. Only steps are recorded by
      * product code; First Value is always derived, never claimed.
      *
-     * The derivation cannot miss when each statement commits on its own (the
-     * default store uses the root connection): each call lists after its own
-     * stamp is committed, so whichever of two racing final steps lists last
-     * sees both.
+     * Outside a transaction the derivation cannot miss: each call lists after
+     * its own stamp is committed, so whichever of two racing final steps lists
+     * last sees both.
      */
     async recordActivationMilestone(input: { userId: string; milestone: FirstValueStep }) {
       const stamped = await store.insertIfAbsent(input);
