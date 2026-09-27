@@ -1,6 +1,3 @@
-import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+// The shadcn `utils` alias (components.json) resolves here, so generated
+// components keep importing `cn` from this path.
+export { cn } from "@tendnote/ui/cn";

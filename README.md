@@ -86,11 +86,13 @@ A lean Turborepo with pnpm workspaces:
 | Workspace | What's in it |
 | --- | --- |
 | [`apps/web`](apps/web/README.md) | Next.js App Router UI — Today, Capture, Search, people, actions, Saved Items, assets, PWA and reminder settings, Better Auth, the private-beta gate, and background-job queue consumers |
+| [`apps/marketing`](apps/marketing/README.md) | The public marketing site, a separate static Next.js app with no authentication |
 | [`apps/agent`](apps/agent/README.md) | Eve — tools, skills, subagents, the Discord channel, and the scheduled-workflow dispatcher. Mounted same-origin into the web app via `withEve()`, so the browser streams chat with no separate agent URL |
 | `packages/db` | Drizzle schema, migrations, and owner-scoped queries over Postgres with pgvector, plus the background-job stores |
 | `packages/domain` | Shared Zod schemas and domain types |
 | `packages/auth` | Shared Better Auth server baseline, so the web app and Eve verify the same sessions |
 | `packages/rate-limit` | Cost-category product rate limiting with a pluggable store |
+| `packages/ui` | Shared design tokens, `Button`, and the Tendnote logo for the product and the marketing site |
 | `packages/config` | Shared TypeScript configuration |
 
 See [`docs/architecture.md`](docs/architecture.md) for how the pieces fit together, [`SECURITY.md`](SECURITY.md) for vulnerability reporting, and [`docs/security.md`](docs/security.md) for the privacy and trust boundaries.

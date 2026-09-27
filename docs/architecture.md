@@ -7,11 +7,13 @@ Tendnote is a lean pnpm/Turborepo workspace. Two apps sit on top of five shared 
 | Workspace | Responsibility |
 | --- | --- |
 | `apps/web` | Next.js App Router UI, Better Auth routes and auth pages, the private-beta access gate, Today/Capture/Search and record surfaces, the PWA shell and reminder settings, integrations, background-job queue consumers, and the recovery cron |
+| `apps/marketing` | The public marketing site on its own Vercel project: static pages, no authentication, no product session, no cookies. Sign in and Subscribe link to the app origin. See [`apps/marketing/README.md`](../apps/marketing/README.md) |
 | `apps/agent` | Eve — instructions, tools, subagents, skills, the `eve` and `discord` channels, and the scheduled-workflow dispatcher. See [`apps/agent/README.md`](../apps/agent/README.md) |
 | `packages/db` | Drizzle schema and migrations, Postgres/Neon clients, owner-scoped queries, background-job stores, and seed data |
 | `packages/domain` | Shared Zod schemas and TypeScript domain types |
 | `packages/auth` | Shared Better Auth server baseline, so the web app and Eve verify identical sessions |
 | `packages/rate-limit` | Cost-category product rate limiting over a pluggable store |
+| `packages/ui` | Shared design tokens (`theme.css`), `Button`, `cn`, and the Tendnote logo, so the product and the marketing site render one design system |
 | `packages/config` | Shared TypeScript configuration |
 
 `biome.json` at the root owns lint, format, and import-order configuration.
@@ -25,7 +27,11 @@ apps/web  ─┐
            ├─→  @tendnote/auth  @tendnote/db  @tendnote/domain  @tendnote/rate-limit
 apps/agent ─┘
                      @tendnote/db  ─→  @tendnote/domain
+
+apps/web, apps/marketing  ─→  @tendnote/ui
 ```
+
+- `apps/marketing` imports only `@tendnote/ui`; it never reaches the database, auth, or the product session.
 
 - `packages/auth` and `packages/rate-limit` may import infrastructure libraries but never app modules.
 - `packages/domain` stays independent of apps and of database implementation code.

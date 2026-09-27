@@ -60,7 +60,7 @@ export async function renderHouseholdInvitationEmail(
  * not an absence of design here, it is the design.
  *
  * Three details carry the brand where a template would carry none. The wordmark
- * is live text at weight 600, the way `components/tendnote-logo.tsx` sets it,
+ * is live text at weight 600, the way `@tendnote/ui/tendnote-logo` sets it,
  * which is also why it survives an inbox with images turned off. Sage appears
  * exactly once, on the one thing the reader is here to press. And mono is spent
  * only on machine facts - the deadline and the paste-in URL - never on prose,
