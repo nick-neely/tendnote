@@ -55,7 +55,8 @@ function pinGatewayOptions(input: HostedModelInput) {
  * The model-call entry point (spec #591): every hosted model call gets its
  * model here. The returned model sends the gateway's zero-data-retention and
  * no-training flags, restricts routing to the one pinned provider, and tags the
- * call with its cost category.
+ * call with its cost category. `scripts/model-call-entry-point.test.ts` fails
+ * if any other module builds a model or calls one without this entry point.
  */
 export function hostedModel(input: HostedModelInput, provider: HostedModelProvider = gateway) {
   const middleware = pinGatewayOptions(input);
