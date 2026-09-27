@@ -1,10 +1,4 @@
-import {
-  type DynamicResolveContext,
-  type DynamicToolSet,
-  defineDynamic,
-  defineTool,
-} from "eve/tools";
-import { z } from "zod";
+import { type DynamicResolveContext, type DynamicToolSet, defineDynamic } from "eve/tools";
 import {
   EVE_GATED_TOOL_NAMES,
   type EveGatedToolName,
@@ -13,6 +7,7 @@ import {
   resolveSessionEveMode,
   toolsUnavailableInMode,
 } from "../lib/eve-modes";
+import { withheldTool } from "../lib/withheld-tool";
 
 /**
  * The Eve mode gate: the file that makes ADR-0128 narrowing real.
@@ -34,8 +29,9 @@ import {
  * into performing an action it does not allow.
  *
  * In `web_chat` - every real session today - the resolver returns `null`, so
- * the curated surface is offered exactly as authored and the prompt is byte for
- * byte what it was before this file existed.
+ * every authored tool stays reachable. Which of their schemas ship on a given
+ * step is progressive disclosure's decision (`eve_tool_disclosure.ts`, ADR-0227),
+ * a cost mechanism that never changes what this gate allows.
  *
  * Resolution runs on `turn.started` rather than `session.started` because
  * `auth.current` is the caller of the active turn: a session opened by one
@@ -93,25 +89,21 @@ export default defineDynamic({
       const { mode, unavailable, availableHere } = withholdingPlan(ctx);
       if (unavailable.length === 0) return null;
 
-      // Built with a loop and an assignment rather than `Object.fromEntries`
-      // over array literals: eve's bundler transform hoists each inline
-      // `execute` so it survives replay, and its walker does not descend into
-      // array elements. An array literal here would compile and then quietly
-      // lose every gated tool the moment a turn replayed.
+      // The inert definition is built in `lib/withheld-tool.ts`, which
+      // progressive disclosure shares: eve registers dynamic callbacks by tool
+      // name process-wide, so two resolvers binding the same name must bind the
+      // same callback.
       const withheld: Record<string, DynamicToolSet[string]> = {};
       for (const toolName of unavailable) {
-        withheld[toolName] = defineTool({
-          description: `Unavailable in ${mode} mode. Calling it does nothing. ${availableHere}`,
-          inputSchema: z.looseObject({}),
-          execute() {
-            return {
-              performed: false,
-              tool: toolName,
-              mode,
-              message: `${toolName} is not available in ${mode} mode, so nothing was done. Tell the user this cannot be done here instead of retrying or reporting it as done.`,
-            };
+        withheld[toolName] = withheldTool(
+          `Unavailable in ${mode} mode. Calling it does nothing. ${availableHere}`,
+          {
+            performed: false,
+            tool: toolName,
+            mode,
+            message: `${toolName} is not available in ${mode} mode, so nothing was done. Tell the user this cannot be done here instead of retrying or reporting it as done.`,
           },
-        });
+        );
       }
 
       return withheld;

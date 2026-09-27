@@ -230,7 +230,9 @@ const modeDefinitions = {
   // Selected by: a signed-in owner on the web channel (`attributes.channel`
   // is `"eve"`). The curated surface is the whole authored tool set plus the
   // provider-managed web search capability, which is what the web assistant is
-  // for; narrowing happens below, never here.
+  // for; narrowing happens below, never here. Progressive disclosure
+  // (`lib/tool-disclosure.ts`, ADR-0227) withholds schemas from this mode to
+  // save tokens, never tools: everything listed here stays reachable.
   web_chat: {
     mode: "web_chat",
     tools: EVE_GATED_TOOL_NAMES,
