@@ -11,6 +11,7 @@ import {
   sourceRecordPeople,
   sourceRecords,
 } from "../../schema";
+import { recordActivationMilestone } from "../activation-milestones";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import type { PeopleStore } from "./types";
 import { createPersonUpdateStore } from "./update-store";
@@ -79,6 +80,11 @@ export function createDrizzlePeopleStore(): PeopleStore {
       if (!person) {
         throw new Error("Failed to create person.");
       }
+
+      await recordActivationMilestone({
+        userId: person.ownerUserId,
+        milestone: "first_person_created",
+      });
 
       return person;
     },

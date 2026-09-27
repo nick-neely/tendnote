@@ -8,6 +8,7 @@ import {
   sourceRecords,
   unresolvedPersonMentions,
 } from "../../schema";
+import { recordActivationMilestone } from "../activation-milestones";
 import { provenVisibleRecord } from "../households/authorization";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import type {
@@ -48,6 +49,11 @@ export function createDrizzleSourceRecordStore(): SourceRecordResolutionStore {
       if (!person) {
         throw new Error("Failed to create person.");
       }
+
+      await recordActivationMilestone({
+        userId: person.ownerUserId,
+        milestone: "first_person_created",
+      });
 
       return person;
     },

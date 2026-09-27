@@ -2,6 +2,7 @@ import { createMemorySchema, memorySchema } from "@tendnote/domain";
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../../client";
 import { memories } from "../../schema";
+import { recordActivationMilestone } from "../activation-milestones";
 import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
 import type { MemoryReviewStore } from "./types";
 
@@ -20,6 +21,13 @@ export function createDrizzleMemoryStore(): MemoryReviewStore {
 
       if (!memory) {
         throw new Error("Failed to create memory.");
+      }
+
+      if (memory.status === "approved") {
+        await recordActivationMilestone({
+          userId: memory.ownerUserId,
+          milestone: "first_memory_confirmed",
+        });
       }
 
       return memory;
@@ -65,6 +73,13 @@ export function createDrizzleMemoryStore(): MemoryReviewStore {
 
       if (!memory) {
         throw new Error("Memory not found.");
+      }
+
+      if (patch.status === "approved") {
+        await recordActivationMilestone({
+          userId: memory.ownerUserId,
+          milestone: "first_memory_confirmed",
+        });
       }
 
       return memory;

@@ -575,6 +575,13 @@
       "when": 1788583028902,
       "tag": "0081_person_update_undo",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1790473001480,
+      "tag": "0082_acceptance_records_and_activation_milestones",
+      "breakpoints": true
     }
   ]
 }
