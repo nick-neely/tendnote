@@ -79,6 +79,9 @@ describe("semantic retrieval product-route boundaries", () => {
       // no data access at all, so it reaches neither proved reads nor semantic
       // retrieval.
       "prototype/phase-9a-launch",
+      // Where the hosted Region Block sends a refused visitor (#615). Static
+      // copy and two outbound links; no data access at all.
+      "region",
       "reminders/open",
       "reset-password",
       "saved-items",

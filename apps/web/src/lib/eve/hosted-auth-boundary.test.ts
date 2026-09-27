@@ -17,7 +17,11 @@ describe("hosted Eve authentication boundary", () => {
   });
 
   it("has no obsolete Next proxy claiming to guard direct Eve service routes", () => {
-    expect(existsSync(join(webRoot, "src/proxy.ts"))).toBe(false);
+    // The only proxy is the hosted Region Block (#615), a geographic filter
+    // that authenticates nothing; Eve's routes keep their own AuthFn.
+    const proxy = readFileSync(join(webRoot, "src/proxy.ts"), "utf8");
+    expect(proxy).toContain("regionBlockResponse");
+    expect(proxy).not.toMatch(/session|owner|x-tendnote/i);
     expect(existsSync(join(webRoot, "src/lib/access/eve-ingress.ts"))).toBe(false);
   });
 
