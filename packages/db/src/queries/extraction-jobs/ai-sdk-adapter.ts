@@ -5,8 +5,9 @@ import {
   suggestedMemoryExtractionAdapterResultSchema,
   suggestedMemoryExtractionPromptVersion,
 } from "@tendnote/domain";
-import { gateway, generateText, Output } from "ai";
+import { generateText, Output } from "ai";
 import { resolveExtractionModel } from "../extraction-model";
+import { hostedModel } from "../model-calls";
 
 type SuggestedMemoryExtractionEnv = Record<string, string | undefined>;
 
@@ -74,7 +75,7 @@ export function createAiSdkSuggestedMemoryExtractionAdapter(
       requireExtractionCredentials(env);
 
       const result = await generateText({
-        model: gateway(model),
+        model: hostedModel({ modelId: model, costCategory: "background" }),
         output: Output.object({
           schema: suggestedMemoryExtractionAdapterResultSchema,
           name: "suggested_memory_extraction",

@@ -1,5 +1,5 @@
 import { generateDeterministicSnapshot } from "@tendnote/domain";
-import { gateway, generateText } from "ai";
+import { generateText } from "ai";
 import type { GetPersonContextSnapshotInput, SnapshotGenerator } from "./context-snapshots/builder";
 import { createPersonContextSnapshot } from "./context-snapshots/builder";
 import { createDrizzleContextSnapshotStore } from "./context-snapshots/drizzle-store";
@@ -7,6 +7,7 @@ import { createLlmSnapshotGenerator } from "./context-snapshots/llm-generator";
 import type { PersonContextSnapshotStore } from "./context-snapshots/types";
 import { createDrizzleFollowupStore } from "./followups/drizzle-store";
 import { createDrizzleMemoryStore } from "./memories/drizzle-store";
+import { hostedModel } from "./model-calls";
 import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
 
 export type {
@@ -51,7 +52,7 @@ export function createDefaultSnapshotGenerator(
     version: `llm:${modelId}`,
     model: async ({ prompt }) => {
       const { text } = await generateText({
-        model: gateway(modelId),
+        model: hostedModel({ modelId, costCategory: "background" }),
         system:
           "You write grounded relationship snapshots for Tendnote. You summarize only " +
           "the facts you are given and never infer, embellish, or invent feelings, " +

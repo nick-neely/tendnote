@@ -53,6 +53,8 @@
     "./queries/household-calendar": "./src/queries/household-calendar.ts",
     "./queries/household-event-plans": "./src/queries/household-event-plans.ts",
     "./queries/memory-curator": "./src/queries/memory-curator.ts",
+    "./queries/model-call-fixtures": "./src/queries/model-call-fixtures.ts",
+    "./queries/model-calls": "./src/queries/model-calls.ts",
     "./queries/memories": "./src/queries/memories.ts",
     "./queries/morning-agenda": "./src/queries/morning-agenda.ts",
     "./queries/owner-data-export": "./src/queries/owner-data-export.ts",

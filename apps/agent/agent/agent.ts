@@ -1,9 +1,17 @@
+import { hostedModel } from "@tendnote/db/queries/model-calls";
 import { defineAgent } from "eve";
 
 export default defineAgent({
   // Default follows the Vercel AI Gateway model id format. Override with
-  // TENDNOTE_AGENT_MODEL to compare candidate models.
-  model: process.env.TENDNOTE_AGENT_MODEL ?? "google/gemini-3.7-flash",
+  // TENDNOTE_AGENT_MODEL to compare candidate models. The model-call entry point
+  // pins Gemini to Vertex with the gateway's privacy flags, so an Eve turn never
+  // reaches the Gemini Developer API. Eve 0.47.7 compiles a gateway instance's id
+  // as `gateway/<model id>`, which has no catalog context window; the pinned Eve
+  // patch keeps the gateway model id, matching how Eve's runtime resolves it.
+  model: hostedModel({
+    modelId: process.env.TENDNOTE_AGENT_MODEL ?? "google/gemini-3.7-flash",
+    costCategory: "interactive",
+  }),
   /**
    * Thought summaries, so the Assistant can show a thinking disclosure.
    *

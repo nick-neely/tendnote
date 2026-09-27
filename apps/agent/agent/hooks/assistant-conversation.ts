@@ -3,7 +3,8 @@ import {
   touchAssistantConversation,
   upsertAssistantConversation,
 } from "@tendnote/db/queries/assistant-conversations";
-import { gateway, generateText } from "ai";
+import { hostedModel } from "@tendnote/db/queries/model-calls";
+import { generateText } from "ai";
 import { defineState, type SessionAuthContext, type SessionParent } from "eve/context";
 import { defineHook } from "eve/hooks";
 import { resolveSessionEveMode } from "../lib/eve-modes";
@@ -119,13 +120,14 @@ export function normalizeGeneratedTitle(raw: string): string | null {
 
 type GenerateTitle = (input: { userMessage: string; assistantReply: string }) => Promise<string>;
 
-async function generateTitleWithGateway(input: {
+/** Titling belongs to the Eve conversation, so it is charged as interactive. */
+export async function generateTitleWithGateway(input: {
   userMessage: string;
   assistantReply: string;
 }): Promise<string> {
   const modelId = process.env.TENDNOTE_ASSISTANT_TITLE_MODEL ?? DEFAULT_TITLE_MODEL;
   const { text } = await generateText({
-    model: gateway(modelId),
+    model: hostedModel({ modelId, costCategory: "interactive" }),
     system: TITLE_SYSTEM_PROMPT,
     prompt: [
       "Person:",

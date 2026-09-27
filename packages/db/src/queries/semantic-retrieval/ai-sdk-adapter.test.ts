@@ -1,4 +1,3 @@
-import { embed } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDefaultSemanticEmbeddingAdapter,
@@ -6,26 +5,24 @@ import {
 } from "../semantic-retrieval";
 import { createAiSdkEmbeddingAdapter } from "./ai-sdk-adapter";
 
-vi.mock("ai", () => ({
-  embed: vi.fn(),
+// The real AI SDK runs against a fake gateway, so the test sees the request the
+// model-call entry point actually sends.
+const fakeGateway = vi.hoisted(async () => {
+  const { fakeGatewayProvider } = await import("../model-call-fixtures");
+  return fakeGatewayProvider();
+});
+
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("ai")>()),
+  gateway: (await fakeGateway).provider,
 }));
 
-const embedMock = vi.mocked(embed);
-
-beforeEach(() => {
-  embedMock.mockReset();
+beforeEach(async () => {
+  (await fakeGateway).reset();
 });
 
 describe("AI SDK embedding adapter", () => {
-  it("embeds through the configured AI SDK model", async () => {
-    embedMock.mockResolvedValue({
-      embedding: [0.1, 0.2, 0.3],
-      value: "gift ideas",
-      usage: { tokens: 2 },
-      warnings: [],
-      providerMetadata: {},
-      response: { headers: undefined },
-    });
+  it("embeds through the model-call entry point on the configured model", async () => {
     const adapter = createAiSdkEmbeddingAdapter();
 
     const result = await adapter.embedText({
@@ -34,10 +31,19 @@ describe("AI SDK embedding adapter", () => {
       version: "openai/text-embedding-3-small",
     });
 
-    expect(embedMock).toHaveBeenCalledWith({
-      model: "openai/text-embedding-3-small",
-      value: "gift ideas",
-    });
+    const { embeddingModels, sentProviderOptions } = await fakeGateway;
+    expect(embeddingModels.map((m) => m.modelId)).toEqual(["openai/text-embedding-3-small"]);
+    expect(embeddingModels[0]?.doEmbedCalls.map((c) => c.values)).toEqual([["gift ideas"]]);
+    expect(sentProviderOptions()).toEqual([
+      {
+        gateway: {
+          zeroDataRetention: true,
+          disallowPromptTraining: true,
+          only: ["openai"],
+          tags: ["cost:background"],
+        },
+      },
+    ]);
     expect(result).toEqual({
       vector: [0.1, 0.2, 0.3],
       model: "openai/text-embedding-3-small",
@@ -55,7 +61,7 @@ describe("default semantic embedding configuration", () => {
 
     expect(config).toEqual({ model: "fake-semantic-retrieval", version: "v2" });
     expect(result.vector).toHaveLength(64);
-    expect(embedMock).not.toHaveBeenCalled();
+    expect((await fakeGateway).embeddingModels).toEqual([]);
   });
 
   it("uses the configured gateway embedding model when credentials are present", () => {

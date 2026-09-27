@@ -1,5 +1,5 @@
 import { generateDeterministicDraft, type MessageDraftStatus } from "@tendnote/domain";
-import { gateway, generateText } from "ai";
+import { generateText } from "ai";
 import { createLlmDraftAdapter, type DraftAdapter } from "./drafts/draft-adapter";
 import { createDrizzleDraftLifecycleStore, createDrizzleDraftStore } from "./drafts/drizzle-store";
 import { createDraftGenerator, type GenerateDraftInput } from "./drafts/generator";
@@ -10,6 +10,7 @@ import {
   createAffectedDraftRegeneration,
 } from "./drafts/mutation-lifecycle";
 import { createDraftRegeneration } from "./drafts/regenerate";
+import { hostedModel } from "./model-calls";
 import { getPersonContext } from "./person-context";
 
 export {
@@ -54,8 +55,8 @@ type DraftAdapterEnv = Record<string, string | undefined>;
  * Default drafting adapter (PRD #75, issue #77), mirroring the brief summary
  * adapter's CI-safe wiring: with no AI gateway credentials it returns a
  * deterministic, source-grounded draft so dev and standard verification need no
- * live model; with credentials it calls the gateway model and falls back to the
- * deterministic draft on empty output.
+ * live model; with credentials it calls the model through the model-call entry
+ * point and falls back to the deterministic draft on empty output.
  */
 export function createDefaultDraftAdapter(env: DraftAdapterEnv = process.env): DraftAdapter {
   const modelId = env.TENDNOTE_DRAFT_MODEL ?? env.TENDNOTE_AGENT_MODEL ?? "google/gemini-3.7-flash";
@@ -68,7 +69,10 @@ export function createDefaultDraftAdapter(env: DraftAdapterEnv = process.env): D
   return createLlmDraftAdapter({
     version: `llm:${modelId}`,
     model: async ({ prompt }) => {
-      const { text } = await generateText({ model: gateway(modelId), prompt });
+      const { text } = await generateText({
+        model: hostedModel({ modelId, costCategory: "background" }),
+        prompt,
+      });
       return text;
     },
   });

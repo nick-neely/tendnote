@@ -1,5 +1,6 @@
 import { todayRankingOutputSchema } from "@tendnote/domain";
-import { gateway, generateText, Output } from "ai";
+import { generateText, Output } from "ai";
+import { hostedModel } from "../model-calls";
 import type { TodayOptionalRanker } from "./types";
 
 type TodayRankerEnv = Record<string, string | undefined>;
@@ -25,7 +26,7 @@ export function createAiSdkTodayRanker(
   return async (input) => {
     if (!hasTodayRankerCredentials(env)) throw new Error("Eve ranking credentials unavailable.");
     const result = await generateText({
-      model: gateway(model),
+      model: hostedModel({ modelId: model, costCategory: "background" }),
       abortSignal: AbortSignal.timeout(timeoutMs),
       output: Output.object({
         schema: todayRankingOutputSchema,

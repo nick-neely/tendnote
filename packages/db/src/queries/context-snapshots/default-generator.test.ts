@@ -2,12 +2,17 @@ import { DETERMINISTIC_GENERATOR_VERSION, type SnapshotInputPack } from "@tendno
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultSnapshotGenerator } from "../context-snapshots";
 
-const aiMock = vi.hoisted(() => ({
-  gateway: vi.fn((modelId: string) => ({ modelId })),
-  generateText: vi.fn(async () => ({ text: "LLM-written relationship snapshot." })),
-}));
+// The real AI SDK runs against a fake gateway, so the test sees the request the
+// model-call entry point actually sends.
+const fakeGateway = vi.hoisted(async () => {
+  const { fakeGatewayProvider } = await import("../model-call-fixtures");
+  return fakeGatewayProvider("LLM-written relationship snapshot.");
+});
 
-vi.mock("ai", () => aiMock);
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("ai")>()),
+  gateway: (await fakeGateway).provider,
+}));
 
 const NOW = new Date("2026-01-01T00:00:00.000Z");
 
@@ -41,7 +46,7 @@ describe("createDefaultSnapshotGenerator", () => {
     });
   });
 
-  it("uses the configured gateway model version when AI Gateway credentials are available", async () => {
+  it("calls the configured model through the entry point when AI Gateway credentials are available", async () => {
     const generate = createDefaultSnapshotGenerator({
       AI_GATEWAY_API_KEY: "test-key",
       TENDNOTE_SNAPSHOT_MODEL: "openai/test-model",
@@ -51,11 +56,19 @@ describe("createDefaultSnapshotGenerator", () => {
       summary: "LLM-written relationship snapshot.",
       generatorVersion: "llm:openai/test-model",
     });
-    expect(aiMock.gateway).toHaveBeenCalledWith("openai/test-model");
-    expect(aiMock.generateText).toHaveBeenCalledWith({
-      model: { modelId: "openai/test-model" },
-      system: expect.stringContaining("never infer, embellish, or invent"),
-      prompt: expect.stringContaining("Write a brief, grounded relationship snapshot"),
-    });
+    const { models, sentPrompts, sentProviderOptions } = await fakeGateway;
+    expect(models.map((m) => m.modelId)).toEqual(["openai/test-model"]);
+    expect(sentPrompts()).toEqual([expect.stringContaining("never infer, embellish, or invent")]);
+    expect(sentPrompts()[0]).toContain("Write a brief, grounded relationship snapshot");
+    expect(sentProviderOptions()).toEqual([
+      {
+        gateway: {
+          zeroDataRetention: true,
+          disallowPromptTraining: true,
+          only: ["openai"],
+          tags: ["cost:background"],
+        },
+      },
+    ]);
   });
 });
