@@ -1,10 +1,14 @@
+import { hostedModel } from "@tendnote/db/queries/model-calls";
 import { defineAgent } from "eve";
 
 export default defineAgent({
   description:
     "Private relationship strategy specialist for broad, owner-scoped next-action ranking. Reads eligible agenda context and may create review-gated Suggested Follow-Ups, but never active reminders, Memories, Source Records, Message Drafts, or external actions.",
-  model:
-    process.env.TENDNOTE_RELATIONSHIP_STRATEGIST_MODEL ??
-    process.env.TENDNOTE_AGENT_MODEL ??
-    "google/gemini-3.7-flash",
+  model: hostedModel({
+    modelId:
+      process.env.TENDNOTE_RELATIONSHIP_STRATEGIST_MODEL ??
+      process.env.TENDNOTE_AGENT_MODEL ??
+      "google/gemini-3.7-flash",
+    costCategory: "interactive",
+  }),
 });

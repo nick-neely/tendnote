@@ -1,5 +1,5 @@
 import { generateDeterministicAssetSnapshot } from "@tendnote/domain";
-import { gateway, generateText } from "ai";
+import { generateText } from "ai";
 import { createAssetSnapshot } from "./asset-snapshots/builder";
 import { createDrizzleAssetSnapshotStore } from "./asset-snapshots/drizzle-store";
 import { createLlmAssetSnapshotGenerator } from "./asset-snapshots/llm-generator";
@@ -11,6 +11,7 @@ import type {
 import { createDrizzleAssetLinkStore } from "./assets/drizzle-link-store";
 import { createDrizzleAssetReviewLifecycleStore } from "./assets/drizzle-store";
 import { createDrizzleGeneralActionStore } from "./general-actions/drizzle-store";
+import { hostedModel } from "./model-calls";
 import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
 
 export type { CreateAssetSnapshotOptions } from "./asset-snapshots/builder";
@@ -57,7 +58,7 @@ export function createDefaultAssetSnapshotGenerator(
     version: `llm:${modelId}`,
     model: async ({ prompt }) => {
       const { text } = await generateText({
-        model: gateway(modelId),
+        model: hostedModel({ modelId, costCategory: "background" }),
         system:
           "You write grounded summaries of things a user owns, for Tendnote. You " +
           "summarize only the facts you are given. You never invent, guess, or round a " +

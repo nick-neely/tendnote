@@ -1,4 +1,3 @@
-import { generateText, Output } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createAiSdkSuggestedMemoryExtractionAdapter,
@@ -7,39 +6,38 @@ import {
 } from "./ai-sdk-adapter";
 import { createHarness } from "./harness";
 
-// vitest hoists `vi.mock` factories above imports, so this `ai` SDK mock cannot be shared
-// without dynamic-import gymnastics that obscure the idiom; the two extraction pipelines
-// keep separate tests by design (#183).
-// fallow-ignore-next-line code-duplication
-vi.mock("ai", () => ({
-  gateway: vi.fn((modelId: string) => ({ modelId })),
-  generateText: vi.fn(),
-  Output: {
-    object: vi.fn((options) => ({ type: "object-output", ...options })),
-  },
+// The real AI SDK runs against a fake gateway, so the test sees the request the
+// model-call entry point actually sends. The two extraction pipelines keep separate
+// tests by design (#183).
+const fakeGateway = vi.hoisted(async () => {
+  const { fakeGatewayProvider } = await import("../model-call-fixtures");
+  return fakeGatewayProvider();
+});
+
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("ai")>()),
+  gateway: (await fakeGateway).provider,
 }));
 
-const generateTextMock = vi.mocked(generateText);
-const outputObjectMock = vi.mocked(Output.object);
-
-beforeEach(() => {
-  generateTextMock.mockReset();
-  outputObjectMock.mockClear();
+beforeEach(async () => {
+  (await fakeGateway).reset();
 });
+
+async function respondWith(output: unknown) {
+  (await fakeGateway).respondWith(JSON.stringify(output));
+}
 
 describe("AI SDK suggested-memory extraction adapter", () => {
   it("extracts structured candidates through the configured AI SDK model", async () => {
-    generateTextMock.mockResolvedValue({
-      output: {
-        candidates: [
-          {
-            personId: "person-1",
-            content: "Mara is trying morning workouts again.",
-            memoryType: "context",
-          },
-        ],
-      },
-    } as Awaited<ReturnType<typeof generateText>>);
+    await respondWith({
+      candidates: [
+        {
+          personId: "person-1",
+          content: "Mara is trying morning workouts again.",
+          memoryType: "context",
+        },
+      ],
+    });
     const adapter = createAiSdkSuggestedMemoryExtractionAdapter({
       model: "openai/gpt-5.4",
       env: { AI_GATEWAY_API_KEY: "test-key" },
@@ -58,25 +56,28 @@ describe("AI SDK suggested-memory extraction adapter", () => {
     });
 
     expect(result.candidates).toHaveLength(1);
-    expect(outputObjectMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: "suggested_memory_extraction",
-      }),
-    );
-    expect(generateTextMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: { modelId: "openai/gpt-5.4" },
-        output: expect.objectContaining({ type: "object-output" }),
-        system: expect.stringContaining("tentative suggested memories"),
-        prompt: expect.stringContaining("Mara: person-1"),
-      }),
-    );
+    const { models, calls, sentPrompts, sentProviderOptions } = await fakeGateway;
+    expect(models.map((m) => m.modelId)).toEqual(["openai/gpt-5.4"]);
+    expect(calls()[0]?.responseFormat).toMatchObject({
+      type: "json",
+      name: "suggested_memory_extraction",
+    });
+    expect(sentPrompts()[0]).toContain("tentative suggested memories");
+    expect(sentPrompts()[0]).toContain("Mara: person-1");
+    expect(sentProviderOptions()).toEqual([
+      {
+        gateway: {
+          zeroDataRetention: true,
+          disallowPromptTraining: true,
+          only: ["openai"],
+          tags: ["cost:background"],
+        },
+      },
+    ]);
   });
 
   it("uses the env model when only the prompt version is overridden", async () => {
-    generateTextMock.mockResolvedValue({
-      output: { candidates: [] },
-    } as Awaited<ReturnType<typeof generateText>>);
+    await respondWith({ candidates: [] });
     const adapter = createAiSdkSuggestedMemoryExtractionAdapter({
       promptVersion: "fixture.prompt.v2",
       env: {
@@ -102,11 +103,7 @@ describe("AI SDK suggested-memory extraction adapter", () => {
       model: "openai/gpt-5.4",
       promptVersion: "fixture.prompt.v2",
     });
-    expect(generateTextMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: { modelId: "openai/gpt-5.4" },
-      }),
-    );
+    expect((await fakeGateway).models.map((m) => m.modelId)).toEqual(["openai/gpt-5.4"]);
   });
 
   it("persists LLM candidates as tentative suggested-memory review records", async () => {
@@ -117,17 +114,15 @@ describe("AI SDK suggested-memory extraction adapter", () => {
       }),
     });
     const mara = await harness.createPerson("Mara");
-    generateTextMock.mockResolvedValue({
-      output: {
-        candidates: [
-          {
-            personId: mara.id,
-            content: "Mara is trying morning workouts again.",
-            memoryType: "context",
-          },
-        ],
-      },
-    } as Awaited<ReturnType<typeof generateText>>);
+    await respondWith({
+      candidates: [
+        {
+          personId: mara.id,
+          content: "Mara is trying morning workouts again.",
+          memoryType: "context",
+        },
+      ],
+    });
     const sourceRecord = await harness.captureRecord({
       retainedContent: "Mara is trying morning workouts again.",
     });
@@ -170,13 +165,11 @@ describe("AI SDK suggested-memory extraction adapter", () => {
         resolvedPeople: [{ id: "person-1", displayName: "Mark" }],
       }),
     ).rejects.toThrow(/Missing AI Gateway credentials/);
-    expect(generateTextMock).not.toHaveBeenCalled();
+    expect((await fakeGateway).models).toEqual([]);
   });
 
   it("uses the production extraction default when no dedicated model is configured", async () => {
-    generateTextMock.mockResolvedValue({
-      output: { candidates: [] },
-    } as Awaited<ReturnType<typeof generateText>>);
+    await respondWith({ candidates: [] });
     const adapter = createDefaultSuggestedMemoryExtractionAdapter({
       AI_GATEWAY_API_KEY: "test-key",
     });
@@ -194,9 +187,12 @@ describe("AI SDK suggested-memory extraction adapter", () => {
     });
 
     expect(adapter.model).toBe("google/gemini-3.1-flash-lite");
-    expect(generateTextMock).toHaveBeenCalledWith(
-      expect.objectContaining({ model: { modelId: "google/gemini-3.1-flash-lite" } }),
-    );
+    // Extraction stays on Gemini 3.1 Flash Lite, pinned to Vertex.
+    const { models, sentProviderOptions } = await fakeGateway;
+    expect(models.map((m) => m.modelId)).toEqual(["google/gemini-3.1-flash-lite"]);
+    expect(sentProviderOptions()).toEqual([
+      expect.objectContaining({ gateway: expect.objectContaining({ only: ["vertex"] }) }),
+    ]);
   });
 
   it("turns missing production config into a retryable extraction job failure", async () => {

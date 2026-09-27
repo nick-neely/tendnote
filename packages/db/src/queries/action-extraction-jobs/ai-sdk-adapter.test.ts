@@ -1,4 +1,3 @@
-import { generateText, Output } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createAiSdkSuggestedActionExtractionAdapter,
@@ -6,25 +5,26 @@ import {
 } from "./ai-sdk-adapter";
 import { createHarness } from "./harness";
 
-// vitest hoists `vi.mock` factories above imports, so this `ai` SDK mock cannot be shared
-// without dynamic-import gymnastics that obscure the idiom; the two extraction pipelines
-// keep separate tests by design (#183).
-// fallow-ignore-next-line code-duplication
-vi.mock("ai", () => ({
-  gateway: vi.fn((modelId: string) => ({ modelId })),
-  generateText: vi.fn(),
-  Output: {
-    object: vi.fn((options) => ({ type: "object-output", ...options })),
-  },
+// The real AI SDK runs against a fake gateway, so the test sees the request the
+// model-call entry point actually sends. The two extraction pipelines keep separate
+// tests by design (#183).
+const fakeGateway = vi.hoisted(async () => {
+  const { fakeGatewayProvider } = await import("../model-call-fixtures");
+  return fakeGatewayProvider();
+});
+
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("ai")>()),
+  gateway: (await fakeGateway).provider,
 }));
 
-const generateTextMock = vi.mocked(generateText);
-const outputObjectMock = vi.mocked(Output.object);
-
-beforeEach(() => {
-  generateTextMock.mockReset();
-  outputObjectMock.mockClear();
+beforeEach(async () => {
+  (await fakeGateway).reset();
 });
+
+async function respondWith(output: unknown) {
+  (await fakeGateway).respondWith(JSON.stringify(output));
+}
 
 const sourceRecord = {
   id: "source-1",
@@ -37,16 +37,14 @@ const sourceRecord = {
 
 describe("AI SDK suggested-action extraction adapter", () => {
   it("extracts structured candidates through the configured AI SDK model", async () => {
-    generateTextMock.mockResolvedValue({
-      output: {
-        candidates: [
-          {
-            title: "Replace the refrigerator water filter",
-            recurrence: { interval: 6, unit: "month" },
-          },
-        ],
-      },
-    } as Awaited<ReturnType<typeof generateText>>);
+    await respondWith({
+      candidates: [
+        {
+          title: "Replace the refrigerator water filter",
+          recurrence: { interval: 6, unit: "month" },
+        },
+      ],
+    });
     const adapter = createAiSdkSuggestedActionExtractionAdapter({
       model: "openai/gpt-5.4",
       env: { AI_GATEWAY_API_KEY: "test-key" },
@@ -59,22 +57,27 @@ describe("AI SDK suggested-action extraction adapter", () => {
     });
 
     expect(result.candidates).toHaveLength(1);
-    expect(outputObjectMock).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "suggested_action_extraction" }),
-    );
-    expect(generateTextMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: { modelId: "openai/gpt-5.4" },
-        output: expect.objectContaining({ type: "object-output" }),
-        system: expect.stringContaining("review-gated action suggestions"),
-        prompt: expect.stringContaining("Mara: person-1"),
-      }),
-    );
+    const { models, calls, sentPrompts, sentProviderOptions } = await fakeGateway;
+    expect(models.map((m) => m.modelId)).toEqual(["openai/gpt-5.4"]);
+    expect(calls()[0]?.responseFormat).toMatchObject({
+      type: "json",
+      name: "suggested_action_extraction",
+    });
+    expect(sentProviderOptions()).toEqual([
+      {
+        gateway: {
+          zeroDataRetention: true,
+          disallowPromptTraining: true,
+          only: ["openai"],
+          tags: ["cost:background"],
+        },
+      },
+    ]);
+    const prompt = sentPrompts()[0];
+    expect(prompt).toContain("review-gated action suggestions");
+    expect(prompt).toContain("Mara: person-1");
     // The Area list is offered to the model so it can file under an existing Area.
-    expect(generateTextMock).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: expect.stringContaining("Home: area-1") }),
-    );
-    const prompt = vi.mocked(generateText).mock.calls[0]?.[0].prompt;
+    expect(prompt).toContain("Home: area-1");
     expect(prompt).toContain("Preserve explicit urgency or difficulty wording");
     expect(prompt).not.toMatch(/priority|effort|low\/normal\/high|small\/medium\/large/i);
   });
@@ -88,13 +91,11 @@ describe("AI SDK suggested-action extraction adapter", () => {
     await expect(
       adapter.extractActions({ sourceRecord, resolvedPeople: [], availableAreas: [] }),
     ).rejects.toThrow(/Missing AI Gateway credentials/);
-    expect(generateTextMock).not.toHaveBeenCalled();
+    expect((await fakeGateway).models).toEqual([]);
   });
 
   it("uses the production extraction default when no dedicated model is configured", async () => {
-    generateTextMock.mockResolvedValue({
-      output: { candidates: [] },
-    } as Awaited<ReturnType<typeof generateText>>);
+    await respondWith({ candidates: [] });
     const adapter = createDefaultSuggestedActionExtractionAdapter({
       AI_GATEWAY_API_KEY: "test-key",
     });
@@ -102,9 +103,12 @@ describe("AI SDK suggested-action extraction adapter", () => {
     await adapter.extractActions({ sourceRecord, resolvedPeople: [], availableAreas: [] });
 
     expect(adapter.model).toBe("google/gemini-3.1-flash-lite");
-    expect(generateTextMock).toHaveBeenCalledWith(
-      expect.objectContaining({ model: { modelId: "google/gemini-3.1-flash-lite" } }),
-    );
+    // Extraction stays on Gemini 3.1 Flash Lite, pinned to Vertex.
+    const { models, sentProviderOptions } = await fakeGateway;
+    expect(models.map((m) => m.modelId)).toEqual(["google/gemini-3.1-flash-lite"]);
+    expect(sentProviderOptions()).toEqual([
+      expect.objectContaining({ gateway: expect.objectContaining({ only: ["vertex"] }) }),
+    ]);
   });
 
   it("turns missing production config into a retryable action job failure", async () => {

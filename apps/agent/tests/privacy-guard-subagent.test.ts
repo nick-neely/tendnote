@@ -72,6 +72,10 @@ describe("Privacy Guard subagent", () => {
     expect(combined).not.toMatch(
       /\b(create|update|approve|dismiss|save|send|capture|search|get|list)_[a-z_]+\s*\(/,
     );
-    expect(combined).not.toMatch(/@tendnote\/db\/queries/);
+    // The model-call entry point is the only db module it may reach: it supplies
+    // the model and reads no owner data.
+    expect(combined.match(/@tendnote\/db\/queries\/[\w-]+/g)).toEqual([
+      "@tendnote/db/queries/model-calls",
+    ]);
   });
 });

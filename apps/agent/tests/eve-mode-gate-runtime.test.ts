@@ -12,7 +12,7 @@ type Principal = { principalType: string; attributes?: Record<string, string> };
 type EveHarnessTools = {
   buildToolSetFromDefinitions(input: { tools: readonly unknown[] }): Record<string, EveTool>;
   buildToolSetWithProviderTools(input: {
-    modelReference: { id: string };
+    modelReference: typeof ROOT_MODEL_REFERENCE;
     tools: Map<string, unknown>;
   }): Promise<Record<string, EveTool>>;
 };
@@ -126,6 +126,18 @@ function harnessWebSearchDefinition() {
   };
 }
 
+/**
+ * The root model as Eve compiles it: a model-call entry point instance, so it is
+ * source-backed and gateway-routed. Eve picks the `web_search` backend from this
+ * reference, and a source-backed reference without gateway routing loses search
+ * entirely, so the shape matters here.
+ */
+const ROOT_MODEL_REFERENCE = {
+  id: "google/gemini-3.7-flash",
+  source: { sourceKind: "module", logicalPath: "agent.ts", sourceId: "agent.ts" },
+  routing: { kind: "gateway", target: "google" },
+} as const;
+
 const WEB_OWNER: Principal = { principalType: "user", attributes: { channel: "eve" } };
 
 const FORBIDDEN_SESSIONS = [
@@ -219,7 +231,7 @@ async function buildRuntimeToolSets(current: Principal | null) {
     ["web_fetch", authoredWebFetch],
   ]);
   const providerTools = await tools.buildToolSetWithProviderTools({
-    modelReference: { id: "google/gemini-3.7-flash" },
+    modelReference: ROOT_MODEL_REFERENCE,
     tools: staticTools,
   });
   const dynamicTools = tools.buildToolSetFromDefinitions({

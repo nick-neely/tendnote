@@ -5,8 +5,9 @@ import {
   suggestedActionExtractionAdapterResultSchema,
   suggestedActionExtractionPromptVersion,
 } from "@tendnote/domain";
-import { gateway, generateText, Output } from "ai";
+import { generateText, Output } from "ai";
 import { resolveExtractionModel } from "../extraction-model";
+import { hostedModel } from "../model-calls";
 
 type SuggestedActionExtractionEnv = Record<string, string | undefined>;
 
@@ -79,7 +80,7 @@ export function createAiSdkSuggestedActionExtractionAdapter(
       requireExtractionCredentials(env);
 
       const result = await generateText({
-        model: gateway(model),
+        model: hostedModel({ modelId: model, costCategory: "background" }),
         output: Output.object({
           schema: suggestedActionExtractionAdapterResultSchema,
           name: "suggested_action_extraction",

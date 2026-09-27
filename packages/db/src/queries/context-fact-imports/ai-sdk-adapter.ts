@@ -8,13 +8,14 @@ import {
   MAX_CONTEXT_FACT_IMPORT_CANDIDATES,
   MAX_CONTEXT_FACT_IMPORT_EVIDENCE_LENGTH,
 } from "@tendnote/domain";
-import { gateway, generateText, Output } from "ai";
+import { generateText, Output } from "ai";
 import {
   type AiGatewayEnv,
   hasAiGatewayCredentials,
   requireAiGatewayCredentials,
 } from "../ai-gateway-credentials";
 import { resolveExtractionModel } from "../extraction-model";
+import { hostedModel } from "../model-calls";
 
 export type AiSdkContextFactImportAdapterOptions = {
   model?: string;
@@ -61,7 +62,7 @@ export function createAiSdkContextFactImportAdapter(
       requireAiGatewayCredentials("Self Context import", env);
 
       const result = await generateText({
-        model: gateway(model),
+        model: hostedModel({ modelId: model, costCategory: "background" }),
         output: Output.object({
           schema: contextFactImportAdapterResultSchema,
           name: "context_fact_import",

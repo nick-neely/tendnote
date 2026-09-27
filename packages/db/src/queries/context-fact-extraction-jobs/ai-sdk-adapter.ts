@@ -5,9 +5,10 @@ import {
   contextFactExtractionAdapterResultSchema,
   contextFactExtractionPromptVersion,
 } from "@tendnote/domain";
-import { gateway, generateText, Output } from "ai";
+import { generateText, Output } from "ai";
 import { hasAiGatewayCredentials, requireAiGatewayCredentials } from "../ai-gateway-credentials";
 import { resolveExtractionModel } from "../extraction-model";
+import { hostedModel } from "../model-calls";
 
 type ContextFactExtractionEnv = Record<string, string | undefined>;
 
@@ -60,7 +61,7 @@ export function createAiSdkContextFactExtractionAdapter(
       requireAiGatewayCredentials("Context Fact extraction", env);
 
       const result = await generateText({
-        model: gateway(model),
+        model: hostedModel({ modelId: model, costCategory: "background" }),
         output: Output.object({
           schema: contextFactExtractionAdapterResultSchema,
           name: "context_fact_extraction",

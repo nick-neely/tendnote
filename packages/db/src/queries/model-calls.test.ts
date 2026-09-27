@@ -1,7 +1,7 @@
-import { generateText, streamText } from "ai";
+import { embed, generateText, streamText } from "ai";
 import { describe, expect, it } from "vitest";
 import { fakeGatewayProvider } from "./model-call-fixtures";
-import { hostedModel } from "./model-calls";
+import { hostedEmbeddingModel, hostedModel } from "./model-calls";
 
 describe("hostedModel", () => {
   it("sends Gemini models to Vertex only, with the privacy flags and the cost category", async () => {
@@ -110,5 +110,44 @@ describe("hostedModel", () => {
       hostedModel({ modelId: "anthropic/claude-test", costCategory: "background" }, fake.provider),
     ).toThrow(/no pinned provider/i);
     expect(fake.models).toEqual([]);
+  });
+});
+
+describe("hostedEmbeddingModel", () => {
+  it("sends OpenAI embeddings to OpenAI only, with the privacy flags and the cost category", async () => {
+    const fake = fakeGatewayProvider();
+
+    const { embedding } = await embed({
+      model: hostedEmbeddingModel(
+        { modelId: "openai/text-embedding-3-small", costCategory: "background" },
+        fake.provider.embeddingModel,
+      ),
+      value: "gift ideas",
+    });
+
+    expect(embedding).toEqual([0.1, 0.2, 0.3]);
+    expect(fake.embeddingModels.map((m) => m.modelId)).toEqual(["openai/text-embedding-3-small"]);
+    expect(fake.sentProviderOptions()).toEqual([
+      {
+        gateway: {
+          zeroDataRetention: true,
+          disallowPromptTraining: true,
+          only: ["openai"],
+          tags: ["cost:background"],
+        },
+      },
+    ]);
+  });
+
+  it("refuses an embedding model with no pinned provider", () => {
+    const fake = fakeGatewayProvider();
+
+    expect(() =>
+      hostedEmbeddingModel(
+        { modelId: "cohere/embed-test", costCategory: "background" },
+        fake.provider.embeddingModel,
+      ),
+    ).toThrow(/no pinned provider/i);
+    expect(fake.embeddingModels).toEqual([]);
   });
 });

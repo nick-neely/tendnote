@@ -1,13 +1,18 @@
 import type { DraftGroundedContext } from "@tendnote/domain";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultDraftAdapter } from "../drafts";
 
-const aiMock = vi.hoisted(() => ({
-  gateway: vi.fn((modelId: string) => ({ modelId })),
-  generateText: vi.fn(async () => ({ text: "LLM-written draft body." })),
-}));
+// The real AI SDK runs against a fake gateway, so the test sees the request the
+// model-call entry point actually sends.
+const fakeGateway = vi.hoisted(async () => {
+  const { fakeGatewayProvider } = await import("../model-call-fixtures");
+  return fakeGatewayProvider("LLM-written draft body.");
+});
 
-vi.mock("ai", () => aiMock);
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("ai")>()),
+  gateway: (await fakeGateway).provider,
+}));
 
 function grounded(): DraftGroundedContext {
   return {
@@ -20,6 +25,10 @@ function grounded(): DraftGroundedContext {
   };
 }
 
+beforeEach(async () => {
+  (await fakeGateway).reset();
+});
+
 describe("createDefaultDraftAdapter", () => {
   it("uses the deterministic, source-grounded draft when no gateway credentials exist", async () => {
     // This is the standard-verification path: no network, no live model.
@@ -29,27 +38,35 @@ describe("createDefaultDraftAdapter", () => {
 
     expect(result.provenance.generator).toBe("deterministic");
     expect(result.body.toLowerCase()).toContain("denver");
-    expect(aiMock.generateText).not.toHaveBeenCalled();
+    expect((await fakeGateway).models).toEqual([]);
   });
 
-  it("calls the gateway model when credentials are present (credential-gated live path)", async () => {
-    aiMock.generateText.mockClear();
-    aiMock.gateway.mockClear();
+  it("calls the model through the entry point when credentials are present", async () => {
     const adapter = createDefaultDraftAdapter({
       AI_GATEWAY_API_KEY: "test-key",
-      TENDNOTE_DRAFT_MODEL: "anthropic/claude-test",
+      TENDNOTE_DRAFT_MODEL: "google/gemini-test",
     });
 
     const result = await adapter(grounded());
 
     expect(result.body).toBe("LLM-written draft body.");
-    expect(result.provenance).toEqual({ generator: "llm", version: "llm:anthropic/claude-test" });
-    expect(aiMock.gateway).toHaveBeenCalledWith("anthropic/claude-test");
-    expect(aiMock.generateText).toHaveBeenCalledTimes(1);
+    expect(result.provenance).toEqual({ generator: "llm", version: "llm:google/gemini-test" });
+    const { models, sentProviderOptions } = await fakeGateway;
+    expect(models.map((m) => m.modelId)).toEqual(["google/gemini-test"]);
+    expect(sentProviderOptions()).toEqual([
+      {
+        gateway: {
+          zeroDataRetention: true,
+          disallowPromptTraining: true,
+          only: ["vertex"],
+          tags: ["cost:background"],
+        },
+      },
+    ]);
   });
 
   it("falls back to the deterministic draft when the model returns empty text", async () => {
-    aiMock.generateText.mockResolvedValueOnce({ text: "   " });
+    (await fakeGateway).respondWith("   ");
     const adapter = createDefaultDraftAdapter({ AI_GATEWAY_API_KEY: "test-key" });
 
     const result = await adapter(grounded());
