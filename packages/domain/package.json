@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./access": "./src/access.ts",
     "./admission": "./src/admission.ts",
+    "./region-block": "./src/region-block.ts",
     "./assets": "./src/assets.ts",
     "./assistant-conversations": "./src/assistant-conversations.ts",
     "./assistant-sources": "./src/assistant-sources.ts",
