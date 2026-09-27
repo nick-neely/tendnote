@@ -56,6 +56,8 @@ describe("the model-call completeness check", () => {
     fails(`import ai from "ai";`, 'imports default from "ai"');
     fails(`const { gateway } = await import("ai");`, "loads the AI SDK dynamically");
     fails(`const { google } = require("@ai-sdk/google");`, "loads the AI SDK dynamically");
+    fails("const { gateway } = await import(`ai`);", "loads the AI SDK dynamically");
+    fails("const { google } = require(`@ai-sdk/google`);", "loads the AI SDK dynamically");
     fails(`export { gateway } from "ai";`, 're-exports gateway from "ai"');
     fails(`export { generateText } from "ai";`, 're-exports generateText from "ai"');
     fails(`export * from "ai";`, 're-exports all of "ai"');

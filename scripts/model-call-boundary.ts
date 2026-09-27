@@ -179,13 +179,23 @@ function readImports(program: Node): ModuleReach {
   return reach;
 }
 
+/** A string literal's value, including a template literal with no substitutions. */
+function staticString(node: Node | undefined) {
+  if (node?.type !== "TemplateLiteral") return nameOf(node);
+  const [quasi] = children(node, "quasis");
+  return children(node, "expressions").length
+    ? undefined
+    : (quasi?.value as Node | undefined)?.cooked;
+}
+
 /** Whether a node is a dynamic `import()` or `require()` of a model SDK. */
 function loadsModelSdk(node: Node) {
   const dynamic =
     node.type === "ImportExpression" ||
     (node.type === "CallExpression" && nameOf(child(node, "callee")) === "require");
-  const loaded = dynamic ? nameOf(child(node, "source") ?? children(node, "arguments")[0]) : "";
-  return !!loaded && MODEL_SDK_SPECIFIER.test(loaded) && loaded !== AI_SDK_MOCKS;
+  const specifier = child(node, "source") ?? children(node, "arguments")[0];
+  const loaded = dynamic ? staticString(specifier) : "";
+  return typeof loaded === "string" && MODEL_SDK_SPECIFIER.test(loaded) && loaded !== AI_SDK_MOCKS;
 }
 
 /** Whether an identifier names a binding, as opposed to a key, member, or import slot. */
