@@ -22,10 +22,12 @@ tickets, listed at the end.
 - No per-account token or spend accounting exists. Provenance fields record
   which model produced an output, not what it cost. The gateway's spend logs
   are keyed by request, not by Tendnote account.
-- The tool-surface reduction in
+- When this was written, the tool-surface reduction in
   [ADR 0227](../adr/0227-eve-interactive-tool-surface-uses-progressive-disclosure.md)
-  is recorded but not built. Every interactive turn still ships all authored
-  tool schemas, measured there at roughly 17.7k fixed input tokens per turn.
+  was recorded but not built, and every interactive turn shipped every authored
+  tool schema. It is now built. The ADR's evidence puts the fixed input at about
+  39.8k tokens per turn before disclosure and about 11.2k after. The 17.7k first
+  recorded there was an undercount.
 - The deterministic Eve eval suite has executed. The preserved bundles under
   `evidence/evals/` are non-clean, and the owner reports a clean local run that
   failed in GitHub Actions on flake. Runs cost real money and vary between

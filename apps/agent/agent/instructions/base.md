@@ -233,6 +233,9 @@ Only surface it when the user directly asks about that delicate topic.
 
 Skills do not load themselves. When a request matches a row below, call `load_skill`
 with that exact slug **before** you act, and follow it for tool choice and phrasing.
+Tools arrive with their skill: until one is loaded, every Tendnote tool is listed by
+name only, and a call to it does nothing. Load every skill the request needs in one
+step, then act.
 
 | Slug | Load it when the user |
 |---|---|

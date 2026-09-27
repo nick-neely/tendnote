@@ -12,8 +12,8 @@ import { withheldTool } from "../lib/withheld-tool";
  * Families' schemas off the interactive surface. The family table and the rule
  * live in `lib/tool-disclosure.ts`; this file only applies them.
  *
- * Each undisclosed family tool is rebound to an inert definition with no input
- * schema whose description names the skill that discloses it. The model still
+ * Each undisclosed tool is rebound to an inert definition with no input schema
+ * whose description names the skills that disclose it. The model still
  * sees the name, which is how it knows what loading the skill will give it; it
  * does not pay for the schema until then.
  *
@@ -40,6 +40,13 @@ function undisclosedThisStep(ctx: DynamicResolveContext): readonly UndisclosedTo
   }
 }
 
+/** `"a"`, `"a" or "b"`, `"a", "b", or "c"`: the skills to load, as the model reads them. */
+function skillChoice(skills: readonly string[]): string {
+  const quoted = skills.map((skill) => `"${skill}"`);
+  if (quoted.length <= 2) return quoted.join(" or ");
+  return `${quoted.slice(0, -1).join(", ")}, or ${quoted.at(-1)}`;
+}
+
 export default defineDynamic({
   events: {
     "step.started": (_event, ctx) => {
@@ -47,12 +54,13 @@ export default defineDynamic({
       if (undisclosed.length === 0) return null;
 
       const withheld: Record<string, DynamicToolSet[string]> = {};
-      for (const { tool, family } of undisclosed) {
-        withheld[tool] = withheldTool(`Not loaded: call load_skill with "${family}" to use it.`, {
+      for (const { tool, skills } of undisclosed) {
+        const choice = skillChoice(skills);
+        withheld[tool] = withheldTool(`Not loaded: call load_skill with ${choice} to use it.`, {
           performed: false,
           tool,
-          skill: family,
-          message: `${tool} is not loaded yet, so nothing was done. Call load_skill with "${family}", then call ${tool} again.`,
+          skills,
+          message: `${tool} is not loaded yet, so nothing was done. Call load_skill with ${choice}, then call ${tool} again.`,
         });
       }
       return withheld;

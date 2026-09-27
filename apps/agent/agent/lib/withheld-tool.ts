@@ -3,7 +3,7 @@ import { z } from "zod";
 
 /**
  * What a withheld tool reports when the model calls it anyway: that nothing
- * happened, and why. `mode` is set by the Eve mode gate, `skill` by progressive
+ * happened, and why. `mode` is set by the Eve mode gate, `skills` by progressive
  * disclosure.
  */
 export type WithheldToolResult = {
@@ -11,7 +11,7 @@ export type WithheldToolResult = {
   readonly tool: string;
   readonly message: string;
   readonly mode?: string;
-  readonly skill?: string;
+  readonly skills?: readonly string[];
 };
 
 /**
