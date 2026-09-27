@@ -12,6 +12,7 @@ import * as schema from "@tendnote/db/schema";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getRedis } from "@/lib/cache/redis";
 import { accountEmailHooks } from "./account-email";
+import { createClickwrapHooks } from "./clickwrap";
 import {
   discordEnvFromProcess,
   discordSocialProvider,
@@ -49,14 +50,20 @@ function createSocialProviders() {
 }
 
 function createDatabaseHooks() {
+  const clickwrap = createClickwrapHooks();
   return {
     user: {
       create: {
-        after: async (user: { id: string }) => {
+        before: async (_user: unknown, context: { body?: unknown } | null) => {
+          // Hosted account creation requires clickwrap acceptance (#613).
+          await clickwrap.requireAcceptance(context);
+        },
+        after: async (user: { id: string }, context: { body?: unknown } | null) => {
           // Every new signup gets a durable pending profile. Production admission
           // is resolved by the explicit hosted/self-hosted policy; local demo
           // access uses its separate loopback-only owner path.
           await ensureAccessProfile({ userId: user.id });
+          await clickwrap.recordAcceptance(user, context);
         },
       },
     },

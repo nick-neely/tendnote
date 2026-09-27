@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { signIn, signUp } from "@/lib/auth/client";
+import {
+  type ClickwrapDocument,
+  ClickwrapFields,
+  clickwrapAcceptance,
+  isClickwrapComplete,
+  UNACCEPTED_CLICKWRAP,
+} from "./clickwrap-fields";
 import { GithubSignInButton } from "./github-sign-in-button";
 
 type Mode = "sign-in" | "sign-up";
@@ -25,6 +32,8 @@ const COPY = {
     submit: "Create account",
     pending: "Creating your account…",
     fallbackError: "We couldn't create your account. Try again in a moment.",
+    clickwrapError:
+      "Accept the Terms of Service and Privacy Policy, and confirm you live in the United States and are 18 or older.",
     switchPrompt: "Already have an account?",
     switchHref: "/sign-in",
     switchLabel: "Sign in",
@@ -36,16 +45,23 @@ export function CredentialsForm({
   mode,
   githubEnabled = false,
   returnTo = "/",
+  clickwrap,
 }: {
   mode: Mode;
   githubEnabled?: boolean;
   returnTo?: string;
+  /** Hosted sign-up only: the legal documents to accept before creating an account. */
+  clickwrap?: readonly ClickwrapDocument[];
 }) {
   const router = useRouter();
   const copy = COPY[mode];
   const formId = useId();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clickwrapState, setClickwrapState] = useState(UNACCEPTED_CLICKWRAP);
+  const legalAcceptance =
+    clickwrap && isClickwrapComplete(clickwrapState) ? clickwrapAcceptance(clickwrap) : undefined;
+  const awaitingAcceptance = Boolean(clickwrap) && !legalAcceptance;
 
   // fallow-ignore-next-line complexity -- One submit transaction owns validation, auth, error recovery, and navigation.
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -60,13 +76,23 @@ export function CredentialsForm({
     const password = String(data.get("password") ?? "");
     const name = String(data.get("name") ?? "").trim();
 
+    if (awaitingAcceptance) {
+      setError(COPY["sign-up"].clickwrapError);
+      return;
+    }
+
+    // Better Auth passes extra sign-up body fields through to the account-create
+    // hook, which is where hosted clickwrap is enforced; its client type does
+    // not list them, so the field travels as an untyped extra.
+    const clickwrapBody: Record<string, unknown> = legalAcceptance ? { legalAcceptance } : {};
+
     setPending(true);
     setError(null);
 
     try {
       const { error: requestError } =
         mode === "sign-up"
-          ? await signUp.email({ email, password, name: name || email })
+          ? await signUp.email({ email, password, name: name || email, ...clickwrapBody })
           : await signIn.email({ email, password });
 
       if (requestError) {
@@ -90,9 +116,20 @@ export function CredentialsForm({
 
   return (
     <div className="flex flex-col gap-4">
+      {clickwrap ? (
+        <ClickwrapFields
+          disabled={pending}
+          documents={clickwrap}
+          onChange={setClickwrapState}
+          state={clickwrapState}
+        />
+      ) : null}
+
       {githubEnabled ? (
         <>
           <GithubSignInButton
+            additionalData={legalAcceptance ? { legalAcceptance } : undefined}
+            disabled={awaitingAcceptance}
             label={mode === "sign-up" ? "Sign up with GitHub" : "Continue with GitHub"}
             returnTo={returnTo}
           />

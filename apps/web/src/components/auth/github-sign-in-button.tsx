@@ -12,9 +12,14 @@ import { signIn } from "@/lib/auth/client";
  * email/password users, since the user-create hook gives every signup a profile.
  */
 export function GithubSignInButton({
+  additionalData,
+  disabled = false,
   label,
   returnTo = "/",
 }: {
+  /** Carried through the OAuth flow to the account-create hook, e.g. clickwrap acceptance. */
+  additionalData?: Record<string, unknown>;
+  disabled?: boolean;
   label: string;
   returnTo?: string;
 }) {
@@ -28,7 +33,7 @@ export function GithubSignInButton({
     setPending(true);
 
     try {
-      await signIn.social({ provider: "github", callbackURL: returnTo });
+      await signIn.social({ provider: "github", callbackURL: returnTo, additionalData });
     } catch {
       // signIn.social redirects on success; only a failure to start returns here.
       setPending(false);
@@ -38,7 +43,7 @@ export function GithubSignInButton({
   return (
     <Button
       className="w-full"
-      disabled={pending}
+      disabled={pending || disabled}
       onClick={handleSignIn}
       type="button"
       variant="outline"
