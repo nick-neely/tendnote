@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { resolveBetterAuthBaseUrl } from "@tendnote/auth";
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { getBetterAuthSecret } from "@/lib/auth/server";
 import { discordEnvFromProcess } from "@/lib/auth/social";
@@ -20,6 +20,10 @@ import {
  * so an install can never be attributed to anyone but the initiating session.
  */
 export async function GET(): Promise<Response> {
+  // Nothing below reads the request, so without this the build would try to
+  // prerender a flow that only makes sense for a signed-in owner.
+  await connection();
+
   // Inert when Discord OAuth credentials are not configured server-side. Reading
   // the credentials here both gates the flow and narrows `clientId` to a string.
   const { clientId, clientSecret } = discordEnvFromProcess();
