@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -220,5 +221,24 @@ describe("progressive disclosure at eve's dynamic tool lifecycle", () => {
 
     expect(await interactive.run("add_gift_idea")).toMatchObject({ skill: "household-and-gifts" });
     expect(await scheduled.run("add_gift_idea")).toMatchObject({ mode: "scheduled_workflow" });
+  });
+});
+
+describe("the shared inert definition under eve's build transform", () => {
+  it("hoists one callback whose only capture is the result", async () => {
+    // The runtime tests above stamp `withheldToolCallback` by hand. This proves
+    // that is what eve's own transform produces from `lib/withheld-tool.ts`: an
+    // untransformed `execute` would make eve skip both resolvers, and the mode
+    // gate failing that way fails open.
+    const { transformDynamicToolExecute } = await loadEveInternal<{
+      transformDynamicToolExecute(id: string, code: string): Promise<{ code: string } | null>;
+    }>("dist/src/internal/workflow-bundle/dynamic-tool-transform.js");
+    const path = join(import.meta.dirname, "../agent/lib/withheld-tool.ts");
+    const transformed = await transformDynamicToolExecute(path, readFileSync(path, "utf8"));
+
+    const code = transformed?.code ?? "";
+    expect(code).toContain("__eveStampDynamicCallback(");
+    expect(code.match(/function __eve_dynamic_exec_\d+\(/g)).toHaveLength(1);
+    expect(code).toMatch(/const \{ result \} = __vars;\s*return result;/);
   });
 });

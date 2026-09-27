@@ -30,7 +30,7 @@ import { withheldTool } from "../lib/withheld-tool";
  * every turn shipped before disclosure existed.
  */
 
-function withheldSchemas(ctx: DynamicResolveContext): readonly UndisclosedTool[] {
+function undisclosedThisStep(ctx: DynamicResolveContext): readonly UndisclosedTool[] {
   try {
     // Optional all the way down, the way the mode gate reads its session.
     const mode = resolveSessionEveMode(ctx.session?.auth?.current ?? null);
@@ -43,7 +43,7 @@ function withheldSchemas(ctx: DynamicResolveContext): readonly UndisclosedTool[]
 export default defineDynamic({
   events: {
     "step.started": (_event, ctx) => {
-      const undisclosed = withheldSchemas(ctx);
+      const undisclosed = undisclosedThisStep(ctx);
       if (undisclosed.length === 0) return null;
 
       const withheld: Record<string, DynamicToolSet[string]> = {};
