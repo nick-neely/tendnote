@@ -6,7 +6,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./access": "./src/access.ts",
+    "./activation-milestones": "./src/activation-milestones.ts",
     "./admission": "./src/admission.ts",
+    "./region-block": "./src/region-block.ts",
     "./assets": "./src/assets.ts",
     "./assistant-conversations": "./src/assistant-conversations.ts",
     "./assistant-sources": "./src/assistant-sources.ts",
@@ -25,6 +27,7 @@
     "./household-overview": "./src/household-overview.ts",
     "./household-policy": "./src/household-policy.ts",
     "./households": "./src/households.ts",
+    "./legal-documents": "./src/legal-documents.ts",
     "./people": "./src/people.ts",
     "./memories": "./src/memories.ts",
     "./context-snapshots": "./src/context-snapshots.ts",

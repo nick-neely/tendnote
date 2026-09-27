@@ -78,7 +78,9 @@ The policy is deliberately explicit:
 
 - An absent `TENDNOTE_ADMISSION_MODE` means `hosted`. Hosted Private Beta
   Access continues to use Vercel Flags, and an unavailable Flags evaluation
-  leaves an account pending unless a durable grant already exists.
+  leaves an account pending unless a durable grant already exists. Hosted mode
+  also turns on the hosted-only Region Block and the hosted Terms clickwrap at
+  sign-up, so a self-hosted deployment must set `self-hosted` explicitly.
 - `self-hosted` is accepted only with one valid email. The configured address
   is normalized and compared with the authenticated Better Auth session email.
   A first visitor never wins by arrival order.

@@ -58,3 +58,13 @@ guidance](https://www.linuxfoundation.org/legal/generative-ai), and Apache's
 [generative tooling guidance](https://www.apache.org/legal/generative-tooling.html).
 Those sources are attribution and background only; they are not incorporated
 by reference into the agreements.
+
+## Hosted service documents
+
+The hosted launch documents live beside this packet and are versioned and
+dated the same way: the [Terms of Service](terms-of-service.md) and the
+[Privacy Policy](privacy-policy.md). The current versions are listed in
+`packages/domain/src/legal-documents.ts`, which is what sign-up records on each
+Acceptance Record. Both are placeholders until counsel review
+([#658](https://github.com/nick-neely/tendnote/issues/658)); publishing a new
+version means adding its text here and bumping that list together.

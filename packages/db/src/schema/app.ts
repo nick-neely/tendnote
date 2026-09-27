@@ -1,4 +1,6 @@
+export * from "./app/acceptance-records";
 export * from "./app/access-profiles";
+export * from "./app/activation-milestones";
 export * from "./app/asset-evidence";
 export * from "./app/asset-links";
 export * from "./app/asset-memories";

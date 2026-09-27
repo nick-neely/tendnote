@@ -8,6 +8,7 @@ import { and, asc, eq, inArray, lte } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import { followups } from "../../schema";
+import { recordActivationMilestone } from "../activation-milestones";
 import { createDrizzleHouseholdStore } from "../households/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
@@ -33,6 +34,13 @@ export function createDrizzleFollowupStore(): FollowupStore {
 
       if (!followup) {
         throw new Error("Failed to create follow-up.");
+      }
+
+      if (followup.status === "open") {
+        await recordActivationMilestone({
+          userId: followup.ownerUserId,
+          milestone: "first_followup_scheduled",
+        });
       }
 
       return followup;
@@ -82,6 +90,13 @@ export function createDrizzleFollowupStore(): FollowupStore {
 
       if (!followup) {
         throw new Error("Follow-up not found.");
+      }
+
+      if (patch.status === "open") {
+        await recordActivationMilestone({
+          userId: followup.ownerUserId,
+          milestone: "first_followup_scheduled",
+        });
       }
 
       return followup;

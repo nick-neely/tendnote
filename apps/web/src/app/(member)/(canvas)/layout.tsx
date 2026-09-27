@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/app-shell";
+import { ServiceNotice } from "@/components/service-notice-banner";
 import { readViewerHouseholdAccess } from "@/lib/household/viewer-household-access";
 
 /**
@@ -12,7 +13,7 @@ import { readViewerHouseholdAccess } from "@/lib/household/viewer-household-acce
  */
 export default function CanvasLayout({ children }: { children: React.ReactNode }) {
   return (
-    <AppShell canvas viewerStandings={readViewerHouseholdAccess()}>
+    <AppShell canvas notice={<ServiceNotice />} viewerStandings={readViewerHouseholdAccess()}>
       {children}
     </AppShell>
   );

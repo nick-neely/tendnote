@@ -1,4 +1,6 @@
 import { HOUSEHOLD_RECORD_OWNERSHIP_VALUES } from "@tendnote/domain";
+import { ACTIVATION_MILESTONES } from "@tendnote/domain/activation-milestones";
+import { LEGAL_DOCUMENT_KEYS } from "@tendnote/domain/legal-documents";
 import { pgEnum } from "drizzle-orm/pg-core";
 
 export const accessStatus = pgEnum("access_status", ["pending", "granted", "denied"]);
@@ -23,6 +25,13 @@ export const selfContextOnboardingStatus = pgEnum("self_context_onboarding_statu
 // third, wider member on purpose - external egress, deletion, household-visible
 // writes, and restricted reveals always ask.
 export const eveApprovalMode = pgEnum("eve_approval_mode", ["ask", "trusted"]);
+
+// The hosted launch documents an Acceptance Record can name (#613).
+export const legalDocumentKey = pgEnum("legal_document_key", LEGAL_DOCUMENT_KEYS);
+
+// The closed Activation Milestone set (ADR 0242). Extending it is a product
+// decision that changes a disclosed boundary, so it is an enum, not free text.
+export const activationMilestone = pgEnum("activation_milestone", ACTIVATION_MILESTONES);
 
 export const relationshipType = pgEnum("relationship_type", [
   "friend",

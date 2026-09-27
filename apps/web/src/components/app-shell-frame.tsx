@@ -41,12 +41,15 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 export function AppShellFrame({
   canvas = false,
   children,
+  notice,
   standings,
   tools,
 }: {
   /** This route brings its own rail; the shell mounts no provider. See above. */
   canvas?: boolean;
   children: ReactNode;
+  /** The Service Notice banner, shown under the header beside the rail. */
+  notice?: ReactNode;
   /** The viewer's conditional destinations, unwrapped inside whichever rail. */
   standings: Promise<ViewerStandings>;
   /** Search and appearance: tools, not destinations, so they sit in the header. */
@@ -67,6 +70,7 @@ export function AppShellFrame({
         <CanvasNavigationRail standings={standings} />
         <div className="relative flex min-w-0 flex-1 flex-col">
           <ShellHeader tools={tools} />
+          {notice}
           {children}
         </div>
       </div>
@@ -90,6 +94,7 @@ export function AppShellFrame({
           }
           tools={tools}
         />
+        {notice}
         {children}
       </div>
     </SidebarProvider>

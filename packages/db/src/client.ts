@@ -78,6 +78,19 @@ export async function withDatabaseTransaction<T>(fn: () => Promise<T>): Promise<
   return getDb().transaction((tx) => transactionContext.run(tx, fn));
 }
 
+/**
+ * Run a side write so its failure can never abort the caller's transaction.
+ * Inside `withDatabaseTransaction` it runs in a savepoint on the same
+ * connection (no second pool connection, so no pool starvation), and a failure
+ * rolls back only the savepoint; outside one it simply runs.
+ */
+export async function withIsolatedSideWrite<T>(fn: () => Promise<T>): Promise<T> {
+  if (!transactionContext.getStore()) {
+    return fn();
+  }
+  return getDb().transaction((savepoint) => transactionContext.run(savepoint, fn));
+}
+
 export async function closeDb() {
   await postgresClient?.end();
   postgresClient = undefined;

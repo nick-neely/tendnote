@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { ServiceNotice } from "@/components/service-notice-banner";
 import { TendnoteLogo } from "@/components/tendnote-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -25,6 +26,8 @@ export function AuthScaffold({
         <ThemeToggle />
       </div>
       <div className="flex w-full max-w-sm flex-col gap-6 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-500 motion-safe:ease-out">
+        {/* Sign-in and the pending areas are reachable during an incident too. */}
+        <ServiceNotice rounded />
         <div className="flex flex-col items-center gap-4 text-center">
           <Link
             href="/"
