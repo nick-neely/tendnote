@@ -6,7 +6,7 @@ import type { FirstValueStep } from "./activation-milestones/types";
 // The root connection, not the ambient transaction: a failed milestone insert
 // inside the owner's transaction would abort it even though the error is caught.
 const defaultActivationMilestoneQueries = createActivationMilestoneQueries(
-  createDrizzleActivationMilestoneStore(getRootDb),
+  createDrizzleActivationMilestoneStore(() => getRootDb()),
 );
 
 /**
