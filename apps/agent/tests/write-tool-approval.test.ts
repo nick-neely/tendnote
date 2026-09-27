@@ -119,6 +119,7 @@ const UNGATED_TOOLS = [
   "connection_search",
   "conversation_taint_gate",
   "eve_mode_gate",
+  "eve_tool_disclosure",
   "get_asset_context",
   "get_gift_plan",
   "get_self_context_fact",
