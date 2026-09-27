@@ -3,8 +3,8 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { EVE_SKILL_NAMES, toolsUnavailableInMode } from "../agent/lib/eve-modes";
-import { TOOL_FAMILY_NAMES, toolFamilyMembers } from "../agent/lib/tool-disclosure";
+import { EVE_SKILL_NAMES, EVE_TOOL_NAMES, toolsUnavailableInMode } from "../agent/lib/eve-modes";
+import { toolFamilyMembers } from "../agent/lib/tool-disclosure";
 import gate from "../agent/tools/eve_mode_gate";
 import disclosure from "../agent/tools/eve_tool_disclosure";
 
@@ -180,7 +180,6 @@ async function resolveNextStep(
 
 const WEB_OWNER: Principal = { principalType: "user", attributes: { channel: "eve" } };
 const SCHEDULE: Principal = { principalType: "runtime" };
-const FAMILY_TOOLS = TOOL_FAMILY_NAMES.flatMap((family) => toolFamilyMembers(family));
 const EVERY_SKILL_LOADED = EVE_SKILL_NAMES.map((skill) => ({
   role: "assistant",
   content: [
@@ -189,14 +188,14 @@ const EVERY_SKILL_LOADED = EVE_SKILL_NAMES.map((skill) => ({
 }));
 
 describe("progressive disclosure at eve's dynamic tool lifecycle", () => {
-  it("withholds every family schema from a new interactive conversation, and nothing else", async () => {
+  it("withholds every authored schema from a new interactive conversation", async () => {
     const runtime = await loadRuntime();
     const step = await resolveStep(runtime, WEB_OWNER, []);
 
-    expect([...step.names].sort()).toEqual([...FAMILY_TOOLS].sort());
+    expect([...step.names].sort()).toEqual([...EVE_TOOL_NAMES].sort());
     expect(await step.run("save_draft_to_gmail")).toMatchObject({
       performed: false,
-      skill: "drafting",
+      skills: ["drafting"],
     });
   });
 
@@ -261,7 +260,9 @@ describe("progressive disclosure at eve's dynamic tool lifecycle", () => {
     const interactive = await resolveStep(runtime, WEB_OWNER, []);
     const scheduled = await resolveStep(runtime, SCHEDULE, []);
 
-    expect(await interactive.run("add_gift_idea")).toMatchObject({ skill: "household-and-gifts" });
+    expect(await interactive.run("add_gift_idea")).toMatchObject({
+      skills: ["household-and-gifts"],
+    });
     expect(await scheduled.run("add_gift_idea")).toMatchObject({ mode: "scheduled_workflow" });
   });
 });

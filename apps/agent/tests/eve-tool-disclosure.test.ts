@@ -31,7 +31,7 @@ const SESSIONS: ReadonlyArray<readonly [EveMode, Principal | null]> = [
   ["restricted", null],
 ];
 
-const FAMILY_TOOLS = TOOL_FAMILY_NAMES.flatMap((family) => toolFamilyMembers(family));
+const FAMILY_TOOLS = [...new Set(TOOL_FAMILY_NAMES.flatMap((family) => toolFamilyMembers(family)))];
 
 function loadSkill(skill: string, toolCallId = `call-${skill}`) {
   return {
@@ -69,43 +69,44 @@ async function gateTurn(current: Principal | null): Promise<Record<string, Dynam
   >;
 }
 
+/** The authored tools a markdown file names in backticks, the way skills document a tool. */
+function toolsNamedIn(file: string): readonly string[] {
+  const text = readFileSync(join(agentRoot, file), "utf8");
+  return EVE_TOOL_NAMES.filter((tool) => text.includes(`\`${tool}\``));
+}
+
 describe("Tool Families", () => {
   it("are keyed by the skill that discloses them and hold only authored tools", () => {
-    for (const family of TOOL_FAMILY_NAMES) {
-      expect(EVE_SKILL_NAMES, family).toContain(family);
-      for (const tool of toolFamilyMembers(family)) {
-        expect(EVE_TOOL_NAMES, `${family}/${tool}`).toContain(tool);
-      }
+    expect([...TOOL_FAMILY_NAMES].sort()).toEqual([...EVE_SKILL_NAMES].sort());
+    for (const tool of FAMILY_TOOLS) {
+      expect(EVE_TOOL_NAMES, tool).toContain(tool);
     }
   });
 
-  it("never share a tool, so one skill alone discloses each", () => {
-    expect(new Set(FAMILY_TOOLS).size).toBe(FAMILY_TOOLS.length);
+  it("cover every authored tool, so the router surface ships no authored schema", () => {
+    // ADR-0227: a tool added to `agent/tools/` must reach the interactive
+    // surface through a skill, never by default.
+    for (const tool of EVE_TOOL_NAMES) {
+      expect(FAMILY_TOOLS, tool).toContain(tool);
+    }
   });
 
-  it("hold only tools their skill documents", () => {
+  it("hold exactly the tools their skill documents, plus the ones only the base documents", () => {
     // Loading a skill discloses its family. A tool its skill never mentions
-    // would be disclosed by instructions that give no reason to use it.
-    for (const family of TOOL_FAMILY_NAMES) {
-      const skill = readFileSync(join(agentRoot, "skills", `${family}.md`), "utf8");
-      for (const tool of toolFamilyMembers(family)) {
-        expect(skill, `${family}.md must document ${tool}`).toContain(`\`${tool}\``);
-      }
-    }
-  });
+    // would be disclosed with no reason to use it; a tool it mentions but the
+    // family lacks would be named to the model and still withheld.
+    const skillDocumented = new Set(
+      EVE_SKILL_NAMES.flatMap((skill) => toolsNamedIn(`skills/${skill}.md`)),
+    );
+    const baseOnly = toolsNamedIn("instructions/base.md").filter(
+      (tool) => !skillDocumented.has(tool),
+    );
+    expect(baseOnly.length).toBeGreaterThan(0);
 
-  it("leave the everyday path on the router surface", () => {
-    for (const tool of [
-      "search_people",
-      "get_person_context",
-      "capture_saved_item",
-      "capture_memory",
-      "create_followup",
-      "search_global_recall",
-      "suggest_next_steps",
-      "web_fetch",
-    ]) {
-      expect(FAMILY_TOOLS, tool).not.toContain(tool);
+    for (const family of TOOL_FAMILY_NAMES) {
+      expect([...toolFamilyMembers(family)].sort(), family).toEqual(
+        [...toolsNamedIn(`skills/${family}.md`), ...baseOnly].sort(),
+      );
     }
   });
 });
@@ -125,9 +126,8 @@ describe("disclosedToolFamilies", () => {
     expect([...disclosed].sort()).toEqual(["drafting", "household-and-gifts"]);
   });
 
-  it("ignores skills with no family, unknown skills, and anything that is not an assistant call", () => {
+  it("ignores unknown skills and anything that is not an assistant call", () => {
     const disclosed = disclosedToolFamilies([
-      loadSkill("recall"),
       loadSkill("not-a-skill"),
       loadSkill("constructor"),
       {
@@ -158,12 +158,23 @@ describe("disclosedToolFamilies", () => {
 });
 
 describe("undisclosedTools", () => {
-  it("withholds every family schema from a new interactive conversation", () => {
+  it("withholds every authored schema from a new interactive conversation", () => {
     expect(
       undisclosedTools("web_chat", new Set())
         .map(({ tool }) => tool)
         .sort(),
-    ).toEqual([...FAMILY_TOOLS].sort());
+    ).toEqual([...EVE_TOOL_NAMES].sort());
+  });
+
+  it("names every skill that would disclose a withheld tool", () => {
+    const withheld = new Map(
+      undisclosedTools("web_chat", new Set()).map(({ tool, skills }) => [tool, skills]),
+    );
+    expect(withheld.get("save_draft_to_gmail")).toEqual(["drafting"]);
+    expect(withheld.get("search_people")).toEqual(
+      TOOL_FAMILY_NAMES.filter((family) => toolFamilyMembers(family).includes("search_people")),
+    );
+    expect(withheld.get("suggest_next_steps")).toEqual(TOOL_FAMILY_NAMES);
   });
 
   it("withholds nothing outside the interactive surface", () => {
@@ -177,10 +188,13 @@ describe("the eve_tool_disclosure resolver", () => {
   it("ships only the router surface to a new interactive conversation", async () => {
     const withheld = await disclosureStep(WEB_OWNER);
 
-    expect(Object.keys(withheld).sort()).toEqual([...FAMILY_TOOLS].sort());
+    expect(Object.keys(withheld).sort()).toEqual([...EVE_TOOL_NAMES].sort());
     const draft = withheld.create_message_draft;
-    expect(draft?.description).toContain('load_skill with "drafting"');
+    expect(draft?.description).toBe('Not loaded: call load_skill with "drafting" to use it.');
     expect(JSON.stringify(draft?.inputSchema)).not.toContain("personId");
+    expect(withheld.get_relationship_agenda?.description).toBe(
+      'Not loaded: call load_skill with "followups" or "recall" to use it.',
+    );
   });
 
   it("reports, rather than performs, a call to a tool that is not loaded", async () => {
@@ -190,7 +204,7 @@ describe("the eve_tool_disclosure resolver", () => {
     expect(result).toMatchObject({
       performed: false,
       tool: "add_gift_idea",
-      skill: "household-and-gifts",
+      skills: ["household-and-gifts"],
     });
     expect(String((result as { message: string }).message)).toContain("nothing was done");
   });
@@ -204,8 +218,18 @@ describe("the eve_tool_disclosure resolver", () => {
       expect(withheld, tool).not.toContain(tool);
     }
     for (const tool of toolFamilyMembers("drafting")) {
+      if (toolFamilyMembers("household-and-gifts").includes(tool)) continue;
       expect(withheld, tool).toContain(tool);
     }
+  });
+
+  it("discloses a tool several skills document once any one of them loads", async () => {
+    const withheld = Object.keys(await disclosureStep(WEB_OWNER, [loadSkill("drafting")]));
+
+    expect(withheld).not.toContain("search_people");
+    expect(withheld).not.toContain("suggest_next_steps");
+    // Recall documents it, drafting does not.
+    expect(withheld).toContain("get_person_context");
   });
 
   it("contributes nothing once every family is disclosed", async () => {

@@ -297,7 +297,7 @@ A bounded assistant capability profile that narrows Eve's tools, skills, and beh
 _Avoid_: Persona, workspace, unrestricted mode
 
 **Tool Family**:
-A group of Eve tools whose schemas stay off the interactive surface until the skill that documents them is loaded; every tool outside a family is the **Router Surface**, offered on every turn. Disclosing a family saves tokens and grants nothing: an Eve mode alone decides whether a tool is reachable (ADR 0227).
+The Eve tools a skill documents, whose schemas stay off the interactive surface until that skill is loaded. Every authored tool belongs to at least one family, and a tool several skills document is disclosed by any of them. The **Router Surface** is what ships before any skill loads: the framework tools plus a schema-less stub for each authored tool, naming the skills that disclose it. Disclosing a family saves tokens and grants nothing: an Eve mode alone decides whether a tool is reachable (ADR 0227).
 _Avoid_: Toolset, permission group, capability tier
 
 **Owner Approval**:
