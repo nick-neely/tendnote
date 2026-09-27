@@ -27,7 +27,8 @@ export default defineAgent({
    * `reasoning` is the provider-agnostic effort knob; eve passes it straight to
    * `streamText` (`harness/tool-loop.js`). Each provider translates it into the
    * control its own API actually wants, and every branch matters here because
-   * `TENDNOTE_AGENT_MODEL` can point at any of them:
+   * `TENDNOTE_AGENT_MODEL` can point at any model the entry point pins, Gemini
+   * or OpenAI (any other creator fails closed at startup):
    *
    * - A Gemini 3 model gets `thinkingConfig.thinkingLevel: "low"`; a Gemini 2.5
    *   model gets a computed `thinkingConfig.thinkingBudget`. Authoring a literal
@@ -35,13 +36,8 @@ export default defineAgent({
    *   keys *over* the effort-derived ones (`{...fromEffort, ...authored}`), so a
    *   Gemini 3 request would carry `thinkingLevel` and `thinkingBudget`
    *   together, two mutually exclusive thinking controls in one call.
-   * - Anthropic computes its own `thinking` block, clamped against the model's
-   *   max output tokens, and picks `{type:"adaptive", display:"summarized"}` on
-   *   models that support it. It only does that when nothing authored a
-   *   `providerOptions.anthropic.thinking` (`x.thinking ??= …`), so authoring
-   *   one would opt out of both the clamp and the newer shape. Eve's injected
-   *   `providerOptions.anthropic.metadata.userId` would survive the merge -
-   *   `mergeObjects` recurses - but there is nothing worth authoring there.
+   * - An OpenAI reasoning model gets its `reasoningEffort` from it, so an
+   *   authored `openai` block would only duplicate the effort.
    *
    * `includeThoughts` is the exception: it carries no effort semantics, it is
    * Google-only, and without it Gemini thinks silently and the disclosure has

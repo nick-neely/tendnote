@@ -8,7 +8,6 @@ import { createHarness } from "./harness";
 // The real AI SDK runs against a fake gateway, so the test sees the request the
 // model-call entry point actually sends. The two extraction pipelines keep separate
 // tests by design (#183).
-// fallow-ignore-next-line code-duplication
 const fakeGateway = vi.hoisted(async () => {
   const { fakeGatewayProvider } = await import("../model-call-fixtures");
   return fakeGatewayProvider();

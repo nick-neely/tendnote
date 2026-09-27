@@ -121,7 +121,7 @@ export function normalizeGeneratedTitle(raw: string): string | null {
 type GenerateTitle = (input: { userMessage: string; assistantReply: string }) => Promise<string>;
 
 /** Titling belongs to the Eve conversation, so it is charged as interactive. */
-export async function generateTitleWithGateway(input: {
+export async function generateConversationTitle(input: {
   userMessage: string;
   assistantReply: string;
 }): Promise<string> {
@@ -156,7 +156,7 @@ export const createAssistantConversationHook = (
   const upsert = dependencies.upsert ?? upsertAssistantConversation;
   const touch = dependencies.touch ?? touchAssistantConversation;
   const setTitle = dependencies.setTitle ?? setAssistantConversationTitle;
-  const generateTitle = dependencies.generateTitle ?? generateTitleWithGateway;
+  const generateTitle = dependencies.generateTitle ?? generateConversationTitle;
   const env = dependencies.env ?? process.env;
   const warn = dependencies.warn ?? ((message, detail) => console.warn(message, detail));
 

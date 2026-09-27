@@ -1,7 +1,7 @@
 import { generateText, type LanguageModel } from "ai";
 import { describe, expect, it, vi } from "vitest";
 import agent from "../agent/agent";
-import { generateTitleWithGateway } from "../agent/hooks/assistant-conversation";
+import { generateConversationTitle } from "../agent/hooks/assistant-conversation";
 import memoryCurator from "../agent/subagents/memory_curator/agent";
 import messageDrafter from "../agent/subagents/message_drafter/agent";
 import privacyGuard from "../agent/subagents/privacy_guard/agent";
@@ -57,7 +57,7 @@ describe("Eve's hosted models", () => {
     const earlierModels = fake.models.length;
 
     await expect(
-      generateTitleWithGateway({ userMessage: "Plan the weekend", assistantReply: "Sure." }),
+      generateConversationTitle({ userMessage: "Plan the weekend", assistantReply: "Sure." }),
     ).resolves.toBe("Weekend plans with Mara");
     const [titleModel] = fake.models.slice(earlierModels);
     expect(titleModel?.modelId).toBe("google/gemini-3.7-flash");
