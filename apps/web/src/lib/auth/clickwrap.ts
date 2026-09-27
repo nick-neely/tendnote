@@ -1,6 +1,7 @@
 import { recordAcceptances } from "@tendnote/db/queries/acceptance-records";
 import { type AdmissionEnvironment, parseAdmissionPolicy } from "@tendnote/domain/admission";
 import {
+  CLICKWRAP_REQUIRED_MESSAGE,
   CURRENT_LEGAL_DOCUMENTS,
   isCurrentClickwrapAcceptance,
 } from "@tendnote/domain/legal-documents";
@@ -11,9 +12,6 @@ import { APIError, getOAuthState } from "better-auth/api";
  * `additionalData`, that carries the sign-up form's clickwrap acceptance.
  */
 export const LEGAL_ACCEPTANCE_FIELD = "legalAcceptance";
-
-export const ACCEPTANCE_REQUIRED_MESSAGE =
-  "To create an account, accept the Terms of Service and Privacy Policy and confirm you live in the United States and are 18 or older.";
 
 /** The part of a Better Auth endpoint context the clickwrap reads. */
 type EndpointContext = { body?: unknown } | null | undefined;
@@ -63,7 +61,7 @@ export function createClickwrapHooks(dependencies: ClickwrapHookDependencies = {
       if (!isCurrentClickwrapAcceptance(await readClickwrapAcceptance(context, readOAuthState))) {
         throw new APIError("BAD_REQUEST", {
           code: "ACCEPTANCE_REQUIRED",
-          message: ACCEPTANCE_REQUIRED_MESSAGE,
+          message: CLICKWRAP_REQUIRED_MESSAGE,
         });
       }
     },

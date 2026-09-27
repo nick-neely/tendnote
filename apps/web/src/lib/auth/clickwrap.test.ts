@@ -1,9 +1,10 @@
 import {
+  CLICKWRAP_REQUIRED_MESSAGE,
   CURRENT_LEGAL_DOCUMENTS,
-  currentClickwrapAcceptance,
+  clickwrapAcceptance,
 } from "@tendnote/domain/legal-documents";
 import { describe, expect, it, vi } from "vitest";
-import { ACCEPTANCE_REQUIRED_MESSAGE, createClickwrapHooks } from "./clickwrap";
+import { createClickwrapHooks } from "./clickwrap";
 
 const HOSTED = { TENDNOTE_ADMISSION_MODE: "hosted" };
 const SELF_HOSTED = {
@@ -28,7 +29,7 @@ describe("hosted clickwrap at sign-up", () => {
     const clickwrap = hooks(HOSTED);
 
     await expect(clickwrap.requireAcceptance(emailSignUp())).rejects.toMatchObject({
-      body: { code: "ACCEPTANCE_REQUIRED", message: ACCEPTANCE_REQUIRED_MESSAGE },
+      body: { code: "ACCEPTANCE_REQUIRED", message: CLICKWRAP_REQUIRED_MESSAGE },
     });
   });
 
@@ -36,9 +37,7 @@ describe("hosted clickwrap at sign-up", () => {
     const clickwrap = hooks(HOSTED);
 
     await expect(
-      clickwrap.requireAcceptance(
-        emailSignUp({ ...currentClickwrapAcceptance(), eligible: false }),
-      ),
+      clickwrap.requireAcceptance(emailSignUp({ ...clickwrapAcceptance(), eligible: false })),
     ).rejects.toMatchObject({ body: { code: "ACCEPTANCE_REQUIRED" } });
   });
 
@@ -46,12 +45,12 @@ describe("hosted clickwrap at sign-up", () => {
     const clickwrap = hooks(HOSTED);
 
     await expect(
-      clickwrap.requireAcceptance(emailSignUp(currentClickwrapAcceptance())),
+      clickwrap.requireAcceptance(emailSignUp(clickwrapAcceptance())),
     ).resolves.toBeUndefined();
   });
 
   it("reads an OAuth sign-up's acceptance from the flow state", async () => {
-    const accepted = hooks(HOSTED, { legalAcceptance: currentClickwrapAcceptance() });
+    const accepted = hooks(HOSTED, { legalAcceptance: clickwrapAcceptance() });
     const skipped = hooks(HOSTED, { callbackURL: "/" });
 
     await expect(accepted.requireAcceptance({ body: undefined })).resolves.toBeUndefined();
@@ -63,7 +62,7 @@ describe("hosted clickwrap at sign-up", () => {
   it("records exactly the current document versions for the new account", async () => {
     const clickwrap = hooks(HOSTED);
 
-    await clickwrap.recordAcceptance({ id: "user-1" }, emailSignUp(currentClickwrapAcceptance()));
+    await clickwrap.recordAcceptance({ id: "user-1" }, emailSignUp(clickwrapAcceptance()));
 
     expect(clickwrap.record).toHaveBeenCalledWith({
       userId: "user-1",

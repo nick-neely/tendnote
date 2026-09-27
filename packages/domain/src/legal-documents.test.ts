@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CURRENT_LEGAL_DOCUMENTS,
-  currentClickwrapAcceptance,
+  clickwrapAcceptance,
   isCurrentClickwrapAcceptance,
 } from "./legal-documents";
 
@@ -22,17 +22,15 @@ describe("hosted legal documents", () => {
 
 describe("clickwrap acceptance", () => {
   it("accepts the current versions with the eligibility statement", () => {
-    expect(isCurrentClickwrapAcceptance(currentClickwrapAcceptance())).toBe(true);
+    expect(isCurrentClickwrapAcceptance(clickwrapAcceptance())).toBe(true);
   });
 
   it("refuses a sign-up without the eligibility statement", () => {
-    expect(isCurrentClickwrapAcceptance({ ...currentClickwrapAcceptance(), eligible: false })).toBe(
-      false,
-    );
+    expect(isCurrentClickwrapAcceptance({ ...clickwrapAcceptance(), eligible: false })).toBe(false);
   });
 
   it("refuses a stale or missing document version", () => {
-    const current = currentClickwrapAcceptance();
+    const current = clickwrapAcceptance();
 
     expect(
       isCurrentClickwrapAcceptance({

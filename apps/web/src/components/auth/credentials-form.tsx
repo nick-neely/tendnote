@@ -1,5 +1,6 @@
 "use client";
 
+import { CLICKWRAP_REQUIRED_MESSAGE, clickwrapAcceptance } from "@tendnote/domain/legal-documents";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useId, useState } from "react";
@@ -11,7 +12,6 @@ import { signIn, signUp } from "@/lib/auth/client";
 import {
   type ClickwrapDocument,
   ClickwrapFields,
-  clickwrapAcceptance,
   isClickwrapComplete,
   UNACCEPTED_CLICKWRAP,
 } from "./clickwrap-fields";
@@ -32,8 +32,6 @@ const COPY = {
     submit: "Create account",
     pending: "Creating your account…",
     fallbackError: "We couldn't create your account. Try again in a moment.",
-    clickwrapError:
-      "Accept the Terms of Service and Privacy Policy, and confirm you live in the United States and are 18 or older.",
     switchPrompt: "Already have an account?",
     switchHref: "/sign-in",
     switchLabel: "Sign in",
@@ -77,7 +75,7 @@ export function CredentialsForm({
     const name = String(data.get("name") ?? "").trim();
 
     if (awaitingAcceptance) {
-      setError(COPY["sign-up"].clickwrapError);
+      setError(CLICKWRAP_REQUIRED_MESSAGE);
       return;
     }
 

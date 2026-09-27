@@ -21,7 +21,7 @@ import { CredentialsForm } from "./credentials-form";
 const DOCUMENTS = [
   { key: "terms_of_service", title: "Terms of Service", version: "0.1", href: "https://x/terms" },
   { key: "privacy_policy", title: "Privacy Policy", version: "0.1", href: "https://x/privacy" },
-];
+] as const;
 const ACCEPTANCE = {
   documents: { terms_of_service: "0.1", privacy_policy: "0.1" },
   eligible: true,

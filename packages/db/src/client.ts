@@ -52,6 +52,15 @@ export function getDb(): Database {
     // root Database type here so adapters need not branch at every statement.
     return transaction as Database;
   }
+  return getRootDb();
+}
+
+/**
+ * The pooled database, never the ambient transaction. Only for side writes
+ * that must not share the caller's commit, such as an operator timestamp whose
+ * failure would otherwise abort the owner's transaction.
+ */
+export function getRootDb(): Database {
   const url = getDatabaseUrl();
 
   if (!db) {

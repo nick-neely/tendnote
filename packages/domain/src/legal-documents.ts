@@ -44,12 +44,22 @@ export type ClickwrapAcceptance = {
   eligible: boolean;
 };
 
-export function currentClickwrapAcceptance(): ClickwrapAcceptance {
+/**
+ * The acceptance a sign-up form sends for the versions it showed. Built from
+ * the rendered documents rather than the current list, so a tab left open
+ * across a new version is refused instead of recorded against unseen text.
+ */
+export function clickwrapAcceptance(
+  documents: readonly Pick<LegalDocument, "key" | "version">[] = CURRENT_LEGAL_DOCUMENTS,
+): ClickwrapAcceptance {
   return {
-    documents: Object.fromEntries(CURRENT_LEGAL_DOCUMENTS.map((doc) => [doc.key, doc.version])),
+    documents: Object.fromEntries(documents.map((doc) => [doc.key, doc.version])),
     eligible: true,
   };
 }
+
+export const CLICKWRAP_REQUIRED_MESSAGE =
+  "To create an account, accept the Terms of Service and Privacy Policy and confirm you live in the United States and are 18 or older.";
 
 /**
  * Whether a sign-up carried acceptance of every current document version plus

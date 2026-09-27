@@ -14,11 +14,14 @@ import { REPOSITORY_URL } from "@/lib/public-links";
  */
 function hostedClickwrapDocuments() {
   if (parseAdmissionPolicy(process.env).mode !== "hosted") return undefined;
+  // Link the text as deployed, which is the version being recorded, rather
+  // than whatever a later commit on main says.
+  const ref = process.env.VERCEL_GIT_COMMIT_SHA || "main";
   return CURRENT_LEGAL_DOCUMENTS.map((doc) => ({
     key: doc.key,
     title: doc.title,
     version: doc.version,
-    href: `${REPOSITORY_URL}/blob/main/${doc.path}`,
+    href: `${REPOSITORY_URL}/blob/${ref}/${doc.path}`,
   }));
 }
 

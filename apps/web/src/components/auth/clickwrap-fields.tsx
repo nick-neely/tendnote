@@ -1,11 +1,12 @@
 "use client";
 
+import type { LegalDocument } from "@tendnote/domain/legal-documents";
 import { Fragment, useId } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 
 /** One hosted legal document as the sign-up form shows it. */
-export type ClickwrapDocument = { key: string; title: string; version: string; href: string };
+export type ClickwrapDocument = Pick<LegalDocument, "key" | "title" | "version"> & { href: string };
 
 export type ClickwrapState = { documents: boolean; eligible: boolean };
 
@@ -13,18 +14,6 @@ export const UNACCEPTED_CLICKWRAP: ClickwrapState = { documents: false, eligible
 
 export function isClickwrapComplete(state: ClickwrapState): boolean {
   return state.documents && state.eligible;
-}
-
-/**
- * The acceptance the sign-up request carries: the versions this form showed,
- * so a tab left open across a new version is refused rather than recorded
- * against text the person never saw.
- */
-export function clickwrapAcceptance(documents: readonly ClickwrapDocument[]) {
-  return {
-    documents: Object.fromEntries(documents.map((doc) => [doc.key, doc.version])),
-    eligible: true,
-  };
 }
 
 /**

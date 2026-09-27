@@ -1,14 +1,12 @@
+import { getRootDb } from "../client";
 import { createDrizzleActivationMilestoneStore } from "./activation-milestones/drizzle-store";
 import { createActivationMilestoneQueries } from "./activation-milestones/queries";
 import type { FirstValueStep } from "./activation-milestones/types";
 
-export { createDrizzleActivationMilestoneStore } from "./activation-milestones/drizzle-store";
-export { createInMemoryActivationMilestoneStore } from "./activation-milestones/in-memory-store";
-export { createActivationMilestoneQueries } from "./activation-milestones/queries";
-export type * from "./activation-milestones/types";
-
+// The root connection, not the ambient transaction: a failed milestone insert
+// inside the owner's transaction would abort it even though the error is caught.
 const defaultActivationMilestoneQueries = createActivationMilestoneQueries(
-  createDrizzleActivationMilestoneStore(),
+  createDrizzleActivationMilestoneStore(getRootDb),
 );
 
 /**
