@@ -90,6 +90,20 @@ export function resolveSupportEmail(
   return null;
 }
 
+/**
+ * The support address a message must show, or a refusal by name. Every sender
+ * puts this address in the body, so a deployment without one cannot send.
+ */
+export function requireSupportEmail(): string {
+  const supportEmail = resolveSupportEmail(process.env);
+  if (!supportEmail) {
+    throw new EmailTransportUnavailableError(
+      "TENDNOTE_EMAIL_REPLY_TO is not set, so Tendnote cannot send or display a recovery contact. Add the operator support mailbox to this deployment's environment (see docs/email-setup.md).",
+    );
+  }
+  return supportEmail;
+}
+
 export function resolveSenderIdentity(env: EmailEnvironment): TransactionalSenderIdentity {
   const replyTo = resolveSupportEmail(env);
   if (!replyTo) {

@@ -71,6 +71,8 @@ export function createTendnoteAuthOptions(
 ): BetterAuthOptions {
   const baseURL = resolveBetterAuthBaseUrl(env);
   const production = env.NODE_ENV === "production";
+  const { domain: _domain, ...cookieAttributes } =
+    overrides.advanced?.defaultCookieAttributes ?? {};
 
   return {
     ...overrides,
@@ -81,6 +83,13 @@ export function createTendnoteAuthOptions(
     advanced: {
       ...overrides.advanced,
       useSecureCookies: production,
+      // Session cookies stay host-only on the base URL's host, so the product
+      // can live on its own subdomain without its session reaching siblings
+      // such as the marketing site or the `mail.` sender.
+      crossSubDomainCookies: { enabled: false },
+      ...(overrides.advanced?.defaultCookieAttributes
+        ? { defaultCookieAttributes: cookieAttributes }
+        : {}),
     },
     rateLimit: {
       ...(overrides.secondaryStorage ? { storage: "secondary-storage" as const } : {}),

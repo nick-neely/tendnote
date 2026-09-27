@@ -193,7 +193,9 @@ The retention table in the Privacy Policy is generated from a single domain
 constant set, following the
 [ADR 0221](../adr/0221-household-erasure-closes-the-recovery-window-it-opens.md)
 pattern: the copy and the sweep read one value, so what the product promises
-and what actually gets deleted cannot drift.
+and what actually gets deleted cannot drift. The constants live in
+`packages/domain/src/retention.ts` and the generated table in
+[docs/legal/privacy-retention-table.md](../legal/privacy-retention-table.md).
 
 | Data | Retained |
 | --- | --- |
@@ -396,7 +398,7 @@ reviews it. This is a planning table, not policy text.
 | Content never sold or used for advertising | Terms and Privacy Policy; no advertising sub-processor | Decided, undrafted | counsel review |
 | Content not used to train models | Provider contract terms | Decided, unverified | agent research ([#581](https://github.com/nick-neely/tendnote/issues/581)) |
 | Assistant reads only within the customer's scopes | Existing scope enforcement and Privacy Guard, already built and tested | Enforced today | owner-decided |
-| Retention table matches the sweep | Single domain constant set, ADR 0221 pattern | Decided, unbuilt | owner-decided |
+| Retention table matches the sweep | Single domain constant set, ADR 0221 pattern | Table generated from the constants, which the household and audit sweeps read; later sweeps must read the same set | owner-decided |
 | Lapsed content deleted after ninety days | Retention deadline plus background sweep | Decided, unbuilt | owner-decided |
 | Deleted content gone from backups within the seven-day Backup Window | Neon history set to the Backup Window constant (currently 21600 seconds, raised at launch); no scheduled snapshots, expiring manual snapshots, restore branches removed; scripted surface check; Deletion Records for every purge ([decision](backup-window-and-deletion-tail.md)) | Decided, unbuilt | owner-decided; changing the constant is a reviewed change to a published promise |
 | Service restorable within the Backup Window | Restore drill passed before launch, after triggering changes, and every six months; recovery sentence withdrawn while a drill is overdue or failed | Decided, unbuilt | owner-decided |

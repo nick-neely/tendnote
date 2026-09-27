@@ -48,4 +48,24 @@ describe("Better Auth production configuration", () => {
     expect(options.advanced?.useSecureCookies).toBe(true);
     expect(options.rateLimit?.storage).toBe("secondary-storage");
   });
+
+  it("keeps session cookies host-only, so the product can move to its own subdomain", () => {
+    const options = createTendnoteAuthOptions(
+      {
+        database: {} as never,
+        advanced: {
+          crossSubDomainCookies: { enabled: true, domain: "tendnote.test" },
+          defaultCookieAttributes: { domain: "tendnote.test", sameSite: "lax" },
+        },
+      },
+      {
+        NODE_ENV: "production",
+        BETTER_AUTH_SECRET: "a".repeat(32),
+        BETTER_AUTH_URL: "https://app.tendnote.test",
+      },
+    );
+
+    expect(options.advanced?.crossSubDomainCookies).toEqual({ enabled: false });
+    expect(options.advanced?.defaultCookieAttributes).toEqual({ sameSite: "lax" });
+  });
 });

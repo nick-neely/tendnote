@@ -72,6 +72,13 @@ describe("Phase Seven installable online-required PWA", () => {
     );
   });
 
+  it("names no origin, so installing on whatever host serves it just works", () => {
+    // The manifest and worker resolve against the origin that served them; an
+    // absolute URL would pin the installed app to one host across a move.
+    expect(JSON.stringify(manifest())).not.toMatch(/https?:\/\//);
+    expect(serviceWorker).not.toMatch(/https?:\/\//);
+  });
+
   it("caches only the versioned shell/offline assets and never queues authoritative traffic", () => {
     expect(serviceWorker).toContain('const SHELL_VERSION = "v2"');
     expect(serviceWorker).toContain('const SHELL_CACHE_PREFIX = "tendnote-shell-"');

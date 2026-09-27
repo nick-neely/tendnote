@@ -20,6 +20,12 @@
       // Vitest Browser Mode aliases in vitest.browser.config.ts.
       "file": "apps/web/src/test/browser-review-components.tsx",
       "exports": ["*"]
+    },
+    {
+      // React Email's preview server (`pnpm email:dev`) loads each template's
+      // default export by path from this directory; nothing imports it.
+      "file": "apps/web/src/lib/email/templates/*.tsx",
+      "exports": ["default"]
     }
   ],
   // babel-plugin-react-compiler: loaded implicitly by Next's `reactCompiler: true`

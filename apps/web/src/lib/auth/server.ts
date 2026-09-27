@@ -11,6 +11,7 @@ import { assertHouseholdAccountDeletionAllowed } from "@tendnote/db/queries/hous
 import * as schema from "@tendnote/db/schema";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getRedis } from "@/lib/cache/redis";
+import { accountEmailHooks } from "./account-email";
 import {
   discordEnvFromProcess,
   discordSocialProvider,
@@ -102,25 +103,17 @@ function createAuth() {
     }),
     emailAndPassword: {
       enabled: true,
-      sendResetPassword: async ({ user, url }) => {
-        // Tendnote does not send email as a product feature in Phase 2A, so the
-        // reset link is surfaced server-side for an operator to deliver during
-        // private beta. A real transactional email provider plugs in here later.
-        console.info(`[tendnote] Password reset link for ${user.email}: ${url}`);
-      },
+      sendResetPassword: accountEmailHooks.sendResetPassword,
     },
     emailVerification: {
-      // Public credential signup issues an unverified session, and admission now
-      // withholds the self-hosted owner role until the email is verified. Without
-      // a mailer configured, the verification link is surfaced in the server log
-      // for the operator to open — the same out-of-band console delivery used for
-      // password reset — so a legitimate first-run owner (who reads the log) can
-      // complete bootstrap while a remote attacker who merely guessed the owner
-      // email cannot. A transactional email provider plugs in here later.
+      // Public credential signup issues an unverified session, and admission
+      // withholds the self-hosted owner role until the email is verified, so a
+      // remote attacker who merely guessed the owner email cannot claim it. Both
+      // links go out through the transactional email module: a real provider
+      // when configured, the local server log in development, and a named
+      // refusal in production without one.
       sendOnSignUp: true,
-      sendVerificationEmail: async ({ user, url }) => {
-        console.info(`[tendnote] Email verification link for ${user.email}: ${url}`);
-      },
+      sendVerificationEmail: accountEmailHooks.sendVerificationEmail,
     },
     // GitHub (sign-in), Google (Phase 2C Calendar linking), and Discord (identity
     // linking) — each wired only when its credentials are configured.

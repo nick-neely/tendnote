@@ -1,3 +1,4 @@
+import { resolveBetterAuthBaseUrl } from "@tendnote/auth";
 import { affectedScopesForAccount } from "@tendnote/db/queries/general-actions";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -46,8 +47,8 @@ export async function GET(request: Request): Promise<Response> {
     now: Date.now(),
   });
 
-  const outcome = await resolveInstallOutcome(authorization, request.url);
-  const response = NextResponse.redirect(buildInstallRedirectUrl(request.url, outcome));
+  const outcome = await resolveInstallOutcome(authorization);
+  const response = NextResponse.redirect(buildInstallRedirectUrl(outcome));
   // The state is single-use: clear the nonce cookie regardless of outcome. The
   // exchanged authorization code is likewise single-use at Discord, so a replay
   // cannot re-derive the guild even if the nonce cookie were resent.
@@ -60,7 +61,6 @@ export async function GET(request: Request): Promise<Response> {
 
 async function resolveInstallOutcome(
   authorization: DiscordInstallAuthorization,
-  requestUrl: string,
 ): Promise<DiscordInstallCallbackOutcome> {
   if (authorization.status !== "authorized") {
     return { error: authorization.reason };
@@ -79,7 +79,7 @@ async function resolveInstallOutcome(
     clientId: discord.clientId,
     clientSecret: discord.clientSecret,
     code: authorization.code,
-    redirectUri: resolveDiscordInstallRedirectUri(requestUrl),
+    redirectUri: resolveDiscordInstallRedirectUri(),
   });
   if (exchange.status !== "confirmed") {
     console.error("[tendnote] Discord install code exchange failed", {
@@ -141,8 +141,10 @@ function commandRegistrationWarning(guildId: string): DiscordInstallCallbackOutc
   return { installed: guildId, warning: "command_registration_failed" };
 }
 
-function buildInstallRedirectUrl(requestUrl: string, outcome: DiscordInstallCallbackOutcome): URL {
-  const redirectUrl = new URL("/account/discord", requestUrl);
+function buildInstallRedirectUrl(outcome: DiscordInstallCallbackOutcome): URL {
+  // The configured base URL rather than the callback's host, so the owner lands
+  // on the product's one origin however the callback was reached.
+  const redirectUrl = new URL("/account/discord", resolveBetterAuthBaseUrl());
   for (const [key, value] of Object.entries(outcome)) {
     if (value) {
       redirectUrl.searchParams.set(key, value);

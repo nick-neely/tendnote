@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { resolveBetterAuthBaseUrl } from "@tendnote/auth";
 
 /**
  * Discord bot-install OAuth flow (issue #173, builds on #168/ADR-0139).
@@ -69,12 +70,15 @@ export function isDiscordChannelId(value: string): boolean {
  * The canonical Discord install redirect URI. It MUST be byte-identical between
  * the authorization request (install route) and the token exchange (callback):
  * Discord rejects a token exchange whose `redirect_uri` differs from the one the
- * `code` was issued for. Built from the canonical public base (`BETTER_AUTH_URL`)
- * so it stays stable behind proxies, falling back to the request origin locally.
+ * `code` was issued for. Built from the configured base URL, never the request's
+ * host, so it stays stable behind proxies and follows the product when it moves
+ * origin.
  */
-export function resolveDiscordInstallRedirectUri(requestUrl: string): string {
-  const baseUrl = process.env.BETTER_AUTH_URL ?? new URL(requestUrl).origin;
-  return new URL("/api/integrations/discord/install/callback", baseUrl).toString();
+export function resolveDiscordInstallRedirectUri(): string {
+  return new URL(
+    "/api/integrations/discord/install/callback",
+    resolveBetterAuthBaseUrl(),
+  ).toString();
 }
 
 /**

@@ -93,12 +93,11 @@ The policy is deliberately explicit:
   an authenticated but unverified session, so a signup that merely matches the
   configured owner email stays pending until that email is verified — an attacker
   who guesses the owner address cannot claim the owner role without proving
-  mailbox ownership. When a transactional mail sender is configured, the owner
-  verifies from the emailed link. When none is configured, Better Auth surfaces
-  the verification link in the server log
-  (`[tendnote] Email verification link for <email>: <url>`) for the operator to
-  open once. A social sign-in (GitHub/Google) whose provider reports the email as
-  verified satisfies this without a separate step.
+  mailbox ownership. The owner verifies from the emailed link, which is why a
+  production deployment needs the transactional mail sender above: without one
+  the verification email is refused rather than written into a hosted log. A
+  social sign-in (GitHub/Google) whose provider reports the email as verified
+  satisfies this without a separate step.
 
 The same persisted Access Decision is the authority at both Web and Eve. Eve
 does not trust a forged owner header or derive a second admission policy.
@@ -134,9 +133,8 @@ the operator's real private value:
 
 1. Deploy the checked-out, verified commit through the operator's Vercel
    project and sign in using the configured bootstrap-owner email, then verify
-   that email (from the emailed link, or the `Email verification link` line in
-   the server log when no mailer is configured; social sign-in with a
-   provider-verified email needs no separate step). Once the session is verified,
+   that email from the emailed link (social sign-in with a provider-verified
+   email needs no separate step). Once the session is verified,
    Web admits the owner and persists `self_hosted_bootstrap`; Eve admits the same
    session from that persisted decision. An unverified session that matches the
    owner email stays pending.

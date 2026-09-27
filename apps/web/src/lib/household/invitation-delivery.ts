@@ -1,17 +1,9 @@
 import "server-only";
 
 import { resolveBetterAuthBaseUrl } from "@tendnote/auth";
-import { createResendSender } from "@/lib/email/resend";
+import { selectTransactionalSender } from "@/lib/email/select-sender";
 import { renderHouseholdInvitationEmail } from "@/lib/email/templates/household-invitation";
-import {
-  decideTransactionalTransport,
-  EmailTransportUnavailableError,
-  operatorLogSender,
-  resolveSenderIdentity,
-  resolveSupportEmail,
-  type TransactionalSender,
-  unavailableSender,
-} from "@/lib/email/transactional";
+import { requireSupportEmail } from "@/lib/email/transactional";
 
 /**
  * The canonical acceptance URL for one invitation.
@@ -53,40 +45,17 @@ export type HouseholdInvitationTransport = (
  * why swapping Resend for something else touches one file.
  */
 export function getHouseholdInvitationTransport(): HouseholdInvitationTransport {
-  const send = selectSender();
-  const supportEmail = resolveSupportEmail(process.env);
+  const send = selectTransactionalSender();
 
   return async (message) => {
-    if (!supportEmail) {
-      throw new EmailTransportUnavailableError(
-        "TENDNOTE_EMAIL_REPLY_TO is not set, so Tendnote cannot send or display a recovery contact. Add the operator support mailbox to this deployment's environment (see docs/email-setup.md).",
-      );
-    }
-
     const content = await renderHouseholdInvitationEmail({
       householdName: message.householdName,
       inviterName: message.inviterName,
       acceptUrl: message.acceptUrl,
       expiresAt: message.expiresAt,
-      supportEmail,
+      supportEmail: requireSupportEmail(),
     });
 
     return send({ ...content, to: message.to, idempotencyKey: message.deliveryId });
   };
-}
-
-function selectSender(): TransactionalSender {
-  const choice = decideTransactionalTransport(process.env);
-
-  switch (choice.kind) {
-    case "resend":
-      return createResendSender({
-        apiKey: choice.apiKey,
-        identity: resolveSenderIdentity(process.env),
-      });
-    case "unavailable":
-      return unavailableSender(choice.reason);
-    default:
-      return operatorLogSender;
-  }
 }

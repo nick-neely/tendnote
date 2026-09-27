@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { NextResponse } from "next/server";
+import { resolveBetterAuthBaseUrl } from "@tendnote/auth";
+import { connection, NextResponse } from "next/server";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { getBetterAuthSecret } from "@/lib/auth/server";
 import { discordEnvFromProcess } from "@/lib/auth/social";
@@ -18,12 +19,16 @@ import {
  * Only the signed-in owner is ever bound into the state — the callback re-checks it,
  * so an install can never be attributed to anyone but the initiating session.
  */
-export async function GET(request: Request): Promise<Response> {
+export async function GET(): Promise<Response> {
+  // Nothing below reads the request, so without this the build would try to
+  // prerender a flow that only makes sense for a signed-in owner.
+  await connection();
+
   // Inert when Discord OAuth credentials are not configured server-side. Reading
   // the credentials here both gates the flow and narrows `clientId` to a string.
   const { clientId, clientSecret } = discordEnvFromProcess();
   if (!clientId || !clientSecret) {
-    return NextResponse.redirect(new URL("/account", request.url));
+    return NextResponse.redirect(new URL("/account", resolveBetterAuthBaseUrl()));
   }
 
   // Redirects pending / unauthenticated callers via the single owner-resolution
@@ -39,7 +44,7 @@ export async function GET(request: Request): Promise<Response> {
   // Redirect_uri must match a URL registered in the Discord Developer Portal AND be
   // byte-identical to the one the callback presents at token exchange, so both use
   // the same canonical helper.
-  const redirectUri = resolveDiscordInstallRedirectUri(request.url);
+  const redirectUri = resolveDiscordInstallRedirectUri();
 
   const response = NextResponse.redirect(
     buildDiscordInstallAuthorizeUrl({ clientId, redirectUri, state }),
