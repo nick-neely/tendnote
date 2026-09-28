@@ -1,91 +1,48 @@
 import { Button } from "@tendnote/ui/button";
 import Link from "next/link";
+import { LoopHero } from "@/components/home/loop-hero";
+import { ReminderMoment } from "@/components/home/reminder-moment";
 import { appLinks } from "@/lib/site-links";
 
-const sectionTitle = "text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold";
-const itemTitle = "text-[length:var(--text-title)] leading-[var(--text-title-line)] font-semibold";
+const sectionTitle =
+  "text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold sm:text-[1.75rem] sm:leading-9";
+const inlineLink =
+  "rounded-sm font-medium text-foreground underline underline-offset-4 outline-none transition-colors duration-150 hover:text-primary focus-visible:ring-3 focus-visible:ring-ring";
 
-const loop = [
-  {
-    title: "Capture",
-    body: "Write down what someone told you, the way you would jot it in a notebook.",
-  },
-  {
-    title: "Confirm a memory",
-    body: "Tendnote suggests what is worth keeping. You confirm it, and it stays with that person.",
-  },
-  {
-    title: "Schedule a follow-up",
-    body: "Choose when to check in. It comes back to you on Today when the time arrives.",
-  },
-  {
-    title: "Ask what you remember",
-    body: "Ask a question and get an answer grounded in what you have saved.",
-  },
-];
-
-const privacyPoints = [
+const promises = [
   {
     title: "Nothing leaves without you",
-    body: "Drafts and messages outside Tendnote always wait for your approval.",
+    body: "A draft or a message to anyone outside Tendnote waits for your approval. Every time, with no setting that turns it off.",
   },
   {
-    title: "No ads, no cross-site tracking",
-    body: "Your relationships are not a data source for anyone else.",
+    title: "Your notes are yours",
+    body: "Never sold, never used for ads, never used to train a model. Billing records hold none of your notes.",
   },
   {
-    title: "Open source",
-    body: "Read the code that holds your notes, or run it yourself.",
+    title: "Open source, all of it",
+    body: "Read the code that holds your notes, or run it yourself for free under the AGPL-3.0.",
   },
 ];
 
-function Section({ children, labelledBy }: { children: React.ReactNode; labelledBy: string }) {
-  return (
-    <section aria-labelledby={labelledBy} className="border-t">
-      <div className="mx-auto max-w-6xl px-gutter py-16 sm:px-6 sm:py-20">{children}</div>
-    </section>
-  );
-}
+const habits = [
+  "One to three follow-ups a day, never a backlog.",
+  "Capture in a sentence. Tendnote finds the person and the Memory.",
+  "Ask in plain words. The answer cites the note it came from.",
+];
 
-/** A still, illustrative slice of the loop. The person and details are invented. */
-function LoopIllustration() {
+function Section({
+  children,
+  className = "",
+  labelledBy,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  labelledBy: string;
+}) {
   return (
-    <figure className="flex flex-col gap-3">
-      <div className="rounded-xl border bg-panel p-4 sm:p-5">
-        <div className="flex items-baseline justify-between gap-4 border-b pb-3">
-          <p className={itemTitle}>Sam Rivera</p>
-          <p className="font-mono text-xs text-muted-foreground">Friend</p>
-        </div>
-        <dl className="flex flex-col divide-y">
-          <div className="flex flex-col gap-1 py-3">
-            <dt className="font-mono text-xs text-muted-foreground">Captured Tue, after coffee</dt>
-            <dd>
-              Sam has a final-round interview at a design studio on Thursday. Nervous about the
-              portfolio review.
-            </dd>
-          </div>
-          <div className="flex flex-col gap-1.5 py-3">
-            <dt>
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                Memory
-              </span>
-            </dt>
-            <dd>Interviewing at a design studio, final round on Thursday</dd>
-          </div>
-          <div className="flex flex-col gap-1.5 pt-3">
-            <dt>
-              <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-soft-foreground">
-                Follow-up, Friday
-              </span>
-            </dt>
-            <dd>Ask Sam how the interview went</dd>
-          </div>
-        </dl>
-      </div>
-      <figcaption className="text-sm text-muted-foreground">
-        An illustrative example with a fictional person.
-      </figcaption>
-    </figure>
+    <section aria-labelledby={labelledBy} className={`border-t ${className}`}>
+      <div className="mx-auto max-w-6xl px-gutter py-16 sm:px-6 sm:py-24">{children}</div>
+    </section>
   );
 }
 
@@ -94,109 +51,145 @@ export default function HomePage() {
 
   return (
     <>
-      <section aria-labelledby="home-title">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-gutter py-16 sm:px-6 sm:py-24 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-16">
-          <div className="flex flex-col gap-6">
-            <h1
-              className="font-display text-[2rem] leading-10 font-semibold sm:text-[2.75rem] sm:leading-[3.25rem]"
-              id="home-title"
+      <LoopHero />
+
+      <Section labelledBy="why-title">
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-20">
+          <div className="flex flex-col gap-5">
+            <h2
+              className="font-display text-[2rem] leading-[1.15] font-semibold sm:text-[2.5rem]"
+              id="why-title"
             >
-              Remember what people tell you, and reach out at the right time.
-            </h1>
-            <p className="max-w-[60ch] text-lg leading-7 text-muted-foreground">
-              Tendnote is a Personal OS that starts with the people in your life. Keep the details
-              that matter, and let the right moment to check in come back to you.
+              Caring was never the problem. Remembering was.
+            </h2>
+            <p className="max-w-[54ch] text-lg leading-7 text-muted-foreground">
+              You meant to ask how it went. Then a week passed, and it felt too late to bring up.
+              Not because you did not care, but because your head is a busy place to keep the lives
+              of everyone you love.
             </p>
+            <p className="max-w-[54ch] text-lg leading-7 text-muted-foreground">
+              Tendnote is the notebook that holds it for you and hands back one thing at a time, on
+              the day it matters. No streaks, no scores, and no guilt when you miss a day.
+            </p>
+          </div>
+          <ul className="flex flex-col divide-y self-center border-y">
+            {habits.map((habit) => (
+              <li
+                className="py-4 text-[length:var(--text-title)] leading-[var(--text-title-line)]"
+                key={habit}
+              >
+                {habit}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <p className="mt-12 max-w-[65ch] text-muted-foreground">
+          People are where Tendnote starts, not where it stops. The same private notebook keeps your
+          actions and routines, the things you own, and a household you share.{" "}
+          <Link className={inlineLink} href="/product">
+            See the whole product
+          </Link>
+        </p>
+      </Section>
+
+      <Section className="bg-surface" labelledBy="trust-title">
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:gap-20">
+          <div className="flex flex-col gap-4">
+            <h2 className={sectionTitle} id="trust-title">
+              Built to be trusted with what people tell you in confidence
+            </h2>
+            <p className="max-w-[44ch] text-muted-foreground">
+              Your relationships are not a data source for anyone else. These are not settings. They
+              are how Tendnote is made.
+            </p>
+            <Link className={`${inlineLink} w-fit`} href="/privacy-and-ai">
+              How Tendnote handles your information
+            </Link>
+          </div>
+          <dl className="divide-y rounded-2xl border bg-background">
+            {promises.map((promise) => (
+              <div
+                className="grid gap-2 px-5 py-5 sm:grid-cols-[14rem_minmax(0,1fr)] sm:gap-6"
+                key={promise.title}
+              >
+                <dt className="text-[length:var(--text-title)] leading-[var(--text-title-line)] font-semibold">
+                  {promise.title}
+                </dt>
+                <dd className="text-muted-foreground">{promise.body}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </Section>
+
+      <Section labelledBy="maker-title">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:gap-20">
+          <h2 className={sectionTitle} id="maker-title">
+            Made and run by one person
+          </h2>
+          <div className="flex flex-col gap-4 text-lg leading-7">
+            <p>
+              I&rsquo;m Nick. I built Tendnote for my own friends and family first, and I use it
+              myself. There are no investors to please, no ads to sell, and one plan.
+            </p>
+            <p className="text-muted-foreground">
+              That also means there is no logo wall on this page. What there is: the source code in
+              the open, a written account of how it was built, and a full refund within fourteen
+              days if it is not for you.
+            </p>
+            <p className="flex flex-wrap gap-x-6 gap-y-2 text-[length:var(--text-small)] leading-[var(--text-small-line)]">
+              <Link className={inlineLink} href="/about">
+                About Tendnote
+              </Link>
+              <a
+                className={inlineLink}
+                href="https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/case-studies/tendnote-agent-built-privacy.md"
+              >
+                Read the case study
+              </a>
+            </p>
+          </div>
+        </div>
+      </Section>
+
+      <Section className="bg-panel" labelledBy="plan-title">
+        <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:gap-20">
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-3">
+              <h2 className={sectionTitle} id="plan-title">
+                One plan. Fourteen days to change your mind.
+              </h2>
+              <p className="max-w-[56ch] text-muted-foreground">
+                $20 a month or $200 a year, plus applicable sales tax, for adults in the United
+                States. Cancel any time and keep access to the end of the period. Ask for a full
+                refund within fourteen days of your first payment.
+              </p>
+            </div>
             <div className="flex flex-wrap items-center gap-3">
               <Button asChild size="lg">
-                <Link href="/demo">Explore the demo</Link>
+                <a href={subscribe}>Subscribe</a>
               </Button>
               <Button asChild size="lg" variant="outline">
                 <Link href="/pricing">View pricing</Link>
               </Button>
             </div>
-          </div>
-          <LoopIllustration />
-        </div>
-      </section>
-
-      <Section labelledBy="loop-title">
-        <div className="flex max-w-[60ch] flex-col gap-3">
-          <h2 className={sectionTitle} id="loop-title">
-            The relationship loop
-          </h2>
-          <p className="text-muted-foreground">
-            Everything in Tendnote starts with a person and something worth remembering about them.
-          </p>
-        </div>
-        <ol className="mt-10 grid gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
-          {loop.map((step, index) => (
-            <li className="flex flex-col gap-2 border-t pt-4" key={step.title}>
-              <span aria-hidden className="font-mono text-sm text-primary">
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <h3 className={itemTitle}>{step.title}</h3>
-              <p className="text-muted-foreground">{step.body}</p>
-            </li>
-          ))}
-        </ol>
-        <p className="mt-10 max-w-[65ch] text-muted-foreground">
-          The same notebook also keeps your actions and routines, the things you own, and a
-          household you share.{" "}
-          <Link
-            className="rounded-sm font-medium text-foreground underline underline-offset-4 outline-none hover:text-primary focus-visible:ring-3 focus-visible:ring-ring"
-            href="/product"
-          >
-            See the product
-          </Link>
-        </p>
-      </Section>
-
-      <Section labelledBy="privacy-title">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:gap-16">
-          <div className="flex flex-col gap-3">
-            <h2 className={sectionTitle} id="privacy-title">
-              Private by design
-            </h2>
-            <p className="text-muted-foreground">
-              What people tell you in confidence deserves care. Tendnote is built around that.
-            </p>
-            <Link
-              className="w-fit rounded-sm font-medium underline underline-offset-4 outline-none hover:text-primary focus-visible:ring-3 focus-visible:ring-ring"
-              href="/privacy-and-ai"
-            >
-              How Tendnote handles your information
-            </Link>
-          </div>
-          <ul className="grid gap-8 sm:grid-cols-3">
-            {privacyPoints.map((point) => (
-              <li className="flex flex-col gap-2 border-t pt-4" key={point.title}>
-                <h3 className={itemTitle}>{point.title}</h3>
-                <p className="text-muted-foreground">{point.body}</p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </Section>
-
-      <Section labelledBy="plan-title">
-        <div className="flex flex-col items-start justify-between gap-8 md:flex-row md:items-end">
-          <div className="flex max-w-[60ch] flex-col gap-3">
-            <h2 className={sectionTitle} id="plan-title">
-              One plan, for you
-            </h2>
-            <p className="text-muted-foreground">
-              $20 a month or $200 a year, plus applicable sales tax. Available to adults in the
-              United States.
+            <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
+              Outside the United States? Tendnote is free to{" "}
+              <a
+                className={inlineLink}
+                href="https://github.com/nick-neely/tendnote/blob/main/docs/self-hosting/vercel-operator-runbook.md"
+              >
+                run yourself
+              </a>
+              .
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button asChild size="lg">
-              <a href={subscribe}>Subscribe</a>
-            </Button>
-            <Button asChild size="lg" variant="outline">
-              <Link href="/pricing">View pricing</Link>
-            </Button>
+          <div className="flex flex-col items-start gap-3 lg:items-end">
+            <ReminderMoment />
+            <p className="max-w-sm text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground lg:text-right">
+              This is what Friday looks like: one reminder, on the devices you chose, and nothing
+              else in your inbox.
+            </p>
           </div>
         </div>
       </Section>
