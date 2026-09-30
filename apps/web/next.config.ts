@@ -27,7 +27,7 @@ const nextConfig: NextConfig = {
       fallback: [],
     };
   },
-  transpilePackages: ["@tendnote/db", "@tendnote/domain"],
+  transpilePackages: ["@tendnote/db", "@tendnote/domain", "@tendnote/ui"],
   experimental: {
     // Instant Interaction gate (#310, ADR 0210). `instant()` silently no-ops
     // without this, so a measured build must opt in explicitly; the gate refuses

@@ -1,4 +1,4 @@
-import { TendnoteLogo } from "@/components/tendnote-logo";
+import { TendnoteLogo } from "@tendnote/ui/tendnote-logo";
 
 /**
  * The only fallback that may render before request-bound admission resolves.

@@ -1,0 +1,11 @@
+{
+  "extends": "@tendnote/config/typescript/next",
+  "compilerOptions": {
+    "types": ["node", "react", "react-dom"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "**/*.mts"],
+  "exclude": ["node_modules"]
+}

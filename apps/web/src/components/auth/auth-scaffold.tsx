@@ -1,7 +1,7 @@
+import { TendnoteLogo } from "@tendnote/ui/tendnote-logo";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ServiceNotice } from "@/components/service-notice-banner";
-import { TendnoteLogo } from "@/components/tendnote-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 /**

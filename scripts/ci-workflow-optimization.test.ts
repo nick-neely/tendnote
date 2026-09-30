@@ -234,6 +234,14 @@ describe("CI workflow optimization contract", () => {
     expect(jobBlock(reusable, "test_fallow")).not.toContain("pnpm test:browser");
   });
 
+  it("builds the marketing site in the quality lane", () => {
+    const quality = jobBlock(read(".github/workflows/reusable-verify.yml"), "quality");
+
+    expect(quality).toMatch(
+      /- name: Build the marketing site\n\s+run: pnpm --filter @tendnote\/marketing build/,
+    );
+  });
+
   it("uses the database dependency closure instead of installing the whole workspace", () => {
     const reusable = read(".github/workflows/reusable-verify.yml");
     const databaseJob = jobBlock(reusable, "database");

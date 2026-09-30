@@ -18,6 +18,8 @@ const workspaces = [
   { directory: "packages/domain", include: ["src/**/*.ts"] },
   { directory: "packages/auth", include: ["src/**/*.ts"] },
   { directory: "packages/rate-limit", include: ["src/**/*.ts"] },
+  { directory: "apps/marketing", include: ["src/**/*.{ts,tsx}"] },
+  { directory: "packages/ui", include: ["src/**/*.{ts,tsx}"] },
 ];
 // Run at most two workspace coverage processes at once. Each child Vitest
 // process receives its own --maxWorkers=50% setting, so this bounds

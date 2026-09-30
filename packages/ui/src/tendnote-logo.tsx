@@ -1,8 +1,9 @@
-import { cn } from "@/lib/utils";
+import { cn } from "./cn";
 
 /**
  * The selected Tended Memory raster, kept exact rather than redrawn. Light and
- * dark exports share one alpha silhouette; only their palette changes.
+ * dark exports share one alpha silhouette; only their palette changes. Each app
+ * serves the files from `/icons`.
  */
 export function TendnoteMark({ className, label }: { className?: string; label?: string }) {
   const images = (

@@ -1,9 +1,9 @@
 "use client";
 
+import { TendnoteLogo } from "@tendnote/ui/tendnote-logo";
 import Link from "next/link";
 import type { ViewerStandings } from "@/components/app-destinations";
 import { AppNavigation, type AppNavigationRow } from "@/components/app-navigation";
-import { TendnoteLogo } from "@/components/tendnote-logo";
 import {
   Sidebar,
   SidebarContent,

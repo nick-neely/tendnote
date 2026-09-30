@@ -7,9 +7,10 @@
   "scripts": {
     "dev": "EVE_BASE_URL=http://127.0.0.1:2000 turbo run dev --filter=@tendnote/web --filter=@tendnote/agent",
     "dev:web": "pnpm --filter @tendnote/web dev",
+    "dev:marketing": "pnpm --filter @tendnote/marketing dev",
     "email:dev": "pnpm --filter @tendnote/web email:dev",
     "dev:agent": "pnpm --filter @tendnote/agent dev",
-    "build": "turbo run build --filter=@tendnote/web --only",
+    "build": "turbo run build --filter=@tendnote/web --filter=@tendnote/marketing --only",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "fallow": "fallow audit",

@@ -23,6 +23,8 @@ describe("Fallow CI coverage contract (#193)", () => {
     expect(collector).toContain('"apps/web"');
     expect(collector).toContain('"packages/db"');
     expect(collector).toContain('"packages/domain"');
+    expect(collector).toContain('"apps/marketing"');
+    expect(collector).toContain('"packages/ui"');
     expect(collector).toContain("--coverage.provider=v8");
     expect(collector).toContain("normalizeCoverageCounts");
     expect(collector).toContain("coverage-final.json");
@@ -45,6 +47,8 @@ describe("Fallow CI coverage contract (#193)", () => {
       "packages/domain",
       "packages/auth",
       "packages/rate-limit",
+      "apps/marketing",
+      "packages/ui",
     ]);
     // Failure stops new queue assignments, while allSettled drains processes
     // already running before the collector surfaces the error.

@@ -1,9 +1,9 @@
 "use client";
 
+import { TendnoteMark } from "@tendnote/ui/tendnote-logo";
 import Link from "next/link";
 import type { ViewerStandings } from "@/components/app-destinations";
 import { AppNavigation, type AppNavigationRow } from "@/components/app-navigation";
-import { TendnoteMark } from "@/components/tendnote-logo";
 import { SidebarSeparator } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";

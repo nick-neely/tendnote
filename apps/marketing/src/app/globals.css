@@ -1,0 +1,49 @@
+@import "tailwindcss";
+@import "@tendnote/ui/theme.css";
+
+/*
+ * Home's authored motion. `tn-rise` is the one entrance the hero stage uses
+ * for anything that arrives inside a beat; the caret and nudge are the two
+ * idle loops, both small and both stopped by the shared reduced-motion floor
+ * in theme.css (1ms, one iteration).
+ */
+@keyframes tn-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes tn-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes tn-nudge {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+.tn-rise {
+  animation: tn-rise 500ms var(--motion-ease-out) both;
+}
+
+.tn-caret {
+  animation: tn-caret 1s steps(1) infinite;
+}
+
+.tn-nudge {
+  animation: tn-nudge 1.6s ease-in-out infinite;
+}

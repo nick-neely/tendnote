@@ -55,7 +55,8 @@ Warmth belongs to sage, clay, typography, and copy restraint.
 
 ### Token Candidates
 
-These are the current working tokens in `src/app/globals.css`.
+These are the current working tokens in `packages/ui/src/theme.css`, shared by the
+product and the marketing site.
 
 ```css
 :root {
@@ -128,7 +129,7 @@ tokens in `globals.css` (never literal family names, which do not match
 
 ### Wordmark lockup
 
-The "Tendnote" wordmark (`components/tendnote-logo.tsx`) is live text, not a
+The "Tendnote" wordmark (`@tendnote/ui/tendnote-logo`) is live text, not a
 raster — it sits beside the raster Tended Memory mark. It is set in **IBM Plex
 Sans** (the humanist sans pairs with the heavy rounded mark — **not** the serif),
 weight **600**, tracking **-0.01em**, line-height **1**, in a single ink color
@@ -237,7 +238,7 @@ breadth of `16px`.
 
 **Phone gutter.** The one exception to that rhythm, and the only one: every
 narrow-viewport surface is inset from the screen edge by **20px**, declared as
-`px-gutter` (`--tn-gutter` in `globals.css`) and cancelled - for a bar that must
+`px-gutter` (`--tn-gutter` in `theme.css`) and cancelled - for a bar that must
 reach the screen edges, like the person and asset ledger toolbars - by
 `mx-bleed`. It sits between the rhythm's 16 and 24 deliberately: 16 read cramped
 against a full-width card on a 390px phone, and 24 spent too much of that width
@@ -405,7 +406,7 @@ the shimmer stays a whisper, not a sheen.
 
 ### Scrollbars
 
-Tendnote uses a **custom themed scrollbar** (see `globals.css`): a slim rounded
+Tendnote uses a **custom themed scrollbar** (see `theme.css`): a slim rounded
 pill with no track and no arrow buttons, in a **neutral ink tint** that darkens on
 hover/active. This is a deliberate, documented exception to the generic "don't
 restyle scrollbars" product caution — the chunky OS default with arrow buttons
@@ -461,7 +462,7 @@ Approval copy should be direct: "No external sends", "Review before sending",
 
 For Phase 1A:
 
-1. Build from the global token layer in `src/app/globals.css`; do not hard-code
+1. Build from the shared token layer in `packages/ui/src/theme.css`; do not hard-code
    one-off colors in components unless a semantic token is missing.
 2. Keep the dashboard and people surfaces light-default Field Notebook.
 3. Use Personal Ledger density on person detail, memory review, and source

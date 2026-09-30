@@ -150,6 +150,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # The marketing site is its own Vercel project with no other CI lane, so
+      # its production build is proven here. It is static and small; the web
+      # build stays with the Instant matrix, which already builds it.
+      - name: Build the marketing site
+        run: pnpm --filter @tendnote/marketing build
+
       # A four-contract Chromium suite closes the layout-engine gap that jsdom cannot:
       # phone-width reflow/overflow, lifecycle hit areas, and real scroll/focus/pulse.
       # It rides here rather than in Test and Fallow because that job is the
