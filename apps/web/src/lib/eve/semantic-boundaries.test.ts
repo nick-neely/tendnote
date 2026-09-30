@@ -55,6 +55,9 @@ describe("semantic retrieval product-route boundaries", () => {
       // neither route is a semantic-search surface.
       "assistant",
       "assistant/[sessionId]",
+      // Where Stripe Checkout returns (#606). It reads only the caller's own
+      // admission record and carries no relationship data.
+      "confirming",
       "forgot-password",
       // Phase 8 Gift Plans and one plan's own page (#389). They read through the
       // Gift Plan seam's own proved search, never semantic retrieval — a Gift
