@@ -1,7 +1,7 @@
 import type Stripe from "stripe";
 
 /** The one Tendnote plan's two billing intervals. */
-export const BILLING_INTERVALS = ["monthly", "annual"] as const;
+const BILLING_INTERVALS = ["monthly", "annual"] as const;
 export type BillingInterval = (typeof BILLING_INTERVALS)[number];
 
 export function parseBillingInterval(value: unknown): BillingInterval | null {
