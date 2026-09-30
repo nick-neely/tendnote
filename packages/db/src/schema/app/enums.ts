@@ -11,6 +11,7 @@ export const accessSource = pgEnum("access_source", [
   "household_invitation",
   "manual_grant",
   "beta_flag",
+  "paid_access",
 ]);
 
 export const selfContextOnboardingStatus = pgEnum("self_context_onboarding_status", [

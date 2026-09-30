@@ -18,6 +18,8 @@ export function accessSourceLabel(source: AccessSource | null): string {
       return "Beta invite";
     case "manual_grant":
       return "Granted manually";
+    case "paid_access":
+      return "Subscription";
     default:
       return "Granted";
   }

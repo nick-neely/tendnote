@@ -18,7 +18,7 @@ export const accessProfiles = pgTable(
     status: accessStatus("status").notNull().default("pending"),
     // Set when access is granted; explains whether admission came from the
     // local bootstrap, self-hosted bootstrap, Household invitation, manual
-    // grant, or beta flag rollout.
+    // grant, beta flag rollout, or Paid Access from a first paid invoice.
     source: accessSource("source"),
     grantedAt: timestamp("granted_at", { withTimezone: true }),
     selfContextOnboardingStatus: selfContextOnboardingStatus("self_context_onboarding_status")

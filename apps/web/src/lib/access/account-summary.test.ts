@@ -37,6 +37,7 @@ describe("accessSourceLabel", () => {
     expect(accessSourceLabel("bootstrap")).toBe("Initial owner");
     expect(accessSourceLabel("beta_flag")).toBe("Beta invite");
     expect(accessSourceLabel("manual_grant")).toBe("Granted manually");
+    expect(accessSourceLabel("paid_access")).toBe("Subscription");
   });
 
   it("falls back to a generic granted label for an unknown source", () => {
