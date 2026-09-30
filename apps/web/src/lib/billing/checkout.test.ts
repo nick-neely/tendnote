@@ -14,11 +14,12 @@ function fakeStripeBilling() {
   let created = 0;
   const createCustomer = vi.fn(async () => ({ id: `cus_${++created}` }));
   const createSession = vi.fn(async () => ({ url: "https://checkout.stripe.test/c/pay_1" }));
-  const subscriptions: { status: Stripe.Subscription.Status }[] = [];
+  const subscriptions: { id: string; status: Stripe.Subscription.Status }[] = [];
+  const cancelSubscription = vi.fn(async (_id: string) => ({}));
   const deps: CheckoutDependencies = {
     stripe: {
       customers: { create: createCustomer },
-      subscriptions: { list: async () => ({ data: subscriptions }) },
+      subscriptions: { list: async () => ({ data: subscriptions }), cancel: cancelSubscription },
       checkout: { sessions: { create: createSession } },
     },
     prices: { monthly: "price_monthly", annual: "price_annual" },
@@ -29,7 +30,7 @@ function fakeStripeBilling() {
       return customers.get(userId) as string;
     },
   };
-  return { deps, customers, subscriptions, createCustomer, createSession };
+  return { deps, customers, subscriptions, cancelSubscription, createCustomer, createSession };
 }
 
 describe("opening Stripe Checkout", () => {
@@ -80,7 +81,7 @@ describe("opening Stripe Checkout", () => {
   it("sends an account that has already paid back to confirming instead of into a second subscription", async () => {
     const billing = fakeStripeBilling();
     await openCheckout(billing.deps, { ...account, interval: "monthly" });
-    billing.subscriptions.push({ status: "active" });
+    billing.subscriptions.push({ id: "sub_paid", status: "active" });
 
     const url = await openCheckout(billing.deps, { ...account, interval: "annual" });
 
@@ -88,13 +89,19 @@ describe("opening Stripe Checkout", () => {
     expect(billing.createSession).toHaveBeenCalledTimes(1);
   });
 
-  it("lets an account retry after an abandoned or expired payment attempt", async () => {
+  it("lets an account retry after an abandoned or expired payment attempt, closing the abandoned one", async () => {
     const billing = fakeStripeBilling();
-    billing.subscriptions.push({ status: "incomplete" }, { status: "incomplete_expired" });
+    billing.subscriptions.push(
+      { id: "sub_abandoned", status: "incomplete" },
+      { id: "sub_expired", status: "incomplete_expired" },
+    );
 
     const url = await openCheckout(billing.deps, { ...account, interval: "monthly" });
 
     expect(url).toBe("https://checkout.stripe.test/c/pay_1");
+    // The abandoned attempt is closed first, so it can never be paid later
+    // beside the new subscription.
+    expect(billing.cancelSubscription.mock.calls).toEqual([["sub_abandoned"]]);
   });
 
   it("fails rather than redirecting nowhere when Stripe returns no URL", async () => {

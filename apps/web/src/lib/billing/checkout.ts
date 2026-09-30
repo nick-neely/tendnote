@@ -38,7 +38,8 @@ export type CheckoutStripeClient = {
   subscriptions: {
     list: (
       params: Stripe.SubscriptionListParams,
-    ) => Promise<{ data: ReadonlyArray<{ status: Stripe.Subscription.Status }> }>;
+    ) => Promise<{ data: ReadonlyArray<{ id: string; status: Stripe.Subscription.Status }> }>;
+    cancel: (id: string) => Promise<unknown>;
   };
   checkout: {
     sessions: {
@@ -89,14 +90,26 @@ const LIVE_SUBSCRIPTION_STATUSES: ReadonlySet<Stripe.Subscription.Status> = new 
   "paused",
 ]);
 
-async function holdsLiveSubscription(
+/**
+ * Settle the customer's earlier subscriptions before a new Checkout: `live` when
+ * one is already paid or paying. Otherwise every abandoned `incomplete` one is
+ * cancelled, so an old attempt can never be
+ * paid later beside the new one. It has charged nothing, so cancelling it only
+ * voids its unpaid invoice.
+ */
+async function settlePriorSubscriptions(
   stripe: CheckoutStripeClient,
   customer: string,
-): Promise<boolean> {
-  const subscriptions = await stripe.subscriptions.list({ customer, status: "all", limit: 10 });
-  return subscriptions.data.some((subscription) =>
-    LIVE_SUBSCRIPTION_STATUSES.has(subscription.status),
-  );
+): Promise<"live" | "clear"> {
+  const { data } = await stripe.subscriptions.list({ customer, status: "all", limit: 10 });
+  if (data.some((subscription) => LIVE_SUBSCRIPTION_STATUSES.has(subscription.status))) {
+    return "live";
+  }
+
+  for (const subscription of data) {
+    if (subscription.status === "incomplete") await stripe.subscriptions.cancel(subscription.id);
+  }
+  return "clear";
 }
 
 /**
@@ -114,7 +127,7 @@ export async function openCheckout(
   input: { userId: string; email: string; interval: BillingInterval },
 ): Promise<string> {
   const customer = await ensureStripeCustomer(deps, input);
-  if (await holdsLiveSubscription(deps.stripe, customer)) {
+  if ((await settlePriorSubscriptions(deps.stripe, customer)) === "live") {
     return new URL("/confirming", deps.baseUrl).toString();
   }
 
