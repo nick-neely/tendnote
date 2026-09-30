@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { getCurrentAccess } from "@/lib/access/current-access";
 import { isCheckoutOpen } from "@/lib/billing/checkout-availability";
 
-// fallow-ignore-next-line complexity -- The existing auth state flow moved unchanged beneath the URL-transparent public loading boundary; #334 changes boundary ownership, not this page.
+// fallow-ignore-next-line complexity -- One state flow: unauthenticated, admitted, then the pending area with Checkout either open or still behind its flag (#606).
 export default async function PendingPage() {
   if (process.env.NODE_ENV !== "test") await connection();
   const access = await getCurrentAccess();

@@ -5,8 +5,12 @@ import { getStripeCustomerId, recordStripeCustomer } from "@tendnote/db/queries/
 import { redirect } from "next/navigation";
 import Stripe from "stripe";
 import { getCurrentAccess } from "@/lib/access/current-access";
+import {
+  openCheckout,
+  parseBillingInterval,
+  readStripeBillingConfig,
+} from "@/lib/billing/checkout";
 import { isCheckoutOpen } from "@/lib/billing/checkout-availability";
-import { openCheckout, parseBillingInterval, readStripeBillingConfig } from "@/lib/billing/checkout";
 
 /**
  * Subscribe from the pending area (#606): send a signed-in, not-yet-admitted

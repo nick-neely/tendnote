@@ -62,8 +62,7 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
     policy,
     webhookSecret: SECRET,
     findAccountByStripeCustomer: async (id) => customers.get(id) ?? null,
-    grantPaidAccess: (userId) =>
-      harness.queries.grantAccess({ userId, source: "paid_access" }),
+    grantPaidAccess: (userId) => harness.queries.grantAccess({ userId, source: "paid_access" }),
     log,
   });
 
@@ -128,6 +127,14 @@ describe("Paid Access from the first paid invoice", () => {
     ]) {
       expect((await subscriber.deliver(event)).status).toBe(200);
     }
+
+    await subscriber.expectNotAdmitted();
+  });
+
+  it("does not treat a paid renewal as the first paid invoice", async () => {
+    const subscriber = await signedUp();
+
+    await subscriber.deliver(invoicePaid({ billing_reason: "subscription_cycle" }));
 
     await subscriber.expectNotAdmitted();
   });

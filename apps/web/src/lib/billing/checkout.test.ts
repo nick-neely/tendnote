@@ -1,3 +1,4 @@
+import type Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CheckoutDependencies,
@@ -13,9 +14,11 @@ function fakeStripeBilling() {
   let created = 0;
   const createCustomer = vi.fn(async () => ({ id: `cus_${++created}` }));
   const createSession = vi.fn(async () => ({ url: "https://checkout.stripe.test/c/pay_1" }));
+  const subscriptions: { status: Stripe.Subscription.Status }[] = [];
   const deps: CheckoutDependencies = {
     stripe: {
       customers: { create: createCustomer },
+      subscriptions: { list: async () => ({ data: subscriptions }) },
       checkout: { sessions: { create: createSession } },
     },
     prices: { monthly: "price_monthly", annual: "price_annual" },
@@ -26,7 +29,7 @@ function fakeStripeBilling() {
       return customers.get(userId) as string;
     },
   };
-  return { deps, customers, createCustomer, createSession };
+  return { deps, customers, subscriptions, createCustomer, createSession };
 }
 
 describe("opening Stripe Checkout", () => {
@@ -72,6 +75,26 @@ describe("opening Stripe Checkout", () => {
         line_items: [{ price: "price_annual", quantity: 1 }],
       }),
     );
+  });
+
+  it("sends an account that has already paid back to confirming instead of into a second subscription", async () => {
+    const billing = fakeStripeBilling();
+    await openCheckout(billing.deps, { ...account, interval: "monthly" });
+    billing.subscriptions.push({ status: "active" });
+
+    const url = await openCheckout(billing.deps, { ...account, interval: "annual" });
+
+    expect(url).toBe("https://app.tendnote.test/confirming");
+    expect(billing.createSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets an account retry after an abandoned or expired payment attempt", async () => {
+    const billing = fakeStripeBilling();
+    billing.subscriptions.push({ status: "incomplete" }, { status: "incomplete_expired" });
+
+    const url = await openCheckout(billing.deps, { ...account, interval: "monthly" });
+
+    expect(url).toBe("https://checkout.stripe.test/c/pay_1");
   });
 
   it("fails rather than redirecting nowhere when Stripe returns no URL", async () => {

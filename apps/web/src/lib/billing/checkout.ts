@@ -35,6 +35,11 @@ export type CheckoutStripeClient = {
       options: Stripe.RequestOptions,
     ) => Promise<{ id: string }>;
   };
+  subscriptions: {
+    list: (
+      params: Stripe.SubscriptionListParams,
+    ) => Promise<{ data: ReadonlyArray<{ status: Stripe.Subscription.Status }> }>;
+  };
   checkout: {
     sessions: {
       create: (params: Stripe.Checkout.SessionCreateParams) => Promise<{ url: string | null }>;
@@ -72,16 +77,47 @@ async function ensureStripeCustomer(
 }
 
 /**
+ * Subscription states that mean the account has already paid or is paying.
+ * `incomplete` is left out: a card challenge abandoned inside Checkout must not
+ * lock the account out of trying again for the day Stripe keeps it open.
+ */
+const LIVE_SUBSCRIPTION_STATUSES: ReadonlySet<Stripe.Subscription.Status> = new Set([
+  "active",
+  "trialing",
+  "past_due",
+  "unpaid",
+  "paused",
+]);
+
+async function holdsLiveSubscription(
+  stripe: CheckoutStripeClient,
+  customer: string,
+): Promise<boolean> {
+  const subscriptions = await stripe.subscriptions.list({ customer, status: "all", limit: 10 });
+  return subscriptions.data.some((subscription) =>
+    LIVE_SUBSCRIPTION_STATUSES.has(subscription.status),
+  );
+}
+
+/**
  * Open Stripe Checkout for one account and return the URL to send it to (#606).
  * Cards only, so payment evidence is synchronous; the account as the client
  * reference; Stripe Tax on the tax-exclusive price. Returning from Checkout
  * admits nobody: the confirming page waits for the paid invoice to be projected.
+ *
+ * One account holds one subscription, so an account that has already paid but
+ * is not yet admitted, because its invoice is still on the way, is sent back to
+ * the confirming page instead of into a second Checkout.
  */
 export async function openCheckout(
   deps: CheckoutDependencies,
   input: { userId: string; email: string; interval: BillingInterval },
 ): Promise<string> {
   const customer = await ensureStripeCustomer(deps, input);
+  if (await holdsLiveSubscription(deps.stripe, customer)) {
+    return new URL("/confirming", deps.baseUrl).toString();
+  }
+
   const session = await deps.stripe.checkout.sessions.create({
     mode: "subscription",
     customer,

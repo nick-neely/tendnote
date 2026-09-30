@@ -148,6 +148,20 @@ describe("access profile queries", () => {
     expect(decision.profile).toBeNull();
   });
 
+  it("records Paid Access over a beta grant so the Beta Sunset cannot end a paying account", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    await queries.grantAccess({ userId: FIRST_USER, source: "beta_flag" });
+    await queries.grantAccess({ userId: SECOND_USER, source: "manual_grant" });
+
+    await expect(
+      queries.grantAccess({ userId: FIRST_USER, source: "paid_access" }),
+    ).resolves.toMatchObject({ status: "granted", source: "paid_access" });
+    // Every other grant keeps its original source for audit.
+    await expect(
+      queries.grantAccess({ userId: SECOND_USER, source: "paid_access" }),
+    ).resolves.toMatchObject({ status: "granted", source: "manual_grant" });
+  });
+
   it("durably upgrades a pending user when access is granted", async () => {
     const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
 

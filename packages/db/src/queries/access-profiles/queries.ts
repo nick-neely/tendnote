@@ -89,6 +89,14 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
     );
   }
 
+  /**
+   * A beta grant is temporary and ends at the Beta Sunset, so Paid Access must
+   * replace it rather than leave a paying account looking like a beta tester.
+   */
+  function supersedesBetaGrant(existing: AccessProfile, source: AccessSource): boolean {
+    return source === "paid_access" && existing.source === "beta_flag";
+  }
+
   async function grantFresh(userId: string, source: AccessSource): Promise<AccessProfile> {
     const inserted = await store.insertIfAbsent({
       userId,
@@ -107,7 +115,10 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
     const existing = await store.getByUserId(input.userId);
     if (!existing) return grantFresh(input.userId, input.source);
     if (existing.status !== "granted") return grantExisting(existing, input.source);
-    if (reclassifiesToBootstrap(existing, input.source)) {
+    if (
+      reclassifiesToBootstrap(existing, input.source) ||
+      supersedesBetaGrant(existing, input.source)
+    ) {
       return grantExisting(existing, input.source);
     }
     return existing;

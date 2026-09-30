@@ -1,3 +1,4 @@
+import { parseAdmissionPolicy } from "@tendnote/domain";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
@@ -20,6 +21,11 @@ export default async function ConfirmingPage() {
 
   if (access.state === "admitted") {
     redirect("/");
+  }
+
+  // Only hosted deployments take payment, so there is nothing to wait for here.
+  if (parseAdmissionPolicy().mode !== "hosted") {
+    redirect("/pending");
   }
 
   return (

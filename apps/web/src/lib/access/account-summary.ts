@@ -19,7 +19,7 @@ export function accessSourceLabel(source: AccessSource | null): string {
     case "manual_grant":
       return "Granted manually";
     case "paid_access":
-      return "Subscription";
+      return "Paid Access";
     default:
       return "Granted";
   }
