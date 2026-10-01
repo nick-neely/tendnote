@@ -13,14 +13,14 @@ const REQUEST_COUNTRY_HEADER = "x-vercel-ip-country";
  *
  * The exemptions are the region page itself and the server-to-server receivers,
  * whose callers (Vercel cron and queues, Eve's signed cache reconcile, Discord
- * interactions) are not visitors and may originate anywhere. A future provider
- * webhook receiver, such as Stripe's, belongs here too.
+ * interactions, Stripe webhooks) are not visitors and may originate anywhere.
  */
 const EXEMPT_PATH_PREFIXES = [
   REGION_PAGE_PATH,
   "/api/cron",
   "/api/queue",
   "/api/internal",
+  "/api/stripe",
   "/eve/v1/discord",
 ] as const;
 

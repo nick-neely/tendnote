@@ -15,6 +15,7 @@ export const accessSourceSchema = z.enum([
   "household_invitation",
   "manual_grant",
   "beta_flag",
+  "paid_access",
 ]);
 
 export type AccessSource = z.infer<typeof accessSourceSchema>;

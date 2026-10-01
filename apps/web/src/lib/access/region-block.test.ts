@@ -53,6 +53,7 @@ describe("hosted Region Block", () => {
     "/api/cron/background-jobs",
     "/api/queue/reminder",
     "/api/internal/cache/reconcile",
+    "/api/stripe/webhook",
     "/eve/v1/discord",
   ])("never refuses the exempt route %s", (path) => {
     expect(regionBlockResponse(request(path, "DE", "POST"), HOSTED)).toBeNull();

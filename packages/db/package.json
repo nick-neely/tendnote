@@ -75,6 +75,7 @@
     "./queries/semantic-retrieval": "./src/queries/semantic-retrieval.ts",
     "./queries/weekly-relationship-review": "./src/queries/weekly-relationship-review.ts",
     "./queries/source-records": "./src/queries/source-records.ts",
+    "./queries/stripe-customers": "./src/queries/stripe-customers.ts",
     "./queries/today": "./src/queries/today.ts"
   },
   "scripts": {
