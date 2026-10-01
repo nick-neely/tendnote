@@ -13,6 +13,7 @@ function dependencies(input: { journalFails?: boolean } = {}) {
       },
       findIntent: async () => null,
       listIntents: async () => [],
+      markAttempted: async () => {},
       markJournaled: async () => {
         steps.push("journaled");
       },

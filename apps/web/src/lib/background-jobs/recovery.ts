@@ -283,10 +283,8 @@ async function completePendingAccountDeletions(input: {
   logger?: BackgroundJobQueueLogger;
 }): Promise<AccountDeletionSweepResult> {
   if (input.limit <= 0) return { scanned: 0, completed: 0, failed: 0, stuck: 0 };
-  const [{ accountDeletionDependencies }, { revokeUserSessions }] = await Promise.all([
-    import("@/lib/auth/account-deletion"),
-    import("@/lib/auth/server"),
-  ]);
+  const { accountDeletionDependencies } = await import("@/lib/auth/account-deletion");
+  const { revokeUserSessions } = await import("@/lib/auth/server");
   return runAccountDeletionSweep({
     ...accountDeletionDependencies(revokeUserSessions),
     limit: input.limit,
