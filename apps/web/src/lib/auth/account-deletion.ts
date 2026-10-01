@@ -29,7 +29,9 @@ export function accountDeletionDependencies(
  * When it completes, the account row is already gone and Better Auth's own
  * delete finds nothing left to remove. When only the intent committed, Better
  * Auth must not delete anything, so the request ends here as 202 Accepted: the
- * account is closed, and the recovery cron finishes the deletion.
+ * account is closed, and the recovery cron finishes the deletion. Ending
+ * here also skips Better Auth's cookie clearing; the cookie is inert because
+ * its session is already revoked, so the client should simply sign out.
  */
 export function createAccountDeletionHook(input: {
   dependencies: () => AccountDeletionDependencies;
