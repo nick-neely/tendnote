@@ -27,7 +27,14 @@ export function accessSourceLabel(source: AccessSource | null): string {
 
 /** What the account page should do for a resolved access state. */
 export type AccountView =
-  | { type: "render"; name: string; email: string; sourceLabel: string }
+  | {
+      type: "render";
+      name: string;
+      email: string;
+      sourceLabel: string;
+      /** The account's standing beside its name: a paying account is not a beta tester. */
+      accessBadge: "Paid Access" | "Private beta";
+    }
   | { type: "redirect"; to: "/sign-in" | "/pending" };
 
 /**
@@ -51,6 +58,8 @@ export function resolveAccountView(
       name: access.user.name || access.user.email,
       email: access.user.email,
       sourceLabel: accessSourceLabel(access.decision.profile?.source ?? null),
+      accessBadge:
+        access.decision.profile?.source === "paid_access" ? "Paid Access" : "Private beta",
     };
   }
 
@@ -60,6 +69,7 @@ export function resolveAccountView(
       name: "Local development",
       email: fallbackOwnerUserId,
       sourceLabel: "Local development",
+      accessBadge: "Private beta",
     };
   }
 

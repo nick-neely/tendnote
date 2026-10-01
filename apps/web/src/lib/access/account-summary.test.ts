@@ -11,7 +11,7 @@ const USER: SessionUser = {
   image: null,
 };
 
-function admittedState(sourceLabelSource: "bootstrap" | "beta_flag"): AccessState {
+function admittedState(sourceLabelSource: "bootstrap" | "beta_flag" | "paid_access"): AccessState {
   const decision: AccessDecision = {
     admitted: true,
     status: "granted",
@@ -54,6 +54,14 @@ describe("resolveAccountView", () => {
       name: "Ada",
       email: "ada@example.com",
       sourceLabel: "Initial owner",
+      accessBadge: "Private beta",
+    });
+  });
+
+  it("badges a paying account as Paid Access rather than private beta", () => {
+    expect(resolveAccountView(admittedState("paid_access"), undefined)).toMatchObject({
+      sourceLabel: "Paid Access",
+      accessBadge: "Paid Access",
     });
   });
 
@@ -80,6 +88,7 @@ describe("resolveAccountView", () => {
       name: "Local development",
       email: "demo-user",
       sourceLabel: "Local development",
+      accessBadge: "Private beta",
     });
   });
 });

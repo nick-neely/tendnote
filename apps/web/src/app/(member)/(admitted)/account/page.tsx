@@ -90,8 +90,8 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
             <span className="min-w-0 truncate text-[length:var(--text-title)] leading-[var(--text-title-line)] font-medium">
               {view.name}
             </span>
-            <Badge variant="secondary" title={`Private beta access active: ${view.sourceLabel}`}>
-              Private beta
+            <Badge variant="secondary" title={`${view.accessBadge} active: ${view.sourceLabel}`}>
+              {view.accessBadge}
             </Badge>
           </div>
           {view.name !== view.email ? (
