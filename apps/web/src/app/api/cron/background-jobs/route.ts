@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { sweepFileStorage } from "@tendnote/db/queries/file-uploads";
 import { type NextRequest, NextResponse } from "next/server";
 import { runBackgroundJobRecovery } from "@/lib/background-jobs/recovery";
 
@@ -70,5 +71,6 @@ export async function GET(request: NextRequest) {
     logger: console,
   });
 
-  return NextResponse.json(result);
+  const files = await sweepFileStorage();
+  return NextResponse.json({ ...result, files });
 }

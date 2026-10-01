@@ -39,7 +39,7 @@ export function webTaintedToolCallIds(messages: readonly EveMessage[]): Readonly
       if (readWeb) {
         tainted.add(part.toolCallId);
       }
-      if (isWebSourceTool(part.toolName)) {
+      if (isWebSourceTool(part.toolName) || part.toolName === "read_attachment") {
         readWeb = true;
       }
     }

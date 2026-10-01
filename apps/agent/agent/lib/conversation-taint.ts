@@ -43,9 +43,9 @@ import { defineState } from "eve/context";
  * taints the conversation, and those cannot be allowed to disagree about which
  * tools those are.
  */
-export const UNTRUSTED_CONTENT_TOOL_NAMES = WEB_SOURCE_TOOLS;
+export const UNTRUSTED_CONTENT_TOOL_NAMES = [...WEB_SOURCE_TOOLS, "read_attachment"] as const;
 
-export type UntrustedContentToolName = WebSourceTool;
+export type UntrustedContentToolName = WebSourceTool | "read_attachment";
 
 export type ConversationTaint = {
   readonly tainted: boolean;

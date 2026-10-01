@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import { mockFileUploadNetwork } from "@/test/file-upload-network";
+
+vi.mock("@vercel/blob/client", () => ({ upload: vi.fn(async () => ({})) }));
+
 import type { ChatStatus } from "ai";
 import { beforeEach, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, userEvent, waitFor } from "@/test/dom";
@@ -26,9 +30,10 @@ import { PromptInputProvider } from "./ai-elements/prompt-input";
 import { AssistantComposerForm } from "./assistant-composer";
 
 const onStop = vi.fn();
-const onSubmit = vi.fn(() => Promise.resolve());
+const onSubmit = vi.fn((_message: { text: string; files: unknown[] }) => Promise.resolve());
 
 beforeEach(() => {
+  mockFileUploadNetwork();
   onStop.mockClear();
   onSubmit.mockClear();
   window.localStorage.clear();
@@ -146,11 +151,13 @@ it("stays live for the queue when a line is typed during a turn", async () => {
   expect(submitInert("Stop")).toBe(false);
 });
 
-it("routes a pasted image into the shared evidence capture, as a chip and a panel", async () => {
+it("holds a pasted image for chat and opens Asset capture only on request", async () => {
   mount("ready");
 
   pasteFiles([png("dishwasher.png")]);
 
+  expect(screen.queryByRole("region", { name: "Attach asset evidence" })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Save to an Asset" }));
   await waitFor(() =>
     expect(screen.getByRole("region", { name: "Attach asset evidence" })).toBeTruthy(),
   );
@@ -205,4 +212,41 @@ it("leaves a text paste entirely alone", async () => {
   expect(composer().value).toBe("Mara adopted a cat");
   expect(screen.queryByRole("region", { name: "Attach asset evidence" })).toBeNull();
   expect(submitInert()).toBe(false);
+});
+
+it("sends a private file reference with the question and clears the picked file", async () => {
+  mount("ready");
+  pasteFiles([png("receipt.png")]);
+  await userEvent.type(composer(), "What does this say?");
+  await userEvent.click(submitButton());
+  await waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("/api/files/11111111-1111-4111-8111-111111111111"),
+      }),
+    ),
+  );
+  expect(onSubmit.mock.calls[0]?.[0]).toEqual(
+    expect.objectContaining({ text: expect.stringContaining("What does this say?") }),
+  );
+  await waitFor(() => expect(screen.queryByText("receipt.png")).toBeNull());
+});
+
+it("preserves a new attachment selected while the previous message is pending", async () => {
+  let finish!: () => void;
+  onSubmit.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  mount("ready");
+  pasteFiles([png("first.png")]);
+  await userEvent.click(submitButton());
+  await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+  await userEvent.click(screen.getByRole("button", { name: "Remove the file" }));
+  pasteFiles([png("next.png")]);
+  finish();
+  await waitFor(() => expect(screen.getByText("next.png")).toBeTruthy());
+  expect(screen.queryByText("first.png")).toBeNull();
 });

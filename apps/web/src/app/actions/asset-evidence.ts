@@ -7,6 +7,7 @@ import {
   listAssetEvidenceCaptureTargets,
   removeAssetEvidence,
 } from "@tendnote/db/queries/assets";
+import { fileUploadService } from "@tendnote/db/queries/file-uploads";
 import {
   assertAssetEvidenceFileAccepted,
   assetEvidenceKindSchema,
@@ -28,7 +29,8 @@ import { runOwnerAction } from "@/lib/owner-action";
  * The shared Asset Evidence Capture server actions (#200): one thin layer over
  * the owner-scoped seam for every capture surface — the Asset Profile drop
  * zone/mobile capture, the review card, and later Eve's chat plus-menu (#201).
- * File bytes arrive as multipart FormData; everything else is plain fields.
+ * Browser uploads arrive as owned Blob file ids. Legacy multipart forms remain
+ * bounded for submissions already in flight during deployment.
  */
 
 // Optional text fields arrive as "" from empty inputs — treat blank as absent.
@@ -72,7 +74,16 @@ const targetSchema = z.union([
 ]);
 
 /** Reads the optional upload out of the form, vetting it before bytes are kept. */
-async function readUploadedFile(formData: FormData): Promise<AddAssetEvidenceInput["file"]> {
+async function readUploadedFile(
+  formData: FormData,
+  ownerUserId: string,
+): Promise<AddAssetEvidenceInput["file"]> {
+  const uploadedId = formData.get("uploadedFileId");
+  if (typeof uploadedId === "string") {
+    const uploaded = await fileUploadService.read(ownerUserId, uploadedId);
+    if (!uploaded) throw new Error("File unavailable. Attach it again.");
+    return uploaded;
+  }
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
     return undefined;
@@ -167,7 +178,7 @@ export async function addAssetEvidenceAction(
     input: formData,
     visibilityChoice: (parsed) => parsed.fields.visibilityChoice,
     body: async ({ ownerUserId, input: parsed, resolvedScope }) => {
-      const file = await readUploadedFile(parsed.formData);
+      const file = await readUploadedFile(parsed.formData, ownerUserId);
       return addAssetEvidence(
         toCaptureInput(ownerUserId, parsed.target, parsed.fields, file, resolvedScope),
       );
@@ -209,7 +220,7 @@ export async function addAssetEvidenceToNewAssetAction(
         ...Object.fromEntries(parsedFormData.entries()),
         selectedUserIds: parsedFormData.getAll("selectedUserIds").map(String),
       });
-      const file = await readUploadedFile(parsedFormData);
+      const file = await readUploadedFile(parsedFormData, ownerUserId);
       // A brand-new proposal is private until acceptance widens it, so the
       // keep-private narrowing has nothing to narrow — the scope choice drops.
       const {

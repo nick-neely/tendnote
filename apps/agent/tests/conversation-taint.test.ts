@@ -100,8 +100,12 @@ describe("deriveConversationTaint: what makes a conversation tainted", () => {
     expect(deriveConversationTaint(messages)).toEqual(UNTAINTED);
   });
 
-  it("names exactly the two tools that read Untrusted Content", () => {
-    expect([...UNTRUSTED_CONTENT_TOOL_NAMES]).toEqual(["web_fetch", "web_search"]);
+  it("names exactly the tools that read Untrusted Content", () => {
+    expect([...UNTRUSTED_CONTENT_TOOL_NAMES]).toEqual([
+      "web_fetch",
+      "web_search",
+      "read_attachment",
+    ]);
   });
 });
 

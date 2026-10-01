@@ -24,7 +24,7 @@ import { sourceRecords } from "./source-records";
 /**
  * Asset Evidence (#196, #200): grounding for an Asset and its memories — a
  * receipt, photo, manual, warranty, link, or retained text, with lightweight
- * money/renewal metadata for recall. This row is the metadata; uploaded bytes
+ * money/renewal metadata for recall. This row is the metadata; uploaded file pointers
  * live in `asset_evidence_files`, keyed by this row's id, so lists and scope
  * checks never touch file contents. Attachment: always an Asset (`asset_id`),
  * plus the Asset Review Group it arrived through, kept as provenance after
@@ -122,14 +122,9 @@ const bytea = customType<{ data: Uint8Array; driverData: Buffer | string }>({
   },
 });
 
-/**
- * The stored bytes behind one uploaded piece of Asset Evidence (#200). One row
- * per evidence row, riding its lifecycle via the cascade — deleting evidence (or
- * its asset, or its owner) deletes the bytes, so no orphaned file bucket can
- * form. Postgres-owned like every other durable Tendnote store; if a dedicated
- * blob backend arrives later, this table swaps out behind the evidence store
- * seam without touching the evidence metadata model.
- */
+/** One file pointer per evidence record. New writes use private Blob; nullable
+ * legacy bytes support a checksum-verified, resumable migration. Deletion
+ * triggers enqueue Blob cleanup, including all cascading parent deletions. */
 export const assetEvidenceFiles = pgTable(
   "asset_evidence_files",
   {
@@ -138,7 +133,9 @@ export const assetEvidenceFiles = pgTable(
       .notNull()
       .references(() => assetEvidence.id, { onDelete: "cascade" }),
     ownerUserId: text("owner_user_id").notNull(),
-    bytes: bytea("bytes").notNull(),
+    // Transitional fallback only. New uploads write Blob; migration clears legacy bytes.
+    bytes: bytea("bytes"),
+    blobPath: text("blob_path"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("asset_evidence_files_evidence_idx").on(table.evidenceId)],

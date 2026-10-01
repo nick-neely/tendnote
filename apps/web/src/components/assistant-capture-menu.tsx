@@ -61,7 +61,7 @@ export function AssistantCaptureMenu({
   return (
     <>
       <PromptInputActionMenu>
-        <PromptInputActionMenuTrigger aria-label="Attach asset evidence" disabled={disabled}>
+        <PromptInputActionMenuTrigger aria-label="Attach a file" disabled={disabled}>
           <PlusIcon className="size-4" />
         </PromptInputActionMenuTrigger>
         <PromptInputActionMenuContent className="min-w-48">

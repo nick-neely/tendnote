@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import { mockFileUploadNetwork } from "@/test/file-upload-network";
+
+vi.mock("@vercel/blob/client", () => ({ upload: vi.fn(async () => ({})) }));
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EvidenceDestination } from "@/lib/asset-evidence-destination";
 import type { AssetEvidenceView } from "@/lib/asset-evidence-view";
@@ -41,6 +45,7 @@ class ResizeObserverStub {
 }
 
 beforeEach(() => {
+  mockFileUploadNetwork();
   addAssetEvidenceAction.mockReset();
   addAssetEvidenceToNewAssetAction.mockReset();
   listAssetEvidenceDestinationsAction.mockReset();
@@ -119,7 +124,7 @@ describe("AssistantCaptureMenu", () => {
     const onPick = vi.fn();
     render(<AssistantCaptureMenu onPick={onPick} />);
 
-    await user.click(screen.getByRole("button", { name: /attach asset evidence/i }));
+    await user.click(screen.getByRole("button", { name: /attach a file/i }));
 
     // All three capture entries, in one plus-menu (#196 story 23).
     expect(await screen.findByRole("menuitem", { name: /take a photo/i })).toBeTruthy();

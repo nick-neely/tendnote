@@ -1,6 +1,7 @@
 "use client";
 
 import type { ChatStatus } from "ai";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Attachment,
   type AttachmentData,
@@ -23,8 +24,11 @@ import {
 import { AssistantCaptureMenu } from "@/components/assistant-capture-menu";
 import { AssistantDraftPersistence } from "@/components/assistant-draft-persistence";
 import { AssistantEvidenceCapture } from "@/components/assistant-evidence-capture";
+import { Button } from "@/components/ui/button";
 import type { EvidencePick } from "@/lib/eve/evidence-pick";
 import type { SelectedPersonContext } from "@/lib/eve/selected-person-context";
+import { attachmentMessage } from "@/lib/files/message";
+import { type UploadedFile, uploadFile } from "@/lib/files/upload";
 import { REVEAL_ON_FOCUS } from "@/lib/hover-reveal";
 
 /**
@@ -55,18 +59,14 @@ function composerPlaceholder(
     : "Remember something from a conversation today…";
 }
 
-/**
- * The picked evidence file as a composer chip. It is display only - the bytes go
- * to the Asset Evidence server actions and never into the turn (ADR 0185) - so
- * the chip carries the name and type and no URL to read the file from.
- */
-function captureEvidenceChip(file: File): AttachmentData {
+/** Local attachment chip before its private upload. */
+function captureEvidenceChip(file: File, url: string): AttachmentData {
   return {
     filename: file.name,
     id: `evidence:${file.name}`,
     mediaType: file.type || "application/octet-stream",
     type: "file",
-    url: "",
+    url,
   };
 }
 
@@ -83,6 +83,66 @@ function captureEvidenceChip(file: File): AttachmentData {
 function useNothingToSend(hasFile: boolean, status: ChatStatus): boolean {
   const { textInput } = usePromptInputController();
   return status === "ready" && !hasFile && textInput.value.trim() === "";
+}
+
+function useAttachmentPreview(file: File | null) {
+  const previewUrl = useMemo(
+    () => (file?.type.startsWith("image/") ? URL.createObjectURL(file) : ""),
+    [file],
+  );
+  useEffect(
+    () => () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    },
+    [previewUrl],
+  );
+  return previewUrl;
+}
+
+/** Owns upload progress and retry state independently of composer rendering. */
+function useAttachmentSubmission(
+  evidence: EvidencePick,
+  onSubmit: (message: PromptInputMessage) => Promise<void>,
+  onSubmitted: () => void,
+) {
+  const captureFile = evidence.file;
+  const currentFile = useRef(captureFile);
+  currentFile.current = captureFile;
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const uploading = useRef(false);
+  const uploaded = useRef<{ file: File; result: UploadedFile } | null>(null);
+  async function submit(message: PromptInputMessage) {
+    if (uploading.current) throw new Error("Upload in progress.");
+    if (!captureFile) return onSubmit(message);
+    uploading.current = true;
+    setUploadError(null);
+    try {
+      let result = uploaded.current?.file === captureFile ? uploaded.current.result : null;
+      if (!result) {
+        setUploadProgress(0);
+        result = await uploadFile(captureFile, setUploadProgress);
+        uploaded.current = { file: captureFile, result };
+      }
+      setUploadProgress(null);
+      await onSubmit({ ...message, text: attachmentMessage(message.text, result) });
+      if (currentFile.current === captureFile) {
+        evidence.clear();
+        onSubmitted();
+      }
+      uploaded.current = null;
+    } catch (cause) {
+      setUploadError(
+        cause instanceof Error ? cause.message : "Could not send the file. Try again.",
+      );
+      throw cause;
+    } finally {
+      uploading.current = false;
+      setUploadProgress(null);
+    }
+  }
+
+  return { submit, uploadProgress, uploadError, setUploadError };
 }
 
 export function AssistantComposerForm({
@@ -114,32 +174,55 @@ export function AssistantComposerForm({
   suggestPersonName?: string | null;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
 }) {
-  // A pick opens the Asset Evidence capture panel above the composer (#201).
-  // Evidence routes through the shared capture server actions — never into the
-  // turn — so chat gets no attachment model of its own. The chip inside the
-  // composer is only a marker that a file is in hand; the menu stays disabled
-  // while a capture is open so a second pick can't discard a half-filled form.
   const captureFile = evidence.file;
+  const previewUrl = useAttachmentPreview(captureFile);
+  const [saveToAsset, setSaveToAsset] = useState(false);
+  const { submit, uploadProgress, uploadError, setUploadError } = useAttachmentSubmission(
+    evidence,
+    onSubmit,
+    () => setSaveToAsset(false),
+  );
 
   return (
     <>
       <AssistantDraftPersistence
-        onSubmit={onSubmit}
+        onSubmit={submit}
         ownerUserId={ownerUserId}
         ready={status === "ready"}
       />
-      {captureFile ? (
+      {captureFile && saveToAsset ? (
         <div className="pb-3">
-          <AssistantEvidenceCapture file={captureFile} onClose={evidence.clear} />
+          <AssistantEvidenceCapture file={captureFile} onClose={() => setSaveToAsset(false)} />
         </div>
       ) : null}
       <EvidenceNote note={evidence.note} />
-      <PromptInput onSubmit={onSubmit}>
+      {uploadProgress !== null ? (
+        <p role="status" className="pb-2 text-[length:var(--text-small)] text-muted-foreground">
+          Uploading file… {Math.round(uploadProgress)}%
+        </p>
+      ) : null}
+      {uploadError ? (
+        <p role="alert" className="pb-2 text-[length:var(--text-small)] text-destructive">
+          {uploadError}
+        </p>
+      ) : null}
+      {/* A disabled menu or Send button must not dim the editable composer. */}
+      <PromptInput
+        className="[&>[data-slot=input-group]]:bg-transparent [&>[data-slot=input-group]]:opacity-100"
+        onSubmit={submit}
+      >
         <PromptInputBody>
           {captureFile ? (
             <PromptInputHeader>
               <Attachments variant="inline">
-                <Attachment data={captureEvidenceChip(captureFile)} onRemove={evidence.clear}>
+                <Attachment
+                  data={captureEvidenceChip(captureFile, previewUrl)}
+                  onRemove={() => {
+                    evidence.clear();
+                    setSaveToAsset(false);
+                    setUploadError(null);
+                  }}
+                >
                   <AttachmentPreview />
                   <AttachmentInfo />
                   {/* The registry reveals this on hover alone, which leaves a Tab
@@ -147,6 +230,21 @@ export function AssistantComposerForm({
                   <AttachmentRemove className={REVEAL_ON_FOCUS} label="Remove the file" />
                 </Attachment>
               </Attachments>
+              <div className="flex flex-wrap items-center gap-2 text-[length:var(--text-caption)] text-muted-foreground">
+                <span>
+                  {["image/heic", "image/heif"].includes(captureFile.type)
+                    ? "Save this image to an Asset. For the Assistant to read it, attach a JPEG, PNG, WebP, or PDF copy."
+                    : "Sent with your next message for the Assistant to read."}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSaveToAsset((open) => !open)}
+                >
+                  Save to an Asset
+                </Button>
+              </div>
             </PromptInputHeader>
           ) : null}
           <ComposerTextarea
@@ -163,7 +261,12 @@ export function AssistantComposerForm({
               Enter to send · Shift + Enter for a new line
             </span>
           </PromptInputTools>
-          <ComposerSubmit hasFile={captureFile !== null} onStop={onStop} status={status} />
+          <ComposerSubmit
+            busy={uploadProgress !== null}
+            hasFile={captureFile !== null}
+            onStop={onStop}
+            status={status}
+          />
         </PromptInputFooter>
       </PromptInput>
     </>
@@ -193,7 +296,7 @@ function EvidenceNote({ note }: { note: string | null }) {
  * The textarea, plus the two gestures the registry would otherwise route into
  * its own attachment store.
  *
- * Pasting an image goes to the evidence capture instead (ADR 0185); pasting
+ * Pasting an image picks a chat attachment; pasting
  * text is left entirely alone. Enter on a composer with nothing to send is
  * swallowed here rather than left to raise an empty submit — the registry's own
  * Enter path checks the submit button's `disabled` property, which this
@@ -247,14 +350,16 @@ function ComposerTextarea({
  */
 function ComposerSubmit({
   hasFile,
+  busy = false,
   onStop,
   status,
 }: {
   hasFile: boolean;
+  busy?: boolean;
   onStop: () => void;
   status: ChatStatus;
 }) {
-  const nothingToSend = useNothingToSend(hasFile, status);
+  const nothingToSend = useNothingToSend(hasFile, status) || busy;
 
   return (
     <PromptInputSubmit

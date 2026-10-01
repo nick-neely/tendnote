@@ -126,6 +126,7 @@ const TOOL_FAMILIES = {
     "search_gift_plans",
   ],
   recall: [
+    "read_attachment",
     "capture_saved_item",
     "create_asset",
     "create_general_action",

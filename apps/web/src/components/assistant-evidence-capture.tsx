@@ -21,16 +21,12 @@ import {
   resolveEvidenceDestination,
 } from "@/lib/asset-evidence-destination";
 import type { AssetEvidenceView } from "@/lib/asset-evidence-view";
+import { submitEvidenceForm } from "@/lib/files/upload";
 import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 
-/**
- * Eve's chat plus-menu Asset Evidence capture panel (#201): the pick from
- * `assistant-capture-menu.tsx` routes into the SHARED evidence capture path —
- * the same server actions and owner-scoped seam as the Asset Profile drop zone
- * and the review card (#200). Chat gets no attachment model of its own: a pick
- * must land on an existing Asset, a still-open review item, or a review-gated
- * new Suggested Asset — never in an inbox, and never with the file's contents
- * read by Eve (no OCR or file Q&A this phase).
+/** Optional Asset save for a picked file or an existing chat attachment.
+ * Shares the Asset Profile actions and owner-scoped review/visibility rules.
+ * Chat reading does not depend on completing this flow.
  */
 
 /** The calm confirmation once the capture landed. */
@@ -44,7 +40,15 @@ type CaptureDone = { message: string; assetHref: string | null };
  * none routes to a review-gated new Suggested Asset), then hands off to the
  * shared details form. Nothing writes until the user submits.
  */
-export function AssistantEvidenceCapture({ file, onClose }: { file: File; onClose: () => void }) {
+export function AssistantEvidenceCapture({
+  file,
+  onClose,
+  uploadedFileId,
+}: {
+  file: File;
+  onClose: () => void;
+  uploadedFileId?: string;
+}) {
   const router = useRouter();
   const [choice, setChoice] = useState<EvidenceCaptureChoice | null>(null);
   const [done, setDone] = useState<CaptureDone | null>(null);
@@ -86,7 +90,13 @@ export function AssistantEvidenceCapture({ file, onClose }: { file: File; onClos
           onClose={onClose}
           pending={pending}
           submit={(formData, chosen) =>
-            runCaptureSubmit({ formData, choice: chosen, submit, onAdded: handleAdded })
+            runCaptureSubmit({
+              formData,
+              choice: chosen,
+              submit,
+              onAdded: handleAdded,
+              uploadedFileId,
+            })
           }
         />
       )}
@@ -252,16 +262,22 @@ function useEvidenceDestinations(
  * `addAssetEvidenceToNewAssetAction`. There is no third path.
  */
 function runCaptureSubmit({
+  uploadedFileId,
   formData,
   choice,
   submit,
   onAdded,
 }: {
+  uploadedFileId?: string;
   formData: FormData;
   choice: EvidenceCaptureChoice;
   submit: ReturnType<typeof usePendingMutationSubmit>["submit"];
   onAdded: (choice: EvidenceCaptureChoice, view: AssetEvidenceView) => void;
 }): void {
+  if (uploadedFileId) {
+    formData.delete("file");
+    formData.set("uploadedFileId", uploadedFileId);
+  }
   if (choice.kind === "existing") {
     const target = evidenceDestinationTarget(choice.destination);
     if ("assetId" in target) {
@@ -270,7 +286,7 @@ function runCaptureSubmit({
       formData.set("reviewGroupId", target.reviewGroupId);
     }
     submit(
-      () => addAssetEvidenceAction(formData),
+      () => submitEvidenceForm(formData, addAssetEvidenceAction),
       (view: AssetEvidenceView) => onAdded(choice, view),
     );
     return;
@@ -278,7 +294,7 @@ function runCaptureSubmit({
   formData.set("assetName", choice.assetName);
   formData.set("assetKind", choice.assetKind);
   submit(
-    () => addAssetEvidenceToNewAssetAction(formData),
+    () => submitEvidenceForm(formData, addAssetEvidenceToNewAssetAction),
     ({ evidence }: { evidence: AssetEvidenceView }) => onAdded(choice, evidence),
   );
 }

@@ -17,6 +17,7 @@ import {
   people,
   sourceRecords,
 } from "../../schema";
+import { readPrivateFile } from "../file-uploads/blob";
 import type { OwnerDataExportGrounding } from "./actions-planning";
 import { archiveEntry } from "./archive";
 import { envelope, iso, jsonBytes, sensitivityRank, sortByCreatedAt, sortById } from "./shared";
@@ -633,11 +634,15 @@ export async function loadOwnerDataExportAssetsContext(input: {
       ...row,
       money: moneyJson,
     })) as unknown as AssetEvidence[],
-    assetEvidenceFiles: fileRows.map((row) => ({
-      evidenceId: row.evidenceId,
-      ownerUserId: row.ownerUserId,
-      bytes: row.bytes,
-    })),
+    assetEvidenceFiles: await Promise.all(
+      fileRows.map(async (row) => ({
+        evidenceId: row.evidenceId,
+        ownerUserId: row.ownerUserId,
+        bytes: row.blobPath
+          ? await readPrivateFile(row.blobPath)
+          : requireLegacyEvidenceBytes(row.bytes),
+      })),
+    ),
     assetLinks: linkRows as unknown as AssetLink[],
     assetPersonLinks: personLinkRows as unknown as AssetPersonLink[],
     sourceRecordIds: sourceRecordRows.map((record) => record.id),
@@ -646,4 +651,9 @@ export async function loadOwnerDataExportAssetsContext(input: {
       sourceRecordRows.map((record) => [record.id, record.sensitivity]),
     ),
   };
+}
+
+function requireLegacyEvidenceBytes(bytes: Uint8Array | null): Uint8Array {
+  if (!bytes) throw new Error("An evidence file is unavailable for export.");
+  return bytes;
 }
