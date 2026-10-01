@@ -64,6 +64,7 @@ export * from "./provider-connection-catalog";
 export * from "./provider-connections";
 export * from "./push-endpoint";
 export * from "./record-surfacing";
+export * from "./recovery-journal";
 export * from "./relationship-shares";
 export * from "./reminders";
 export * from "./saved-items";

@@ -7,10 +7,10 @@ import { redisStorage } from "@better-auth/redis-storage";
 import { createTendnoteAuth, resolveBetterAuthSecret } from "@tendnote/auth";
 import { getDb } from "@tendnote/db/client";
 import { ensureAccessProfile } from "@tendnote/db/queries/access-profiles";
-import { assertHouseholdAccountDeletionAllowed } from "@tendnote/db/queries/households";
 import * as schema from "@tendnote/db/schema";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getRedis } from "@/lib/cache/redis";
+import { accountDeletionDependencies, createAccountDeletionHook } from "./account-deletion";
 import { accountEmailHooks } from "./account-email";
 import { createClickwrapHooks } from "./clickwrap";
 import {
@@ -136,9 +136,10 @@ function createAuth() {
     user: {
       deleteUser: {
         enabled: true,
-        beforeDelete: async (deletingUser) => {
-          await assertHouseholdAccountDeletionAllowed({ userId: deletingUser.id });
-        },
+        // Journals a Deletion Record before any row is deleted (#616).
+        beforeDelete: createAccountDeletionHook({
+          dependencies: () => accountDeletionDependencies(revokeUserSessions),
+        }),
       },
     },
     databaseHooks: createDatabaseHooks(),
@@ -150,6 +151,12 @@ function createAuth() {
 }
 
 let auth: ReturnType<typeof createAuth> | undefined;
+
+/** Ends every session an account holds, in the database and the Redis session store. */
+export async function revokeUserSessions({ userId }: { userId: string }) {
+  const context = await getAuth().$context;
+  await context.internalAdapter.deleteUserSessions(userId);
+}
 
 export function getAuth() {
   auth ??= createAuth();
