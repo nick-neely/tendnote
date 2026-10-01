@@ -47,6 +47,7 @@ describe("opening Stripe Checkout", () => {
         client_reference_id: account.userId,
         line_items: [{ price: "price_annual", quantity: 1 }],
         payment_method_types: ["card"],
+        wallet_options: { link: { display: "never" } },
         billing_address_collection: "required",
         automatic_tax: { enabled: true },
         success_url: "https://app.tendnote.test/confirming",

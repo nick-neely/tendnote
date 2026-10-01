@@ -137,6 +137,9 @@ export async function openCheckout(
     client_reference_id: input.userId,
     line_items: [{ price: deps.prices[input.interval], quantity: 1 }],
     payment_method_types: ["card"],
+    // Link would otherwise offer "Pay with Bank" inside the card flow, a
+    // bank-funded payment the card-only launch excludes.
+    wallet_options: { link: { display: "never" } },
     // The full billing address feeds Stripe Tax and the account's Radar rule
     // that refuses a non-US billing country before any charge.
     billing_address_collection: "required",
