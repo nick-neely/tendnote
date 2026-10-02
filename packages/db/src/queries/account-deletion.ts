@@ -2,6 +2,7 @@ import type { AdmissionBlock } from "@tendnote/domain";
 import { createDrizzleAccountDeletionStore } from "./account-deletion/drizzle-store";
 import { accountDeletionAdmissionBlocks } from "./account-deletion/service";
 
+export { blobRecoveryJournal } from "./account-deletion/blob-journal";
 export { createDrizzleAccountDeletionStore } from "./account-deletion/drizzle-store";
 export {
   type AccountDeletionDependencies,

@@ -1,11 +1,11 @@
 import {
   type AccountDeletionDependencies,
+  blobRecoveryJournal,
   createDrizzleAccountDeletionStore,
   requestAccountDeletion,
 } from "@tendnote/db/queries/account-deletion";
 import { assertHouseholdAccountDeletionAllowed } from "@tendnote/db/queries/households";
 import { APIError } from "better-auth/api";
-import { resolveRecoveryJournal } from "@/lib/recovery-journal";
 
 type RevokeSessions = AccountDeletionDependencies["revokeSessions"];
 
@@ -15,7 +15,7 @@ export function accountDeletionDependencies(
 ): AccountDeletionDependencies {
   return {
     store: createDrizzleAccountDeletionStore(),
-    journal: resolveRecoveryJournal(),
+    journal: blobRecoveryJournal,
     revokeSessions,
     logger: console,
   };

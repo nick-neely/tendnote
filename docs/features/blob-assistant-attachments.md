@@ -41,6 +41,9 @@ bounded size/type. Completion downloads and checks actual size and magic bytes
 before enabling reads. File reads are authenticated, private, and uncached.
 
 Configure the same private store's `BLOB_READ_WRITE_TOKEN` in Web and Agent.
+The Recovery Journal (ADR 0250) shares this store: Deletion Records live under
+`journal/`, which file deletion never touches, so the same token is also what
+lets account deletion complete.
 The token stays server-side. Development must use a separate store from production.
 A development-only store was provisioned for this change; production is not changed.
 
