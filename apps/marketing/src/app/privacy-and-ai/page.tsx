@@ -16,7 +16,7 @@ import { isRestoreDrillCurrent, RECOVERY_SENTENCE } from "@/lib/restore-drill";
 export const metadata: Metadata = {
   title: "Privacy & AI",
   description:
-    "Where your notes go, who can see them, how AI processes them, what the operator can access, and how to export or delete everything.",
+    "Where your notes go, who can see them, how AI processes them, and how to export or delete everything.",
 };
 
 // Rebuilt daily so the recovery sentence leaves the page on the day a drill
@@ -99,6 +99,11 @@ export default function PrivacyAndAiPage() {
                 "Reads only within the scopes you set, the same boundaries the rest of Tendnote follows.",
             },
             {
+              term: "The person who runs it",
+              detail:
+                "Does not browse your notes. Like any hosted service, Tendnote's database is reachable by its operator, so your notes are opened only when you ask for help that needs it or an incident requires it, and any change made to an account by hand is recorded.",
+            },
+            {
               term: "Anyone outside",
               detail:
                 "Nothing leaves Tendnote without your approval. A draft email or a message waits for you every time, with no setting that turns that off.",
@@ -145,31 +150,9 @@ export default function PrivacyAndAiPage() {
       <SplitSection
         aside={
           <p className="max-w-[44ch] text-muted-foreground">
-            The honest answer, rather than the comfortable one.
-          </p>
-        }
-        title="What the operator can see"
-        titleId="operator-title"
-      >
-        <p className="max-w-[62ch]">
-          Tendnote is run by one person, who has full access to its database. No technical lock
-          stops that person reading an account. What stops it is procedure: your content is read
-          only when you ask for help that needs it, or when an incident requires it, and every
-          change made to an account by hand is recorded.
-        </p>
-        <p className="max-w-[62ch] text-muted-foreground">
-          You will not find &ldquo;only you can read your notes&rdquo; on this site, because it
-          would not be true.
-        </p>
-      </SplitSection>
-
-      <SplitSection
-        aside={
-          <p className="max-w-[44ch] text-muted-foreground">
             Leaving is self-service and takes effect at once.
           </p>
         }
-        className="bg-surface"
         title="Export and deletion"
         titleId="exit-title"
       >
@@ -199,14 +182,22 @@ export default function PrivacyAndAiPage() {
         ) : null}
       </SplitSection>
 
+      {/*
+       * True as of launch planning. Anonymous page counters (#646), account
+       * funnel events with their opt-out (#640), and error reports once
+       * GlitchTip is enabled (#655) each revise this section when they ship,
+       * inside the same no-cookie, no-cross-site boundary.
+       */}
       <SplitSection
         aside={<p className="max-w-[44ch] text-muted-foreground">On this site and in the app.</p>}
+        className="bg-surface"
         title="No tracking"
         titleId="tracking-title"
       >
         <p className="max-w-[62ch]">
           There is no advertising, no cross-site tracking, no session replay, and no analytics
-          cookie, which is why there is no cookie banner. This site sets no cookies at all.
+          cookie, which is why there is no cookie banner. Today this site sets no cookies and
+          records nothing about your visit.
         </p>
       </SplitSection>
 
