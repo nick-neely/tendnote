@@ -3,16 +3,11 @@
 import { Button } from "@tendnote/ui/button";
 import { cn } from "@tendnote/ui/cn";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import {
-  BEAT_COUNT,
-  type Beat,
-  beatForProgress,
-  beats,
-  NOTE_TEXT,
-  progressForBeat,
-  QUESTION_TEXT,
-} from "./loop-script";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowDownIcon, ArrowUpIcon, CheckIcon, PlusIcon, XIcon } from "@/components/icons";
+import { StorySteps } from "@/components/story-steps";
+import { useMounted, useReducedMotion } from "@/components/use-reduced-motion";
+import { beatForProgress, beats, NOTE_TEXT, progressForBeat, QUESTION_TEXT } from "./loop-script";
 
 /*
  * The hero is one authored moment: a notebook stage that plays Sam's week
@@ -26,29 +21,7 @@ import {
 
 const HEADER_HEIGHT = 56;
 const TYPE_INTERVAL_MS = 24;
-const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
-
-function subscribeReducedMotion(onChange: () => void) {
-  const query = window.matchMedia(REDUCED_MOTION);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
-
-function useReducedMotion(): boolean {
-  return useSyncExternalStore(
-    subscribeReducedMotion,
-    () => window.matchMedia(REDUCED_MOTION).matches,
-    () => false,
-  );
-}
-
-function useMounted(): boolean {
-  return useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
-}
+const STEPS_LABEL = "Steps in Sam's week";
 
 /*
  * Where the pin starts and how far it runs, in viewport pixels. `slot` is the
@@ -175,7 +148,14 @@ export function LoopHero() {
             ref={stickyRef}
           >
             <Stage beat={live.beat} t={live.t} typed={typed} typing={pinned && live.beat === 0} />
-            <BeatSteps beat={live.beat} className="lg:hidden" compact onSelect={goToBeat} />
+            <StorySteps
+              className="lg:hidden"
+              compact
+              current={live.beat}
+              label={STEPS_LABEL}
+              onSelect={goToBeat}
+              steps={beats}
+            />
             <StageCaption hint={pinned && progress < 0.03} />
           </div>
         </div>
@@ -223,7 +203,13 @@ function Intro({
           The demo needs no account. The plan has fourteen days to change your mind.
         </p>
       </div>
-      <BeatSteps beat={beat} className="mt-4 hidden lg:block" onSelect={onSelect} />
+      <StorySteps
+        className="mt-4 hidden lg:block"
+        current={beat}
+        label={STEPS_LABEL}
+        onSelect={onSelect}
+        steps={beats}
+      />
     </div>
   );
 }
@@ -246,106 +232,6 @@ function StageCaption({ hint }: { hint: boolean }) {
         Scroll to follow the week
       </p>
     </div>
-  );
-}
-
-function BeatSteps({
-  beat,
-  className,
-  compact = false,
-  onSelect,
-}: {
-  beat: number;
-  className?: string;
-  compact?: boolean;
-  onSelect: (index: number) => void;
-}) {
-  if (compact) {
-    const current = beats[Math.min(beat, BEAT_COUNT - 1)] as Beat;
-    return (
-      <div className={cn("flex flex-col gap-3", className)}>
-        <ol aria-label="Steps in Sam's week" className="flex gap-1.5">
-          {beats.map((step, index) => (
-            <li className="flex-1" key={step.id}>
-              <button
-                aria-current={index === beat ? "step" : undefined}
-                aria-label={step.title}
-                className="block w-full rounded-full py-2 outline-none focus-visible:ring-3 focus-visible:ring-ring"
-                onClick={() => onSelect(index)}
-                type="button"
-              >
-                <span
-                  className={cn(
-                    "block h-1 rounded-full transition-colors duration-300",
-                    index <= beat ? "bg-primary" : "bg-border",
-                  )}
-                />
-              </button>
-            </li>
-          ))}
-        </ol>
-        <div className="tn-rise flex flex-col gap-1" key={current.id}>
-          <p className="text-[length:var(--text-title)] leading-[var(--text-title-line)] font-medium">
-            {current.title}
-          </p>
-          <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-            {current.body}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <ol aria-label="Steps in Sam's week" className={cn("flex flex-col", className)}>
-      {beats.map((step, index) => {
-        const active = index === beat;
-        return (
-          <li className="relative pl-5" key={step.id}>
-            <span aria-hidden className="absolute inset-y-0 left-0 w-px bg-border" />
-            <span
-              aria-hidden
-              className={cn(
-                "absolute inset-y-0 left-0 w-px origin-top bg-primary transition-transform duration-500 ease-(--motion-ease-out)",
-                active ? "scale-y-100" : "scale-y-0",
-              )}
-            />
-            <button
-              aria-current={active ? "step" : undefined}
-              className="block w-full rounded-sm py-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring"
-              onClick={() => onSelect(index)}
-              type="button"
-            >
-              <span
-                className={cn(
-                  "block text-[length:var(--text-title)] leading-[var(--text-title-line)] font-medium transition-colors duration-300",
-                  active ? "text-foreground" : "text-muted-foreground",
-                )}
-              >
-                {step.title}
-              </span>
-              <span
-                className={cn(
-                  "grid transition-[grid-template-rows] duration-400 ease-(--motion-ease-out)",
-                  active ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-                )}
-              >
-                <span className="block overflow-hidden">
-                  <span
-                    className={cn(
-                      "block max-w-[44ch] pt-1 pb-1 text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground transition-opacity duration-300",
-                      active ? "opacity-100" : "opacity-0",
-                    )}
-                  >
-                    {step.body}
-                  </span>
-                </span>
-              </span>
-            </button>
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 
@@ -610,62 +496,5 @@ function Composer({
         </span>
       </div>
     </div>
-  );
-}
-
-function Icon({ className, children }: { className?: string; children: React.ReactNode }) {
-  return (
-    <svg
-      aria-hidden
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      viewBox="0 0 24 24"
-    >
-      {children}
-    </svg>
-  );
-}
-
-function CheckIcon({ className }: { className?: string }) {
-  return (
-    <Icon className={className}>
-      <path d="M20 6 9 17l-5-5" />
-    </Icon>
-  );
-}
-
-function XIcon({ className }: { className?: string }) {
-  return (
-    <Icon className={className}>
-      <path d="M18 6 6 18M6 6l12 12" />
-    </Icon>
-  );
-}
-
-function PlusIcon({ className }: { className?: string }) {
-  return (
-    <Icon className={className}>
-      <path d="M5 12h14M12 5v14" />
-    </Icon>
-  );
-}
-
-function ArrowUpIcon({ className }: { className?: string }) {
-  return (
-    <Icon className={className}>
-      <path d="m5 12 7-7 7 7M12 19V5" />
-    </Icon>
-  );
-}
-
-function ArrowDownIcon({ className }: { className?: string }) {
-  return (
-    <Icon className={className}>
-      <path d="M12 5v14M19 12l-7 7-7-7" />
-    </Icon>
   );
 }

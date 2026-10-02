@@ -12,14 +12,13 @@ pnpm dev:marketing   # http://localhost:3002
 | --- | --- |
 | `/` | Home: the relationship loop, demo-first, with View pricing secondary |
 | `/product` | The relationship loop step by step, then the supporting capabilities |
+| `/demo` | The Marketing Demo: a fictional, scripted story the visitor plays in five steps, with no network calls |
 | `/pricing` | The one plan, every disclosure before Subscribe, the household note, and self-hosting |
 | `/fair-use` | The monthly allowance, per-function states and recovery conditions, and the dollar-to-turn conversion |
 | `/about` | Who makes and operates Tendnote |
 | `/privacy-and-ai` | Data flow, sharing, AI processing, operator access, export and deletion |
 | `/support` | The support address and the two-business-day promise |
 | `/terms`, `/privacy` | The versioned documents in `docs/legal/`, rendered at the version `@tendnote/domain/legal-documents` names |
-
-The Demo (`/demo`) follows in its own change; the header and footer already link to it.
 
 The offer's figures and the support address live once in `src/lib/offer.ts`. The recovery sentence on Privacy & AI appears only while `LAST_PASSED_RESTORE_DRILL` in `src/lib/restore-drill.ts` is under six months old.
 
