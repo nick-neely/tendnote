@@ -93,6 +93,7 @@ export const EVE_TOOL_NAMES = [
   "propose_asset_memories",
   "propose_followup",
   "propose_suggested_memory",
+  "read_attachment",
   "remember_self_context",
   "remove_gift_idea",
   "restore_self_context",

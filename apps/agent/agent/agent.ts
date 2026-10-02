@@ -61,6 +61,7 @@ export default defineAgent({
     externalDependencies: [
       "@better-auth/redis-storage",
       "@vercel/queue",
+      "@vercel/blob",
       "ai",
       "better-auth",
       "drizzle-orm",

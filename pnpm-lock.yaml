@@ -55,6 +55,9 @@ importers:
       '@tendnote/rate-limit':
         specifier: workspace:*
         version: link:../../packages/rate-limit
+      '@vercel/blob':
+        specifier: ^2.8.0
+        version: 2.8.0
       '@vercel/queue':
         specifier: ^0.5.1
         version: 0.5.1(@opentelemetry/api@1.9.1)
@@ -376,6 +379,9 @@ importers:
       '@tendnote/domain':
         specifier: workspace:*
         version: link:../domain
+      '@vercel/blob':
+        specifier: ^2.8.0
+        version: 2.8.0
       ai:
         specifier: 7.0.84
         version: 7.0.84(zod@4.5.4)

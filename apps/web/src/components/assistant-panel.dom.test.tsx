@@ -1228,10 +1228,8 @@ it("offers the whole panel as a drop target the moment a file is dragged over it
 
   expect(screen.getByText("Drop to attach")).toBeDefined();
   // What happens to the file is the reassurance the overlay owes the reader:
-  // it becomes evidence to review, and the turn never reads it (ADR 0185).
-  expect(
-    screen.getByText("Kept as evidence for your review, never read by the assistant."),
-  ).toBeDefined();
+  // it joins the next message; Asset saving stays optional.
+  expect(screen.getByText("Add an image or PDF to your next message.")).toBeDefined();
 
   dragOverPanel(dragEvent("dragleave"));
   expect(screen.queryByText("Drop to attach")).toBeNull();
@@ -1245,7 +1243,7 @@ it("stays out of the way when the drag is only text", async () => {
   expect(screen.queryByText("Drop to attach")).toBeNull();
 });
 
-it("routes a file dropped on the transcript into the same capture the plus menu opens", async () => {
+it("routes a file dropped on the transcript into the next message", async () => {
   render(<AssistantPanel ownerUserId="owner-1" />);
   const receipt = new File([new Uint8Array(4)], "receipt.png", { type: "image/png" });
 
@@ -1253,7 +1251,7 @@ it("routes a file dropped on the transcript into the same capture the plus menu 
   dragOverPanel(dragEvent("drop", { files: [receipt] }));
 
   await waitFor(() =>
-    expect(screen.getByRole("region", { name: "Attach asset evidence" })).toBeDefined(),
+    expect(screen.getByRole("button", { name: "Save to an Asset" })).toBeDefined(),
   );
   // The overlay goes with the drop, and the file shows as the composer's chip.
   expect(screen.queryByText("Drop to attach")).toBeNull();

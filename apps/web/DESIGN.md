@@ -356,15 +356,29 @@ card with the sign-in link and code; file parts render as attachment thumbnails.
 Reasoning text goes through the same guarded markdown as the answer (images are
 rewritten to links).
 
-**Composer.** A bordered box: textarea, then a control row with the "+" evidence
+**Composer.** A bordered box: textarea, then a control row with the "+" attachment
 menu, the "Enter to send · Shift + Enter for a new line" hint, and a submit that
-morphs into Stop while a turn runs. A picked evidence file shows as an inline
-attachment chip (display only; evidence still routes through the shared asset
-capture, never into the turn — ADR 0185). A file dragged anywhere over the
-conversation surface — or an image pasted into the textarea — takes the same
-route, and while a file drag is over it the whole surface shows one decorative
+morphs into Stop while a turn runs. A picked file shows as an inline attachment
+chip with its filename, image preview when available, and a keyboard-reachable
+Remove action. Quiet helper text explains that the file goes with the next
+message for the Assistant to read. Picking, pasting an image into the textarea,
+and dropping a file anywhere over the conversation surface use this same flow.
+Upload progress and retryable errors sit above the composer; the editable box
+keeps its ordinary contrast while Send is unavailable during upload.
+
+**The Explicit Save Rule.** Sending a chat attachment and saving Asset evidence
+are separate actions (ADR 0251). A ghost "Save to an Asset" action beside the
+picked file opens the shared inline destination, details, and audience flow;
+the file remains available for the next message. In the transcript, a readable
+filename link and the same optional save action keep both choices available
+after sending. Let these controls wrap at narrow widths, and break long
+filenames rather than widening the conversation. Keep the incumbent small and
+caption type, muted helper ink, and ordinary ghost buttons; file handling does
+not introduce another visual identity.
+
+While a file drag is over the conversation, the whole surface shows one decorative
 drop overlay: a hairline dashed sage frame inset from the edge over the panel's
-own quiet tone, "Drop to attach" and the line that says where the file goes, no
+own quiet tone, "Drop to attach" and "Add an image or PDF to your next message", no
 icon tile. On an idle session with an empty line and no file the submit is
 plainly inert (muted surface, muted-foreground ink) and Enter does nothing;
 it is never natively `disabled`, which would fade the whole input group.

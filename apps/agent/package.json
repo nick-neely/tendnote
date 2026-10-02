@@ -22,6 +22,7 @@
     "@tendnote/db": "workspace:*",
     "@tendnote/domain": "workspace:*",
     "@tendnote/rate-limit": "workspace:*",
+    "@vercel/blob": "^2.8.0",
     "@vercel/queue": "^0.5.1",
     "ai": "7.0.84",
     "better-auth": "^1.7.2",

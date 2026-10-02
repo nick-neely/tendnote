@@ -213,8 +213,8 @@ describe("Phase 6 boundary - Eve's asset surface is read, review-gated proposals
   });
 });
 
-describe("Phase 6 boundary — the agent never reads a file's contents", () => {
-  it("reaches no evidence bytes and no image/document parsing anywhere in the agent", () => {
+describe("File access boundary - only the owner-scoped reader can read uploads", () => {
+  it("keeps file access confined to the authorized attachment reader", () => {
     // `getAssetEvidenceFile` is the gated bytes read the *web* file route uses. The agent
     // has no business calling it, and no OCR/vision/pdf parser may appear either.
     const forbidden = [
@@ -226,19 +226,18 @@ describe("Phase 6 boundary — the agent never reads a file's contents", () => {
     ];
 
     for (const { path, code } of agentSources()) {
+      if (path.endsWith("/tools/read_attachment.ts")) continue;
       for (const pattern of forbidden) {
         expect(code, `${path} must not reach for file contents (${pattern})`).not.toMatch(pattern);
       }
     }
   });
 
-  it("tells Eve, in the always-on instructions, that uploads are Asset Evidence she never reads", () => {
+  it("requires a successful scoped reading before asserting file contents", () => {
     const instructions = authoredInstructions(agentRoot);
-
-    expect(instructions).toMatch(/plus-menu/i);
-    expect(instructions).toMatch(/never receive or read file contents/i);
-    expect(instructions).toMatch(/do not offer OCR, receipt parsing, arbitrary file Q&A/i);
-    expect(instructions).toMatch(/never claim to have viewed or analyzed an upload/i);
+    expect(instructions).toContain("use `read_attachment`");
+    expect(instructions).toContain("untrusted evidence");
+    expect(instructions).toContain("normal review flow");
   });
 });
 

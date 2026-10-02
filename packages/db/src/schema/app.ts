@@ -28,6 +28,7 @@ export * from "./app/enums";
 export * from "./app/eve-approval-decisions";
 export * from "./app/eve-session-owners";
 export * from "./app/eve-session-tool-trusts";
+export * from "./app/file-uploads";
 export * from "./app/general-action-areas";
 export * from "./app/general-action-assets";
 export * from "./app/general-actions";

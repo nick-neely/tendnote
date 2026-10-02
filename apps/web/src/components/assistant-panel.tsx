@@ -50,6 +50,7 @@ import {
   AssistantUserTurnActions,
 } from "@/components/assistant-turn-chrome";
 import { AssistantTurnUnitView } from "@/components/assistant-turn-unit";
+import { ChatFileAttachment } from "@/components/chat-file-attachment";
 import { DropOverlay } from "@/components/drop-overlay";
 import { ArrowUpRightIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -79,6 +80,7 @@ import {
   useResumedSession,
 } from "@/lib/eve/use-assistant-session";
 import { type AssistantSendQueueControls, useSendQueue } from "@/lib/eve/use-send-queue";
+import { splitAttachmentMessage } from "@/lib/files/message";
 import { useFileDropZone } from "@/lib/use-file-drop-zone";
 import { cn } from "@/lib/utils";
 
@@ -331,10 +333,7 @@ function AssistantConversationPanel({
         <AssistantSettleSpacer grow={centeredComposer} surface={surface} />
 
         {dragging ? (
-          <DropOverlay
-            hint="Kept as evidence for your review, never read by the assistant."
-            title="Drop to attach"
-          />
+          <DropOverlay hint="Add an image or PDF to your next message." title="Drop to attach" />
         ) : null}
       </AssistantPanelShell>
     </PromptInputProvider>
@@ -812,7 +811,7 @@ function UserTurn({
   message: EveMessage;
 }) {
   const controller = usePromptInputController();
-  const text = messageText(message);
+  const { text, file } = splitAttachmentMessage(messageText(message));
 
   // A submission that never reached Eve stays in the transcript looking exactly
   // like one that landed, which quietly lies about what happened. Name it: the
@@ -831,6 +830,7 @@ function UserTurn({
   return (
     <div className="group/turn flex flex-col gap-1">
       <AssistantTurnFiles files={files} />
+      {file ? <ChatFileAttachment {...file} /> : null}
       <Message from="user">
         <MessageContent
           className={cn(
