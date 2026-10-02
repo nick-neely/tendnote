@@ -56,9 +56,9 @@ export function createDefaultAssetSnapshotGenerator(
 
   return createLlmAssetSnapshotGenerator({
     version: `llm:${modelId}`,
-    model: async ({ prompt }) => {
+    model: async ({ prompt, call }) => {
       const { text } = await generateText({
-        model: hostedModel({ modelId, costCategory: "background" }),
+        model: hostedModel({ modelId, costCategory: "background", account: call.accountId }),
         system:
           "You write grounded summaries of things a user owns, for Tendnote. You " +
           "summarize only the facts you are given. You never invent, guess, or round a " +

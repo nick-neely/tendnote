@@ -14,6 +14,9 @@ vi.mock("ai", async (importOriginal) => ({
   gateway: (await fakeGateway).provider,
 }));
 
+const recordModelUsage = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("../usage-ledger", () => ({ recordModelUsage }));
+
 function summaryInput(): BriefSummaryInput {
   return {
     cadence: "daily",
@@ -32,7 +35,7 @@ describe("createDefaultBriefSummaryAdapter", () => {
   it("uses the deterministic summary when AI Gateway credentials are unavailable", async () => {
     const adapter = createDefaultBriefSummaryAdapter({});
 
-    const result = await adapter(summaryInput());
+    const result = await adapter(summaryInput(), { accountId: "owner-1" });
     expect(result?.provenance).toEqual({
       generator: "deterministic",
       version: DETERMINISTIC_BRIEF_SUMMARY_VERSION,
@@ -46,11 +49,14 @@ describe("createDefaultBriefSummaryAdapter", () => {
       TENDNOTE_BRIEF_SUMMARY_MODEL: "google/gemini-test",
     });
 
-    const result = await adapter(summaryInput());
+    const result = await adapter(summaryInput(), { accountId: "owner-1" });
     expect(result?.summary).toBe("LLM-written brief summary.");
     expect(result?.provenance).toEqual({ generator: "llm", version: "llm:google/gemini-test" });
     const { models, sentProviderOptions } = await fakeGateway;
     expect(models.map((m) => m.modelId)).toEqual(["google/gemini-test"]);
+    expect(recordModelUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "owner-1", costCategory: "background" }),
+    );
     expect(sentProviderOptions()).toEqual([
       {
         gateway: {

@@ -202,7 +202,10 @@ async function prepareExtraction(
   // The adapter receives only this job's bounded message. No owner history or other
   // domain records are loaded here, so the current-message boundary is structural.
   if (job.message === null) return emptyResult(job, "not_claimable");
-  const adapterResult = await ctx.extractionAdapter.extractCandidates({ message: job.message });
+  const adapterResult = await ctx.extractionAdapter.extractCandidates(
+    { message: job.message },
+    { accountId: job.ownerUserId },
+  );
   const validated = validateContextFactExtractionCandidates(adapterResult, {
     message: job.message,
   });

@@ -18,6 +18,9 @@ vi.mock("ai", async (importOriginal) => ({
   gateway: (await fakeGateway).provider,
 }));
 
+const recordModelUsage = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("../usage-ledger", () => ({ recordModelUsage }));
+
 beforeEach(async () => {
   (await fakeGateway).reset();
 });
@@ -63,6 +66,9 @@ describe("AI SDK suggested-action extraction adapter", () => {
       type: "json",
       name: "suggested_action_extraction",
     });
+    expect(recordModelUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "owner-1", costCategory: "background" }),
+    );
     expect(sentProviderOptions()).toEqual([
       {
         gateway: {

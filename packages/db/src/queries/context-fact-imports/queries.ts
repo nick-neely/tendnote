@@ -109,7 +109,11 @@ export function createContextFactImportQueries(
    * all, so an empty block falls through to extraction rather than reporting
    * nothing found, and its unreadable line count still travels with the result.
    */
-  async function readPaste(input: { text: string; provider: ContextFactImportProviderId }) {
+  async function readPaste(input: {
+    text: string;
+    provider: ContextFactImportProviderId;
+    callerUserId: string;
+  }) {
     const block = parseContextFactImportBlock(
       input.text,
       contextFactImportProvider(input.provider),
@@ -117,7 +121,12 @@ export function createContextFactImportQueries(
     const readableBlock = block && block.candidates.length > 0 ? block : null;
     const candidates = readableBlock
       ? readableBlock.candidates
-      : ((await extractionAdapter.extractCandidates({ text: input.text })).candidates ?? []);
+      : ((
+          await extractionAdapter.extractCandidates(
+            { text: input.text },
+            { accountId: input.callerUserId },
+          )
+        ).candidates ?? []);
     const validated = validateContextFactImportCandidates({ candidates });
 
     return {
@@ -161,7 +170,11 @@ export function createContextFactImportQueries(
     }
     const callerUserId = verifiedCallerUserId;
 
-    const read = await readPaste({ text: parsed.text, provider: parsed.provider });
+    const read = await readPaste({
+      text: parsed.text,
+      provider: parsed.provider,
+      callerUserId,
+    });
     const importRecord = await store.createContextFactImport({
       ownerUserId: callerUserId,
       provider: parsed.provider,

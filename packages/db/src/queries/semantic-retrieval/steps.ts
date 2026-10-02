@@ -181,11 +181,10 @@ async function reuseOrEmbed(
     });
   }
 
-  const adapterResult = await adapter.embedText({
-    text: params.embeddedText,
-    model: config.model,
-    version: config.version,
-  });
+  const adapterResult = await adapter.embedText(
+    { text: params.embeddedText, model: config.model, version: config.version },
+    { accountId: params.ownerUserId },
+  );
 
   const embedding = await store.upsertRelationshipContextEmbeddingForClaim({
     claim: {

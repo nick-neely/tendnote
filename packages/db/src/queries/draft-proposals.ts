@@ -136,10 +136,13 @@ export function createDraftProposalGenerator(
       try {
         const variants = await Promise.all(
           tones.map(async (tone, index) => {
-            const generated = await options.draftAdapter({
-              ...grounded,
-              toneInstruction: proposalToneInstruction(tone, input.revisionContext),
-            });
+            const generated = await options.draftAdapter(
+              {
+                ...grounded,
+                toneInstruction: proposalToneInstruction(tone, input.revisionContext),
+              },
+              { accountId: input.ownerUserId },
+            );
             const body = generated.body.trim();
             if (!body) {
               throw new Error("Draft proposal adapter returned an empty body.");

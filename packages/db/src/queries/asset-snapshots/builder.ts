@@ -91,7 +91,7 @@ export function createAssetSnapshot(
           return { status: "fresh", snapshot: existing, context };
         }
 
-        const prose = await generate(pack);
+        const prose = await generate(pack, { accountId: input.callerUserId });
         const snapshot = await store.upsertAssetSnapshot({
           ownerUserId: input.callerUserId,
           assetId: input.assetId,

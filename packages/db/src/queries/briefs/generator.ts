@@ -9,6 +9,7 @@ import {
   isBriefItemFeedbackActive,
   normalizeItemScope,
 } from "@tendnote/domain";
+import type { MeteredCall } from "@tendnote/domain/usage-ledger";
 import type { CalendarReaderForOwner } from "../calendar";
 import type {
   RelationshipAgendaCandidate,
@@ -48,13 +49,14 @@ type GeneratedSummary = {
 async function buildSummary(
   adapter: BriefSummaryAdapter | undefined,
   input: BriefSummaryInput,
+  call: MeteredCall,
 ): Promise<GeneratedSummary> {
   if (!adapter || input.items.length === 0) {
     return { summary: null, summaryProvenance: null };
   }
 
   try {
-    const result = await adapter(input);
+    const result = await adapter(input, call);
 
     if (!result || result.summary.trim().length === 0) {
       return { summary: null, summaryProvenance: null };
@@ -397,15 +399,19 @@ export function createBriefGenerator(
 
       // Decorative summary runs after deterministic selection and never feeds back
       // into items, ranks, or source refs (ADR-0008). Fail-open: no summary on error.
-      const { summary, summaryProvenance } = await buildSummary(options.summaryAdapter, {
-        cadence: input.cadence,
-        items: items.map((item) => ({
-          kind: item.kind,
-          personDisplayName: item.personDisplayName,
-          title: item.title,
-          reason: item.reason,
-        })),
-      });
+      const { summary, summaryProvenance } = await buildSummary(
+        options.summaryAdapter,
+        {
+          cadence: input.cadence,
+          items: items.map((item) => ({
+            kind: item.kind,
+            personDisplayName: item.personDisplayName,
+            title: item.title,
+            reason: item.reason,
+          })),
+        },
+        { accountId: input.ownerUserId },
+      );
 
       return store.createBrief({
         ownerUserId: input.ownerUserId,

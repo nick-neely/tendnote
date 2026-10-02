@@ -15,11 +15,10 @@ export function createSemanticRetrievalQueries(
   return {
     async searchSemanticContext(input: SearchSemanticContextRequest) {
       const parsed = searchSemanticContextSchema.parse(input);
-      const queryEmbedding = await adapter.embedText({
-        text: parsed.query,
-        model: config.model,
-        version: config.version,
-      });
+      const queryEmbedding = await adapter.embedText(
+        { text: parsed.query, model: config.model, version: config.version },
+        { accountId: input.ownerUserId },
+      );
 
       return store.searchSemanticContext({
         ownerUserId: input.ownerUserId,
@@ -31,11 +30,10 @@ export function createSemanticRetrievalQueries(
     },
     async searchSavedItemsSemantic(input: SearchSavedItemsSemanticRequest) {
       const parsed = searchSavedItemsSemanticSchema.parse(input);
-      const queryEmbedding = await adapter.embedText({
-        text: parsed.query,
-        model: config.model,
-        version: config.version,
-      });
+      const queryEmbedding = await adapter.embedText(
+        { text: parsed.query, model: config.model, version: config.version },
+        { accountId: input.ownerUserId },
+      );
       return store.searchSavedItemsSemantic({
         ownerUserId: input.ownerUserId,
         ...parsed,

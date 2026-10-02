@@ -91,6 +91,15 @@ export async function withIsolatedSideWrite<T>(fn: () => Promise<T>): Promise<T>
   return getDb().transaction((savepoint) => transactionContext.run(savepoint, fn));
 }
 
+/**
+ * Run a write on its own connection, outside any open transaction, so it
+ * commits even if the caller's transaction later rolls back. For records of
+ * something that already happened, like spend on a model call.
+ */
+export async function withoutDatabaseTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  return transactionContext.exit(fn);
+}
+
 export async function closeDb() {
   await postgresClient?.end();
   postgresClient = undefined;

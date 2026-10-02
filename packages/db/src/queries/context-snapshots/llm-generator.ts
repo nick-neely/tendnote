@@ -4,6 +4,7 @@ import {
   type SnapshotInputPack,
   type SnapshotProse,
 } from "@tendnote/domain";
+import type { MeteredCall } from "@tendnote/domain/usage-ledger";
 import type { SnapshotGenerator } from "./builder";
 
 /**
@@ -11,7 +12,10 @@ import type { SnapshotGenerator } from "./builder";
  * a concrete model here; the db package stays free of provider dependencies and
  * the call is trivially fakeable in tests.
  */
-export type SnapshotProseModel = (request: { prompt: string }) => Promise<string>;
+export type SnapshotProseModel = (request: {
+  prompt: string;
+  call: MeteredCall;
+}) => Promise<string>;
 
 export type LlmSnapshotGeneratorOptions = {
   model: SnapshotProseModel;
@@ -39,11 +43,11 @@ export function createLlmSnapshotGenerator(
 ): SnapshotGenerator {
   const fallback = options.fallback ?? generateDeterministicSnapshot;
 
-  return async (input: SnapshotInputPack): Promise<SnapshotProse> => {
-    const summary = (await options.model({ prompt: buildSnapshotPrompt(input) })).trim();
+  return async (input: SnapshotInputPack, call: MeteredCall): Promise<SnapshotProse> => {
+    const summary = (await options.model({ prompt: buildSnapshotPrompt(input), call })).trim();
 
     if (!summary) {
-      return fallback(input);
+      return fallback(input, call);
     }
 
     return { summary, generatorVersion: options.version };

@@ -17,6 +17,9 @@ vi.mock("ai", async (importOriginal) => ({
   gateway: (await fakeGateway).provider,
 }));
 
+const recordModelUsage = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("../usage-ledger", () => ({ recordModelUsage }));
+
 beforeEach(async () => {
   (await fakeGateway).reset();
 });
@@ -25,15 +28,21 @@ describe("AI SDK embedding adapter", () => {
   it("embeds through the model-call entry point on the configured model", async () => {
     const adapter = createAiSdkEmbeddingAdapter();
 
-    const result = await adapter.embedText({
-      text: "gift ideas",
-      model: "openai/text-embedding-3-small",
-      version: "openai/text-embedding-3-small",
-    });
+    const result = await adapter.embedText(
+      {
+        text: "gift ideas",
+        model: "openai/text-embedding-3-small",
+        version: "openai/text-embedding-3-small",
+      },
+      { accountId: "owner-1" },
+    );
 
     const { embeddingModels, sentProviderOptions } = await fakeGateway;
     expect(embeddingModels.map((m) => m.modelId)).toEqual(["openai/text-embedding-3-small"]);
     expect(embeddingModels[0]?.doEmbedCalls.map((c) => c.values)).toEqual([["gift ideas"]]);
+    expect(recordModelUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "owner-1", costCategory: "background" }),
+    );
     expect(sentProviderOptions()).toEqual([
       {
         gateway: {
@@ -57,7 +66,10 @@ describe("default semantic embedding configuration", () => {
     const config = createDefaultSemanticEmbeddingConfig({});
     const adapter = createDefaultSemanticEmbeddingAdapter({});
 
-    const result = await adapter.embedText({ text: "Alex likes keyboards", ...config });
+    const result = await adapter.embedText(
+      { text: "Alex likes keyboards", ...config },
+      { accountId: "owner-1" },
+    );
 
     expect(config).toEqual({ model: "fake-semantic-retrieval", version: "v2" });
     expect(result.vector).toHaveLength(64);

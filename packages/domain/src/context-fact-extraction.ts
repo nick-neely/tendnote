@@ -6,6 +6,7 @@ import {
   selfContextFactCategorySchema,
 } from "./context-facts";
 import { atLeastSensitivity, type Sensitivity, sensitivitySchema } from "./privacy";
+import type { MeteredCall } from "./usage-ledger";
 
 /** The extraction contract is intentionally small so the model never receives owner history. */
 export const contextFactExtractionPromptVersion = "context-fact-extraction.v1";
@@ -44,6 +45,7 @@ export type ContextFactExtractionAdapter = {
   promptVersion?: string;
   extractCandidates: (
     input: ContextFactExtractionInput,
+    call: MeteredCall,
   ) => Promise<ContextFactExtractionAdapterResult>;
 };
 

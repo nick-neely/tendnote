@@ -4,6 +4,7 @@ import {
   type DraftGroundedContext,
   generateDeterministicDraft,
 } from "@tendnote/domain";
+import type { MeteredCall } from "@tendnote/domain/usage-ledger";
 
 /**
  * The injectable draft-generation seam (PRD #75, issue #77). Given grounded,
@@ -12,14 +13,17 @@ import {
  * testable: a fake adapter drives normal verification, and the production default
  * is CI-safe (a deterministic fallback when no model is configured).
  */
-export type DraftAdapter = (input: DraftGroundedContext) => Promise<DraftGenerationResult>;
+export type DraftAdapter = (
+  input: DraftGroundedContext,
+  call: MeteredCall,
+) => Promise<DraftGenerationResult>;
 
 /**
  * Provider-agnostic seam for the drafting model call. The composition root wires a
  * concrete model; the db package stays free of provider dependencies and the call
  * is trivially fakeable.
  */
-export type DraftModel = (request: { prompt: string }) => Promise<string>;
+export type DraftModel = (request: { prompt: string; call: MeteredCall }) => Promise<string>;
 
 export type LlmDraftAdapterOptions = {
   model: DraftModel;
@@ -40,8 +44,8 @@ export type LlmDraftAdapterOptions = {
 export function createLlmDraftAdapter(options: LlmDraftAdapterOptions): DraftAdapter {
   const fallback = options.fallback ?? generateDeterministicDraft;
 
-  return async (input) => {
-    const text = (await options.model({ prompt: buildDraftPrompt(input) })).trim();
+  return async (input, call) => {
+    const text = (await options.model({ prompt: buildDraftPrompt(input), call })).trim();
 
     if (!text) {
       return fallback(input);

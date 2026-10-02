@@ -100,11 +100,10 @@ async function searchSemanticTier(
   query: AssetSearchQueryInput,
 ): Promise<{ candidates: AssetSearchCandidate[]; available: boolean }> {
   try {
-    const embedded = await adapter.embedText({
-      text: query.query,
-      model: config.model,
-      version: config.version,
-    });
+    const embedded = await adapter.embedText(
+      { text: query.query, model: config.model, version: config.version },
+      { accountId: query.ownerUserId },
+    );
 
     return {
       candidates: await store.searchAssetEmbeddings({

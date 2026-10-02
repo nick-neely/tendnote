@@ -75,7 +75,11 @@ export function createAiSdkSuggestedMemoryExtractionAdapter(
       requireExtractionCredentials(env);
 
       const result = await generateText({
-        model: hostedModel({ modelId: model, costCategory: "background" }),
+        model: hostedModel({
+          modelId: model,
+          costCategory: "background",
+          account: input.sourceRecord.ownerUserId,
+        }),
         output: Output.object({
           schema: suggestedMemoryExtractionAdapterResultSchema,
           name: "suggested_memory_extraction",

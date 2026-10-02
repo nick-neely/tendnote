@@ -80,7 +80,11 @@ export function createAiSdkSuggestedActionExtractionAdapter(
       requireExtractionCredentials(env);
 
       const result = await generateText({
-        model: hostedModel({ modelId: model, costCategory: "background" }),
+        model: hostedModel({
+          modelId: model,
+          costCategory: "background",
+          account: input.sourceRecord.ownerUserId,
+        }),
         output: Output.object({
           schema: suggestedActionExtractionAdapterResultSchema,
           name: "suggested_action_extraction",
