@@ -8,7 +8,7 @@
  * stays off the site, while the deletion tail, which rests on configuration
  * rather than the drill, is always published.
  */
-export const LAST_PASSED_RESTORE_DRILL: string | null = null;
+const LAST_PASSED_RESTORE_DRILL: string | null = null;
 
 const DRILL_VALID_MONTHS = 6;
 

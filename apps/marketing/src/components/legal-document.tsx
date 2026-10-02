@@ -52,7 +52,7 @@ const components: Components = {
 };
 
 /** A repository document's body, with its relative links sent to GitHub at the deployed ref. */
-export function DocumentText({ document }: { document: RepositoryDocument }) {
+function DocumentText({ document }: { document: RepositoryDocument }) {
   const ref = sourceRef();
   return (
     <div className="[&>:first-child]:mt-0">
