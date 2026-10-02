@@ -42,7 +42,7 @@ Run the smoke with `pnpm --filter @tendnote/web test -- vercel-queue.smoke`. It 
 
 The recovery dispatcher runs bounded work on the same ten-minute cron. It republishes due `pending` or `publish_failed` delivery intents (up to 25 per pass), abandons obsolete delivery intents, and backfills up to 5 jobs per pass each for `extraction`, `embedding`, `action_extraction`, and `context_fact_extraction` through the same shared processors used by queue consumers.
 
-Two more bounded sweeps ride the same cron pass but are not queue outbox deliveries: a household purge sweep (`runHouseholdPurgeSweep`, up to 3 households per pass) that erases workspaces whose thirty-day recovery window has closed, and an audit-log retention sweep (`runAuditLogRetentionSweep`, up to 100 entries per pass) that deletes expired audit trail entries. Both are periodic housekeeping over their own tables, not delivery/processor-job recovery, and neither publishes to a queue.
+Three more bounded sweeps ride the same cron pass but are not queue outbox deliveries: an account-deletion sweep (`runAccountDeletionSweep`, up to 10 accounts per pass) that resumes self-service deletions whose Recovery Journal write or disposition failed at request time and logs `account_deletion.intent_stuck` for any intent still incomplete after twenty-four hours, a household purge sweep (`runHouseholdPurgeSweep`, up to 3 households per pass) that erases workspaces whose thirty-day recovery window has closed, and an audit-log retention sweep (`runAuditLogRetentionSweep`, up to 100 entries per pass) that deletes expired audit trail entries. The last two are periodic housekeeping over their own tables, not delivery/processor-job recovery, and neither publishes to a queue.
 
 Backend-only inspection examples:
 

@@ -5,13 +5,26 @@
  * proves member-owned roots disappear, Household-native roots and history stay,
  * and verifies only the surviving member can read the retained Action.
  *
+ * Both deletions run through the self-service path (#616) against an in-memory
+ * Recovery Journal: the Deletion Record is written while the account row still
+ * exists, a failed journal write leaves the committed intent blocking admission
+ * with every row intact, and the recovery sweep then completes it.
+ *
  *   pnpm --filter @tendnote/db db:account-deletion:check
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, like, lt, or, sql } from "drizzle-orm";
 import { closeDb, getDb } from "./client";
+import {
+  createDrizzleAccountDeletionStore,
+  listAccountDeletionAdmissionBlocks,
+  requestAccountDeletion,
+  runAccountDeletionSweep,
+} from "./queries/account-deletion";
+import { createInMemoryRecoveryJournal } from "./queries/account-deletion/in-memory-journal";
 import { createDrizzleGeneralActionStore } from "./queries/general-actions/drizzle-store";
 import {
+  accountDeletionIntents,
   assetAuditEvents,
   assetEvidence,
   assetEvidenceFiles,
@@ -224,6 +237,25 @@ async function seedRecordFamilies(householdId: string, ownerUserId: string) {
   return { householdAction, memberAction, householdAsset, memberAsset };
 }
 
+async function accountExists(id: string) {
+  return (await getDb().select({ id: user.id }).from(user).where(eq(user.id, id))).length === 1;
+}
+
+const journal = createInMemoryRecoveryJournal();
+const journaledWhileAccountExisted: boolean[] = [];
+const deletion = {
+  store: createDrizzleAccountDeletionStore(),
+  journal: {
+    async write(record: Parameters<typeof journal.write>[0]) {
+      if (record.kind === "deletion") {
+        journaledWhileAccountExisted.push(await accountExists(record.subjectId));
+      }
+      await journal.write(record);
+    },
+  },
+  revokeSessions: async () => {},
+};
+
 // fallow-ignore-next-line complexity -- This executable is a linear destructive Postgres contract whose ordered setup, deletion, and assertions must stay visible together; it is exercised directly against a fresh migrated database.
 async function main() {
   await cleanupTestArtifacts({ includeStale: true });
@@ -234,7 +266,18 @@ async function main() {
     otherOwnerUserId: survivorId,
   });
   const shared = await seedRecordFamilies(sharedHouseholdId, creatorId);
-  await getDb().delete(user).where(eq(user.id, creatorId));
+
+  journal.failNextWrites(1);
+  const deferred = await requestAccountDeletion(deletion, { userId: creatorId });
+  check("a failed journal write defers the deletion", deferred.status === "pending");
+  check("a deferred deletion deletes no rows", await accountExists(creatorId));
+  check(
+    "a deferred deletion's intent blocks admission",
+    (await listAccountDeletionAdmissionBlocks({ userId: creatorId })).length === 1,
+  );
+  const swept = await runAccountDeletionSweep({ ...deletion, limit: 100 });
+  check("the recovery sweep completes the deferred deletion", !(await accountExists(creatorId)));
+  check("the sweep reports the deletion it completed", swept.completed >= 1);
 
   const retainedActions = await getDb()
     .select()
@@ -319,7 +362,8 @@ async function main() {
   if (!pendingInvitation || !secondPendingInvitation) {
     throw new Error("Failed to seed pending invitations.");
   }
-  await getDb().delete(user).where(eq(user.id, soleId));
+  const immediate = await requestAccountDeletion(deletion, { userId: soleId });
+  check("a journaled deletion completes at once", immediate.status === "deleted");
   check(
     "sole-member dissolved household action survived",
     (
@@ -374,6 +418,32 @@ async function main() {
     "sole-member dissolution retained a minimized audit event for every workspace",
     dissolutionAuditEntries.length === 2 &&
       dissolutionAuditEntries.every((entry) => entry.ownerUserId === null),
+  );
+
+  const deletionRecords = journal.records();
+  check(
+    "each deleted account left exactly one content-free Deletion Record",
+    [creatorId, soleId].every(
+      (id) =>
+        deletionRecords.filter(
+          (record) =>
+            record.subjectId === id &&
+            Object.keys(record).sort().join() === "at,kind,subjectId,subjectKind",
+        ).length === 1,
+    ),
+  );
+  check(
+    "every Deletion Record was written while its account still existed",
+    journaledWhileAccountExisted.length >= 2 && journaledWhileAccountExisted.every(Boolean),
+  );
+  check(
+    "completed deletions leave no intent behind",
+    (
+      await getDb()
+        .select()
+        .from(accountDeletionIntents)
+        .where(inArray(accountDeletionIntents.userId, [creatorId, soleId]))
+    ).length === 0,
   );
 }
 

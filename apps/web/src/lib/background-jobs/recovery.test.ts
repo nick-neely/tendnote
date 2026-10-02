@@ -203,6 +203,7 @@ describe("background job recovery", () => {
       actionExtraction: { scanned: 1, processed: 1, failed: 0 },
       contextFactExtraction: { scanned: 0, processed: 0, failed: 0 },
       ownerDataExport: { scanned: 0, processed: 0, failed: 0 },
+      accountDeletion: { scanned: 0, completed: 0, failed: 0, stuck: 0 },
       householdPurge: { scanned: 1, purged: 1, skipped: 0, failed: 0 },
       auditRetention: { scanned: 0, deleted: 0, skipped: 0, failed: 0 },
     });
@@ -246,6 +247,35 @@ describe("background job recovery", () => {
     expect(order).toEqual(["household-purge", "audit-retention"]);
     expect(result.auditRetention).toEqual({ scanned: 2, deleted: 1, skipped: 1, failed: 0 });
     expect(result.householdPurge).toEqual({ scanned: 3, purged: 2, skipped: 1, failed: 0 });
+  });
+
+  it("resumes pending account deletions on the same bounded cron pass", async () => {
+    const completeAccountDeletions = vi
+      .fn()
+      .mockResolvedValue({ scanned: 2, completed: 1, failed: 1, stuck: 1 });
+
+    const result = await runBackgroundJobRecovery({
+      deliveryLimit: 0,
+      extractionBackfillLimit: 0,
+      embeddingBackfillLimit: 0,
+      actionExtractionBackfillLimit: 0,
+      accountDeletionLimit: 4,
+      recoverDeliveries: vi
+        .fn()
+        .mockResolvedValue({ scanned: 0, republished: 0, failed: 0, abandoned: 0 }),
+      backfillExtraction: vi.fn().mockResolvedValue({ scanned: 0, processed: 0, failed: 0 }),
+      backfillEmbedding: vi
+        .fn()
+        .mockResolvedValue({ recovered: 0, scanned: 0, processed: 0, failed: 0 }),
+      backfillActionExtraction: vi.fn().mockResolvedValue({ scanned: 0, processed: 0, failed: 0 }),
+      completeAccountDeletions,
+      purgeDissolvedHouseholds: vi
+        .fn()
+        .mockResolvedValue({ scanned: 0, purged: 0, skipped: 0, failed: 0 }),
+    });
+
+    expect(completeAccountDeletions).toHaveBeenCalledWith(expect.objectContaining({ limit: 4 }));
+    expect(result.accountDeletion).toEqual({ scanned: 2, completed: 1, failed: 1, stuck: 1 });
   });
 
   it("still attempts audit retention when an earlier recovery stage fails", async () => {

@@ -1,4 +1,8 @@
 import {
+  type AccountDeletionSweepResult,
+  runAccountDeletionSweep,
+} from "@tendnote/db/queries/account-deletion";
+import {
   type AuditLogRetentionSweepResult,
   createDrizzleAuditLogRetentionStore,
   runAuditLogRetentionSweep,
@@ -69,6 +73,7 @@ export type BackgroundJobRecoveryRunResult = {
   actionExtraction: ProcessorBackfillResult;
   contextFactExtraction: ProcessorBackfillResult;
   ownerDataExport: ProcessorBackfillResult;
+  accountDeletion: AccountDeletionSweepResult;
   householdPurge: HouseholdPurgeSweepResult;
   auditRetention: AuditLogRetentionSweepResult;
 };
@@ -267,6 +272,28 @@ function runOwnerDataExportBackfill(
 }
 
 /**
+ * Finishes self-service deletions whose journal write or disposition failed at
+ * request time, and flags any still incomplete after twenty-four hours (#616).
+ * The production wiring is imported only when there is budget, so a pass given
+ * none never reaches the auth server or the database.
+ */
+async function completePendingAccountDeletions(input: {
+  limit: number;
+  now?: Date;
+  logger?: BackgroundJobQueueLogger;
+}): Promise<AccountDeletionSweepResult> {
+  if (input.limit <= 0) return { scanned: 0, completed: 0, failed: 0, stuck: 0 };
+  const { accountDeletionDependencies } = await import("@/lib/auth/account-deletion");
+  const { revokeUserSessions } = await import("@/lib/auth/server");
+  return runAccountDeletionSweep({
+    ...accountDeletionDependencies(revokeUserSessions),
+    limit: input.limit,
+    ...(input.now ? { now: input.now } : {}),
+    ...(input.logger ? { logger: input.logger } : {}),
+  });
+}
+
+/**
  * Closes the household recovery window for the households whose thirty days are
  * up, disposing of the workspace's own records and leaving the minimized
  * non-content tombstone (#391).
@@ -324,6 +351,7 @@ async function runRetryableBackgroundRecovery(input: {
   actionExtractionBackfillLimit: number;
   contextFactExtractionBackfillLimit: number;
   ownerDataExportBackfillLimit: number;
+  accountDeletionLimit: number;
   householdPurgeLimit: number;
   now: Date;
   logger?: BackgroundJobQueueLogger;
@@ -333,6 +361,7 @@ async function runRetryableBackgroundRecovery(input: {
   backfillActionExtraction: typeof runActionExtractionBackfill;
   backfillContextFactExtraction: typeof runContextFactExtractionBackfill;
   backfillOwnerDataExport: typeof runOwnerDataExportBackfill;
+  completeAccountDeletions: typeof completePendingAccountDeletions;
   purgeDissolvedHouseholds: typeof purgeDueDissolvedHouseholds;
 }): Promise<Omit<BackgroundJobRecoveryRunResult, "auditRetention">> {
   const deliveries = await input.recoverDeliveries({
@@ -365,6 +394,11 @@ async function runRetryableBackgroundRecovery(input: {
     now: input.now,
     logger: input.logger,
   });
+  const accountDeletion = await input.completeAccountDeletions({
+    limit: input.accountDeletionLimit,
+    now: input.now,
+    ...(input.logger ? { logger: input.logger } : {}),
+  });
   const householdPurge = await input.purgeDissolvedHouseholds({
     limit: input.householdPurgeLimit,
     now: input.now,
@@ -378,6 +412,7 @@ async function runRetryableBackgroundRecovery(input: {
     actionExtraction,
     contextFactExtraction,
     ownerDataExport,
+    accountDeletion,
     householdPurge,
   };
 }
@@ -389,6 +424,7 @@ type BackgroundJobRecoveryInput = {
   actionExtractionBackfillLimit: number;
   contextFactExtractionBackfillLimit?: number;
   ownerDataExportBackfillLimit?: number;
+  accountDeletionLimit?: number;
   householdPurgeLimit?: number;
   auditRetentionLimit?: number;
   now?: Date;
@@ -399,6 +435,7 @@ type BackgroundJobRecoveryInput = {
   backfillActionExtraction?: typeof runActionExtractionBackfill;
   backfillContextFactExtraction?: typeof runContextFactExtractionBackfill;
   backfillOwnerDataExport?: typeof runOwnerDataExportBackfill;
+  completeAccountDeletions?: typeof completePendingAccountDeletions;
   purgeDissolvedHouseholds?: typeof purgeDueDissolvedHouseholds;
   retainAuditLog?: typeof retainExpiredAuditLogEntries;
 };
@@ -410,6 +447,7 @@ type BackgroundJobRecoveryDependencies = {
   backfillActionExtraction: typeof runActionExtractionBackfill;
   backfillContextFactExtraction: typeof runContextFactExtractionBackfill;
   backfillOwnerDataExport: typeof runOwnerDataExportBackfill;
+  completeAccountDeletions: typeof completePendingAccountDeletions;
   purgeDissolvedHouseholds: typeof purgeDueDissolvedHouseholds;
   retainAuditLog: typeof retainExpiredAuditLogEntries;
 };
@@ -425,6 +463,7 @@ function resolveBackgroundJobRecoveryDependencies(
     backfillContextFactExtraction:
       input.backfillContextFactExtraction ?? runContextFactExtractionBackfill,
     backfillOwnerDataExport: input.backfillOwnerDataExport ?? runOwnerDataExportBackfill,
+    completeAccountDeletions: input.completeAccountDeletions ?? completePendingAccountDeletions,
     purgeDissolvedHouseholds: input.purgeDissolvedHouseholds ?? purgeDueDissolvedHouseholds,
     retainAuditLog: input.retainAuditLog ?? retainExpiredAuditLogEntries,
   };
@@ -483,6 +522,7 @@ async function runBackgroundJobRecoveryPass(
       actionExtractionBackfillLimit: input.actionExtractionBackfillLimit,
       contextFactExtractionBackfillLimit: input.contextFactExtractionBackfillLimit ?? 0,
       ownerDataExportBackfillLimit: input.ownerDataExportBackfillLimit ?? 0,
+      accountDeletionLimit: input.accountDeletionLimit ?? 0,
       householdPurgeLimit: input.householdPurgeLimit ?? 0,
       now,
       logger: input.logger,
@@ -492,6 +532,7 @@ async function runBackgroundJobRecoveryPass(
       backfillActionExtraction: dependencies.backfillActionExtraction,
       backfillContextFactExtraction: dependencies.backfillContextFactExtraction,
       backfillOwnerDataExport: dependencies.backfillOwnerDataExport,
+      completeAccountDeletions: dependencies.completeAccountDeletions,
       purgeDissolvedHouseholds: dependencies.purgeDissolvedHouseholds,
     },
   });

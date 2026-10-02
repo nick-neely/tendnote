@@ -1,4 +1,5 @@
 import { checkAccess, grantAccess } from "@tendnote/db/queries/access-profiles";
+import { listAccountDeletionAdmissionBlocks } from "@tendnote/db/queries/account-deletion";
 import { getEveSessionOwnerUserId } from "@tendnote/db/queries/eve-session-owners";
 import { eveChannel } from "eve/channels/eve";
 import { getAgentAuth } from "../lib/auth-server";
@@ -16,6 +17,7 @@ const hostedSessionAuth = createTendnoteAdmissionAuth({
     // access is therefore persisted-first and fail-closed; Web persists any
     // successful Flags grant before both surfaces consume it.
     evaluateFlag: async () => false,
+    listAdmissionBlocks: listAccountDeletionAdmissionBlocks,
   },
   getSession: (headers) => getAgentAuth().api.getSession({ headers }),
   checkIngressBudget: (userId) =>

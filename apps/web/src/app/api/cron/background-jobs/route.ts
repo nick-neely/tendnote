@@ -10,6 +10,11 @@ const ACTION_EXTRACTION_BACKFILL_LIMIT = 5;
 const CONTEXT_FACT_EXTRACTION_BACKFILL_LIMIT = 5;
 const OWNER_DATA_EXPORT_BACKFILL_LIMIT = 5;
 /**
+ * Account deletions resumed per pass. Normally zero are waiting: a deletion
+ * only lands here when its journal write or disposition failed at request time.
+ */
+const ACCOUNT_DELETION_LIMIT = 10;
+/**
  * Households erased per pass. Small on purpose: each one is an irreversible
  * multi-table transaction, and a thirty-day deadline gives a backlog every ten
  * minutes to drain in rather than needing to clear in a single run.
@@ -66,6 +71,7 @@ export async function GET(request: NextRequest) {
     actionExtractionBackfillLimit: ACTION_EXTRACTION_BACKFILL_LIMIT,
     contextFactExtractionBackfillLimit: CONTEXT_FACT_EXTRACTION_BACKFILL_LIMIT,
     ownerDataExportBackfillLimit: OWNER_DATA_EXPORT_BACKFILL_LIMIT,
+    accountDeletionLimit: ACCOUNT_DELETION_LIMIT,
     householdPurgeLimit: HOUSEHOLD_PURGE_LIMIT,
     auditRetentionLimit: AUDIT_RETENTION_LIMIT,
     logger: console,
