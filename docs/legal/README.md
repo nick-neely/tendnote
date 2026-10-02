@@ -68,3 +68,6 @@ dated the same way: the [Terms of Service](terms-of-service.md) and the
 Acceptance Record. Both are placeholders until counsel review
 ([#658](https://github.com/nick-neely/tendnote/issues/658)); publishing a new
 version means adding its text here and bumping that list together.
+The site's Privacy Policy page also renders the [retention
+table](privacy-retention-table.md) and the [sub-processor list](sub-processors.md),
+which change by reviewed commit.

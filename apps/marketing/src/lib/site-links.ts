@@ -7,7 +7,11 @@
  */
 
 const PRODUCTION_APP_ORIGIN = "https://app.tendnote.com";
-const REPOSITORY_URL = "https://github.com/nick-neely/tendnote";
+export const REPOSITORY_URL = "https://github.com/nick-neely/tendnote";
+// Pinned to the commit that published it, so the account it gives cannot drift.
+export const CASE_STUDY_URL = `${REPOSITORY_URL}/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/case-studies/tendnote-agent-built-privacy.md`;
+export const SELF_HOSTING_GUIDE_URL = `${REPOSITORY_URL}/blob/main/docs/self-hosting/vercel-operator-runbook.md`;
+export const COMMUNITY_SUPPORT_URL = `${REPOSITORY_URL}/blob/main/docs/support.md`;
 
 export type SiteLink = { label: string; href: string };
 
@@ -42,12 +46,17 @@ export const primaryNav: SiteLink[] = [
   { label: "Privacy & AI", href: "/privacy-and-ai" },
 ];
 
+/** The independently hosted status page, once it exists. */
+export function statusPageUrl(env: Env = process.env): string | undefined {
+  return env.TENDNOTE_STATUS_PAGE_URL?.trim() || undefined;
+}
+
 /**
  * The status page is hosted independently of the product. Until its address is
  * configured the footer leaves it out rather than linking somewhere unowned.
  */
 export function footerGroups(env: Env = process.env): FooterGroup[] {
-  const statusUrl = env.TENDNOTE_STATUS_PAGE_URL?.trim();
+  const statusUrl = statusPageUrl(env);
   return [
     {
       heading: "Product",
@@ -77,14 +86,8 @@ export function footerGroups(env: Env = process.env): FooterGroup[] {
     {
       heading: "Open source",
       links: [
-        {
-          label: "Case study",
-          href: `${REPOSITORY_URL}/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/case-studies/tendnote-agent-built-privacy.md`,
-        },
-        {
-          label: "Self-hosting guide",
-          href: `${REPOSITORY_URL}/blob/main/docs/self-hosting/vercel-operator-runbook.md`,
-        },
+        { label: "Case study", href: CASE_STUDY_URL },
+        { label: "Self-hosting guide", href: SELF_HOSTING_GUIDE_URL },
         { label: "Source code", href: REPOSITORY_URL },
       ],
     },
