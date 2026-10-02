@@ -21,6 +21,12 @@ import { arriveAdmitted, expect, test } from "./support/fixtures";
  * Desktop only and outside the promotion tier: the defect is in the server's
  * cache path, not the browser, and the wait is the cost of making it
  * deterministic, so it is paid once per run.
+ *
+ * It can only fail on one worker, as CI runs. With parallel local workers,
+ * another spec may render `/actions` during the wait and refresh the entry,
+ * and the action then lands on a fresh one. The cache-status header cannot
+ * prove the precondition either, because an action response reads `HIT` even
+ * when the entry is stale.
  */
 
 /** Past the revalidate window, with headroom for the arrival's own render. */

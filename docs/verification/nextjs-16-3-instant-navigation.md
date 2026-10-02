@@ -576,8 +576,13 @@ has run. The owner sees a failure for a write that committed.
 
 Self-hosted `next start` only. The branch is skipped in minimal mode, which is
 how Vercel runs Next, so this is not expected to reach the hosted product; that
-is read from the code path, not measured on Vercel. Next canary still has the
-same branch.
+is read from the code path, not measured on Vercel.
+
+No stable release fixes it. The standalone repro fails the same way on 16.3.8,
+the latest stable when this was written (2026-10-02). `16.4.0-canary.56` still
+has the unguarded branch but does not reproduce, so something else on the 16.4
+line prevents the second run. The upgrade to 16.4 stable is therefore the point
+to drop the patch. Run this spec without it then, rather than assuming.
 
 `patches/next@16.3.3.patch` adds `!isPossibleServerAction` to that branch's
 condition, in both `dist` copies of the app-page template. A stale entry is left
