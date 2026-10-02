@@ -18,6 +18,11 @@
       ],
       "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"]
     },
+    "@tendnote/marketing#build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/docs/legal/**"],
+      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"]
+    },
     "lint": {
       "dependsOn": ["^lint"]
     },

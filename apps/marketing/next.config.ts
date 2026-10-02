@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 // product session, sets no cookies, and runs no tracking of its own.
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  transpilePackages: ["@tendnote/ui"],
+  transpilePackages: ["@tendnote/domain", "@tendnote/ui"],
 };
 
 export default nextConfig;

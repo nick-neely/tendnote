@@ -2,12 +2,8 @@ import { Button } from "@tendnote/ui/button";
 import Link from "next/link";
 import { LoopHero } from "@/components/home/loop-hero";
 import { ReminderMoment } from "@/components/home/reminder-moment";
-import { appLinks } from "@/lib/site-links";
-
-const sectionTitle =
-  "text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold sm:text-[1.75rem] sm:leading-9";
-const inlineLink =
-  "rounded-sm font-medium text-foreground underline underline-offset-4 outline-none transition-colors duration-150 hover:text-primary focus-visible:ring-3 focus-visible:ring-ring";
+import { inlineLink, Section, sectionTitle } from "@/components/page-section";
+import { appLinks, CASE_STUDY_URL, SELF_HOSTING_GUIDE_URL } from "@/lib/site-links";
 
 const promises = [
   {
@@ -29,22 +25,6 @@ const habits = [
   "Capture in a sentence. Tendnote finds the person and the Memory.",
   "Ask in plain words. The answer cites the note it came from.",
 ];
-
-function Section({
-  children,
-  className = "",
-  labelledBy,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  labelledBy: string;
-}) {
-  return (
-    <section aria-labelledby={labelledBy} className={`border-t ${className}`}>
-      <div className="mx-auto max-w-6xl px-gutter py-16 sm:px-6 sm:py-24">{children}</div>
-    </section>
-  );
-}
 
 export default function HomePage() {
   const { subscribe } = appLinks();
@@ -141,10 +121,7 @@ export default function HomePage() {
               <Link className={inlineLink} href="/about">
                 About Tendnote
               </Link>
-              <a
-                className={inlineLink}
-                href="https://github.com/nick-neely/tendnote/blob/00b2edcb11be862f747a96851eb66b71dcaefd7f/docs/case-studies/tendnote-agent-built-privacy.md"
-              >
+              <a className={inlineLink} href={CASE_STUDY_URL}>
                 Read the case study
               </a>
             </p>
@@ -175,10 +152,7 @@ export default function HomePage() {
             </div>
             <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
               Outside the United States? Tendnote is free to{" "}
-              <a
-                className={inlineLink}
-                href="https://github.com/nick-neely/tendnote/blob/main/docs/self-hosting/vercel-operator-runbook.md"
-              >
+              <a className={inlineLink} href={SELF_HOSTING_GUIDE_URL}>
                 run yourself
               </a>
               .
