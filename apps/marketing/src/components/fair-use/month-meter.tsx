@@ -100,11 +100,19 @@ export function MonthMeter() {
             style={{ width: `${(1 - BUDGET_SHARE) * 100}%` }}
           />
           <span
-            className={cn(
-              "absolute inset-y-0 left-0 origin-left rounded-full transition-[transform,background-color] duration-700 ease-(--motion-ease-out)",
-              stage.fill > BUDGET_SHARE ? "bg-accent" : "bg-primary",
-            )}
-            style={{ width: "100%", transform: `scaleX(${stage.fill})` }}
+            className="absolute inset-y-0 left-0 origin-left bg-primary transition-transform duration-700 ease-(--motion-ease-out)"
+            style={{
+              width: `${BUDGET_SHARE * 100}%`,
+              transform: `scaleX(${Math.min(stage.fill, BUDGET_SHARE) / BUDGET_SHARE})`,
+            }}
+          />
+          <span
+            className="absolute inset-y-0 origin-left bg-accent transition-transform duration-700 ease-(--motion-ease-out)"
+            style={{
+              left: `${BUDGET_SHARE * 100}%`,
+              width: `${(1 - BUDGET_SHARE) * 100}%`,
+              transform: `scaleX(${Math.max(0, stage.fill - BUDGET_SHARE) / (1 - BUDGET_SHARE)})`,
+            }}
           />
         </div>
         <div className="flex flex-wrap justify-between gap-x-6 gap-y-1 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">

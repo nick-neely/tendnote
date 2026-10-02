@@ -102,11 +102,12 @@ export function LegalDocument({
     <article className="mx-auto max-w-6xl px-gutter py-16 sm:px-6 sm:py-24">
       <div className="max-w-[70ch]">
         <header className="flex flex-col gap-3">
-          <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold sm:text-[2rem] sm:leading-10">
+          <h1 className="font-display text-[2rem] leading-[1.15] font-semibold text-balance sm:text-[2.5rem]">
             {document.title}
           </h1>
           <p className={`${smallText} text-muted-foreground`}>
-            Version {document.version}, effective {formatEffectiveDate(document.effectiveDate)}.{" "}
+            Version {document.version}, {document.placeholder ? "placeholder dated" : "effective"}{" "}
+            {formatEffectiveDate(document.effectiveDate)}.{" "}
             <a className={inlineLink} href={sourceUrl(document.path)}>
               Read this version&rsquo;s source
             </a>

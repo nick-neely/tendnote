@@ -145,7 +145,9 @@ export default function SupportPage() {
       <SplitSection
         aside={
           <p className="max-w-[44ch] text-muted-foreground">
-            Two other places to look, depending on what you need.
+            {statusUrl
+              ? "Two other places to look, depending on what you need."
+              : "One other place to look, if you run Tendnote yourself."}
           </p>
         }
         title="Elsewhere"

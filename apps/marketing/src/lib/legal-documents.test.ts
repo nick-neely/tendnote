@@ -9,6 +9,7 @@ import {
   resolveDocumentHref,
   SUB_PROCESSORS_PATH,
   sourceRef,
+  versionLine,
 } from "./legal-documents";
 
 const BLOB = "https://github.com/nick-neely/tendnote/blob";
@@ -61,7 +62,8 @@ describe("the repository's legal documents", () => {
       path: current.path,
     });
     expect(loaded.body).not.toMatch(/^# /m);
-    expect(loaded.body).toContain(`Version ${current.version}`);
+    // The header states the version from the registry; the text's own line is lifted out.
+    expect(loaded.body).not.toMatch(/^\*\*Version/);
   });
 
   it("include the retention table and the sub-processor list", async () => {
@@ -71,5 +73,24 @@ describe("the repository's legal documents", () => {
 
     const subProcessors = await loadRepositoryDocument(SUB_PROCESSORS_PATH);
     expect(subProcessors.body).toMatch(/\| Sub-processor \| Purpose \|/);
+  });
+});
+
+describe("the document's own version line", () => {
+  it("is lifted out so the page states the version once, and marks a placeholder", () => {
+    expect(
+      versionLine("**Version 0.1 - PLACEHOLDER - dated 2026-09-27**\n\nThis is placeholder text."),
+    ).toEqual({
+      body: "This is placeholder text.",
+      placeholder: true,
+    });
+  });
+
+  it("leaves a published version as effective", () => {
+    expect(versionLine("**Version 1.0 - dated 2026-11-01**\n\nTerms.").placeholder).toBe(false);
+    expect(versionLine("No version line.")).toEqual({
+      body: "No version line.",
+      placeholder: false,
+    });
   });
 });

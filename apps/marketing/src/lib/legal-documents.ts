@@ -117,7 +117,22 @@ export async function loadRepositoryDocument(repoPath: string): Promise<Reposito
   return { path: repoPath, body: documentBody(markdown) };
 }
 
-export type LoadedLegalDocument = LegalDocument & RepositoryDocument;
+export type LoadedLegalDocument = LegalDocument &
+  RepositoryDocument & {
+    /** The text says it is a placeholder, so the page must not call it effective. */
+    placeholder: boolean;
+  };
+
+/**
+ * Splits off the document's own bold version line (`**Version 0.1 - ... **`),
+ * which the page header restates from the registry, and reads whether that
+ * line marks the text as a placeholder.
+ */
+export function versionLine(body: string): { body: string; placeholder: boolean } {
+  const match = body.match(/^\*\*Version [^\n]*\*\*\s*/);
+  if (!match) return { body, placeholder: false };
+  return { body: body.slice(match[0].length), placeholder: /placeholder/i.test(match[0]) };
+}
 
 /** The current version of a legal document, as the registry names it. */
 export async function loadLegalDocument(key: LegalDocumentKey): Promise<LoadedLegalDocument> {
@@ -125,5 +140,6 @@ export async function loadLegalDocument(key: LegalDocumentKey): Promise<LoadedLe
   if (!document) {
     throw new Error(`No current legal document for ${key}`);
   }
-  return { ...document, ...(await loadRepositoryDocument(document.path)) };
+  const loaded = await loadRepositoryDocument(document.path);
+  return { ...document, ...loaded, ...versionLine(loaded.body) };
 }
