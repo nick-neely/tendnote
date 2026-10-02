@@ -139,6 +139,7 @@ const UNGATED_TOOLS = [
   "list_suggested_memory_reviews",
   "propose_asset_actions",
   "propose_suggested_memory",
+  "read_attachment",
   "read_file",
   "search_assets",
   "search_gift_plans",

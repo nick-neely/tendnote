@@ -21,6 +21,7 @@ import {
   ownerDataExportRelationshipContextExtension,
 } from "./relationship-context";
 import type { OwnerDataExportAccount } from "./types";
+import { ownerUploadExport } from "./uploads";
 
 export async function loadOwnerDataExportAccount(
   ownerUserId: string,
@@ -141,6 +142,10 @@ export async function generateOwnerDataExportArchive(input: GenerateOwnerDataExp
           : extension.grounding,
       )
     : EMPTY_EXTENSION;
+  const uploads =
+    input.relationshipContext || input.loadRelationshipContext
+      ? EMPTY_EXTENSION
+      : await ownerUploadExport(input.ownerUserId);
   return buildOwnerDataExportArchive({
     account,
     now: input.now,
@@ -149,16 +154,19 @@ export async function generateOwnerDataExportArchive(input: GenerateOwnerDataExp
       ...extension.entries,
       ...assetsExtension.entries,
       ...actionsPlanningExtension.entries,
+      ...uploads.entries,
     ],
     additionalResources: [
       ...extension.resources,
       ...assetsExtension.resources,
       ...actionsPlanningExtension.resources,
+      ...uploads.resources,
     ],
     additionalFamilies: [
       ...extension.families,
       ...assetsExtension.families,
       ...actionsPlanningExtension.families,
+      ...uploads.families,
     ],
   });
 }

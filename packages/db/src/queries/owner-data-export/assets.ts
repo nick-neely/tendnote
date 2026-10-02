@@ -19,6 +19,7 @@ import {
 } from "../../schema";
 import type { OwnerDataExportGrounding } from "./actions-planning";
 import { archiveEntry } from "./archive";
+import { loadEvidenceExportFiles } from "./evidence-files";
 import { envelope, iso, jsonBytes, sensitivityRank, sortByCreatedAt, sortById } from "./shared";
 import type { OwnerDataExportResource } from "./types";
 
@@ -633,11 +634,7 @@ export async function loadOwnerDataExportAssetsContext(input: {
       ...row,
       money: moneyJson,
     })) as unknown as AssetEvidence[],
-    assetEvidenceFiles: fileRows.map((row) => ({
-      evidenceId: row.evidenceId,
-      ownerUserId: row.ownerUserId,
-      bytes: row.bytes,
-    })),
+    assetEvidenceFiles: await loadEvidenceExportFiles(fileRows, evidenceRows),
     assetLinks: linkRows as unknown as AssetLink[],
     assetPersonLinks: personLinkRows as unknown as AssetPersonLink[],
     sourceRecordIds: sourceRecordRows.map((record) => record.id),

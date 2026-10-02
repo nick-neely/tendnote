@@ -7,22 +7,8 @@ import {
 import { useCallback, useState } from "react";
 import { type FileDrop, splitByAccept } from "@/lib/use-file-drop-zone";
 
-/**
- * How a file gets from a gesture to the composer's evidence capture panel.
- *
- * There are three gestures and one destination. The "+" menu hands over a file
- * the user chose from a native picker; a drop and an image paste hand over
- * whatever the operating system gave them, which may be several files, of any
- * type. All three end at the same place — `AssistantEvidenceCapture`, and from
- * there the shared Asset Evidence server actions (ADR 0185). The file never
- * enters the Eve turn, which is why the composer has no attachment model of its
- * own and why this module hands around a `File` rather than anything uploaded.
- *
- * The capture panel takes exactly one file and vets it against the domain gate
- * itself (type *and* size, with the domain's own words). This module therefore
- * only has to answer the question the panel cannot: which of several dropped
- * files is the one, and what the user is told about the rest.
- */
+/** Picks one file for the next chat message. Asset capture is an optional action.
+ * Bytes are uploaded only on Send or explicit Save, never on pick or paste. */
 
 /** What the composer is holding, and whatever it owes the user an explanation for. */
 export type EvidencePickState = {

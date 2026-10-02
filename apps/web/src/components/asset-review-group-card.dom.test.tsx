@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import { mockFileUploadNetwork } from "@/test/file-upload-network";
+
+vi.mock("@vercel/blob/client", () => ({ upload: vi.fn(async () => ({})) }));
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssetReviewGroupView } from "@/lib/asset-review-view";
 import { render, screen, userEvent, waitFor } from "@/test/dom";
@@ -105,6 +109,7 @@ const resolved = (overrides: Partial<AssetReviewGroupView> = {}) =>
 
 describe("AssetReviewGroupCard", () => {
   beforeEach(() => {
+    mockFileUploadNetwork();
     vi.clearAllMocks();
   });
 

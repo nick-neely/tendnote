@@ -36,6 +36,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { VisibilityChoiceControl } from "@/components/visibility-choice-control";
 import { type AssetEvidenceView, formatEvidenceSize } from "@/lib/asset-evidence-view";
+import { submitEvidenceForm } from "@/lib/files/upload";
 import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 import { cn } from "@/lib/utils";
 
@@ -179,7 +180,7 @@ export function AssetEvidenceCapture({
           formData.set("reviewGroupId", target.reviewGroupId);
         }
         submit(
-          () => addAssetEvidenceAction(formData),
+          () => submitEvidenceForm(formData, addAssetEvidenceAction),
           (view) => {
             setDraft(null);
             onAdded(view);

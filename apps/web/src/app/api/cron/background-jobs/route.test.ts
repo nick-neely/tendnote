@@ -6,6 +6,10 @@ const { runBackgroundJobRecovery } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/background-jobs/recovery", () => ({ runBackgroundJobRecovery }));
 
+vi.mock("@tendnote/db/queries/file-uploads", () => ({
+  sweepFileStorage: vi.fn(async () => ({ deleted: 0, pending: 0 })),
+}));
+
 import { GET } from "./route";
 
 const SECRET = "cron-secret-value";

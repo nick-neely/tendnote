@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   type AssetEvidence,
   type AssetEvidenceMoney,
@@ -9,7 +10,8 @@ import {
 import { and, asc, eq, exists, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
-import { assetEvidence, assetEvidenceFiles, assets } from "../../schema";
+import { assetEvidence, assetEvidenceFiles, assets, blobDeletions } from "../../schema";
+import { readPrivateFile, writePrivateFile } from "../file-uploads/blob";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import type { AssetEvidenceStore } from "./evidence-types";
 
@@ -59,18 +61,15 @@ function durableAnchorExists() {
 /**
  * Drizzle-backed Asset Evidence store (#200). Every method is owner-keyed except
  * the `Visible` reads, which apply the shared per-record scope predicate under a
- * durable anchor. Bytes live in `asset_evidence_files`, written atomically with
- * the metadata row and cascade-deleted with it; metadata reads never join them.
+ * durable anchor. Private Blob pointers commit with metadata; deletion triggers
+ * enqueue storage cleanup, including cascades. Legacy bytes remain readable during migration.
  */
 export function createDrizzleAssetEvidenceStore(): AssetEvidenceStore {
   return {
     async createAssetEvidence(input) {
       const parsed = createAssetEvidenceSchema.parse(input.values);
-      if ((parsed.fileName !== null) !== (input.fileBytes !== undefined)) {
-        throw new Error("Evidence file metadata and bytes must travel together.");
-      }
-      const fileBytes = input.fileBytes;
-      // Metadata and bytes land together or not at all — no torn uploads.
+      const blobPath = await prepareEvidenceFile(parsed, input.fileBytes);
+      // Commit metadata and the verified Blob pointer together.
       const row = await getDb().transaction(async (tx) => {
         const [evidenceRow] = await tx
           .insert(assetEvidence)
@@ -79,12 +78,13 @@ export function createDrizzleAssetEvidenceStore(): AssetEvidenceStore {
         if (!evidenceRow) {
           throw new Error("Failed to create asset evidence.");
         }
-        if (fileBytes) {
+        if (blobPath) {
           await tx.insert(assetEvidenceFiles).values({
             evidenceId: evidenceRow.id,
             ownerUserId: evidenceRow.ownerUserId,
-            bytes: fileBytes,
+            blobPath,
           });
+          await tx.delete(blobDeletions).where(eq(blobDeletions.pathname, blobPath));
         }
         return evidenceRow;
       });
@@ -195,11 +195,28 @@ export function createDrizzleAssetEvidenceStore(): AssetEvidenceStore {
     },
     async getAssetEvidenceFileBytes(input) {
       const [row] = await getDb()
-        .select({ bytes: assetEvidenceFiles.bytes })
+        .select({ bytes: assetEvidenceFiles.bytes, blobPath: assetEvidenceFiles.blobPath })
         .from(assetEvidenceFiles)
         .where(eq(assetEvidenceFiles.evidenceId, input.evidenceId))
         .limit(1);
-      return row?.bytes ?? null;
+      if (!row) return null;
+      if (row.blobPath) return readPrivateFile(row.blobPath);
+      return row.bytes;
     },
   };
+}
+
+/** Prepare a compensated Blob write before the metadata transaction starts. */
+async function prepareEvidenceFile(
+  parsed: ReturnType<typeof createAssetEvidenceSchema.parse>,
+  fileBytes: Uint8Array | undefined,
+): Promise<string | null> {
+  if ((parsed.fileName !== null) !== (fileBytes !== undefined)) {
+    throw new Error("Evidence file metadata and bytes must travel together.");
+  }
+  if (!fileBytes) return null;
+  const pathname = `evidence/${randomUUID()}`;
+  await getDb().insert(blobDeletions).values({ pathname });
+  await writePrivateFile(pathname, fileBytes, parsed.mimeType ?? "application/octet-stream");
+  return pathname;
 }

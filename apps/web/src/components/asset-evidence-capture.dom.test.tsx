@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import { mockFileUploadNetwork } from "@/test/file-upload-network";
+
+vi.mock("@vercel/blob/client", () => ({ upload: vi.fn(async () => ({})) }));
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssetEvidenceView } from "@/lib/asset-evidence-view";
 import { fireEvent, render, screen, userEvent, waitFor } from "@/test/dom";
@@ -28,6 +32,7 @@ class ResizeObserverStub {
 }
 
 beforeEach(() => {
+  mockFileUploadNetwork();
   addAssetEvidenceAction.mockReset();
   URL.createObjectURL = vi.fn(() => "blob:preview");
   URL.revokeObjectURL = vi.fn();
@@ -176,7 +181,8 @@ describe("AssetEvidenceCapture", () => {
     expect(formData.get("assetId")).toBe("a-1");
     expect(formData.get("kind")).toBe("photo");
     expect(formData.get("label")).toBe("washer-label");
-    expect(formData.get("file")).toBeInstanceOf(File);
+    expect(formData.get("file")).toBeNull();
+    expect(formData.get("uploadedFileId")).toBe("11111111-1111-4111-8111-111111111111");
   });
 
   it("captures a link with its own required url field to a review-group target", async () => {

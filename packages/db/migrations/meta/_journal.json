@@ -589,6 +589,13 @@
       "when": 1790631434899,
       "tag": "0083_paid_access_and_stripe_customers",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1790872912582,
+      "tag": "0084_private_blob_attachments",
+      "breakpoints": true
     }
   ]
 }

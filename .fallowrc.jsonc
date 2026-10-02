@@ -34,7 +34,9 @@
   //   "../agent" })` in next.config.ts (a filesystem path, not an import), and CI
   //   deploys web after agent (see "ci: mark web deployment dependent on agent").
   //   The workspace edge is deliberate but invisible to the import-based scan.
-  "ignoreDependencies": ["babel-plugin-react-compiler", "@tendnote/agent"],
+  // @vercel/blob: agent.ts externalDependencies requires a direct agent runtime
+  //   dependency for the bundled DB adapter; the import lives in packages/db.
+  "ignoreDependencies": ["babel-plugin-react-compiler", "@tendnote/agent", "@vercel/blob"],
   "entry": [
     "apps/agent/agent/agent.ts",
     // Registered by URL from pwa-registration.tsx, so no import edge exists.

@@ -16,7 +16,7 @@ import type { AssistantInputRequestView } from "@/lib/eve/input-request-view";
  * (DESIGN.md §6).
  */
 const TAINT_EXPLANATION =
-  "The assistant asked because web content was read in this conversation. Start a new conversation to resume automatic saves.";
+  "The assistant asked because web or file content was read in this conversation. Start a new conversation to resume automatic saves.";
 
 /**
  * Why this card exists at all, when the owner already chose `trusted`.

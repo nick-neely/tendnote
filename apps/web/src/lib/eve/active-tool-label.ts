@@ -96,6 +96,7 @@ const TOOL_LABELS: Record<string, readonly [active: string, done: string]> = {
   // one call that reaches it - and it still only ever writes a draft there.
   save_draft_to_gmail: ["Saving the draft to Gmail…", "Saved the draft to Gmail"],
   search_assets: ["Searching your things…", "Searched your things"],
+  read_attachment: ["Reading the attachment…", "Read the attachment"],
   get_asset_context: ["Pulling up what you know about it…", "Pulled up what you know about it"],
   create_asset: ["Adding it to your things…", "Added it to your things"],
   // Not "Renaming it…": this edits the name *or* the kind, and a label that promises

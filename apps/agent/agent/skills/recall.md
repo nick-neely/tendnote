@@ -1,5 +1,5 @@
 ---
-description: Use when the user looks something up - a person, a note, a memory, stored context by wording or by meaning, a thing they own (appliance, vehicle, subscription, service, household item), their Calendar, their Saved Items - or asks a broad horizon question like "anything coming up next week?", "who deserves a thought today?", "what should I review?". Also use when they tell you a fact about a thing they own ("the filter in my kitchen fridge is EDR1RXD1", "I bought the dishwasher in March 2024").
+description: Use when the user asks to read an attached image or PDF, or when the user looks something up - a person, a note, a memory, stored context by wording or by meaning, a thing they own (appliance, vehicle, subscription, service, household item), their Calendar, their Saved Items - or asks a broad horizon question like "anything coming up next week?", "who deserves a thought today?", "what should I review?". Also use when they tell you a fact about a thing they own ("the filter in my kitchen fridge is EDR1RXD1", "I bought the dishwasher in March 2024").
 ---
 
 # Recall and lookup
@@ -15,6 +15,7 @@ comes back empty, say so rather than trying the same question through another to
 | **Exact stored-context recall** - names, specific wording, text matches | `search_relationship_context` | returns compact references, not profiles or snapshot prose |
 | **Fuzzy stored-context recall** - **meaning rather than exact wording** | `search_semantic_context` | never use it to rank people or build proactive suggestions |
 | Anything the user owns | `search_assets` | not `search_relationship_context`; assets are a separate seam |
+| Contents of an attached image or PDF | `read_attachment` | reads the file; does not save facts |
 | One known Asset in full | `get_asset_context` | needs an `assetId` from a search result |
 | Broad relationship horizon across people | `get_relationship_agenda` | read-only; it creates nothing |
 | What is on their Calendar | `list_calendar_events` | read-only provider context, not stored memory |
@@ -125,7 +126,8 @@ Phrase each result by its trust register:
 - an **Asset Memory** (`asset_fact`) is a confirmed fact - state it plainly;
 - an **Asset** (`asset_anchor`) is just the thing itself, not a claim about it;
 - **Asset Evidence** (`asset_evidence`) is grounding material - say the receipt or
-  manual is *on file*; never assert what it says, and never claim to have read it;
+  manual is *on file*. To answer about its contents, call `read_attachment` with
+  source `asset` and its evidence id first; cite the filename and uncertainty;
 - a **suggested** Asset Memory (`suggested_asset_fact`) is a proposal, never a fact. It
   only appears in explicit review context - phrase it as something to review.
 
