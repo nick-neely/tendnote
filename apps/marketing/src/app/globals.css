@@ -1,11 +1,16 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 @import "@tendnote/ui/theme.css";
 
 /*
- * Home's authored motion. `tn-rise` is the one entrance the hero stage uses
- * for anything that arrives inside a beat; the caret and nudge are the two
- * idle loops, both small and both stopped by the shared reduced-motion floor
- * in theme.css (1ms, one iteration).
+ * The site's authored motion. `tn-rise` is the one entrance anything uses when
+ * it arrives inside a story (Home's hero, the Demo's notebook); the caret and
+ * nudge are the two idle loops. The Demo's time jump owns the last four: the
+ * day roll, the roll clearing away, the phone rising, and the reminder
+ * dropping onto it. Everything is stopped by the shared reduced-motion floor
+ * in theme.css (1ms, no delay, one iteration), which lands each on its end
+ * state.
  */
 @keyframes tn-rise {
   from {
@@ -46,4 +51,65 @@
 
 .tn-nudge {
   animation: tn-nudge 1.6s ease-in-out infinite;
+}
+
+/* Tuesday rolls forward to the reminder day; the strip's length sets the distance. */
+@keyframes tn-roll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(var(--tn-roll-distance, 0));
+  }
+}
+
+@keyframes tn-roll-out {
+  0%,
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@keyframes tn-phone-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.97);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes tn-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tn-roll {
+  animation: tn-roll 1000ms cubic-bezier(0.65, 0, 0.35, 1) 150ms both;
+}
+
+.tn-roll-out {
+  animation: tn-roll-out 1400ms linear both;
+}
+
+.tn-phone-in {
+  animation: tn-phone-in 750ms var(--motion-ease-out) both;
+}
+
+.tn-drop {
+  animation: tn-drop 600ms var(--motion-ease-out) both;
 }

@@ -43,7 +43,7 @@ an account. Region restrictions apply to hosted admission, not marketing.
 | --- | --- | --- | --- | --- |
 | Home | `/` | New visitor deciding whether Tendnote is relevant | Personal OS starting with relationship memory and follow-up; show the loop concretely | Explore the demo; View pricing secondary |
 | Product | `/product` | Visitor evaluating the everyday job | Capture, confirm a Memory, schedule a Follow-Up, see where it resurfaces, ask Eve for grounded recall; supporting capabilities below | Explore the demo |
-| Demo | `/demo` | Visitor wanting a concrete preview | Explicitly fictional, scripted relationship story, not a real AI session | View pricing |
+| Demo | `/demo` | Visitor wanting a concrete preview | Fictional, scripted relationship story framed as a demo rather than labelled, not a real AI session | View pricing |
 | Pricing | `/pricing` | Prospective individual subscriber | Measured price and billing interval, one account per subscription, capabilities, limits, eligibility, support, cancellation and guarantee | Subscribe |
 | About | `/about` | Visitor evaluating the operator | Author-operated service; identify the author and Neely Solutions LLC; explain the product motivation honestly | Explore the demo |
 | Privacy & AI | `/privacy-and-ai` | Visitor assessing the handling of relationship information | Plain-language data flow, sharing boundaries, AI processing, operator access, export and deletion; link policy and sub-processor information | Read Privacy Policy |
@@ -125,9 +125,13 @@ OAuth, live inference, external drafts or sends, or real reminders. Do not use
 the development demo-session endpoint or provision a product account.
 The data is wholly fictional, never copied from a real customer's records.
 
-Clearly label the story as fictional and Eve's answers as scripted at entry
-and at the answer. The preview demonstrates the intended workflow and result;
-it does not prove model reliability, reminder delivery, or First Value.
+The story is fictional and every Eve answer is prewritten, but the page does
+not label them as such. The owner reversed the original labelling rule on
+2026-10-02 (PR #680): fictional and scripted labels read as filler, and the
+page's own framing ("play what Tendnote does with that one sentence") already
+presents it as a demo. The page instead closes by listing what the five steps
+do not show. The preview demonstrates the intended workflow and result; it does
+not prove model reliability, reminder delivery, or First Value.
 
 View pricing is available throughout and is the final CTA. Every step can be
 revisited and the story restarted. Fictional content never transfers into a

@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import AboutPage from "./about/page";
+import DemoPage from "./demo/page";
 import FairUsePage from "./fair-use/page";
 import PricingPage from "./pricing/page";
 import PrivacyAndAiPage from "./privacy-and-ai/page";
@@ -15,6 +16,7 @@ import SupportPage from "./support/page";
  */
 const pages = {
   "/about": AboutPage,
+  "/demo": DemoPage,
   "/fair-use": FairUsePage,
   "/pricing": PricingPage,
   "/privacy-and-ai": PrivacyAndAiPage,
@@ -59,5 +61,13 @@ describe("pricing disclosures", () => {
     ["the self-hosting alternative", /Or run it yourself, free/],
   ])("states %s", (_name, pattern) => {
     expect(rendered).toMatch(pattern);
+  });
+});
+
+describe("demo boundaries", () => {
+  const rendered = text(DemoPage);
+
+  it("never reaches for the product's development demo session", () => {
+    expect(rendered).not.toMatch(/demo-session/);
   });
 });
