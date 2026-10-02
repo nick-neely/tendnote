@@ -1,0 +1,34 @@
+diff --git a/dist/build/templates/app-page-runtime.js b/dist/build/templates/app-page-runtime.js
+index f1ab03f292340fe08b563990110ac0835d3415fb..755825b3867f21081f6559134b72080cb8d79276 100644
+--- a/dist/build/templates/app-page-runtime.js
++++ b/dist/build/templates/app-page-runtime.js
+@@ -870,7 +870,11 @@ function createAppPageEntrypoint({ tree, page, pathname, require: __next_app_req
+                             if (incrementalCacheEntry && // We want to trigger this flow if the cache entry is stale and if
+                             // the requested revalidation flow is either foreground or
+                             // background.
+-                            (incrementalCacheEntry.isStale === -1 || incrementalCacheEntry.isStale === true)) {
++                            (incrementalCacheEntry.isStale === -1 || incrementalCacheEntry.isStale === true) && // tendnote#676: the background render reuses this live request, so for a
++                            // Server Action it re-runs the action on an already-consumed body and the
++                            // empty decode fails the response with a 500. Leave the stale entry for
++                            // the next non-action request to revalidate.
++                            !isPossibleServerAction) {
+                                 // We want to schedule this on the next tick to ensure that the
+                                 // render is not blocked on it.
+                                 (0, _scheduler.scheduleOnNextTick)(async ()=>{
+diff --git a/dist/esm/build/templates/app-page-runtime.js b/dist/esm/build/templates/app-page-runtime.js
+index 1970588724b6e4880f27a8be60ca32ae6437bc28..cc48b0977882b5bf4c7251488f2d586d2df5dd19 100644
+--- a/dist/esm/build/templates/app-page-runtime.js
++++ b/dist/esm/build/templates/app-page-runtime.js
+@@ -885,7 +885,11 @@ export function createAppPageEntrypoint({ tree, page, pathname, require: __next_
+                             if (incrementalCacheEntry && // We want to trigger this flow if the cache entry is stale and if
+                             // the requested revalidation flow is either foreground or
+                             // background.
+-                            (incrementalCacheEntry.isStale === -1 || incrementalCacheEntry.isStale === true)) {
++                            (incrementalCacheEntry.isStale === -1 || incrementalCacheEntry.isStale === true) && // tendnote#676: the background render reuses this live request, so for a
++                            // Server Action it re-runs the action on an already-consumed body and the
++                            // empty decode fails the response with a 500. Leave the stale entry for
++                            // the next non-action request to revalidate.
++                            !isPossibleServerAction) {
+                                 // We want to schedule this on the next tick to ensure that the
+                                 // render is not blocked on it.
+                                 scheduleOnNextTick(async ()=>{
