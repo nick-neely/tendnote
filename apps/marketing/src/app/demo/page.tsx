@@ -2,34 +2,54 @@ import { Button } from "@tendnote/ui/button";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DemoStory } from "@/components/demo/demo-story";
-import { inlineLink, SplitSection, TermList } from "@/components/page-section";
+import { inlineLink, Section, sectionTitle } from "@/components/page-section";
 
 export const metadata: Metadata = {
   title: "Demo",
   description:
-    "Follow one fictional friend's job interview through Tendnote: write it down, keep the Memory, pick a day to check in, ask about it, and get the reminder. Scripted, with no account.",
+    "Play one friend's job interview through Tendnote: write it down, keep the Memory, pick a day to check in, ask about it, and get the reminder. No account needed.",
 };
 
-const limits = [
+/** What the plan includes beyond the five steps above, each one a real product surface. */
+const beyondTheDemo = [
   {
-    term: "Scripted, not live",
+    term: "Drafts in your voice",
     detail:
-      "Every reply above was written in advance, and no model ran. In Tendnote, Eve answers from your own notes and shows the note each answer came from, so you can check it.",
+      "Ask Eve to draft the message to Sam. It waits for you: nothing leaves Tendnote without your approval.",
   },
   {
-    term: "Nothing saved or sent",
+    term: "Birthdays and gifts",
     detail:
-      "There is no account behind the demo. Send, Approve, and Accept change nothing anywhere, and no reminder is scheduled.",
+      "Set a birthday reminder for the day or a week before, and keep gift ideas and plans with the person, surprises included.",
   },
   {
-    term: "Sam stays here",
+    term: "A page for each person",
     detail:
-      "Nothing from this story carries into a subscription. Your Tendnote starts with your own people and your own first note.",
+      "Everything you have kept about someone in one place: their Memories, your follow-ups, and what is coming up.",
   },
   {
-    term: "A preview, not a promise",
+    term: "The Daily Brief",
+    detail: "A short brief each day of the few people worth a thought today, never a backlog.",
+  },
+  {
+    term: "Actions, routines, and things you own",
     detail:
-      "It shows how the loop works. It cannot show how Eve handles your notes or how reminders behave on your devices. That is what the fourteen-day refund is for.",
+      "Renew the passport, replace the water filter, keep the car's details. Write them like a note and they land in the right place.",
+  },
+  {
+    term: "A shared household",
+    detail:
+      "Events, plans, and the things you own together with the people you live with. What you keep private stays private.",
+  },
+  {
+    term: "Yours to take or delete",
+    detail:
+      "Export everything you keep at any time, and delete your account yourself from your Account page.",
+  },
+  {
+    term: "Your own connections",
+    detail:
+      "Bring in Google Contacts and Calendar, or let Eve prepare a Gmail draft, if and when you want to.",
   },
 ];
 
@@ -38,27 +58,35 @@ export default function DemoPage() {
     <>
       <DemoStory />
 
-      <SplitSection
-        aside={
-          <p className="max-w-[44ch] text-muted-foreground">
-            A demo should be honest about what it can prove. This one shows the workflow, with
-            nothing real underneath it.
-          </p>
-        }
-        className="bg-surface"
-        title="What this preview shows, and what it does not"
-        titleId="limits-title"
-      >
-        <TermList items={limits} />
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-4">
-          <Button asChild size="lg">
-            <Link href="/pricing">View pricing</Link>
-          </Button>
-          <Link className={inlineLink} href="/product">
-            See the whole product
-          </Link>
+      <Section className="bg-surface" labelledBy="beyond-title">
+        <div className="flex flex-col gap-10">
+          <div className="flex flex-col gap-3">
+            <h2 className={sectionTitle} id="beyond-title">
+              What the demo does not show
+            </h2>
+            <p className="max-w-[56ch] text-muted-foreground">
+              Five steps cover the loop. The same notebook, and the same one plan, also carry all of
+              this.
+            </p>
+          </div>
+          <dl className="grid gap-x-12 border-t sm:grid-cols-2">
+            {beyondTheDemo.map((item) => (
+              <div className="flex flex-col gap-1.5 border-b py-5" key={item.term}>
+                <dt className="font-semibold">{item.term}</dt>
+                <dd className="max-w-[52ch] text-muted-foreground">{item.detail}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <Button asChild size="lg">
+              <Link href="/pricing">View pricing</Link>
+            </Button>
+            <Link className={inlineLink} href="/product">
+              See the whole product
+            </Link>
+          </div>
         </div>
-      </SplitSection>
+      </Section>
     </>
   );
 }

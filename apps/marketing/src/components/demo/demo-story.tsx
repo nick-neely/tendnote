@@ -9,6 +9,7 @@ import { ArrowRightIcon, ArrowUpIcon, CheckIcon, PlusIcon, RestartIcon } from "@
 import { pageTitle, smallText } from "@/components/page-section";
 import { StorySteps } from "@/components/story-steps";
 import { useReducedMotion } from "@/components/use-reduced-motion";
+import { useTypedText } from "@/components/use-typed-text";
 import {
   ANSWER_SOURCE,
   ASK_DAY,
@@ -44,7 +45,6 @@ import {
  */
 
 const STEPS_LABEL = "Steps in the demo";
-const TYPE_INTERVAL_MS = 24;
 const caption = "text-[length:var(--text-caption)] leading-[var(--text-caption-line)]";
 const chip = cn(
   "inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 font-medium",
@@ -101,7 +101,6 @@ export function DemoStory() {
           You hear about it over coffee. Play what Tendnote does with that one sentence, from the
           note to the reminder. Five steps, no account.
         </p>
-        <FictionNotice />
         <StorySteps
           className="hidden lg:block"
           current={state.step}
@@ -153,21 +152,6 @@ export function DemoStory() {
   );
 }
 
-/** The entry disclosure the spec asks for: fictional, scripted, and inert. */
-function FictionNotice() {
-  return (
-    <p className={cn("flex max-w-[52ch] flex-col gap-2 text-muted-foreground", smallText)}>
-      <span className={cn(chip, "bg-secondary text-secondary-foreground")}>
-        Fictional and scripted
-      </span>
-      <span>
-        Sam is made up, every reply is written in advance, and no AI runs here. Nothing you press is
-        saved or sent.
-      </span>
-    </p>
-  );
-}
-
 function DemoControls({ className, onRestart }: { className?: string; onRestart: () => void }) {
   return (
     <div className={cn("flex flex-wrap items-center gap-3", className)}>
@@ -175,7 +159,7 @@ function DemoControls({ className, onRestart }: { className?: string; onRestart:
         <Link href="/pricing">View pricing</Link>
       </Button>
       <Button onClick={onRestart} size="lg" type="button" variant="ghost">
-        <RestartIcon />
+        <RestartIcon aria-hidden />
         Restart the story
       </Button>
     </div>
@@ -200,32 +184,6 @@ function StageBar({ day, delay }: { day: string; delay?: string }) {
   );
 }
 
-/** Types the opening note into the composer, once per visit to the first step. */
-function useTypedNote(active: boolean, reduced: boolean): string {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    if (!active) return;
-    if (reduced) {
-      setCount(NOTE_TEXT.length);
-      return;
-    }
-    setCount(0);
-    const timer = window.setInterval(() => {
-      setCount((value) => {
-        if (value >= NOTE_TEXT.length) {
-          window.clearInterval(timer);
-          return value;
-        }
-        return value + 1;
-      });
-    }, TYPE_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [active, reduced]);
-
-  return NOTE_TEXT.slice(0, count);
-}
-
 function Notebook({
   onAct,
   question,
@@ -240,7 +198,7 @@ function Notebook({
   step: number;
 }) {
   const day = dayById(selectedDay);
-  const typed = useTypedNote(step === 0, reduced);
+  const typed = useTypedText(NOTE_TEXT, step === 0, reduced);
 
   return (
     <div className="flex flex-1 flex-col gap-3">
@@ -387,7 +345,7 @@ function PendingChip({ children }: { children: React.ReactNode }) {
 function ResolvedChip({ children }: { children: React.ReactNode }) {
   return (
     <span className={cn(chip, "bg-primary/15 text-primary")}>
-      <CheckIcon className="size-3" />
+      <CheckIcon aria-hidden className="size-3" />
       {children}
     </span>
   );
@@ -435,7 +393,7 @@ function MemoryCard({
             size="sm"
             type="button"
           >
-            <CheckIcon />
+            <CheckIcon aria-hidden />
             Approve
           </Button>
         </div>
@@ -519,7 +477,7 @@ function FollowUpCard({
           size="sm"
           type="button"
         >
-          <CheckIcon />
+          <CheckIcon aria-hidden />
           Accept
         </Button>
       </div>
@@ -539,13 +497,10 @@ function ResurfaceRow({ label, value }: { label: string; value: string }) {
 function Answer({ text }: { text: string }) {
   return (
     <div className="tn-rise flex flex-col gap-2 px-1">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium">Eve</span>
-        <span className={cn(chip, "bg-secondary text-muted-foreground")}>Scripted answer</span>
-      </div>
+      <span className="text-sm font-medium">Eve</span>
       <p className={smallText}>{text}</p>
       <p className={cn("flex items-center gap-1.5 font-mono text-muted-foreground", caption)}>
-        <ArrowUpIcon className="size-3" />
+        <ArrowUpIcon aria-hidden className="size-3" />
         {ANSWER_SOURCE}
       </p>
     </div>
@@ -582,7 +537,7 @@ function SkipAhead({ day, onJump }: { day: Day; onJump: () => void }) {
       <p className={cn("text-muted-foreground", smallText)}>{day.later}, on the day you picked.</p>
       <Button data-demo-next onClick={onJump} type="button">
         Skip ahead to {day.name}
-        <ArrowRightIcon />
+        <ArrowRightIcon aria-hidden />
       </Button>
     </div>
   );
@@ -613,19 +568,19 @@ function Composer({
           aria-hidden
           className="inline-flex size-7 items-center justify-center rounded-lg border text-muted-foreground"
         >
-          <PlusIcon className="size-3.5" />
+          <PlusIcon aria-hidden className="size-3.5" />
         </span>
         {onSend ? (
           <Button data-demo-next onClick={onSend} size="sm" type="button">
             Send
-            <ArrowUpIcon />
+            <ArrowUpIcon aria-hidden />
           </Button>
         ) : (
           <span
             aria-hidden
             className="inline-flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground"
           >
-            <ArrowUpIcon className="size-3.5" />
+            <ArrowUpIcon aria-hidden className="size-3.5" />
           </span>
         )}
       </div>
@@ -674,7 +629,7 @@ function Arrival({
             <Link href="/pricing">View pricing</Link>
           </Button>
           <Button onClick={onRestart} size="lg" type="button" variant="ghost">
-            <RestartIcon />
+            <RestartIcon aria-hidden />
             Restart the story
           </Button>
         </div>

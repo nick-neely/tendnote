@@ -7,6 +7,7 @@
     "./button": "./src/button.tsx",
     "./cn": "./src/cn.ts",
     "./fonts": "./src/fonts.ts",
+    "./sheet": "./src/sheet.tsx",
     "./tendnote-logo": "./src/tendnote-logo.tsx",
     "./theme.css": "./src/theme.css"
   },
@@ -16,6 +17,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "radix-ui": "1.6.0",

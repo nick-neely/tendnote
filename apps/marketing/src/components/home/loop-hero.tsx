@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDownIcon, ArrowUpIcon, CheckIcon, PlusIcon, XIcon } from "@/components/icons";
 import { StorySteps } from "@/components/story-steps";
 import { useMounted, useReducedMotion } from "@/components/use-reduced-motion";
+import { useTypedText } from "@/components/use-typed-text";
 import { beatForProgress, beats, NOTE_TEXT, progressForBeat, QUESTION_TEXT } from "./loop-script";
 
 /*
@@ -20,7 +21,6 @@ import { beatForProgress, beats, NOTE_TEXT, progressForBeat, QUESTION_TEXT } fro
  */
 
 const HEADER_HEIGHT = 56;
-const TYPE_INTERVAL_MS = 24;
 const STEPS_LABEL = "Steps in Sam's week";
 
 /*
@@ -79,27 +79,6 @@ function usePinProgress(
   return progress;
 }
 
-/** Types the opening note once on arrival; any later beat shows it whole. */
-function useTypedNote(animate: boolean, beat: number): string {
-  const [count, setCount] = useState(animate ? 0 : NOTE_TEXT.length);
-
-  useEffect(() => {
-    if (!animate || beat !== 0) return;
-    const timer = window.setInterval(() => {
-      setCount((value) => {
-        if (value >= NOTE_TEXT.length) {
-          window.clearInterval(timer);
-          return value;
-        }
-        return value + 1;
-      });
-    }, TYPE_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [animate, beat]);
-
-  return beat === 0 ? NOTE_TEXT.slice(0, count) : NOTE_TEXT;
-}
-
 export function LoopHero() {
   const mounted = useMounted();
   const reduced = useReducedMotion();
@@ -112,7 +91,9 @@ export function LoopHero() {
   const [manualBeat, setManualBeat] = useState(0);
 
   const live = pinned ? beatForProgress(progress) : { beat: manualBeat, t: 1 };
-  const typed = useTypedNote(pinned, live.beat);
+  // Types the opening note on arrival at the first beat (effects only run once
+  // hydrated, so the server render stays empty); later beats show it whole.
+  const typed = useTypedText(NOTE_TEXT, live.beat === 0, reduced);
 
   const goToBeat = useCallback(
     (index: number) => {
@@ -228,7 +209,7 @@ function StageCaption({ hint }: { hint: boolean }) {
           hint ? "opacity-100" : "opacity-0",
         )}
       >
-        <ArrowDownIcon className="size-3.5 tn-nudge" />
+        <ArrowDownIcon aria-hidden className="size-3.5 tn-nudge" />
         Scroll to follow the week
       </p>
     </div>
@@ -367,7 +348,7 @@ function MemoryCard({ confirmed, pressing }: { confirmed: boolean; pressing: boo
               confirmed ? "opacity-100" : "opacity-0",
             )}
           >
-            <CheckIcon className="size-3" />
+            <CheckIcon aria-hidden className="size-3" />
             Saved to memory
           </span>
         </span>
@@ -385,7 +366,7 @@ function MemoryCard({ confirmed, pressing }: { confirmed: boolean; pressing: boo
         <div className="overflow-hidden">
           <div className="flex justify-end gap-1.5 pt-1">
             <Button size="sm" tabIndex={-1} type="button" variant="ghost">
-              <XIcon />
+              <XIcon aria-hidden />
               Dismiss
             </Button>
             <Button
@@ -396,7 +377,7 @@ function MemoryCard({ confirmed, pressing }: { confirmed: boolean; pressing: boo
               tabIndex={-1}
               type="button"
             >
-              <CheckIcon />
+              <CheckIcon aria-hidden />
               Save
             </Button>
           </div>
@@ -480,7 +461,7 @@ function Composer({
       <div className="flex items-center justify-between gap-2 border-t px-2 py-1.5">
         <div className="flex items-center gap-2">
           <span className="inline-flex size-7 items-center justify-center rounded-lg border text-muted-foreground">
-            <PlusIcon className="size-3.5" />
+            <PlusIcon aria-hidden className="size-3.5" />
           </span>
           <span className="hidden text-[length:var(--text-caption)] text-muted-foreground sm:inline">
             Enter to send · Shift + Enter for a new line
@@ -492,7 +473,7 @@ function Composer({
             text ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
           )}
         >
-          <ArrowUpIcon className="size-3.5" />
+          <ArrowUpIcon aria-hidden className="size-3.5" />
         </span>
       </div>
     </div>

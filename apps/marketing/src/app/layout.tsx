@@ -43,7 +43,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={`${plexFontVariables} h-full antialiased`} suppressHydrationWarning>
       <body className="flex min-h-full flex-col">
-        {/* Follows the visitor's system theme; there is no toggle to remember. */}
+        {/* Follows the visitor's system theme until they pick one in the header. */}
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

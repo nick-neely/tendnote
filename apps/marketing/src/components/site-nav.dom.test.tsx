@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { primaryNav } from "@/lib/site-links";
@@ -25,41 +25,54 @@ describe("SiteNav", () => {
     }
   });
 
-  it("marks the current page", () => {
+  it("marks the current page, inline and in the phone menu", async () => {
+    const user = userEvent.setup();
     navigation.pathname = "/pricing";
     renderNav();
-    const current = screen
-      .getAllByRole("link", { name: "Pricing", hidden: true })
-      .map((link) => link.getAttribute("aria-current"));
-    expect(current).toEqual(["page", "page"]);
+    expect(screen.getByRole("link", { name: "Pricing" }).getAttribute("aria-current")).toBe("page");
+
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    const sheet = screen.getByRole("dialog", { name: "Menu" });
+    expect(within(sheet).getByRole("link", { name: "Pricing" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
   });
 
-  it("opens the phone menu from the keyboard and closes it on Escape, returning focus", async () => {
+  it("opens the phone menu as a sheet with every page, appearance, and Sign in", async () => {
+    const user = userEvent.setup();
+    renderNav();
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+
+    const sheet = screen.getByRole("dialog", { name: "Menu" });
+    expect(
+      within(sheet)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual([...primaryNav.map((link) => link.label), "Sign in"]);
+    expect(within(sheet).getByRole("group", { name: "Appearance" })).toBeTruthy();
+  });
+
+  it("closes the sheet on Escape and returns focus to Menu", async () => {
     const user = userEvent.setup();
     renderNav();
     const toggle = screen.getByRole("button", { name: "Menu" });
 
     toggle.focus();
     await user.keyboard("{Enter}");
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    const panel = document.getElementById(toggle.getAttribute("aria-controls") ?? "");
-    expect(panel?.classList.contains("hidden")).toBe(false);
+    expect(screen.getByRole("dialog", { name: "Menu" })).toBeTruthy();
 
-    await user.tab();
     await user.keyboard("{Escape}");
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(toggle);
   });
 
-  it("closes the phone menu after a navigation", async () => {
+  it("closes the sheet after a navigation", async () => {
     const user = userEvent.setup();
     const { rerender } = renderNav();
     await user.click(screen.getByRole("button", { name: "Menu" }));
 
     navigation.pathname = "/demo";
     rerender(<SiteNav links={primaryNav} signInHref="https://app.tendnote.com/sign-in" />);
-    expect(screen.getByRole("button", { name: "Menu" }).getAttribute("aria-expanded")).toBe(
-      "false",
-    );
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

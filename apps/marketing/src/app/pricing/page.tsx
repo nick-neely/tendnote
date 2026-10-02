@@ -1,6 +1,7 @@
 import { Button } from "@tendnote/ui/button";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CheckIcon } from "@/components/icons";
 import {
   inlineLink,
   pageTitle,
@@ -79,7 +80,7 @@ export default function PricingPage() {
         <ul className="flex flex-col divide-y border-y">
           {included.map((item) => (
             <li className="flex gap-3 py-3.5" key={item}>
-              <CheckIcon className="mt-1 size-4 shrink-0 text-primary" />
+              <CheckIcon aria-hidden className="mt-1 size-4 shrink-0 text-primary" />
               <span>{item}</span>
             </li>
           ))}
@@ -266,22 +267,5 @@ export default function PricingPage() {
         </div>
       </Section>
     </>
-  );
-}
-
-function CheckIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      aria-hidden
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      viewBox="0 0 24 24"
-    >
-      <path d="M20 6 9 17l-5-5" />
-    </svg>
   );
 }

@@ -58,7 +58,7 @@ describe("demoReducer", () => {
       day: "monday",
       question: "when",
     });
-    expect(answered.announcement).toMatch(/^Scripted answer: Thursday\./);
+    expect(answered.announcement).toMatch(/^Eve: Thursday\./);
     expect(answered.announcement).toMatch(/checking in with Sam on Monday/);
 
     const arrived = demoReducer(answered, { type: "jump" });

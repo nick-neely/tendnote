@@ -67,12 +67,6 @@ describe("pricing disclosures", () => {
 describe("demo boundaries", () => {
   const rendered = text(DemoPage);
 
-  it("labels the story fictional and scripted, and says nothing is saved", () => {
-    expect(rendered).toMatch(/Fictional and scripted/);
-    expect(rendered).toMatch(/no AI runs here/);
-    expect(rendered).toMatch(/Nothing you press is saved or sent/);
-  });
-
   it("never reaches for the product's development demo session", () => {
     expect(rendered).not.toMatch(/demo-session/);
   });

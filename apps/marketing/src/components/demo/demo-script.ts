@@ -218,7 +218,7 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
         step: LAST_STEP,
         arrived: false,
         question: question.id,
-        announcement: `Scripted answer: ${question.answer(dayById(state.day))} ${stepLabel(LAST_STEP)}`,
+        announcement: `Eve: ${question.answer(dayById(state.day))} ${stepLabel(LAST_STEP)}`,
       };
     }
     case "jump":

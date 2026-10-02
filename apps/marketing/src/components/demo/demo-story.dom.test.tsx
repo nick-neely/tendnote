@@ -54,19 +54,17 @@ async function playToTheAnswer(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("DemoStory", () => {
-  it("says it is fictional and scripted at entry, and offers View pricing from the start", () => {
+  it("opens on Sam's interview and offers View pricing from the start", () => {
     render(<DemoStory />);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
       "Sam has a big interview on Thursday.",
     );
-    expect(screen.getByText("Fictional and scripted")).toBeTruthy();
-    expect(screen.getByText(/no AI runs here/)).toBeTruthy();
     for (const link of screen.getAllByRole("link", { name: "View pricing" })) {
       expect(link.getAttribute("href")).toBe("/pricing");
     }
   });
 
-  it("plays the whole story, labels the answer as scripted, and never fetches", async () => {
+  it("plays the whole story with the answer citing its source, and never fetches", async () => {
     const user = userEvent.setup();
     render(<DemoStory />);
 
@@ -77,7 +75,6 @@ describe("DemoStory", () => {
     // The stage bar and the day divider both move the thread to Wednesday.
     expect(screen.getAllByText("Wednesday")).toHaveLength(2);
     expect(screen.getByText("Confirmed fact · the source of Eve's answer below")).toBeTruthy();
-    expect(screen.getByText("Scripted answer")).toBeTruthy();
     expect(screen.getByText(/^The portfolio review\./)).toBeTruthy();
     expect(screen.getByText("From your note · Tuesday, after coffee")).toBeTruthy();
 
@@ -118,7 +115,7 @@ describe("DemoStory", () => {
     await user.click(memory);
     expect(memory.getAttribute("aria-current")).toBe("step");
     expect(screen.getByRole("button", { name: "Approve suggestion for Sam Rivera" })).toBeTruthy();
-    expect(screen.queryByText("Scripted answer")).toBeNull();
+    expect(screen.queryByText(/^The portfolio review\./)).toBeNull();
     expect(announced()).toBe("Step 2 of 5: Keep what is worth keeping.");
 
     const [restart] = screen.getAllByRole("button", { name: "Restart the story" });
