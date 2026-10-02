@@ -118,16 +118,21 @@ export function normalizeGeneratedTitle(raw: string): string | null {
   return title || null;
 }
 
-type GenerateTitle = (input: { userMessage: string; assistantReply: string }) => Promise<string>;
+type GenerateTitle = (input: {
+  ownerUserId: string;
+  userMessage: string;
+  assistantReply: string;
+}) => Promise<string>;
 
 /** Titling belongs to the Eve conversation, so it is charged as interactive. */
 export async function generateConversationTitle(input: {
+  ownerUserId: string;
   userMessage: string;
   assistantReply: string;
 }): Promise<string> {
   const modelId = process.env.TENDNOTE_ASSISTANT_TITLE_MODEL ?? DEFAULT_TITLE_MODEL;
   const { text } = await generateText({
-    model: hostedModel({ modelId, costCategory: "interactive" }),
+    model: hostedModel({ modelId, costCategory: "interactive", account: input.ownerUserId }),
     system: TITLE_SYSTEM_PROMPT,
     prompt: [
       "Person:",
@@ -227,7 +232,7 @@ export const createAssistantConversationHook = (
           if (!userMessage && !assistantReply) return;
 
           const title = normalizeGeneratedTitle(
-            await generateTitle({ userMessage, assistantReply }),
+            await generateTitle({ ownerUserId, userMessage, assistantReply }),
           );
           if (title) {
             await setTitle({ ownerUserId, sessionId: ctx.session.id, title, source: "model" });

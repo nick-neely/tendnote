@@ -36,7 +36,7 @@ describe("createLlmSnapshotGenerator", () => {
     const model = vi.fn().mockResolvedValue("  Mark is a close friend.  ");
     const generate = createLlmSnapshotGenerator({ model, version: "llm:test-model" });
 
-    const result = await generate(pack);
+    const result = await generate(pack, { accountId: "owner-1" });
 
     expect(model).toHaveBeenCalledTimes(1);
     expect(model.mock.calls[0]?.[0].prompt).toContain("Mark");
@@ -52,7 +52,7 @@ describe("createLlmSnapshotGenerator", () => {
     const model = vi.fn().mockResolvedValue("   ");
     const generate = createLlmSnapshotGenerator({ model, version: "llm:test-model" });
 
-    const result = await generate(pack);
+    const result = await generate(pack, { accountId: "owner-1" });
 
     expect(result.summary).toContain("Mark");
     // Provenance reflects the real producer: deterministic, not the model.
@@ -67,7 +67,7 @@ describe("createLlmSnapshotGenerator", () => {
       fallback: () => ({ summary: "fallback prose", generatorVersion: "fallback-v1" }),
     });
 
-    expect(await generate(pack)).toEqual({
+    expect(await generate(pack, { accountId: "owner-1" })).toEqual({
       summary: "fallback prose",
       generatorVersion: "fallback-v1",
     });
@@ -77,6 +77,6 @@ describe("createLlmSnapshotGenerator", () => {
     const model = vi.fn().mockRejectedValue(new Error("model down"));
     const generate = createLlmSnapshotGenerator({ model, version: "llm:test-model" });
 
-    await expect(generate(pack)).rejects.toThrow("model down");
+    await expect(generate(pack, { accountId: "owner-1" })).rejects.toThrow("model down");
   });
 });

@@ -17,6 +17,9 @@ vi.mock("ai", async (importOriginal) => ({
   gateway: (await fakeGateway).provider,
 }));
 
+const recordModelUsage = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("../usage-ledger", () => ({ recordModelUsage }));
+
 const NOW = new Date("2026-06-01T00:00:00.000Z");
 
 function inputPack(): AssetSnapshotInputPack {
@@ -49,7 +52,9 @@ describe("createDefaultAssetSnapshotGenerator", () => {
   it("uses the deterministic generator when AI Gateway credentials are unavailable", async () => {
     const generate = createDefaultAssetSnapshotGenerator({});
 
-    await expect(Promise.resolve(generate(inputPack()))).resolves.toMatchObject({
+    await expect(
+      Promise.resolve(generate(inputPack(), { accountId: "owner-1" })),
+    ).resolves.toMatchObject({
       generatorVersion: DETERMINISTIC_ASSET_SNAPSHOT_GENERATOR_VERSION,
     });
     expect((await fakeGateway).models).toEqual([]);
@@ -61,13 +66,16 @@ describe("createDefaultAssetSnapshotGenerator", () => {
       TENDNOTE_SNAPSHOT_MODEL: "google/gemini-test",
     });
 
-    await expect(generate(inputPack())).resolves.toEqual({
+    await expect(generate(inputPack(), { accountId: "owner-1" })).resolves.toEqual({
       summary: "LLM-written asset snapshot.",
       generatorVersion: "llm:google/gemini-test",
     });
     const { models, sentPrompts, sentProviderOptions } = await fakeGateway;
     expect(models.map((m) => m.modelId)).toEqual(["google/gemini-test"]);
     expect(sentPrompts()).toEqual([expect.stringContaining("Refrigerator")]);
+    expect(recordModelUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "owner-1", costCategory: "background" }),
+    );
     expect(sentProviderOptions()).toEqual([
       {
         gateway: {

@@ -26,7 +26,11 @@ export function createAiSdkTodayRanker(
   return async (input) => {
     if (!hasTodayRankerCredentials(env)) throw new Error("Eve ranking credentials unavailable.");
     const result = await generateText({
-      model: hostedModel({ modelId: model, costCategory: "background" }),
+      model: hostedModel({
+        modelId: model,
+        costCategory: "background",
+        account: input.ownerUserId,
+      }),
       abortSignal: AbortSignal.timeout(timeoutMs),
       output: Output.object({
         schema: todayRankingOutputSchema,

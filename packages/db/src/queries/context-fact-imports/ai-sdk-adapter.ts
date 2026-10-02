@@ -58,11 +58,15 @@ export function createAiSdkContextFactImportAdapter(
     kind: "llm",
     model,
     promptVersion,
-    async extractCandidates(input): Promise<ContextFactImportAdapterResult> {
+    async extractCandidates(input, call): Promise<ContextFactImportAdapterResult> {
       requireAiGatewayCredentials("Self Context import", env);
 
       const result = await generateText({
-        model: hostedModel({ modelId: model, costCategory: "background" }),
+        model: hostedModel({
+          modelId: model,
+          costCategory: "background",
+          account: call.accountId,
+        }),
         output: Output.object({
           schema: contextFactImportAdapterResultSchema,
           name: "context_fact_import",

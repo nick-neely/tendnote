@@ -1,5 +1,6 @@
 import { hostedModel } from "@tendnote/db/queries/model-calls";
 import { defineAgent } from "eve";
+import { eveSessionAccount } from "./lib/eve-session-account";
 
 export default defineAgent({
   // Default follows the Vercel AI Gateway model id format. Override with
@@ -11,6 +12,7 @@ export default defineAgent({
   model: hostedModel({
     modelId: process.env.TENDNOTE_AGENT_MODEL ?? "google/gemini-3.7-flash",
     costCategory: "interactive",
+    account: eveSessionAccount,
   }),
   /**
    * Thought summaries, so the Assistant can show a thinking disclosure.

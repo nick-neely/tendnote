@@ -13,6 +13,9 @@ vi.mock("ai", async (importOriginal) => ({
   gateway: (await fakeGateway).provider,
 }));
 
+const recordModelUsage = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("../usage-ledger", () => ({ recordModelUsage }));
+
 describe("Today optional ranking", () => {
   it("stays off in development unless explicitly enabled", () => {
     expect(shouldUseTodayRanker({ NODE_ENV: "development" })).toBe(false);
@@ -38,6 +41,9 @@ describe("Today optional ranking", () => {
       type: "json",
       name: "today_optional_ranking",
     });
+    expect(recordModelUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "owner-1", costCategory: "background" }),
+    );
     expect(sentProviderOptions()).toEqual([
       {
         gateway: {

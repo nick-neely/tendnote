@@ -1,8 +1,8 @@
 import { MockEmbeddingModelV4, MockLanguageModelV4, simulateReadableStream } from "ai/test";
 
 const usage = {
-  inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-  outputTokens: { total: 1, text: 1, reasoning: 0 },
+  inputTokens: { total: 3, noCache: 3, cacheRead: 0, cacheWrite: 0 },
+  outputTokens: { total: 2, text: 2, reasoning: 0 },
 };
 
 type SentPrompt = MockLanguageModelV4["doGenerateCalls"][number]["prompt"];
@@ -56,6 +56,7 @@ export function fakeGatewayProvider(text = "ok") {
       modelId,
       doEmbed: async ({ values }) => ({
         embeddings: values.map(() => [0.1, 0.2, 0.3]),
+        usage: { tokens: 4 },
         warnings: [],
       }),
     });

@@ -85,11 +85,14 @@ describe("semantic retrieval hardening", () => {
 
   it("keeps normal verification on fake vectors without provider credentials", async () => {
     const adapter = createFakeEmbeddingAdapter();
-    const embedding = await adapter.embedText({
-      text: "Mara likes cooking gifts.",
-      model: DEFAULT_EMBEDDING_CONFIG.model,
-      version: DEFAULT_EMBEDDING_CONFIG.version,
-    });
+    const embedding = await adapter.embedText(
+      {
+        text: "Mara likes cooking gifts.",
+        model: DEFAULT_EMBEDDING_CONFIG.model,
+        version: DEFAULT_EMBEDDING_CONFIG.version,
+      },
+      { accountId: "owner-1" },
+    );
 
     expect(DEFAULT_EMBEDDING_CONFIG.model).toBe("fake-semantic-retrieval");
     expect(embedding).toEqual({

@@ -8,6 +8,7 @@ import {
   selfContextFactCategorySchema,
 } from "./context-facts";
 import { atLeastSensitivity, type Sensitivity, sensitivitySchema } from "./privacy";
+import type { MeteredCall } from "./usage-ledger";
 
 /**
  * Importing Self Context from another assistant is one deliberate, bounded session:
@@ -185,6 +186,7 @@ export type ContextFactImportExtractionAdapter = {
   promptVersion?: string;
   extractCandidates: (
     input: ContextFactImportExtractionInput,
+    call: MeteredCall,
   ) => Promise<ContextFactImportAdapterResult>;
 };
 

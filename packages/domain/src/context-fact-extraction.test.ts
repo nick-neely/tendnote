@@ -243,7 +243,9 @@ describe("ambient Context Fact extraction adapters", () => {
   it("keeps normal CI deterministic without inventing candidates", async () => {
     const adapter = createDeterministicContextFactExtractionAdapter();
 
-    await expect(adapter.extractCandidates({ message: "I work in Chicago." })).resolves.toEqual({
+    await expect(
+      adapter.extractCandidates({ message: "I work in Chicago." }, { accountId: "owner-1" }),
+    ).resolves.toEqual({
       candidates: [],
     });
     expect(adapter.kind).toBe("deterministic");
@@ -258,7 +260,9 @@ describe("ambient Context Fact extraction adapters", () => {
       },
     ]);
 
-    await expect(adapter.extractCandidates({ message: "I work in design." })).resolves.toEqual({
+    await expect(
+      adapter.extractCandidates({ message: "I work in design." }, { accountId: "owner-1" }),
+    ).resolves.toEqual({
       candidates: [
         {
           category: "work",

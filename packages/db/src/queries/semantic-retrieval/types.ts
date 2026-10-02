@@ -27,6 +27,7 @@ import type {
   SourceRecordPerson,
   UnresolvedPersonMention,
 } from "@tendnote/domain";
+import type { MeteredCall } from "@tendnote/domain/usage-ledger";
 import type { InMemoryMemoryStore, MemoryReviewStore } from "../memories/types";
 
 export type EmbeddingAdapterInput = {
@@ -42,7 +43,7 @@ export type EmbeddingAdapterResult = {
 };
 
 export type EmbeddingAdapter = {
-  embedText: (input: EmbeddingAdapterInput) => Promise<EmbeddingAdapterResult>;
+  embedText: (input: EmbeddingAdapterInput, call: MeteredCall) => Promise<EmbeddingAdapterResult>;
 };
 
 export type EmbeddingConfig = {

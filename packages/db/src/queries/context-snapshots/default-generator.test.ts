@@ -14,6 +14,9 @@ vi.mock("ai", async (importOriginal) => ({
   gateway: (await fakeGateway).provider,
 }));
 
+const recordModelUsage = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("../usage-ledger", () => ({ recordModelUsage }));
+
 const NOW = new Date("2026-01-01T00:00:00.000Z");
 
 function inputPack(): SnapshotInputPack {
@@ -41,7 +44,9 @@ describe("createDefaultSnapshotGenerator", () => {
   it("uses the deterministic generator when AI Gateway credentials are unavailable", async () => {
     const generate = createDefaultSnapshotGenerator({});
 
-    await expect(Promise.resolve(generate(inputPack()))).resolves.toMatchObject({
+    await expect(
+      Promise.resolve(generate(inputPack(), { accountId: "owner-1" })),
+    ).resolves.toMatchObject({
       generatorVersion: DETERMINISTIC_GENERATOR_VERSION,
     });
   });
@@ -52,7 +57,7 @@ describe("createDefaultSnapshotGenerator", () => {
       TENDNOTE_SNAPSHOT_MODEL: "openai/test-model",
     });
 
-    await expect(generate(inputPack())).resolves.toEqual({
+    await expect(generate(inputPack(), { accountId: "owner-1" })).resolves.toEqual({
       summary: "LLM-written relationship snapshot.",
       generatorVersion: "llm:openai/test-model",
     });
@@ -60,6 +65,9 @@ describe("createDefaultSnapshotGenerator", () => {
     expect(models.map((m) => m.modelId)).toEqual(["openai/test-model"]);
     expect(sentPrompts()).toEqual([expect.stringContaining("never infer, embellish, or invent")]);
     expect(sentPrompts()[0]).toContain("Write a brief, grounded relationship snapshot");
+    expect(recordModelUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "owner-1", costCategory: "background" }),
+    );
     expect(sentProviderOptions()).toEqual([
       {
         gateway: {

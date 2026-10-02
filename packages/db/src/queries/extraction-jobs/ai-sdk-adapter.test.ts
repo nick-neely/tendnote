@@ -19,6 +19,9 @@ vi.mock("ai", async (importOriginal) => ({
   gateway: (await fakeGateway).provider,
 }));
 
+const recordModelUsage = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("../usage-ledger", () => ({ recordModelUsage }));
+
 beforeEach(async () => {
   (await fakeGateway).reset();
 });
@@ -64,6 +67,9 @@ describe("AI SDK suggested-memory extraction adapter", () => {
     });
     expect(sentPrompts()[0]).toContain("tentative suggested memories");
     expect(sentPrompts()[0]).toContain("Mara: person-1");
+    expect(recordModelUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "owner-1", costCategory: "background" }),
+    );
     expect(sentProviderOptions()).toEqual([
       {
         gateway: {

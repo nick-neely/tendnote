@@ -57,11 +57,15 @@ export function createAiSdkContextFactExtractionAdapter(
     kind: "llm",
     model,
     promptVersion,
-    async extractCandidates(input): Promise<ContextFactExtractionAdapterResult> {
+    async extractCandidates(input, call): Promise<ContextFactExtractionAdapterResult> {
       requireAiGatewayCredentials("Context Fact extraction", env);
 
       const result = await generateText({
-        model: hostedModel({ modelId: model, costCategory: "background" }),
+        model: hostedModel({
+          modelId: model,
+          costCategory: "background",
+          account: call.accountId,
+        }),
         output: Output.object({
           schema: contextFactExtractionAdapterResultSchema,
           name: "context_fact_extraction",

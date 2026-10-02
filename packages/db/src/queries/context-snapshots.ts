@@ -50,9 +50,9 @@ export function createDefaultSnapshotGenerator(
 
   return createLlmSnapshotGenerator({
     version: `llm:${modelId}`,
-    model: async ({ prompt }) => {
+    model: async ({ prompt, call }) => {
       const { text } = await generateText({
-        model: hostedModel({ modelId, costCategory: "background" }),
+        model: hostedModel({ modelId, costCategory: "background", account: call.accountId }),
         system:
           "You write grounded relationship snapshots for Tendnote. You summarize only " +
           "the facts you are given and never infer, embellish, or invent feelings, " +

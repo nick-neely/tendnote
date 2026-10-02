@@ -88,9 +88,9 @@ export function createDefaultBriefSummaryAdapter(
 
   return createLlmBriefSummaryAdapter({
     version: `llm:${modelId}`,
-    model: async ({ prompt }) => {
+    model: async ({ prompt, call }) => {
       const { text } = await generateText({
-        model: hostedModel({ modelId, costCategory: "background" }),
+        model: hostedModel({ modelId, costCategory: "background", account: call.accountId }),
         prompt,
       });
       return text;

@@ -13,6 +13,7 @@
     "./assistant-conversations": "./src/assistant-conversations.ts",
     "./assistant-sources": "./src/assistant-sources.ts",
     "./audit-retention": "./src/audit-retention.ts",
+    "./usage-ledger": "./src/usage-ledger.ts",
     "./brief-schedules": "./src/brief-schedules.ts",
     "./brief-summary": "./src/brief-summary.ts",
     "./briefs": "./src/briefs.ts",

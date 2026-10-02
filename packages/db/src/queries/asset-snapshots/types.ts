@@ -10,6 +10,7 @@ import type {
   AssetSnapshotRelatedAsset,
   CreateAssetSnapshotInput,
 } from "@tendnote/domain";
+import type { MeteredCall } from "@tendnote/domain/usage-ledger";
 import type { AssetContextLinkStore } from "../assets/link-types";
 import type { GeneralActionStore } from "../general-actions/types";
 
@@ -82,6 +83,7 @@ export type GetAssetSnapshotInput = {
  */
 export type AssetSnapshotGenerator = (
   input: AssetSnapshotInputPack,
+  call: MeteredCall,
 ) => AssetSnapshotProse | Promise<AssetSnapshotProse>;
 
 export type InMemoryAssetSnapshotStore = AssetSnapshotStore & {

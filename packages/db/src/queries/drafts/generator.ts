@@ -146,7 +146,7 @@ export function createDraftGenerator(
 
       let generated: Awaited<ReturnType<DraftAdapter>>;
       try {
-        generated = await options.draftAdapter(grounded);
+        generated = await options.draftAdapter(grounded, { accountId: input.ownerUserId });
       } catch {
         // A model/adapter outage must never persist a junk draft (PRD: no
         // live-model-dependent standard verification, fail-open boundaries).

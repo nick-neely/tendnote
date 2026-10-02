@@ -8,6 +8,7 @@ import {
   type SnapshotProse,
   selectSnapshotFollowups,
 } from "@tendnote/domain";
+import type { MeteredCall } from "@tendnote/domain/usage-ledger";
 import { createPersonContext, type PersonContextResult } from "../person-context";
 import type { PersonContextSnapshotStore } from "./types";
 
@@ -51,6 +52,7 @@ export type PersonContextSnapshotResult = {
  */
 export type SnapshotGenerator = (
   input: SnapshotInputPack,
+  call: MeteredCall,
 ) => SnapshotProse | Promise<SnapshotProse>;
 
 export type CreatePersonContextSnapshotOptions = {
@@ -142,7 +144,7 @@ export function createPersonContextSnapshot(
           return { status: "fresh", snapshot: existing, context };
         }
 
-        const prose = await generate(pack);
+        const prose = await generate(pack, { accountId: input.ownerUserId });
         const snapshot = await store.upsertContextSnapshot({
           ownerUserId: input.ownerUserId,
           personId: input.personId,

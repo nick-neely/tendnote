@@ -4,6 +4,7 @@ import {
   buildAssetSnapshotPrompt,
   generateDeterministicAssetSnapshot,
 } from "@tendnote/domain";
+import type { MeteredCall } from "@tendnote/domain/usage-ledger";
 import type { AssetSnapshotGenerator } from "./types";
 
 /**
@@ -11,7 +12,10 @@ import type { AssetSnapshotGenerator } from "./types";
  * concrete model here; the db package stays free of provider dependencies and the call
  * is trivially fakeable in tests.
  */
-export type AssetSnapshotProseModel = (request: { prompt: string }) => Promise<string>;
+export type AssetSnapshotProseModel = (request: {
+  prompt: string;
+  call: MeteredCall;
+}) => Promise<string>;
 
 export type LlmAssetSnapshotGeneratorOptions = {
   model: AssetSnapshotProseModel;
@@ -37,11 +41,11 @@ export function createLlmAssetSnapshotGenerator(
 ): AssetSnapshotGenerator {
   const fallback = options.fallback ?? generateDeterministicAssetSnapshot;
 
-  return async (input: AssetSnapshotInputPack): Promise<AssetSnapshotProse> => {
-    const summary = (await options.model({ prompt: buildAssetSnapshotPrompt(input) })).trim();
+  return async (input: AssetSnapshotInputPack, call: MeteredCall): Promise<AssetSnapshotProse> => {
+    const summary = (await options.model({ prompt: buildAssetSnapshotPrompt(input), call })).trim();
 
     if (!summary) {
-      return fallback(input);
+      return fallback(input, call);
     }
 
     return { summary, generatorVersion: options.version };

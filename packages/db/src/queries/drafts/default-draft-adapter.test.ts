@@ -14,6 +14,9 @@ vi.mock("ai", async (importOriginal) => ({
   gateway: (await fakeGateway).provider,
 }));
 
+const recordModelUsage = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("../usage-ledger", () => ({ recordModelUsage }));
+
 function grounded(): DraftGroundedContext {
   return {
     person: { displayName: "Mark", relationshipType: "friend" },
@@ -34,7 +37,7 @@ describe("createDefaultDraftAdapter", () => {
     // This is the standard-verification path: no network, no live model.
     const adapter = createDefaultDraftAdapter({});
 
-    const result = await adapter(grounded());
+    const result = await adapter(grounded(), { accountId: "owner-1" });
 
     expect(result.provenance.generator).toBe("deterministic");
     expect(result.body.toLowerCase()).toContain("denver");
@@ -47,12 +50,15 @@ describe("createDefaultDraftAdapter", () => {
       TENDNOTE_DRAFT_MODEL: "google/gemini-test",
     });
 
-    const result = await adapter(grounded());
+    const result = await adapter(grounded(), { accountId: "owner-1" });
 
     expect(result.body).toBe("LLM-written draft body.");
     expect(result.provenance).toEqual({ generator: "llm", version: "llm:google/gemini-test" });
     const { models, sentProviderOptions } = await fakeGateway;
     expect(models.map((m) => m.modelId)).toEqual(["google/gemini-test"]);
+    expect(recordModelUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "owner-1", costCategory: "background" }),
+    );
     expect(sentProviderOptions()).toEqual([
       {
         gateway: {
@@ -69,7 +75,7 @@ describe("createDefaultDraftAdapter", () => {
     (await fakeGateway).respondWith("   ");
     const adapter = createDefaultDraftAdapter({ AI_GATEWAY_API_KEY: "test-key" });
 
-    const result = await adapter(grounded());
+    const result = await adapter(grounded(), { accountId: "owner-1" });
 
     expect(result.provenance.generator).toBe("deterministic");
     expect(result.body.toLowerCase()).toContain("denver");

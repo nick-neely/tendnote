@@ -10,6 +10,11 @@ vi.mock("@tendnote/db/queries/file-uploads", () => ({
   sweepFileStorage: vi.fn(async () => ({ deleted: 0, pending: 0 })),
 }));
 
+const { sweepUsageLedger } = vi.hoisted(() => ({
+  sweepUsageLedger: vi.fn(async () => ({ deleted: 0 })),
+}));
+vi.mock("@tendnote/db/queries/usage-ledger", () => ({ sweepUsageLedger }));
+
 import { GET } from "./route";
 
 const SECRET = "cron-secret-value";
@@ -66,6 +71,7 @@ describe("background-jobs recovery cron route", () => {
 
     expect(response.status).toBe(200);
     expect(runBackgroundJobRecovery).toHaveBeenCalledTimes(1);
+    expect(sweepUsageLedger).toHaveBeenCalledTimes(1);
   });
 
   it("allows the explicit development-only opt-in when no secret is configured", async () => {

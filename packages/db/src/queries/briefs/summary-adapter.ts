@@ -4,6 +4,7 @@ import {
   buildBriefSummaryPrompt,
   generateDeterministicBriefSummary,
 } from "@tendnote/domain";
+import type { MeteredCall } from "@tendnote/domain/usage-ledger";
 
 /**
  * The optional decorative summary seam (PRD #65, issue #73). Given the
@@ -12,14 +13,17 @@ import {
  * as fail-open (the brief is still created without a summary), so a model outage
  * never blocks deterministic relationship guidance.
  */
-export type BriefSummaryAdapter = (input: BriefSummaryInput) => Promise<BriefSummaryResult | null>;
+export type BriefSummaryAdapter = (
+  input: BriefSummaryInput,
+  call: MeteredCall,
+) => Promise<BriefSummaryResult | null>;
 
 /**
  * Provider-agnostic seam for the summary model call. The composition root wires a
  * concrete model; the db package stays free of provider dependencies and the call
  * is trivially fakeable in tests.
  */
-export type BriefSummaryModel = (request: { prompt: string }) => Promise<string>;
+export type BriefSummaryModel = (request: { prompt: string; call: MeteredCall }) => Promise<string>;
 
 export type LlmBriefSummaryAdapterOptions = {
   model: BriefSummaryModel;
@@ -43,8 +47,8 @@ export function createLlmBriefSummaryAdapter(
 ): BriefSummaryAdapter {
   const fallback = options.fallback ?? generateDeterministicBriefSummary;
 
-  return async (input) => {
-    const text = (await options.model({ prompt: buildBriefSummaryPrompt(input) })).trim();
+  return async (input, call) => {
+    const text = (await options.model({ prompt: buildBriefSummaryPrompt(input), call })).trim();
 
     if (!text) {
       return fallback(input);
