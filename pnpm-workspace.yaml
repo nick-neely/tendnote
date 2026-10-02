@@ -3,3 +3,4 @@ packages:
   - "packages/*"
 patchedDependencies:
   eve@0.47.7: patches/eve@0.47.7.patch
+  next@16.3.3: patches/next@16.3.3.patch

@@ -539,6 +539,68 @@ afterward, 60 of 60 passed at six workers with no Chromium scheduling overrides.
 The original desktop-navigation reproduction is retained as the broader
 route-level check.
 
+### Resolved: Server Actions on a stale page answered 500 (#676)
+
+The matrix intermittently failed on `console: Failed to load resource ... 500`,
+on whichever spec fired a Server Action at the wrong moment, with
+`SyntaxError: Unexpected end of JSON input` in the server log. It reproduced on
+clean `main` and was a Next.js 16.3.3 defect, not a request-body loss in transit.
+
+Passive stream instrumentation, from the request's arrival to the action
+decoder, showed every body arriving whole. That held through `proxy.ts`'s body
+clone and the buffered copy Next puts back on the request. The failing requests
+were the ones whose action handler ran **twice**: the first run decoded the full
+body, and the second started on the drained, destroyed stream and decoded `""`.
+Every case had the same cause. When a Server Action lands on a page whose
+prerendered entry is stale, the app-page handler schedules a background
+revalidation (`scheduleOnNextTick` → `responseCache.revalidate`) that renders
+with the same live request. That request still carries `Next-Action`, so the
+render dispatches the action again.
+
+| Run (unpatched, mobile, `Action complete and reopen` ×20) | Count |
+| --- | ---: |
+| Action POSTs | 200 |
+| ...that scheduled a stale-entry background revalidation | 4 |
+| ...whose handler ran twice | the same 4 |
+| ...that decoded an empty body | the same 4 |
+| Failed tests / server `SyntaxError`s | 4 / 4 |
+
+The entries go stale on time alone. `/`, `/actions`, and `/actions/today` use
+the `interactive` profile (`revalidate: 30`), so an action 30 s after the page
+was last rendered, with no request in between, hits the bug. That is also why it
+read as a flake: whether a spec's action crossed the window depended on how long
+the specs before it ran. A standalone Next 16.3.3 app with `cacheComponents`, a
+PPR page, and an action that calls `revalidateTag(tag, "max")` reproduces it
+deterministically: every action after the first answers 500, *after* the action
+has run. The owner sees a failure for a write that committed.
+
+Self-hosted `next start` only. The branch is skipped in minimal mode, which is
+how Vercel runs Next, so this is not expected to reach the hosted product; that
+is read from the code path, not measured on Vercel.
+
+No stable release fixes it. The standalone repro fails the same way on 16.3.8,
+the latest stable when this was written (2026-10-02). `16.4.0-canary.56` still
+has the unguarded branch but does not reproduce, so something else on the 16.4
+line prevents the second run. The upgrade to 16.4 stable is therefore the point
+to drop the patch. Run this spec without it then, rather than assuming.
+
+`patches/next@16.3.3.patch` adds `!isPossibleServerAction` to that branch's
+condition, in both `dist` copies of the app-page template. A stale entry is left
+for the next non-action request to revalidate, which non-action requests already
+do. The patch is pinned to `next@16.3.3` in `pnpm-workspace.yaml`. pnpm refuses
+an unused patch, so a Next bump fails install until someone checks whether the
+upgrade still needs it.
+
+`desktop-stale-page-action.spec.ts` is the regression check. It arrives on
+`/actions`, waits out the revalidate window, and completes an Action, asserting
+every Server Action response is 200. It is desktop-only and outside the
+promotion tier because the wait is its cost. Unpatched it failed 2 of 2; patched
+it passed 2 of 2. Before the patch, `Action complete and reopen` alone failed 4
+of 20 (mobile, one worker). After it, the issue's repeated scenarios (`Today to
+Review|Action complete and reopen`, ×12, mobile, one worker) passed 24 of 24 with
+no `SyntaxError` in the server log. The runtime-error assertion and the budgets
+are unchanged.
+
 ## Finding: Review has no reusable shell to commit from
 
 Mobile Today → Review meets every measured budget (26 / 25 ms shell, CLS 0), but
