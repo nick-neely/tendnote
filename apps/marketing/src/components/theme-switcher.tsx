@@ -18,8 +18,8 @@ const MODES = [
  * as the product's theme menu. The trigger's sun and moon swap on the `.dark`
  * class, so the server and the first client paint agree. The choices are a
  * native radio group in a small disclosure: arrow keys move between them, a
- * click or Enter picks one and closes it, and Escape or a click outside closes
- * it without changing anything. The panel only renders while open, after
+ * click or Enter picks one and closes it, and Escape, a click outside, or
+ * tabbing out closes it without changing anything. The panel only renders while open, after
  * hydration, so the stored theme never has to match the server's.
  */
 export function ThemeSwitcher({ className }: { className?: string }) {
@@ -49,14 +49,17 @@ export function ThemeSwitcher({ className }: { className?: string }) {
       setOpen(false);
       toggleRef.current?.focus();
     }
-    function onPointerDown(event: PointerEvent) {
+    // A click elsewhere, or tabbing on past the last mode, closes it.
+    function onOutside(event: Event) {
       if (!root?.contains(event.target as Node)) setOpen(false);
     }
     document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("pointerdown", onOutside);
+    document.addEventListener("focusin", onOutside);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("pointerdown", onOutside);
+      document.removeEventListener("focusin", onOutside);
     };
   }, [open]);
 

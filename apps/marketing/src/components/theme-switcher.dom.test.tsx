@@ -26,6 +26,7 @@ function renderSwitcher() {
   return render(
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <ThemeSwitcher />
+      <a href="/sign-in">Sign in</a>
     </ThemeProvider>,
   );
 }
@@ -59,5 +60,17 @@ describe("ThemeSwitcher", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("radio")).toBeNull();
     expect(screen.getByRole("button", { name: "Theme: Dark" })).toBe(document.activeElement);
+  });
+
+  it("closes when focus tabs on past the modes", async () => {
+    const user = userEvent.setup();
+    renderSwitcher();
+
+    const toggle = screen.getByRole("button", { name: "Theme: System" });
+    await user.click(toggle);
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("link", { name: "Sign in" }));
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
   });
 });
