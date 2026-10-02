@@ -169,6 +169,7 @@ describe("assistant conversation hook", () => {
 
     expect(touch).toHaveBeenCalledWith({ ownerUserId: "user-1", sessionId: "wrun_1" });
     expect(generateTitle).toHaveBeenCalledWith({
+      ownerUserId: "user-1",
       userMessage: "Remind me what Priya said about the move",
       assistantReply: "Priya is moving in October.",
     });
@@ -185,6 +186,7 @@ describe("assistant conversation hook", () => {
     await events["turn.completed"]?.(turnCompleted(), context());
 
     expect(generateTitle).toHaveBeenCalledWith({
+      ownerUserId: "user-1",
       userMessage: "Remind me what Priya said about the move",
       assistantReply: "",
     });
