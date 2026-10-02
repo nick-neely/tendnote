@@ -277,6 +277,30 @@ describe("the Usage Ledger", () => {
     warn.mockRestore();
   });
 
+  it("leaves a call unmetered rather than failing it when its account resolver throws", async () => {
+    const fake = fakeGatewayProvider();
+    const ledger = fakeUsageLedger();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { text } = await generateText({
+      model: hostedModel(
+        {
+          modelId: "google/gemini-3.7-flash",
+          costCategory: "interactive",
+          account: () => {
+            throw new Error("no session store");
+          },
+        },
+        { provider: fake.provider, recordUsage: ledger.recordUsage },
+      ),
+      prompt: "hi",
+    });
+
+    expect(text).toBe("ok");
+    expect(ledger.entries).toEqual([]);
+    warn.mockRestore();
+  });
+
   it("records nothing of the prompt or the reply", async () => {
     const fake = fakeGatewayProvider("Maya's sister is expecting in May");
     const ledger = fakeUsageLedger();

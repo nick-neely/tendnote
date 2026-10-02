@@ -80,13 +80,23 @@ function pinGatewayOptions(input: HostedModelInput) {
   };
 }
 
+/** A resolver that throws counts as no account: metering must never fail the call it meters. */
+function resolveAccount(account: MeteredAccount): string | null {
+  if (typeof account === "string") return account;
+  try {
+    return account();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Returns the Usage Ledger meter for one call, or `null` when the call has no
  * account. The account is resolved when the call starts, inside the caller's
  * async context, which is where Eve's session is visible.
  */
 function startMeter(input: HostedModelInput, recordUsage: UsageLedgerWriter) {
-  const accountId = typeof input.account === "string" ? input.account : input.account();
+  const accountId = resolveAccount(input.account);
   if (!accountId) {
     console.warn("usage-ledger: a model call has no account, so it is not metered", {
       modelId: input.modelId,
