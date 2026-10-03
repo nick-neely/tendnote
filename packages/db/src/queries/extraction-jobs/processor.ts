@@ -203,6 +203,23 @@ async function deferJob(
   return { job: updated, outcome: "deferred", reason: "usage_paused", suggestedMemories: [] };
 }
 
+/** A run that threw: deferred when background work is paused, otherwise a retryable failure. */
+function settleExtractionError(
+  ctx: ExtractionContext,
+  job: ProcessExtractionJobResult["job"],
+  sourceRecordId: string,
+  ownerUserId: string,
+  error: unknown,
+  now: Date,
+  retryDelayMs: number,
+): Promise<ProcessExtractionJobResult> {
+  if (error instanceof UsagePausedError) {
+    return deferJob(ctx, job, sourceRecordId, ownerUserId, error);
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return failJob(ctx, job, message, ownerUserId, now, retryDelayMs);
+}
+
 /**
  * Runs the extraction adapter for a claimed, extractable job and persists the
  * resulting suggested memories. Idempotency: a candidate already saved for this
@@ -523,12 +540,7 @@ async function processExtractionJob(
       retryDelayMs,
     );
   } catch (error) {
-    if (error instanceof UsagePausedError) {
-      return deferJob(ctx, job, sourceRecord.id, ownerUserId, error);
-    }
-    const message = error instanceof Error ? error.message : String(error);
-
-    return failJob(ctx, job, message, ownerUserId, now, retryDelayMs);
+    return settleExtractionError(ctx, job, sourceRecord.id, ownerUserId, error, now, retryDelayMs);
   }
 }
 
