@@ -76,16 +76,15 @@ describe("tracking disclosure", () => {
   const rendered = text(PrivacyAndAiPage);
 
   it.each([
-    ["the no-cookie, no-cross-site boundary", /no cross-site tracking.*no analytics cookie/],
-    ["account-linked funnel events", /linked to your account but hold none of your notes/],
-    ["US-only collection", /collected only when you sign up or subscribe from the United States/],
+    ["the account funnel", /notes when your account first reaches a few steps/],
+    ["what it never holds", /never records your notes or the people in them/],
     [
-      "the same boundary in the app",
-      /no cookie, nothing shared across sites, and no outside analytics service/,
+      "the same no-cookie, no-third-party boundary",
+      /stays inside Tendnote: no cookie, no third party/,
     ],
-    ["retention from the constant", /deleted after 90 days or as soon as you delete your account/],
-    ["the opt-out setting", /Analytics and error reports, turns this off/],
-    ["no backfill", /does not fill in anything missed/],
+    ["US-only collection", /Only for accounts in the United States/],
+    ["retention from the constant", /Deleted after 90 days, or when you delete your account/],
+    ["the opt-out setting", /Turn it off any time under Account, Analytics and error reports/],
   ])("states %s", (_name, pattern) => {
     expect(rendered).toMatch(pattern);
   });

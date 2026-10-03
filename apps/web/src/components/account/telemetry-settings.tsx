@@ -87,9 +87,9 @@ export function TelemetrySettings({ optedOut: initialOptedOut }: { optedOut: boo
             className="max-w-[65ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]"
             id={descriptionId}
           >
-            Tendnote notes when your account first reaches a few fixed steps, like subscribing or
-            saving your first person. It also covers error reports, if Tendnote sends them; those
-            never carry your name, email, or account. Turning it off stops both from now on.
+            Lets Tendnote see when your account first reaches a few steps, like subscribing or
+            saving your first person. Also covers error reports, which never carry your name or
+            email. Turning it off stops both from now on.
           </span>
         </span>
       </Label>

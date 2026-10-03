@@ -203,17 +203,13 @@ export default function PrivacyAndAiPage() {
           records nothing about your visit.
         </p>
         <p className="max-w-[62ch]">
-          Inside the app, Tendnote keeps its own record of when your account first reaches a few
-          fixed steps, such as signing up, subscribing, and saving your first person, so it can see
-          where newcomers get stuck. These records are linked to your account but hold none of your
-          notes, the people in them, or anything you write. They are collected only when you sign up
-          or subscribe from the United States, and are deleted after {funnelRetentionDays} days or
-          as soon as you delete your account. They stay inside the same boundary: no cookie, nothing
-          shared across sites, and no outside analytics service.
+          In the app, Tendnote notes when your account first reaches a few steps, like subscribing
+          or saving your first person, to see where newcomers get stuck. It never records your notes
+          or the people in them, and it stays inside Tendnote: no cookie, no third party.
         </p>
         <p className="max-w-[62ch] text-muted-foreground">
-          One setting on your Account page, Analytics and error reports, turns this off. It stops
-          new records from then on; it does not fill in anything missed while it was off.
+          Only for accounts in the United States. Deleted after {funnelRetentionDays} days, or when
+          you delete your account. Turn it off any time under Account, Analytics and error reports.
         </p>
       </SplitSection>
 
