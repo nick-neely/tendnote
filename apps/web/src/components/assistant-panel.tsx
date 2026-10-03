@@ -142,6 +142,11 @@ type AssistantPanelProps = {
    * placeholder stays generic rather than naming someone who doesn't exist.
    */
   suggestPersonName?: string | null;
+  /**
+   * A first-run prompt that replaces the unscoped placeholder (#639). Set only
+   * by Home, only while the first run owes the owner one.
+   */
+  composerPrompt?: string | null;
   surface?: AssistantSurface;
   /**
    * Interactive Eve's usage notice, read server-side by the destination. While
@@ -208,6 +213,7 @@ function AssistantPanelReserve({
 
 function AssistantConversationPanel({
   approvalMode = "ask",
+  composerPrompt = null,
   context,
   onSessionStarted,
   ownerUserId,
@@ -330,6 +336,7 @@ function AssistantConversationPanel({
           centered={centeredComposer}
           context={context}
           closed={closed}
+          composerPrompt={composerPrompt}
           evidence={evidence}
           paused={paused}
           reduced={reduced}
@@ -425,6 +432,7 @@ function AssistantComposerRegion({
   approvals,
   centered,
   closed,
+  composerPrompt,
   context,
   evidence,
   nudges,
@@ -446,6 +454,7 @@ function AssistantComposerRegion({
   context?: AssistantPersonContext;
   /** Ended or paused: no composer, and nothing in the queue can be sent. */
   closed: boolean;
+  composerPrompt: string | null;
   evidence: EvidencePick;
   nudges: PromptNudge[];
   onSend: SendPrompt;
@@ -481,6 +490,7 @@ function AssistantComposerRegion({
         ) : (
           <AssistantLiveComposer
             centered={centered}
+            composerPrompt={composerPrompt}
             context={context}
             evidence={evidence}
             nudges={nudges}
@@ -595,6 +605,7 @@ function PendingApprovalNote({
 /** The box itself, and — before a first turn — the starters that sit under it. */
 function AssistantLiveComposer({
   centered,
+  composerPrompt,
   context,
   evidence,
   nudges,
@@ -608,6 +619,7 @@ function AssistantLiveComposer({
   textareaRef,
 }: {
   centered: boolean;
+  composerPrompt: string | null;
   context?: AssistantPersonContext;
   evidence: EvidencePick;
   nudges: PromptNudge[];
@@ -623,6 +635,7 @@ function AssistantLiveComposer({
   return (
     <>
       <AssistantComposerForm
+        composerPrompt={composerPrompt}
         context={context}
         evidence={evidence}
         onStop={onStop}

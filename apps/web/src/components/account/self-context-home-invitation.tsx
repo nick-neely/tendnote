@@ -8,7 +8,7 @@ import { SelfContextLaterInvitation } from "@/components/account/self-context-la
 import { appDestination } from "@/components/app-destinations";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 
-export type SelfContextHomeInvitationProps = {
+type SelfContextHomeInvitationProps = {
   searchParams?: Promise<{ selfContext?: string; tab?: string }>;
 };
 

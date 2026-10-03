@@ -50,7 +50,7 @@ export default defineConfig({
         replacement: fileURLToPath(new URL("./src/test/browser-actions.ts", import.meta.url)),
       },
       {
-        find: /^@\/app\/actions\/(context-facts|context-fact-review|context-onboarding|conversational-capture|global-recall|reminders|today)$/,
+        find: /^@\/app\/actions\/(context-facts|context-fact-review|context-onboarding|conversational-capture|first-run|global-recall|reminders|today)$/,
         replacement: fileURLToPath(new URL("./src/test/browser-actions.ts", import.meta.url)),
       },
       {

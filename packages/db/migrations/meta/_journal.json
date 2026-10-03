@@ -659,6 +659,13 @@
       "when": 1791066099452,
       "tag": "0093_public_activity_daily_counts",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1791068678985,
+      "tag": "0094_first_run_and_integration_offer",
+      "breakpoints": true
     }
   ]
 }

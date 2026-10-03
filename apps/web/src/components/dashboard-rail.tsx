@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { BriefView } from "@/lib/brief-view";
 import type { CalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
 import { initials, shortName, type UpcomingBirthday } from "@/lib/dashboard-brief";
+import { FIRST_RUN_QUESTION, FIRST_RUN_REPEAT_DETAIL } from "@/lib/first-run-copy";
 import { DASHBOARD_FOLLOWUP_HORIZON_LABEL } from "@/lib/followup-horizon";
 import type { DashboardFollowupView } from "@/lib/followup-view";
 import type { RailTab } from "@/lib/rail-tabs";
@@ -59,6 +60,8 @@ export function DashboardRail({
   reviewCount,
   dailyBrief,
   weeklyBrief,
+  firstRunRepeat = false,
+  integrationOffer = null,
   reviewContent,
   householdCheckin = null,
   usageNotice = null,
@@ -74,6 +77,18 @@ export function DashboardRail({
   reviewCount: number;
   dailyBrief: BriefView | null;
   weeklyBrief: BriefView | null;
+  /**
+   * The first-run prompt, repeated once on the Home a skip lands on while the
+   * notebook is still empty (#639). It heads Today because Today is where what
+   * the owner tells Eve will come back to them.
+   */
+  firstRunRepeat?: boolean;
+  /**
+   * The integrations offer, once First Value is reached (#639). A slot, because
+   * the rail neither reads nor decides it; it heads Today, which scrolls inside
+   * itself, so an offer can never push the assistant off a bounded screen.
+   */
+  integrationOffer?: ReactNode;
   /**
    * The Review panel itself. The queue streams in from the server family by
    * family, and each family owns its own optimistic collection, so the rail
@@ -171,6 +186,10 @@ export function DashboardRail({
           briefs live only here; they have no tab of their own. */}
       <TabsContent className={PANEL} value="today">
         {usageNotice}
+        {integrationOffer}
+        {firstRunRepeat ? (
+          <RailEmpty title={FIRST_RUN_QUESTION}>{FIRST_RUN_REPEAT_DETAIL}</RailEmpty>
+        ) : null}
         {birthdays.length > 0 ? <BirthdaysSection birthdays={birthdays} /> : null}
 
         {/* Persisted briefs: the current daily brief, then the weekly review (PRD

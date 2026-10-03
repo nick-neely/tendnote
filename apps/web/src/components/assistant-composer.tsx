@@ -42,17 +42,20 @@ import { REVEAL_ON_FOCUS } from "@/lib/hover-reveal";
 
 /**
  * Composer placeholder, most specific first: the person this panel is scoped to,
- * then a real name suggested by the caller, then a generic prompt. It never
+ * then the first-run prompt, then a real name suggested by the caller, then a generic prompt. It never
  * invents a name, so an empty notebook is never told about someone it has no
  * record of.
  */
 function composerPlaceholder(
   context: SelectedPersonContext | undefined,
   suggestPersonName: string | null,
+  composerPrompt: string | null,
 ): string {
   if (context) {
     return `Note something about ${context.personName}…`;
   }
+
+  if (composerPrompt) return composerPrompt;
 
   return suggestPersonName
     ? `Remember something about ${suggestPersonName}…`
@@ -146,6 +149,7 @@ function useAttachmentSubmission(
 }
 
 export function AssistantComposerForm({
+  composerPrompt = null,
   context,
   evidence,
   onStop,
@@ -155,6 +159,8 @@ export function AssistantComposerForm({
   suggestPersonName = null,
   textareaRef,
 }: {
+  /** The first-run prompt, standing in for the unscoped placeholder (#639). */
+  composerPrompt?: string | null;
   context?: SelectedPersonContext;
   /**
    * The file in hand and the three ways one arrives (#201). The state lives in
@@ -249,7 +255,7 @@ export function AssistantComposerForm({
           ) : null}
           <ComposerTextarea
             evidence={evidence}
-            placeholder={composerPlaceholder(context, suggestPersonName)}
+            placeholder={composerPlaceholder(context, suggestPersonName, composerPrompt)}
             status={status}
             textareaRef={textareaRef}
           />

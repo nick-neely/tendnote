@@ -46,6 +46,7 @@
     "./queries/eve-session-owners": "./src/queries/eve-session-owners.ts",
     "./queries/eve-session-tool-trusts": "./src/queries/eve-session-tool-trusts.ts",
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",
+    "./queries/first-run": "./src/queries/first-run.ts",
     "./queries/followups": "./src/queries/followups.ts",
     "./queries/general-action-areas": "./src/queries/general-action-areas.ts",
     "./queries/general-actions": "./src/queries/general-actions.ts",

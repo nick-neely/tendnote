@@ -51,6 +51,9 @@ vi.mock("@/app/actions/today", () => ({
   restoreTodayItemAction: vi.fn(),
   suppressTodayItemAction: vi.fn(),
 }));
+vi.mock("@/app/actions/first-run", () => ({
+  skipFirstRunAction: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({
   usePathname: () => navigationState.pathname,
   useRouter: () => ({ refresh: vi.fn() }),
