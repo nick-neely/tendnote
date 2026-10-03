@@ -14,9 +14,9 @@ import {
 import { isCheckoutOpen } from "@/lib/billing/checkout-availability";
 
 /**
- * Subscribe from the pending area (#606): send a signed-in, not-yet-admitted
- * account to Stripe Checkout for the chosen interval. An admitted account has
- * nothing to buy and goes home instead.
+ * Subscribe from the pending area (#606), or resubscribe from the Lapsed area
+ * (#609): send a signed-in, not-admitted account to Stripe Checkout for the
+ * chosen interval. An admitted account has nothing to buy and goes home instead.
  */
 export async function startCheckoutAction(formData: FormData): Promise<void> {
   const access = await getCurrentAccess();

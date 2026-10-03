@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RETENTION } from "./retention";
 
 /**
  * Private Beta Access status for a Tendnote account/access profile.
@@ -72,11 +73,35 @@ export const accessProfileSchema = z.object({
    * that names anybody else.
    */
   eveApprovalMode: eveApprovalModeSchema.default("ask"),
+  /**
+   * When a Lapsed Account's content is deleted unless it is admitted again
+   * (ADR 0245). Written once, on entering Lapsed, from
+   * {@link lapsedRetentionDeadline}; any later grant clears it. Present only on
+   * a not-admitted profile, and its presence is what makes the account Lapsed
+   * rather than never paid.
+   */
+  retentionDeadline: z.date().nullable().default(null),
+  /**
+   * The Stripe subscription whose first paid invoice granted Paid Access
+   * (#609). Only that subscription's end can lapse the account, so a late end
+   * of an older one never touches an account a resubscription admitted.
+   */
+  paidAccessSubscriptionId: z.string().nullable().default(null),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
 
 export type AccessProfile = z.infer<typeof accessProfileSchema>;
+
+/**
+ * The retention deadline of an account that entered Lapsed at `lapsedAt`. It is
+ * computed once, on entry, and stored, so the copy, the notice emails, and the
+ * deletion sweep all read the same instant and a later change to the constant
+ * never moves a deadline already promised.
+ */
+export function lapsedRetentionDeadline(lapsedAt: Date): Date {
+  return new Date(lapsedAt.getTime() + RETENTION.lapsedAccount.days * 24 * 60 * 60 * 1000);
+}
 
 /**
  * Result of the shared access-check seam. `admitted` is the single signal pages,

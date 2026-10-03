@@ -117,4 +117,14 @@ describe("the pending area (#607)", () => {
     mocks.getCurrentAccess.mockResolvedValueOnce({ state: "unauthenticated" });
     await expect(PendingPage()).rejects.toThrow("REDIRECT:/sign-in");
   });
+
+  it("is not the home of a Lapsed account, which has its own area (#609)", async () => {
+    mocks.getCurrentAccess.mockResolvedValueOnce({
+      state: "lapsed",
+      user,
+      retentionDeadline: new Date("2027-01-29T17:04:05.000Z"),
+    });
+
+    await expect(PendingPage()).rejects.toThrow("REDIRECT:/lapsed");
+  });
 });

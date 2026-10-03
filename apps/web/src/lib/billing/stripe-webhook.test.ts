@@ -1,9 +1,11 @@
-import type { AdmissionPolicy } from "@tendnote/domain";
+import { type AdmissionPolicy, lapsedRetentionDeadline } from "@tendnote/domain";
 import { ForbiddenError } from "eve/channels/auth";
 import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness } from "../access/admission-harness";
-import { createStripeWebhookHandler } from "./stripe-webhook";
+import { admitFromFirstPaidInvoice } from "./paid-access-admission";
+import { createStripeSubscriptionsFake } from "./stripe-subscriptions-fake";
+import { createStripeWebhookHandler, type StripeWebhookDependencies } from "./stripe-webhook";
 
 const SECRET = "whsec_test_secret";
 const user = { id: "subscriber-1", email: "subscriber@example.com" };
@@ -12,6 +14,8 @@ const eveRequest = new Request("https://app.tendnote.test/eve/v1/session");
 const hosted: AdmissionPolicy = { mode: "hosted", valid: true };
 /** 2026-03-15T17:04:05Z, when the fixture subscription started. */
 const SUBSCRIPTION_STARTED = 1773594245;
+/** The end of the fixture subscription's first monthly period. */
+const PERIOD_END = new Date("2026-04-15T17:04:05.000Z");
 
 let eventSequence = 0;
 
@@ -63,20 +67,26 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
   const customers = new Map([[CUSTOMER, user.id]]);
   const anchors = new Map<string, Date>();
   const log = vi.fn();
+  const { subscriptions, retrieveSubscription, recorded, confirmCancellation, stripeChanges } =
+    createStripeSubscriptionsFake(harness.queries, { stripeCustomerId: CUSTOMER });
   const announceAdmission = vi.fn(async (_input: { userId: string; invoiceId: string }) => {
     // The email may only follow a recorded admission.
     const profile = await harness.queries.getAccessProfile({ userId: user.id });
     if (profile?.status !== "granted") throw new Error("announced before admission");
   });
-  const receive = createStripeWebhookHandler({
+  const deps: StripeWebhookDependencies = {
     policy,
     webhookSecret: SECRET,
     findAccountByStripeCustomer: async (id) => customers.get(id) ?? null,
-    grantPaidAccess: (userId) => harness.queries.grantAccess({ userId, source: "paid_access" }),
+    grantPaidAccess: (userId, stripeSubscriptionId) =>
+      harness.queries.grantAccess({ userId, source: "paid_access", stripeSubscriptionId }),
     anchorUsagePeriod: async (userId, startedAt) => anchors.set(userId, startedAt),
     announceAdmission,
+    retrieveSubscription,
+    subscriptions,
     log,
-  });
+  };
+  const receive = createStripeWebhookHandler(deps);
 
   async function deliver(event: object) {
     return receive(await signedDelivery(event));
@@ -98,15 +108,38 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
 
   return {
     ...harness,
+    deps,
     receive,
     deliver,
     log,
     anchors,
     announceAdmission,
+    confirmCancellation,
+    recorded,
+    stripeChanges,
     expectAdmitted,
     expectNotAdmitted,
   };
 }
+
+/** A projection store for handlers whose test never reaches a subscription. */
+function inertSubscriptions(): StripeWebhookDependencies["subscriptions"] {
+  return {
+    getSubscription: async () => null,
+    recordSubscription: vi.fn(),
+    lapsePaidAccess: vi.fn(),
+    confirmCancellation: vi.fn(),
+  };
+}
+
+const subscriptionEvent = (type: "updated" | "deleted", id = "sub_1") =>
+  stripeEvent(`customer.subscription.${type}`, {
+    id,
+    object: "subscription",
+    customer: CUSTOMER,
+    // Deliberately stale: the receiver re-reads Stripe's current copy.
+    status: "active",
+  });
 
 async function signedUp(policy?: AdmissionPolicy) {
   const harness = subscriberHarness(policy);
@@ -283,6 +316,13 @@ describe("Paid Access from the first paid invoice", () => {
       },
       anchorUsagePeriod: vi.fn(),
       announceAdmission,
+      retrieveSubscription: async () => ({
+        id: "sub_1",
+        stripeCustomerId: CUSTOMER,
+        cancelAt: null,
+        endedAt: null,
+      }),
+      subscriptions: inertSubscriptions(),
     });
 
     await expect(receive(await signedDelivery(invoicePaid()))).rejects.toThrow(/unavailable/);
@@ -338,10 +378,189 @@ describe("Stripe webhook signature", () => {
       grantPaidAccess,
       anchorUsagePeriod: vi.fn(),
       announceAdmission: vi.fn(),
+      retrieveSubscription: vi.fn(),
+      subscriptions: inertSubscriptions(),
     });
 
     expect((await receive(await signedDelivery(invoicePaid()))).status).toBe(503);
     expect(grantPaidAccess).not.toHaveBeenCalled();
+  });
+});
+
+describe("cancellation through the portal ends in a Lapsed Account (#609)", () => {
+  async function paying() {
+    const subscriber = await signedUp();
+    await subscriber.deliver(invoicePaid());
+    await subscriber.expectAdmitted();
+    return subscriber;
+  }
+
+  async function profile(subscriber: Awaited<ReturnType<typeof signedUp>>) {
+    return subscriber.queries.getAccessProfile({ userId: user.id });
+  }
+
+  it("keeps a scheduled cancellation admitted, records when it ends, and confirms it by email", async () => {
+    const subscriber = await paying();
+
+    subscriber.stripeChanges("sub_1", { cancelAt: PERIOD_END });
+    expect((await subscriber.deliver(subscriptionEvent("updated"))).status).toBe(200);
+
+    await subscriber.expectAdmitted();
+    expect(subscriber.recorded.get("sub_1")).toMatchObject({ cancelAt: PERIOD_END, endedAt: null });
+    expect(subscriber.confirmCancellation).toHaveBeenCalledExactlyOnceWith({
+      userId: user.id,
+      stripeSubscriptionId: "sub_1",
+      endsAt: PERIOD_END,
+    });
+  });
+
+  it("confirms one cancellation once, however often it is delivered", async () => {
+    const subscriber = await paying();
+    subscriber.stripeChanges("sub_1", { cancelAt: PERIOD_END });
+
+    await subscriber.deliver(subscriptionEvent("updated"));
+    await subscriber.deliver(subscriptionEvent("updated"));
+
+    expect(subscriber.confirmCancellation).toHaveBeenCalledOnce();
+  });
+
+  it("asks Stripe to redeliver when the confirmation fails, recording nothing until it is sent", async () => {
+    const subscriber = await paying();
+    subscriber.stripeChanges("sub_1", { cancelAt: PERIOD_END });
+    subscriber.confirmCancellation.mockRejectedValueOnce(new Error("email provider down"));
+
+    await expect(subscriber.deliver(subscriptionEvent("updated"))).rejects.toThrow(/provider down/);
+    expect(subscriber.recorded.get("sub_1")?.cancelAt).toBeNull();
+
+    await subscriber.deliver(subscriptionEvent("updated"));
+    expect(subscriber.confirmCancellation).toHaveBeenCalledTimes(2);
+    expect(subscriber.recorded.get("sub_1")?.cancelAt).toEqual(PERIOD_END);
+  });
+
+  it("returns to Paid when the cancellation is reversed", async () => {
+    const subscriber = await paying();
+    subscriber.stripeChanges("sub_1", { cancelAt: PERIOD_END });
+    await subscriber.deliver(subscriptionEvent("updated"));
+
+    subscriber.stripeChanges("sub_1", { cancelAt: null });
+    await subscriber.deliver(subscriptionEvent("updated"));
+
+    await subscriber.expectAdmitted();
+    expect(subscriber.recorded.get("sub_1")).toMatchObject({ cancelAt: null, endedAt: null });
+    expect(subscriber.confirmCancellation).toHaveBeenCalledOnce();
+  });
+
+  it("makes the account Lapsed at period end, with the deadline from the retention constant", async () => {
+    const subscriber = await paying();
+    subscriber.stripeChanges("sub_1", { cancelAt: PERIOD_END });
+    await subscriber.deliver(subscriptionEvent("updated"));
+
+    subscriber.stripeChanges("sub_1", { endedAt: PERIOD_END });
+    expect((await subscriber.deliver(subscriptionEvent("deleted"))).status).toBe(200);
+
+    await subscriber.expectNotAdmitted();
+    await expect(profile(subscriber)).resolves.toMatchObject({
+      status: "pending",
+      retentionDeadline: lapsedRetentionDeadline(PERIOD_END),
+    });
+  });
+
+  it("is safe when the end arrives before the cancellation that scheduled it, or twice", async () => {
+    const subscriber = await paying();
+    subscriber.stripeChanges("sub_1", { cancelAt: PERIOD_END, endedAt: PERIOD_END });
+
+    for (const event of [subscriptionEvent("deleted"), subscriptionEvent("updated")]) {
+      await subscriber.deliver(event);
+      await subscriber.deliver(event);
+    }
+
+    await subscriber.expectNotAdmitted();
+    await expect(profile(subscriber)).resolves.toMatchObject({
+      retentionDeadline: lapsedRetentionDeadline(PERIOD_END),
+    });
+    // An ended subscription has nothing left to confirm.
+    expect(subscriber.confirmCancellation).not.toHaveBeenCalled();
+  });
+
+  it("never re-admits on a redelivered first invoice of the subscription that ended", async () => {
+    const subscriber = await paying();
+    subscriber.stripeChanges("sub_1", { endedAt: PERIOD_END });
+    await subscriber.deliver(subscriptionEvent("deleted"));
+
+    expect((await subscriber.deliver(invoicePaid())).status).toBe(200);
+
+    await subscriber.expectNotAdmitted();
+    expect(subscriber.announceAdmission).toHaveBeenCalledOnce();
+  });
+
+  it("never re-admits when a revoked account's still-paid first invoice is re-projected, as reconciliation does", async () => {
+    const subscriber = await paying();
+    subscriber.stripeChanges("sub_1", { endedAt: PERIOD_END });
+    await subscriber.deliver(subscriptionEvent("deleted"));
+
+    await expect(
+      admitFromFirstPaidInvoice(subscriber.deps, user.id, {
+        invoiceId: "in_first",
+        stripeCustomerId: CUSTOMER,
+        stripeSubscriptionId: "sub_1",
+        startedAt: new Date(SUBSCRIPTION_STARTED * 1000),
+      }),
+    ).resolves.toBeNull();
+
+    await subscriber.expectNotAdmitted();
+    await expect(profile(subscriber)).resolves.toMatchObject({
+      retentionDeadline: lapsedRetentionDeadline(PERIOD_END),
+    });
+  });
+
+  it("restores Paid and clears the deadline on resubscribing, and a late end of the old one changes nothing", async () => {
+    const subscriber = await paying();
+    subscriber.stripeChanges("sub_1", { endedAt: PERIOD_END });
+    await subscriber.deliver(subscriptionEvent("deleted"));
+
+    subscriber.stripeChanges("sub_2", {});
+    await subscriber.deliver(
+      invoicePaid({
+        id: "in_again",
+        parent: {
+          type: "subscription_details",
+          subscription_details: { subscription: "sub_2", metadata: {} },
+        },
+      }),
+    );
+
+    await subscriber.expectAdmitted();
+    await expect(profile(subscriber)).resolves.toMatchObject({ retentionDeadline: null });
+
+    await subscriber.deliver(subscriptionEvent("deleted"));
+    await subscriber.expectAdmitted();
+  });
+
+  it("does not end or decorate the account when the interval changes", async () => {
+    const subscriber = await paying();
+
+    // Monthly to annual applies at once and invoices the difference; annual to
+    // monthly is scheduled for the end of the paid year. Neither cancels.
+    await subscriber.deliver(subscriptionEvent("updated"));
+    await subscriber.deliver(
+      invoicePaid({ id: "in_upgrade", billing_reason: "subscription_update" }),
+    );
+
+    await subscriber.expectAdmitted();
+    expect(subscriber.recorded.get("sub_1")).toMatchObject({ cancelAt: null, endedAt: null });
+    expect(subscriber.confirmCancellation).not.toHaveBeenCalled();
+    expect(subscriber.announceAdmission).toHaveBeenCalledOnce();
+  });
+
+  it("acknowledges a subscription of a customer Tendnote never created, and says so", async () => {
+    const subscriber = await paying();
+    subscriber.stripeChanges("sub_other", { stripeCustomerId: "cus_unknown", endedAt: PERIOD_END });
+
+    const response = await subscriber.deliver(subscriptionEvent("deleted", "sub_other"));
+
+    expect(response.status).toBe(200);
+    expect(subscriber.log).toHaveBeenCalledWith(expect.stringMatching(/unknown customer/));
+    await subscriber.expectAdmitted();
   });
 });
 

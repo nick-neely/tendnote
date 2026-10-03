@@ -3,6 +3,7 @@ import {
   type AccessProfile,
   type AccessSource,
   type EveApprovalMode,
+  lapsedRetentionDeadline,
   type SelfContextOnboardingState,
   selfContextOnboardingStateSchema,
 } from "@tendnote/domain";
@@ -58,10 +59,13 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
   async function settleContendedGrant(
     userId: string,
     source: AccessSource,
+    paidAccessSubscriptionId: string | null,
   ): Promise<AccessProfile> {
     const settled = await store.getByUserId(userId);
     if (settled) {
-      return settled.status === "granted" ? settled : grantExisting(settled, source);
+      return settled.status === "granted"
+        ? settled
+        : grantExisting(settled, source, paidAccessSubscriptionId);
     }
     const pending = await store.insertIfAbsent({
       userId,
@@ -73,7 +77,9 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
 
     const retry = await store.getByUserId(userId);
     if (!retry) throw new Error("Failed to grant access profile.");
-    return retry.status === "granted" ? retry : grantExisting(retry, source);
+    return retry.status === "granted"
+      ? retry
+      : grantExisting(retry, source, paidAccessSubscriptionId);
   }
 
   /**
@@ -97,29 +103,58 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
     return source === "paid_access" && existing.source === "beta_flag";
   }
 
-  async function grantFresh(userId: string, source: AccessSource): Promise<AccessProfile> {
+  /**
+   * A later subscription's first paid invoice re-points a Paid Access grant at
+   * itself, so only that subscription's end can lapse the account (#609).
+   */
+  function changesPayingSubscription(
+    existing: AccessProfile,
+    source: AccessSource,
+    paidAccessSubscriptionId: string | null,
+  ): boolean {
+    return (
+      source === "paid_access" &&
+      existing.source === "paid_access" &&
+      paidAccessSubscriptionId !== null &&
+      existing.paidAccessSubscriptionId !== paidAccessSubscriptionId
+    );
+  }
+
+  async function grantFresh(
+    userId: string,
+    source: AccessSource,
+    paidAccessSubscriptionId: string | null,
+  ): Promise<AccessProfile> {
     const inserted = await store.insertIfAbsent({
       userId,
       status: "granted",
       source,
       grantedAt: new Date(),
+      paidAccessSubscriptionId,
     });
-    return inserted ?? settleContendedGrant(userId, source);
+    return inserted ?? settleContendedGrant(userId, source, paidAccessSubscriptionId);
   }
 
-  /** Durably grant one profile, preserving the source for audit and display. */
+  /**
+   * Durably grant one profile, preserving the source for audit and display.
+   * Paid Access names the subscription whose first paid invoice granted it.
+   */
   async function grantAccess(input: {
     userId: string;
     source: AccessSource;
+    stripeSubscriptionId?: string;
   }): Promise<AccessProfile> {
+    const subscription =
+      input.source === "paid_access" ? (input.stripeSubscriptionId ?? null) : null;
     const existing = await store.getByUserId(input.userId);
-    if (!existing) return grantFresh(input.userId, input.source);
-    if (existing.status !== "granted") return grantExisting(existing, input.source);
+    if (!existing) return grantFresh(input.userId, input.source, subscription);
+    if (existing.status !== "granted") return grantExisting(existing, input.source, subscription);
     if (
       reclassifiesToBootstrap(existing, input.source) ||
-      supersedesBetaGrant(existing, input.source)
+      supersedesBetaGrant(existing, input.source) ||
+      changesPayingSubscription(existing, input.source, subscription)
     ) {
-      return grantExisting(existing, input.source);
+      return grantExisting(existing, input.source, subscription);
     }
     return existing;
   }
@@ -295,17 +330,48 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
 
     /** Durably grant access, preserving its admission source. */
     grantAccess,
+
+    /**
+     * End Paid Access because the subscription that paid for it ended (#609):
+     * the account becomes Lapsed, signed in and not admitted, with its
+     * retention deadline computed from `lapsedAt` once, on entry. It is one
+     * atomic step that changes nothing unless that subscription still grants
+     * the account's Paid Access: any other source, an account already Lapsed,
+     * and an account a later subscription admitted are all left alone, so a
+     * redelivered or late end never moves a deadline or cuts off a resubscriber.
+     * Returns whether the account lapsed.
+     */
+    async lapsePaidAccess(input: {
+      userId: string;
+      stripeSubscriptionId: string;
+      lapsedAt: Date;
+    }): Promise<boolean> {
+      const lapsed = await store.endPaidAccess({
+        userId: input.userId,
+        stripeSubscriptionId: input.stripeSubscriptionId,
+        retentionDeadline: lapsedRetentionDeadline(input.lapsedAt),
+      });
+      return lapsed !== null;
+    },
   };
 
   async function grantExisting(
     existing: AccessProfile,
     source: AccessSource,
+    paidAccessSubscriptionId: string | null,
   ): Promise<AccessProfile> {
     let updated: AccessProfile | null;
     try {
       updated = await store.update({
         userId: existing.userId,
-        patch: { status: "granted", source, grantedAt: new Date() },
+        // Admission clears a Lapsed account's retention deadline (#609).
+        patch: {
+          status: "granted",
+          source,
+          grantedAt: new Date(),
+          retentionDeadline: null,
+          paidAccessSubscriptionId,
+        },
       });
     } catch (error) {
       if (!isUniqueConstraintError(error)) throw error;

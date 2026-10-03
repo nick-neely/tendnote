@@ -20,6 +20,8 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       selfContextOnboardingReminderAt: input.selfContextOnboardingReminderAt ?? null,
       householdCheckinEnabled: false,
       eveApprovalMode: "ask",
+      retentionDeadline: null,
+      paidAccessSubscriptionId: input.paidAccessSubscriptionId ?? null,
       createdAt: now,
       updatedAt: now,
     };
@@ -90,6 +92,31 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       recordInMemoryMutation("accessProfiles", userId);
       profiles.set(userId, updated);
 
+      return updated;
+    },
+
+    async endPaidAccess({ userId, stripeSubscriptionId, retentionDeadline }) {
+      const existing = profiles.get(userId);
+      if (
+        existing?.status !== "granted" ||
+        existing.source !== "paid_access" ||
+        (existing.paidAccessSubscriptionId !== null &&
+          existing.paidAccessSubscriptionId !== stripeSubscriptionId)
+      ) {
+        return null;
+      }
+
+      const updated: AccessProfile = {
+        ...existing,
+        status: "pending",
+        source: null,
+        grantedAt: null,
+        retentionDeadline,
+        paidAccessSubscriptionId: null,
+        updatedAt: new Date(),
+      };
+      recordInMemoryMutation("accessProfiles", userId);
+      profiles.set(userId, updated);
       return updated;
     },
 

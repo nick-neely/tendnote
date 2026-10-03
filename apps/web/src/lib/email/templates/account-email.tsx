@@ -17,9 +17,10 @@ import type { TransactionalEmailContent } from "../transactional";
 
 /**
  * The account and sign-in emails: the two Better Auth asks Tendnote to deliver,
- * and the "you're in" message sent on admission (#607).
+ * the "you're in" message sent on admission (#607), and the confirmation of a
+ * cancellation scheduled in the portal (#609).
  */
-export type AccountEmailPurpose = "verify-email" | "reset-password" | "admitted";
+export type AccountEmailPurpose = "verify-email" | "reset-password" | "admitted" | "cancellation";
 
 export type AccountEmailProps = {
   purpose: AccountEmailPurpose;
@@ -62,6 +63,16 @@ const COPY = {
     fallback: "Open Tendnote in your browser",
     reason:
       "This email address subscribed to Tendnote. If you didn’t, reply to this email and we’ll look into it.",
+  },
+  cancellation: {
+    subject: "Your Tendnote subscription is cancelled",
+    preview: "You keep full access until the end of the period you’ve paid for.",
+    heading: "Your subscription is cancelled",
+    body: "Your Tendnote subscription won’t renew. You keep full access until the end of the period you’ve already paid for; your account page shows the date. Changed your mind? You can undo this from Billing on your account page until then.",
+    action: "Manage billing",
+    fallback: "Open your account in your browser",
+    reason:
+      "The Tendnote subscription for this email address was cancelled. If you didn’t do this, reply to this email and we’ll look into it.",
   },
 } as const satisfies Record<AccountEmailPurpose, Record<string, string>>;
 

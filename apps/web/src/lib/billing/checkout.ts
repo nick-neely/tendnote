@@ -1,3 +1,4 @@
+import { parseAdmissionPolicy } from "@tendnote/domain";
 import type Stripe from "stripe";
 
 /** The one Tendnote plan's two billing intervals. */
@@ -25,6 +26,16 @@ export function readStripeBillingConfig(
   const annual = env.STRIPE_PRICE_ANNUAL;
   if (!secretKey || !monthly || !annual) return null;
   return { secretKey, prices: { monthly, annual } };
+}
+
+/**
+ * {@link readStripeBillingConfig} for a hosted deployment, and `null` on every
+ * self-hosted one: only hosted Tendnote takes payment (ADR 0245).
+ */
+export function readHostedStripeBillingConfig(
+  env: Record<string, string | undefined> = process.env,
+): StripeBillingConfig | null {
+  return parseAdmissionPolicy(env).mode === "hosted" ? readStripeBillingConfig(env) : null;
 }
 
 /** The slice of the Stripe client Checkout uses. */

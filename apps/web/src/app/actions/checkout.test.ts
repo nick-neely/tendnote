@@ -53,6 +53,23 @@ describe("Subscribe from the pending area", () => {
     );
   });
 
+  it("lets a Lapsed account resubscribe (#609)", async () => {
+    getCurrentAccess.mockResolvedValueOnce({
+      state: "lapsed",
+      user,
+      retentionDeadline: new Date("2027-01-29T17:04:05.000Z"),
+    });
+
+    await expect(startCheckoutAction(intervalForm("monthly"))).rejects.toThrow(
+      "REDIRECT:https://checkout.stripe.test/c/pay_1",
+    );
+    expect(openCheckout).toHaveBeenCalledWith(expect.anything(), {
+      userId: user.id,
+      email: user.email,
+      interval: "monthly",
+    });
+  });
+
   it("sends a signed-out visitor to sign in and an admitted account home", async () => {
     getCurrentAccess.mockResolvedValueOnce({ state: "unauthenticated" });
     await expect(startCheckoutAction(intervalForm("monthly"))).rejects.toThrow("REDIRECT:/sign-in");

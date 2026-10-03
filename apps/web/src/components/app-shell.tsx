@@ -49,7 +49,7 @@ export function AppShell({
   ownerUserId?: string;
   searchHandler?: GlobalRecallHandler;
   viewerStandings?: Promise<ViewerStandings>;
-  /** The Service Notice banner, passed by the admitted layouts. */
+  /** The Service Notice and billing notice banners, passed by the admitted layouts. */
   notice?: ReactNode;
 }) {
   return (

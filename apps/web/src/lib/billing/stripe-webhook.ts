@@ -1,17 +1,18 @@
 import type { AdmissionPolicy } from "@tendnote/domain";
 import Stripe from "stripe";
 import { firstPaidInvoice } from "./first-paid-invoice";
+import {
+  admitFromFirstPaidInvoice,
+  type PaidAccessAdmissionDependencies,
+} from "./paid-access-admission";
+import { projectSubscription } from "./subscription-projection";
 
-export type StripeWebhookDependencies = {
+export type StripeWebhookDependencies = PaidAccessAdmissionDependencies & {
   policy: AdmissionPolicy;
   /** The endpoint's signing secret. Without it every delivery is refused. */
   webhookSecret: string | undefined;
   /** The account a Tendnote-created Stripe customer belongs to, read locally. */
   findAccountByStripeCustomer: (stripeCustomerId: string) => Promise<string | null>;
-  /** Grant the account the Paid Access source. Must be idempotent. */
-  grantPaidAccess: (userId: string) => Promise<unknown>;
-  /** Anchor the account's Usage Period to its subscription's start. Must be idempotent. */
-  anchorUsagePeriod: (userId: string, startedAt: Date) => Promise<unknown>;
   /**
    * Send the content-free "you're in" email once admission is recorded (#607).
    * Called again on a redelivery, so it must key the send on the invoice.
@@ -19,6 +20,14 @@ export type StripeWebhookDependencies = {
   announceAdmission: (input: { userId: string; invoiceId: string }) => Promise<unknown>;
   log?: (message: string) => void;
 };
+
+/** The subscription a portal change or a period end touched, if this event is one. */
+function changedSubscriptionId(event: Stripe.Event): string | null {
+  return event.type === "customer.subscription.updated" ||
+    event.type === "customer.subscription.deleted"
+    ? event.data.object.id
+    : null;
+}
 
 /**
  * The Stripe webhook receiver (#606). It verifies the signature over the raw
@@ -30,12 +39,32 @@ export type StripeWebhookDependencies = {
  * the "you're in" email follows, never before it (#607). A dropped delivery is
  * repaired by the reconciliation job on the recovery cron (#608).
  *
+ * Subscription changes from the portal and period ends are projected from
+ * Stripe's current copy of the subscription (#609): a scheduled cancellation is
+ * recorded for the Ending notice and confirmed by email, and an ended
+ * subscription makes the account Lapsed. The first paid invoice is projected
+ * the same way before it admits, so a redelivered first invoice of a
+ * subscription that has since ended re-admits nobody.
+ *
  * A failure after verification surfaces as a 500 so Stripe redelivers;
  * accepting the HTTP delivery is not treated as completion. Self-hosted
  * deployments answer 404 and run none of this.
  */
 export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
   const log = deps.log ?? ((message: string) => console.warn(message));
+
+  /**
+   * The account a Stripe customer belongs to. A customer Tendnote never created
+   * has no account to change, so the event is acknowledged rather than left for
+   * Stripe to retry for days.
+   */
+  async function accountFor(stripeCustomerId: string, eventId: string) {
+    const userId = await deps.findAccountByStripeCustomer(stripeCustomerId);
+    if (!userId) {
+      log(`[tendnote] Stripe event ${eventId} names an unknown customer; nothing was changed`);
+    }
+    return userId;
+  }
 
   return async function handleStripeWebhook(request: Request): Promise<Response> {
     if (deps.policy.mode !== "hosted") {
@@ -61,25 +90,33 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
       return new Response("Invalid Stripe signature.", { status: 400 });
     }
 
+    const changed = changedSubscriptionId(event);
+    if (changed) {
+      const subscription = await deps.retrieveSubscription(changed);
+      const userId = await accountFor(subscription.stripeCustomerId, event.id);
+      if (userId) await projectSubscription(deps.subscriptions, userId, subscription);
+      return new Response(null, { status: 200 });
+    }
+
     const paid = event.type === "invoice.paid" ? firstPaidInvoice(event.data.object) : null;
     if (!paid) {
       return new Response(null, { status: 200 });
     }
 
-    const userId = await deps.findAccountByStripeCustomer(paid.stripeCustomerId);
+    const userId = await accountFor(paid.stripeCustomerId, event.id);
     if (!userId) {
-      // Not a customer Tendnote created for an account, so there is no one to
-      // admit. Acknowledge it rather than have Stripe retry for days.
-      log(`[tendnote] Stripe event ${event.id} names an unknown customer; nothing was admitted`);
       return new Response(null, { status: 200 });
     }
 
-    await deps.grantPaidAccess(userId);
-    // After the grant, which is what guarantees the Access Profile exists.
-    await deps.anchorUsagePeriod(userId, paid.startedAt);
+    if (!(await admitFromFirstPaidInvoice(deps, userId, paid))) {
+      log(
+        `[tendnote] Stripe event ${event.id} pays a subscription that has ended; nothing was admitted`,
+      );
+      return new Response(null, { status: 200 });
+    }
     // Last, once admission is fully recorded. A failed send surfaces as a 500
-    // like any other failure, so Stripe's redelivery retries it; both writes
-    // above are idempotent.
+    // like any other failure, so Stripe's redelivery retries it; every write
+    // before it is idempotent.
     await deps.announceAdmission({ userId, invoiceId: paid.invoiceId });
     return new Response(null, { status: 200 });
   };

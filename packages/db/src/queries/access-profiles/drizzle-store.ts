@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, or } from "drizzle-orm";
 import { type DatabaseExecutor, getDb } from "../../client";
 import { accessProfiles } from "../../schema";
 import type { AccessProfileStore } from "./types";
@@ -53,6 +53,35 @@ export function createDrizzleAccessProfileStore(
         .update(accessProfiles)
         .set({ ...patch, updatedAt: new Date() })
         .where(eq(accessProfiles.userId, userId))
+        .returning();
+
+      return profile ?? null;
+    },
+
+    async endPaidAccess({ userId, stripeSubscriptionId, retentionDeadline }) {
+      // One conditional update, so a grant from a newer subscription that lands
+      // first leaves this end matching nothing.
+      const [profile] = await resolveDb()
+        .update(accessProfiles)
+        .set({
+          status: "pending",
+          source: null,
+          grantedAt: null,
+          retentionDeadline,
+          paidAccessSubscriptionId: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(accessProfiles.userId, userId),
+            eq(accessProfiles.status, "granted"),
+            eq(accessProfiles.source, "paid_access"),
+            or(
+              isNull(accessProfiles.paidAccessSubscriptionId),
+              eq(accessProfiles.paidAccessSubscriptionId, stripeSubscriptionId),
+            ),
+          ),
+        )
         .returning();
 
       return profile ?? null;

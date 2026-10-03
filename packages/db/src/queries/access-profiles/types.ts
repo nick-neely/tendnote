@@ -15,6 +15,7 @@ export type PersistAccessProfileInput = {
   status: AccessProfile["status"];
   source: AccessSource | null;
   grantedAt: Date | null;
+  paidAccessSubscriptionId?: string | null;
   selfContextOnboardingStatus?: SelfContextOnboardingStatus;
   selfContextOnboardingReminderAt?: Date | null;
 };
@@ -30,6 +31,8 @@ export type AccessProfilePatch = Partial<
     | "selfContextOnboardingReminderAt"
     | "householdCheckinEnabled"
     | "eveApprovalMode"
+    | "retentionDeadline"
+    | "paidAccessSubscriptionId"
   >
 >;
 
@@ -52,6 +55,17 @@ export type AccessProfileStore = {
    */
   insertIfAbsent: (input: PersistAccessProfileInput) => Promise<AccessProfile | null>;
   update: (input: { userId: string; patch: AccessProfilePatch }) => Promise<AccessProfile | null>;
+  /**
+   * Atomically end Paid Access granted by this subscription, making the account
+   * Lapsed with `retentionDeadline`. Changes nothing, returning `null`, unless
+   * the profile is still granted Paid Access by exactly that subscription (or by
+   * one recorded before grants named their subscription).
+   */
+  endPaidAccess: (input: {
+    userId: string;
+    stripeSubscriptionId: string;
+    retentionDeadline: Date;
+  }) => Promise<AccessProfile | null>;
   /** Atomically claims the one quiet later invitation for a dismissed owner. */
   claimSelfContextOnboardingReminder: (input: {
     userId: string;
