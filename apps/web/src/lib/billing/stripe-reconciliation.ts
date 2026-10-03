@@ -40,7 +40,7 @@ export type StripeReconciliationDependencies = {
   };
 };
 
-export type StripeReconciliationResult =
+type StripeReconciliationResult =
   | { status: "skipped" }
   | { status: "ran"; scanned: number; admitted: number; unknownCustomer: number; failed: number };
 
