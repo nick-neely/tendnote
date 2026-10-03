@@ -3,7 +3,8 @@ import { user } from "../auth";
 
 /**
  * Tendnote's local projection of an account's Stripe subscriptions (#609, ADR
- * 0245), so the request path can show an Ending notice without asking Stripe.
+ * 0245), so the request path can show its Ending and Past Due notices without
+ * asking Stripe.
  *
  * One row per subscription, because a resubscription is a new subscription and
  * the ended one must still be recognised: its redelivered first invoice may
@@ -22,6 +23,11 @@ export const stripeSubscriptions = pgTable(
     cancelAt: timestamp("cancel_at", { withTimezone: true }),
     // When the subscription ended; null while it lives.
     endedAt: timestamp("ended_at", { withTimezone: true }),
+    // The renewal invoice whose failed payment made the subscription Past Due
+    // (#610), and when it failed; both null while payments succeed. The
+    // invoice names the dunning window, so an extension can cover only it.
+    pastDueInvoiceId: text("past_due_invoice_id"),
+    pastDueSince: timestamp("past_due_since", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

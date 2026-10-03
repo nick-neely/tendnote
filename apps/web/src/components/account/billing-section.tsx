@@ -1,11 +1,20 @@
 import { ManageBillingButton } from "@/components/billing/manage-billing-button";
 import { formatBillingDate } from "@/lib/billing/billing-date";
+import { pastDueNotice } from "@/lib/billing/past-due";
 
 /**
- * Billing on the account page (#609): whether the subscription renews or ends,
- * and the way into the Stripe portal to change that, the card, or the interval.
+ * Billing on the account page (#609): whether the subscription renews, ends, or
+ * is Past Due (#610), and the way into the Stripe portal to change that, the
+ * card, or the interval. Past Due comes first, as it does in the notice.
  */
-export function BillingSection({ endsAt }: { endsAt: Date | null }) {
+export function BillingSection({
+  endsAt,
+  pastDueSince,
+}: {
+  endsAt: Date | null;
+  pastDueSince: Date | null;
+}) {
+  const pastDue = pastDueSince ? pastDueNotice(pastDueSince, new Date()) : null;
   return (
     <section aria-labelledby="billing-heading" className="flex flex-col gap-3">
       <h2
@@ -20,9 +29,11 @@ export function BillingSection({ endsAt }: { endsAt: Date | null }) {
             Subscription
           </span>
           <span className="text-[length:var(--text-small)] text-muted-foreground">
-            {endsAt
-              ? `Ends on ${formatBillingDate(endsAt)}. You keep full access until then.`
-              : "Renews automatically. Update your card, switch between monthly and annual, or cancel."}
+            {pastDue
+              ? `${pastDue.headline} ${pastDue.detail}`
+              : endsAt
+                ? `Ends on ${formatBillingDate(endsAt)}. You keep full access until then.`
+                : "Renews automatically. Update your card, switch between monthly and annual, or cancel."}
           </span>
         </div>
         <ManageBillingButton />
