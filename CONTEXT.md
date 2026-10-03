@@ -465,7 +465,7 @@ A synthetic month of Launch Customer activity, built from the First Value loop p
 _Avoid_: Persona workload, load test, usage scenario
 
 **Usage Ledger**:
-The content-free, per-account daily rollup of model id, cost category, tokens in and out, call count, and stored bytes that checks a real hosted account against the Representative Month. It is not a conversation log, a billing meter, an analytics event, or a record of what Eve was asked.
+The content-free, per-account daily rollup of model id, cost category, tokens in and out, gateway-reported cost, call count, and stored bytes that checks a real hosted account against the Representative Month. It is not a conversation log, a billing meter, an analytics event, or a record of what Eve was asked.
 _Avoid_: Token log, usage analytics, metering table
 
 **Fair-Use Budget**:

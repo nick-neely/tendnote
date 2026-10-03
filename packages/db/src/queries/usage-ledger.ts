@@ -17,6 +17,8 @@ export type ModelUsage = {
   costCategory: CostCategory;
   inputTokens: number;
   outputTokens: number;
+  /** What the gateway charged, in millionths of a dollar. */
+  costMicroUsd: number;
 };
 
 /**
@@ -39,6 +41,7 @@ export async function recordModelUsage(usage: ModelUsage, now = new Date()) {
           costCategory: usage.costCategory,
           inputTokens: usage.inputTokens,
           outputTokens: usage.outputTokens,
+          costMicroUsd: usage.costMicroUsd,
           callCount: 1,
         })
         .onConflictDoUpdate({
@@ -51,6 +54,7 @@ export async function recordModelUsage(usage: ModelUsage, now = new Date()) {
           set: {
             inputTokens: sql`${usageLedger.inputTokens} + excluded.input_tokens`,
             outputTokens: sql`${usageLedger.outputTokens} + excluded.output_tokens`,
+            costMicroUsd: sql`${usageLedger.costMicroUsd} + excluded.cost_micro_usd`,
             callCount: sql`${usageLedger.callCount} + 1`,
           },
         }),

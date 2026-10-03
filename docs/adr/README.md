@@ -79,6 +79,8 @@ the bounded publication evidence path.
 - [0248 - Admission exceptions live inside their condition](0248-admission-exceptions-live-inside-their-condition.md)
 - [0249 - Refund revocation is matched to its Operator Action record](0249-refund-revocation-is-matched-to-its-operator-action-record.md)
 - [0250 - One Backup Window bounds recovery and the deletion tail](0250-one-backup-window-bounds-recovery-and-the-deletion-tail.md)
+- [0251 - Private Blob files and readable chat attachments](0251-private-blob-files-and-readable-chat-attachments.md)
+- [0252 - Account Ceilings count gateway-reported cost at the turn door](0252-account-ceilings-count-gateway-reported-cost-at-the-turn-door.md)
 
 The catalog intentionally omits the Phase 9a planning workspace. That
 workspace remains useful to maintainers, but it is not a newcomer evidence

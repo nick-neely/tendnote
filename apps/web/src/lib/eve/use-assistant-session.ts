@@ -1,9 +1,11 @@
 "use client";
 
+import type { UsageNotice, UsageRestriction } from "@tendnote/domain/usage-bounds";
 import { Client, type MessageStreamEvent } from "eve/client";
 import { type EveMessageData, type UseEveAgentHelpers, useEveAgent } from "eve/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isSessionNotActive } from "@/lib/assistant/session-errors";
+import { pausedNoticeFromError } from "@/lib/assistant/usage-notice";
 import { resumePlanFromEvents } from "@/lib/eve/resume-plan";
 import {
   type SelectedPersonContext,
@@ -147,10 +149,14 @@ function eveSessionConfig(resumed: AssistantResumeSettled) {
   }
 }
 
+/** One shared value, so an absent prop is the same read on every render. */
+const NORMAL_USAGE: UsageNotice = { state: "normal" };
+
 export function useAssistantSession({
   context,
   onSessionStarted,
   resumed,
+  usage: initialUsage = NORMAL_USAGE,
 }: {
   context?: SelectedPersonContext;
   /**
@@ -166,7 +172,20 @@ export function useAssistantSession({
    * the browser is the first thing that knows a thread exists.
    */
   onSessionStarted?: (sessionId: string, firstMessage: string) => void;
-}): { agent: AssistantAgent; deliver: SendPrompt; ended: boolean } {
+  /**
+   * Interactive Eve's usage notice as the page read it. Eve's door is the
+   * authority: a turn it refuses because the account reached its Account
+   * Ceiling since the read replaces this with the notice it was refused with.
+   */
+  usage?: UsageNotice;
+}): {
+  agent: AssistantAgent;
+  deliver: SendPrompt;
+  /** Ended or paused: the composer gives way to a notice. */
+  closed: boolean;
+  /** Interactive Eve's paused notice, or `null` while turns can start or the thread has ended. */
+  paused: UsageRestriction | null;
+} {
   const resumedSessionId = resumed.kind === "fresh" ? undefined : resumed.sessionId;
 
   // A turn that fails does not reject. Eve's store catches the network or stream
@@ -190,6 +209,11 @@ export function useAssistantSession({
   // can already know this - a refused stream is the same dead end a refused send
   // reaches - so the composer never appears rather than appearing and dying.
   const [ended, setEnded] = useState(resumed.kind === "ended");
+  // A refusal at the door overrides the page's read until the page reads again:
+  // a new read (a refresh, or a remount after the reset) is recomputed on the
+  // server against whatever restrictions still apply.
+  const [refusal, setRefusal] = useState<{ notice: UsageNotice; over: UsageNotice } | null>(null);
+  const usage = refusal && refusal.over === initialUsage ? refusal.notice : initialUsage;
 
   // Stream turns directly from the same-origin Eve mount (withEve). The hook owns
   // the durable Eve session, so follow-up turns continue the same conversation
@@ -202,6 +226,8 @@ export function useAssistantSession({
     onError: (error) => {
       turnFailure.current = error;
       if (isSessionNotActive(error)) setEnded(true);
+      const paused = pausedNoticeFromError(error);
+      if (paused) setRefusal({ notice: paused, over: initialUsage });
     },
     // Re-registered on every render by the hook, so this closure is always the
     // current one and needs no ref of its own.
@@ -244,5 +270,8 @@ export function useAssistantSession({
     [context, send],
   );
 
-  return { agent, deliver, ended };
+  // An ended thread says so instead; it could not be continued after a reset either.
+  const paused = !ended && usage.state === "paused" ? usage : null;
+
+  return { agent, closed: ended || paused !== null, deliver, paused };
 }

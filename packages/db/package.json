@@ -59,6 +59,7 @@
     "./queries/model-call-fixtures": "./src/queries/model-call-fixtures.ts",
     "./queries/model-calls": "./src/queries/model-calls.ts",
     "./queries/usage-ledger": "./src/queries/usage-ledger.ts",
+    "./queries/usage-bounds": "./src/queries/usage-bounds.ts",
     "./queries/memories": "./src/queries/memories.ts",
     "./queries/morning-agenda": "./src/queries/morning-agenda.ts",
     "./queries/owner-data-export": "./src/queries/owner-data-export.ts",

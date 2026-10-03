@@ -1,4 +1,5 @@
 import { embed, generateText, streamText } from "ai";
+import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 import { fakeGatewayProvider } from "./model-call-fixtures";
 import { hostedEmbeddingModel, hostedModel } from "./model-calls";
@@ -188,6 +189,7 @@ describe("the Usage Ledger", () => {
         costCategory: "background",
         inputTokens: 3,
         outputTokens: 2,
+        costMicroUsd: 123,
       },
     ]);
   });
@@ -212,6 +214,7 @@ describe("the Usage Ledger", () => {
         costCategory: "interactive",
         inputTokens: 3,
         outputTokens: 2,
+        costMicroUsd: 123,
       },
     ]);
   });
@@ -235,8 +238,69 @@ describe("the Usage Ledger", () => {
         costCategory: "background",
         inputTokens: 4,
         outputTokens: 0,
+        costMicroUsd: 4,
       },
     ]);
+  });
+
+  it("records the cost the gateway reports, which no token count can derive", async () => {
+    const ledger = fakeUsageLedger();
+    const model = new MockLanguageModelV4({
+      modelId: "google/gemini-3.7-flash",
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: "stop" },
+        usage: {
+          inputTokens: { total: 1000, noCache: 100, cacheRead: 900, cacheWrite: 0 },
+          outputTokens: { total: 10, text: 10, reasoning: 0 },
+        },
+        providerMetadata: { gateway: { cost: 0.0001425 } },
+        warnings: [],
+      }),
+    });
+
+    await generateText({
+      model: hostedModel(
+        { modelId: "google/gemini-3.7-flash", costCategory: "interactive", account: "user-1" },
+        { provider: () => model, recordUsage: ledger.recordUsage },
+      ),
+      prompt: "hi",
+    });
+
+    expect(ledger.entries[0]?.costMicroUsd).toBe(143);
+  });
+
+  it("meters a call with no reported cost as free, and says so", async () => {
+    const ledger = fakeUsageLedger();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const model = new MockLanguageModelV4({
+      modelId: "google/gemini-3.7-flash",
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: "stop" },
+        usage: {
+          inputTokens: { total: 3, noCache: 3, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 2, text: 2, reasoning: 0 },
+        },
+        providerMetadata: { gateway: { cost: "not a number" } },
+        warnings: [],
+      }),
+    });
+
+    await generateText({
+      model: hostedModel(
+        { modelId: "google/gemini-3.7-flash", costCategory: "interactive", account: "user-1" },
+        { provider: () => model, recordUsage: ledger.recordUsage },
+      ),
+      prompt: "hi",
+    });
+
+    expect(ledger.entries[0]).toMatchObject({ inputTokens: 3, costMicroUsd: 0 });
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/no cost/), {
+      modelId: "google/gemini-3.7-flash",
+      costCategory: "interactive",
+    });
+    warn.mockRestore();
   });
 
   it("charges each call to the account its resolver names at call time", async () => {
@@ -318,6 +382,7 @@ describe("the Usage Ledger", () => {
     expect(Object.keys(ledger.entries[0] ?? {}).sort()).toEqual([
       "accountId",
       "costCategory",
+      "costMicroUsd",
       "inputTokens",
       "modelId",
       "outputTokens",

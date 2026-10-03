@@ -1,0 +1,150 @@
+import { describe, expect, it } from "vitest";
+import { HOSTED_PLAN, interactiveUsageNotice, usageNotice, usagePeriod } from "./usage-bounds";
+
+describe("usagePeriod", () => {
+  it("runs from the anchor day this month to the anchor day next month", () => {
+    expect(usagePeriod("2026-03-15", new Date("2026-10-20T12:00:00Z"))).toEqual({
+      start: "2026-10-15",
+      resetsOn: "2026-11-15",
+    });
+  });
+
+  it("is still last month's period before the anchor day", () => {
+    expect(usagePeriod("2026-03-15", new Date("2026-10-14T23:59:59Z"))).toEqual({
+      start: "2026-09-15",
+      resetsOn: "2026-10-15",
+    });
+  });
+
+  it("resets at the start of the anchor day, in UTC", () => {
+    expect(usagePeriod("2026-03-15", new Date("2026-10-15T00:00:00Z")).start).toBe("2026-10-15");
+  });
+
+  it("clamps an anchor past the end of a shorter month to its last day", () => {
+    expect(usagePeriod("2026-01-31", new Date("2027-02-28T09:00:00Z"))).toEqual({
+      start: "2027-02-28",
+      resetsOn: "2027-03-31",
+    });
+    expect(usagePeriod("2026-01-31", new Date("2027-02-27T09:00:00Z"))).toEqual({
+      start: "2027-01-31",
+      resetsOn: "2027-02-28",
+    });
+    expect(usagePeriod("2026-01-31", new Date("2028-02-29T09:00:00Z")).start).toBe("2028-02-29");
+  });
+
+  it("crosses the year boundary", () => {
+    expect(usagePeriod("2026-06-20", new Date("2027-01-05T12:00:00Z"))).toEqual({
+      start: "2026-12-20",
+      resetsOn: "2027-01-20",
+    });
+  });
+
+  it("resets monthly for an annual subscriber, never once a year", () => {
+    // An annual plan bought on 2026-03-15 is billed once, but its allowance
+    // resets every month on the 15th all year long.
+    const anchor = "2026-03-15";
+    const resets = ["2026-04-20", "2026-08-20", "2027-02-20"].map(
+      (day) => usagePeriod(anchor, new Date(`${day}T12:00:00Z`)).resetsOn,
+    );
+    expect(resets).toEqual(["2026-05-15", "2026-09-15", "2027-03-15"]);
+  });
+
+  it("starts the first period on the subscription's start day", () => {
+    expect(usagePeriod("2026-10-02", new Date("2026-10-02T18:00:00Z"))).toEqual({
+      start: "2026-10-02",
+      resetsOn: "2026-11-02",
+    });
+  });
+});
+
+describe("usageNotice", () => {
+  const resets = { kind: "resets_on", date: "2026-11-15" } as const;
+
+  it("is normal with no restrictions", () => {
+    expect(usageNotice([])).toEqual({ state: "normal" });
+  });
+
+  it("states the one restriction and its recovery condition", () => {
+    expect(usageNotice([{ state: "paused", recovery: resets }])).toEqual({
+      state: "paused",
+      recovery: resets,
+    });
+  });
+
+  it("shows the most restrictive state and that state's recovery condition", () => {
+    expect(
+      usageNotice([
+        { state: "reduced", recovery: { kind: "resets_on", date: "2026-11-01" } },
+        { state: "paused", recovery: resets },
+      ]),
+    ).toEqual({ state: "paused", recovery: resets });
+  });
+
+  it("shows no billing date while the service-wide restriction applies", () => {
+    expect(
+      usageNotice([
+        { state: "paused", recovery: resets },
+        { state: "paused", recovery: { kind: "service_restored" } },
+      ]),
+    ).toEqual({ state: "paused", recovery: { kind: "service_restored" } });
+  });
+
+  it("is recomputed against what remains when a restriction clears", () => {
+    const ceiling = { state: "paused", recovery: resets } as const;
+    const breaker = { state: "paused", recovery: { kind: "service_restored" } } as const;
+
+    expect(usageNotice([ceiling, breaker]).state).toBe("paused");
+    expect(usageNotice([ceiling])).toEqual({ state: "paused", recovery: resets });
+    expect(usageNotice([])).toEqual({ state: "normal" });
+  });
+
+  it("waits for the latest reset when two restrictions reset on different days", () => {
+    expect(
+      usageNotice([
+        { state: "paused", recovery: resets },
+        { state: "paused", recovery: { kind: "resets_on", date: "2026-11-01" } },
+      ]),
+    ).toEqual({ state: "paused", recovery: resets });
+  });
+
+  it("says retrying only when nothing longer applies", () => {
+    expect(
+      usageNotice([
+        { state: "paused", recovery: { kind: "retrying" } },
+        { state: "paused", recovery: resets },
+      ]),
+    ).toEqual({ state: "paused", recovery: resets });
+    expect(usageNotice([{ state: "paused", recovery: { kind: "retrying" } }])).toEqual({
+      state: "paused",
+      recovery: { kind: "retrying" },
+    });
+  });
+});
+
+describe("interactiveUsageNotice", () => {
+  const period = { start: "2026-10-15", resetsOn: "2026-11-15" };
+  const ceilingMicroUsd = HOSTED_PLAN.allowance.interactive.accountCeilingUsd * 1_000_000;
+
+  it("carries the plan's interactive Account Ceiling as a plan attribute", () => {
+    expect(HOSTED_PLAN.allowance.interactive.accountCeilingUsd).toBe(12);
+  });
+
+  it("is normal below the ceiling", () => {
+    expect(
+      interactiveUsageNotice({ plan: HOSTED_PLAN, period, spentMicroUsd: ceilingMicroUsd - 1 }),
+    ).toEqual({ state: "normal" });
+  });
+
+  it("pauses at the ceiling until the Usage Period resets", () => {
+    expect(
+      interactiveUsageNotice({ plan: HOSTED_PLAN, period, spentMicroUsd: ceilingMicroUsd }),
+    ).toEqual({ state: "paused", recovery: { kind: "resets_on", date: "2026-11-15" } });
+  });
+
+  it("reads the ceiling from the plan it is given", () => {
+    const larger = { allowance: { interactive: { accountCeilingUsd: 20 } } };
+    expect(
+      interactiveUsageNotice({ plan: larger, period, spentMicroUsd: ceilingMicroUsd }).state,
+    ).toBe("normal");
+  });
+});

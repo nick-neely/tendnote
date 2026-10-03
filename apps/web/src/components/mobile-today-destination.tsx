@@ -2,6 +2,7 @@
 
 import type { EveApprovalMode } from "@tendnote/domain";
 import type { TodayShortlistResponse } from "@tendnote/domain/today";
+import type { UsageNotice } from "@tendnote/domain/usage-bounds";
 import dynamic from "next/dynamic";
 import { useRef, useState } from "react";
 import { appDestination } from "@/components/app-destinations";
@@ -31,6 +32,7 @@ export function MobileTodayDestination({
   todayInitial,
   todayLocalDate,
   todayTimeZone,
+  usage,
 }: {
   /**
    * The owner's Approval Mode, read on the server by this route and passed to the
@@ -42,6 +44,8 @@ export function MobileTodayDestination({
   todayInitial: TodayShortlistResponse;
   todayLocalDate: string;
   todayTimeZone: string;
+  /** Interactive Eve's usage notice, read server-side by the destination (#625). */
+  usage?: UsageNotice;
 }) {
   const [eveOpen, setEveOpen] = useState(false);
   const [eveDraftRevision, setEveDraftRevision] = useState(0);
@@ -75,7 +79,7 @@ export function MobileTodayDestination({
             });
           }}
         >
-          <EveSurface approvalMode={approvalMode} ownerUserId={ownerUserId} />
+          <EveSurface approvalMode={approvalMode} ownerUserId={ownerUserId} usage={usage} />
         </EveFlow>
       ) : null}
     </>
