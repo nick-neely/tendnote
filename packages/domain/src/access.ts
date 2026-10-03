@@ -21,6 +21,15 @@ export const accessSourceSchema = z.enum([
 
 export type AccessSource = z.infer<typeof accessSourceSchema>;
 
+/**
+ * Why a not-admitted profile lost a grant it had, when the pending area should say so.
+ * `beta_ended` is written only by the Beta Sunset migration, to every
+ * `beta_flag` grant left when Checkout opens; any later grant clears it.
+ */
+export const accessPendingReasonSchema = z.enum(["beta_ended"]);
+
+export type AccessPendingReason = z.infer<typeof accessPendingReasonSchema>;
+
 /** Account-level state for the optional Self Context setup, not a Context Fact. */
 export const selfContextOnboardingStatusSchema = z.enum(["not_started", "dismissed", "completed"]);
 
@@ -87,6 +96,11 @@ export const accessProfileSchema = z.object({
    * of an older one never touches an account a resubscription admitted.
    */
   paidAccessSubscriptionId: z.string().nullable().default(null),
+  /**
+   * Why this not-admitted profile lost a grant it had, for the pending area's
+   * one line. An ex-beta account is Unpaid, so it carries no retention deadline.
+   */
+  pendingReason: accessPendingReasonSchema.nullable().default(null),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

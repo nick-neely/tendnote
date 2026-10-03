@@ -54,7 +54,7 @@ async function renderPending() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.getCurrentAccess.mockResolvedValue({ state: "pending", user });
+  mocks.getCurrentAccess.mockResolvedValue({ state: "pending", user, decision: { profile: null } });
   mocks.isCheckoutOpen.mockResolvedValue(true);
   mocks.getStripeCustomerId.mockResolvedValue(null);
   mocks.ownerHasExportableData.mockResolvedValue(false);
@@ -113,6 +113,20 @@ describe("the pending area (#607)", () => {
     expect(html).not.toContain("Pending review");
     expect(html).not.toContain("<b>Subscribe</b>");
     expect(html).toContain("<b>Delete</b>");
+  });
+
+  it("tells an ex-beta account the beta ended and offers Subscribe (#612)", async () => {
+    mocks.getCurrentAccess.mockResolvedValue({
+      state: "pending",
+      user,
+      decision: { profile: { pendingReason: "beta_ended" } },
+    });
+
+    const html = await renderPending();
+
+    expect(html).toContain("The private beta has ended");
+    expect(html).toContain("<b>Subscribe</b>");
+    expect(html).not.toContain("Pending review");
   });
 
   it("sends an admitted account home and a signed-out visitor to sign in", async () => {

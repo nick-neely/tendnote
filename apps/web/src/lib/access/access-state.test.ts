@@ -36,6 +36,7 @@ const admittedDecision: AccessDecision = {
     eveApprovalMode: "ask",
     retentionDeadline: null,
     paidAccessSubscriptionId: null,
+    pendingReason: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
