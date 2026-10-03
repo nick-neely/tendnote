@@ -40,6 +40,26 @@ agent. The browser therefore streams turns with no Eve URL to configure. If
 you run the web package by itself, `withEve()` falls back to managing the Eve
 dev process for that invocation.
 
+### Memory on small machines
+
+The full stack needs about 5 GiB while Next compiles its first routes, so an
+8 GB machine without swap has little to spare. Measured on a 2-vCPU, 8 GB VM
+with the browser on another machine ([ADR 0253](adr/0253-eve-dev-compiles-in-a-disposable-process.md)):
+
+| Process | Steady | Peak |
+| --- | --- | --- |
+| Eve (`eve dev` plus its per-rebuild compiler) | 0.6-1.1 GiB | ~2.7 GiB during a rebuild |
+| Next (`next dev` plus its transform worker) | ~3.5-4.1 GiB after four routes | grew as each new route compiled |
+
+Eve no longer grows with edits: the pinned Eve patch compiles each rebuild in a
+short-lived process. Next is now the larger consumer. On a machine that size:
+
+- Run the browser elsewhere (your laptop through a forwarded port), not on the
+  VM.
+- Use `pnpm dev:agent` alone for agent-only work; it settles near 1 GiB.
+- If available memory runs low, restarting `pnpm dev` releases Next's compiled
+  routes; Eve recompiles in about 20 seconds.
+
 ## Local services
 
 Local development uses Docker Postgres with pgvector and Redis on project-specific host ports `55432` and `56379` to avoid collisions with other local services. Production can point `DATABASE_URL` at Neon (which supports the `vector` extension) and `REDIS_URL` at a managed Redis-compatible service. `DATABASE_DRIVER` is optional and defaults to `postgres`; `DATABASE_DRIVER=neon-http` is rejected even against a Neon database, because Tendnote needs the transaction-capable driver.
