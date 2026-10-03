@@ -5,6 +5,9 @@ import {
   overFairUseBudget,
   type PeriodSpend,
   recoveryText,
+  spendBreakerCeilingMicroUsd,
+  spendBreakerRetryAt,
+  spendBreakerStage,
   UsagePausedError,
   usageNotice,
   usageNotices,
@@ -207,6 +210,7 @@ describe("usageNotices", () => {
       eve: { state: "normal" },
       search: { state: "normal" },
       background: { state: "normal" },
+      scheduled: { state: "normal" },
       webSearch: { state: "normal" },
     });
   });
@@ -223,6 +227,7 @@ describe("usageNotices", () => {
     const notices = usageNotices({ plan: HOSTED_PLAN, spend: spend({ background: 1_300_000 }) });
 
     expect(notices.background).toEqual(paused);
+    expect(notices.scheduled).toEqual(paused);
     // Query embeddings share the background allowance, so semantic search goes
     // with it, and exact search is the cheaper substitute that remains.
     expect(notices.search).toEqual({ ...paused, state: "reduced" });
@@ -257,12 +262,22 @@ describe("usageNotices", () => {
 
 describe("UsagePausedError", () => {
   it("names the day the paused function resumes, at the start of that UTC day", () => {
-    const error = new UsagePausedError("2026-11-15");
+    const error = UsagePausedError.atCeiling("2026-11-15");
 
     expect(error).toBeInstanceOf(Error);
-    expect(error.resetsOn).toBe("2026-11-15");
+    expect(error.recovery).toEqual({ kind: "resets_on", date: "2026-11-15" });
     expect(error.resumesAt).toEqual(new Date("2026-11-15T00:00:00Z"));
     expect(error.message).toContain("Resets on November 15.");
+  });
+
+  it("names no date while the Spend Breaker sheds, and retries when its day ends", () => {
+    const retryAt = new Date("2026-10-21T00:00:00Z");
+    const error = UsagePausedError.byBreaker(retryAt);
+
+    expect(error.recovery).toEqual({ kind: "service_restored" });
+    expect(error.resumesAt).toEqual(retryAt);
+    expect(error.message).toContain("Resumes when service is restored.");
+    expect(error.message).not.toMatch(/month|Resets on/);
   });
 });
 
@@ -281,5 +296,153 @@ describe("recoveryText", () => {
 
   it("says retrying for a queued retry", () => {
     expect(recoveryText({ kind: "retrying" })).toBe("Retrying.");
+  });
+});
+
+describe("spendBreakerCeilingMicroUsd", () => {
+  it("is twice every admitted account's daily ceiling pace, plus $5.00 for the operator", () => {
+    // 2 x (10 x $14.00 / 30) + $5.00 = $14.33...
+    expect(spendBreakerCeilingMicroUsd(10)).toBe(14_333_333);
+    expect(spendBreakerCeilingMicroUsd(1)).toBe(5_933_333);
+    expect(spendBreakerCeilingMicroUsd(300)).toBe(285_000_000);
+  });
+
+  it("is the operator's $5.00 alone with no admitted accounts", () => {
+    expect(spendBreakerCeilingMicroUsd(0)).toBe(5_000_000);
+  });
+
+  it("follows the plan's summed Account Ceilings", () => {
+    const larger = {
+      allowance: {
+        interactive: { fairUseBudgetUsd: 18, accountCeilingUsd: 25 },
+        background: { accountCeilingUsd: 3 },
+        webSearch: { accountCeilingUsd: 2 },
+      },
+    };
+    // 2 x (3 x $30.00 / 30) + $5.00
+    expect(spendBreakerCeilingMicroUsd(3, larger)).toBe(11_000_000);
+  });
+});
+
+describe("spendBreakerStage", () => {
+  const ceilingMicroUsd = 10_000_000;
+
+  it("stays closed below the ceiling", () => {
+    expect(spendBreakerStage({ ceilingMicroUsd, spentMicroUsd: 9_999_999 })).toBe("closed");
+  });
+
+  it("sheds in the fixed order as spend keeps climbing past the ceiling", () => {
+    const at = (spentMicroUsd: number) => spendBreakerStage({ ceilingMicroUsd, spentMicroUsd });
+
+    expect(at(10_000_000)).toBe("background");
+    expect(at(12_499_999)).toBe("background");
+    expect(at(12_500_000)).toBe("scheduled");
+    expect(at(14_999_999)).toBe("scheduled");
+    expect(at(15_000_000)).toBe("interactive");
+    expect(at(1_000_000_000)).toBe("interactive");
+  });
+});
+
+describe("spendBreakerRetryAt", () => {
+  it("is the next UTC midnight, when the breaker's day ends", () => {
+    expect(spendBreakerRetryAt(new Date("2026-10-20T00:00:00Z"))).toEqual(
+      new Date("2026-10-21T00:00:00Z"),
+    );
+    expect(spendBreakerRetryAt(new Date("2026-12-31T23:59:59Z"))).toEqual(
+      new Date("2027-01-01T00:00:00Z"),
+    );
+  });
+});
+
+describe("usageNotices under the Spend Breaker", () => {
+  const period = { start: "2026-10-15", resetsOn: "2026-11-15" };
+  const restored = { state: "paused", recovery: { kind: "service_restored" } } as const;
+  const normal = { state: "normal" } as const;
+  const spend = (spent: Partial<PeriodSpend["spentMicroUsd"]>): PeriodSpend => ({
+    period,
+    spentMicroUsd: { interactive: 0, background: 0, web_search: 0, ...spent },
+  });
+
+  it("changes nothing while the breaker is closed", () => {
+    expect(usageNotices({ plan: HOSTED_PLAN, spend: spend({}), breaker: "closed" })).toEqual(
+      usageNotices({ plan: HOSTED_PLAN, spend: spend({}) }),
+    );
+  });
+
+  it("sheds background work first, reducing search to exact results", () => {
+    expect(usageNotices({ plan: HOSTED_PLAN, spend: spend({}), breaker: "background" })).toEqual({
+      eve: normal,
+      search: { ...restored, state: "reduced" },
+      background: restored,
+      scheduled: normal,
+      webSearch: normal,
+    });
+  });
+
+  it("sheds scheduled workflows second, with interactive Eve still running", () => {
+    const notices = usageNotices({ plan: HOSTED_PLAN, spend: spend({}), breaker: "scheduled" });
+
+    expect(notices.background).toEqual(restored);
+    expect(notices.scheduled).toEqual(restored);
+    expect(notices.eve).toEqual(normal);
+  });
+
+  it("sheds interactive Eve last", () => {
+    const notices = usageNotices({ plan: HOSTED_PLAN, spend: spend({}), breaker: "interactive" });
+
+    expect(notices.eve).toEqual(restored);
+    expect(notices.scheduled).toEqual(restored);
+    expect(notices.background).toEqual(restored);
+  });
+
+  it("covers an account with no plan, such as the operator's", () => {
+    expect(usageNotices({ plan: HOSTED_PLAN, spend: null, breaker: "interactive" }).eve).toEqual(
+      restored,
+    );
+  });
+
+  it("shows no reset date for a function it sheds, even past the account's own ceiling", () => {
+    const notices = usageNotices({
+      plan: HOSTED_PLAN,
+      spend: spend({ interactive: 12_000_000, background: 1_300_000 }),
+      breaker: "background",
+    });
+
+    expect(notices.background).toEqual(restored);
+    expect(notices.search).toEqual({ ...restored, state: "reduced" });
+    // Interactive Eve is not shed yet, so its own ceiling's reset day stands.
+    expect(notices.eve).toEqual({
+      state: "paused",
+      recovery: { kind: "resets_on", date: "2026-11-15" },
+    });
+  });
+
+  it("keeps Eve paused rather than reduced when the breaker sheds an account on the Fallback Model", () => {
+    const notices = usageNotices({
+      plan: HOSTED_PLAN,
+      spend: spend({ interactive: 11_000_000 }),
+      breaker: "interactive",
+    });
+    expect(notices.eve).toEqual(restored);
+  });
+
+  it("returns to the account's own ceilings once the breaker closes", () => {
+    const over = spend({ background: 1_300_000 });
+    const shed = usageNotices({ plan: HOSTED_PLAN, spend: over, breaker: "scheduled" });
+    const closed = usageNotices({ plan: HOSTED_PLAN, spend: over, breaker: "closed" });
+
+    expect(shed.background.state === "paused" && shed.background.recovery.kind).toBe(
+      "service_restored",
+    );
+    expect(closed.background).toEqual({
+      state: "paused",
+      recovery: { kind: "resets_on", date: "2026-11-15" },
+    });
+  });
+
+  it("never sheds web search on its own: it runs only inside a turn the door refuses", () => {
+    expect(
+      usageNotices({ plan: HOSTED_PLAN, spend: spend({}), breaker: "interactive" }).webSearch,
+    ).toEqual(normal);
   });
 });

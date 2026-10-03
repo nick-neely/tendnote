@@ -43,6 +43,11 @@ export const accessProfiles = pgTable(
     // `ask` is the default and the failure answer - the policy reads this column
     // on every gated call and parks when the read fails, never denies.
     eveApprovalMode: eveApprovalMode("eve_approval_mode").notNull().default("ask"),
+    // The one setting that switches off optional telemetry: account funnel
+    // events and third-party error reporting. Activation Milestones and
+    // operational records are written either way. It sits here because the row
+    // always exists for a signed-up account.
+    telemetryOptedOut: boolean("telemetry_opted_out").notNull().default(false),
     // The UTC day the account's subscription started, written from its first
     // paid invoice. Its day of the month anchors the Usage Period for monthly
     // and annual subscribers alike; an account without one has no plan, so no

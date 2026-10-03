@@ -11,7 +11,7 @@ const bootstrapIndexMigration = readFileSync(
   "utf8",
 );
 const betaSunsetMigration = readFileSync(
-  join(import.meta.dirname, "../../../migrations/0091_beta_sunset.sql"),
+  join(import.meta.dirname, "../../../migrations/0093_beta_sunset.sql"),
   "utf8",
 );
 const journal = readFileSync(
@@ -59,6 +59,6 @@ describe("Beta Sunset migration contract (#612)", () => {
   });
 
   it("is the descriptive next Drizzle migration", () => {
-    expect(journal).toContain('"tag": "0091_beta_sunset"');
+    expect(journal).toContain('"tag": "0093_beta_sunset"');
   });
 });

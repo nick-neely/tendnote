@@ -90,7 +90,14 @@ export function createDefaultBriefSummaryAdapter(
     version: `llm:${modelId}`,
     model: async ({ prompt, call }) => {
       const { text } = await generateText({
-        model: hostedModel({ modelId, costCategory: "background", account: call.accountId }),
+        // A brief is a scheduled workflow, so the Spend Breaker sheds its
+        // summary with the delivery, after capture processing.
+        model: hostedModel({
+          modelId,
+          costCategory: "background",
+          work: "scheduled",
+          account: call.accountId,
+        }),
         prompt,
       });
       return text;

@@ -9,7 +9,7 @@ copies them.
 
 ## What the release does
 
-Merging the release that carries `packages/db/migrations/0091_beta_sunset.sql`
+Merging the release that carries `packages/db/migrations/0093_beta_sunset.sql`
 applies it to Production through the Production Release Gate. It moves every
 `beta_flag` grant to pending with the `beta_ended` reason, Unpaid and with no
 retention deadline. Every other source is untouched. An ex-beta account then

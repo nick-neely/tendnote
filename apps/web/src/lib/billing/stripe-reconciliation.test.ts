@@ -131,6 +131,7 @@ function droppedWebhook(
     const profile = await harness.queries.getAccessProfile({ userId: user.id });
     if (profile?.status !== "granted") throw new Error("announced before admission");
   });
+  const recordFunnelStage = vi.fn(async (_userId: string, _stage: string) => {});
   const grantPaidAccess = vi.fn((userId: string, stripeSubscriptionId: string) =>
     harness.queries.grantAccess({ userId, source: "paid_access", stripeSubscriptionId }),
   );
@@ -162,6 +163,7 @@ function droppedWebhook(
     anchorUsagePeriod: async (userId, startedAt) => {
       anchors.set(userId, startedAt);
     },
+    recordFunnelStage,
     announceAdmission,
     logger,
   });
@@ -198,6 +200,7 @@ function droppedWebhook(
     logger,
     announceAdmission,
     grantPaidAccess,
+    recordFunnelStage,
     stripeSubscriptions,
     expectAdmitted,
     expectNotAdmitted,
@@ -229,6 +232,11 @@ describe("Stripe reconciliation", () => {
       invoiceId: "in_first",
     });
     await expect(subscriber.announceAdmission.mock.results[0]?.value).resolves.toBeUndefined();
+    // The repair reaches the account funnel exactly as the webhook would have.
+    expect(subscriber.recordFunnelStage.mock.calls).toEqual([
+      [user.id, "payment_confirmed"],
+      [user.id, "paid_access_granted"],
+    ]);
   });
 
   it("never re-admits an account whose subscription ended, while its first invoice stays paid (#609)", async () => {

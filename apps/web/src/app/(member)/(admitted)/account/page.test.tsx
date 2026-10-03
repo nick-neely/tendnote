@@ -9,6 +9,7 @@ const {
   getLatestOwnerDataExportJob,
   listReminderInstallations,
   getEveApprovalMode,
+  isTelemetryOptedOut,
   unstable_rethrow,
 } = vi.hoisted(() => ({
   redirect: vi.fn((to: string) => {
@@ -21,6 +22,7 @@ const {
   getLatestOwnerDataExportJob: vi.fn().mockResolvedValue(null),
   listReminderInstallations: vi.fn().mockResolvedValue([]),
   getEveApprovalMode: vi.fn().mockResolvedValue("ask"),
+  isTelemetryOptedOut: vi.fn().mockResolvedValue(false),
   unstable_rethrow: vi.fn(),
 }));
 
@@ -32,6 +34,10 @@ vi.mock("@/app/actions/owner-data-export", () => ({
 vi.mock("@/lib/access/current-access", () => ({ getCurrentAccess }));
 vi.mock("@tendnote/db/queries/reminders", () => ({ listReminderInstallations }));
 vi.mock("@tendnote/db/queries/access-profiles", () => ({ getEveApprovalMode }));
+vi.mock("@tendnote/db/queries/account-telemetry", () => ({ isTelemetryOptedOut }));
+vi.mock("@/components/account/telemetry-settings", () => ({
+  TelemetrySettings: ({ optedOut }: { optedOut: boolean }) => `telemetry-opted-out:${optedOut}`,
+}));
 vi.mock("@tendnote/db/queries/owner-data-export", () => ({ getLatestOwnerDataExportJob }));
 vi.mock("@/lib/access/account-summary", () => ({ resolveAccountView }));
 vi.mock("@/lib/access/access-state", () => ({ localFallbackOwnerUserId: () => undefined }));
@@ -62,7 +68,12 @@ vi.mock("@/components/ui/badge", () => ({
 }));
 
 import { renderToStaticMarkup } from "react-dom/server";
-import { AccountContent, CalendarPreviewStream, ProviderConnectionsStream } from "./page";
+import {
+  AccountContent,
+  CalendarPreviewStream,
+  ProviderConnectionsStream,
+  TelemetrySettingsStream,
+} from "./page";
 
 beforeEach(() => {
   getCurrentAccess.mockReset();
@@ -72,6 +83,8 @@ beforeEach(() => {
   getLatestOwnerDataExportJob.mockReset().mockResolvedValue(null);
   listReminderInstallations.mockReset().mockResolvedValue([]);
   getEveApprovalMode.mockReset().mockResolvedValue("ask");
+  isTelemetryOptedOut.mockReset().mockResolvedValue(false);
+  vi.unstubAllEnvs();
   redirect.mockClear();
   unstable_rethrow.mockReset();
 });
@@ -165,5 +178,35 @@ describe("AccountPage access gating", () => {
     });
 
     expect(unstable_rethrow).toHaveBeenCalledWith(controlFlow);
+  });
+});
+
+describe("the analytics and error reports setting", () => {
+  async function render() {
+    const element = await TelemetrySettingsStream({ ownerUserId: "owner-1" });
+    return element ? renderToStaticMarkup(element) : null;
+  }
+
+  it("shows a hosted owner their stored choice", async () => {
+    vi.stubEnv("TENDNOTE_ADMISSION_MODE", "hosted");
+    isTelemetryOptedOut.mockResolvedValue(true);
+
+    expect(await render()).toBe("telemetry-opted-out:true");
+    expect(isTelemetryOptedOut).toHaveBeenCalledWith({ userId: "owner-1" });
+  });
+
+  it("shows the unavailable region, never a default, when the read fails", async () => {
+    vi.stubEnv("TENDNOTE_ADMISSION_MODE", "hosted");
+    isTelemetryOptedOut.mockRejectedValue(new Error("database unavailable"));
+
+    expect(await render()).toContain("Analytics and error reports are unavailable");
+  });
+
+  it("is absent on a self-hosted deployment, which collects nothing", async () => {
+    vi.stubEnv("TENDNOTE_ADMISSION_MODE", "self-hosted");
+    vi.stubEnv("TENDNOTE_SELF_HOSTED_BOOTSTRAP_OWNER_EMAIL", "owner@example.com");
+
+    expect(await render()).toBeNull();
+    expect(isTelemetryOptedOut).not.toHaveBeenCalled();
   });
 });

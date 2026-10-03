@@ -1,8 +1,10 @@
 import { getEveApprovalMode } from "@tendnote/db/queries/access-profiles";
+import { isTelemetryOptedOut } from "@tendnote/db/queries/account-telemetry";
 import { getLatestOwnerDataExportJob } from "@tendnote/db/queries/owner-data-export";
 import { listReminderInstallations } from "@tendnote/db/queries/reminders";
 import { getStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
 import { getBillingStanding } from "@tendnote/db/queries/stripe-subscriptions";
+import { parseAdmissionPolicy } from "@tendnote/domain/admission";
 import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
@@ -13,6 +15,7 @@ import { CalendarPreviewSection } from "@/components/account/calendar-preview-se
 import { OwnerDataExportSection } from "@/components/account/owner-data-export-section";
 import { ProviderConnectionsSection } from "@/components/account/provider-connections-section";
 import { ReminderSettings } from "@/components/account/reminder-settings";
+import { TelemetrySettings } from "@/components/account/telemetry-settings";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { type AppDestinationId, appDestination } from "@/components/app-destinations";
 import { SignOutButton } from "@/components/auth/sign-out-button";
@@ -151,6 +154,12 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
 
       <Suspense fallback={<AccountRegionReserve label="Reminder settings" />}>
         <ReminderSettingsStream ownerUserId={ownerUserId} />
+      </Suspense>
+
+      {/* Optional telemetry is hosted-only, so a self-hosted account has nothing
+            to switch off and sees no setting for it. */}
+      <Suspense fallback={<AccountRegionReserve label="Analytics and error reports" />}>
+        <TelemetrySettingsStream ownerUserId={ownerUserId} />
       </Suspense>
 
       <Suspense fallback={<AccountRegionReserve label="Data export" />}>
@@ -310,6 +319,19 @@ async function AssistantApprovalSettingsStream({ ownerUserId }: { ownerUserId: s
     return <AssistantApprovalSettings mode={await getEveApprovalMode({ userId: ownerUserId })} />;
   } catch {
     return <AccountRegionUnavailable label="Assistant approvals" />;
+  }
+}
+
+/**
+ * A failed read is the unavailable region, never a box shown ticked to someone
+ * who switched sharing off.
+ */
+export async function TelemetrySettingsStream({ ownerUserId }: { ownerUserId: string }) {
+  if (parseAdmissionPolicy().mode !== "hosted") return null;
+  try {
+    return <TelemetrySettings optedOut={await isTelemetryOptedOut({ userId: ownerUserId })} />;
+  } catch {
+    return <AccountRegionUnavailable label="Analytics and error reports" />;
   }
 }
 

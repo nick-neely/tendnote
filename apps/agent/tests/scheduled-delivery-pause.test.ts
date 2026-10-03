@@ -5,8 +5,11 @@ import { createScheduledDeliveryPause } from "../agent/lib/scheduled-delivery-pa
 const normal = { state: "normal" } as const;
 const paused = { state: "paused", recovery: { kind: "resets_on", date: "2026-11-15" } } as const;
 
-function notices(background: UsageNotices["background"]): UsageNotices {
-  return { eve: normal, search: normal, background, webSearch: normal };
+function notices(
+  scheduled: UsageNotices["scheduled"],
+  background: UsageNotices["background"] = scheduled,
+): UsageNotices {
+  return { eve: normal, search: normal, background, scheduled, webSearch: normal };
 }
 
 describe("createScheduledDeliveryPause", () => {
@@ -17,6 +20,17 @@ describe("createScheduledDeliveryPause", () => {
 
     await expect(isPaused("owner-paused")).resolves.toBe(true);
     await expect(isPaused("owner-normal")).resolves.toBe(false);
+  });
+
+  it("delivers while the Spend Breaker sheds only background work, and skips once it sheds scheduled workflows", async () => {
+    const restored = { state: "paused", recovery: { kind: "service_restored" } } as const;
+
+    await expect(
+      createScheduledDeliveryPause(async () => notices(normal, restored))("owner-1"),
+    ).resolves.toBe(false);
+    await expect(
+      createScheduledDeliveryPause(async () => notices(restored))("owner-1"),
+    ).resolves.toBe(true);
   });
 
   it("reads each owner's usage once per tick", async () => {

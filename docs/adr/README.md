@@ -83,6 +83,8 @@ the bounded publication evidence path.
 - [0252 - Account Ceilings count gateway-reported cost at the turn door](0252-account-ceilings-count-gateway-reported-cost-at-the-turn-door.md)
 - [0253 - Eve dev compiles in a disposable process](0253-eve-dev-compiles-in-a-disposable-process.md)
 - [0254 - Background and web-search ceilings pause where the spend happens](0254-background-and-web-search-ceilings-pause-where-the-spend-happens.md)
+- [0255 - The Spend Breaker sheds in stages past its daily ceiling](0255-the-spend-breaker-sheds-in-stages-past-its-daily-ceiling.md)
+- [0256 - Next dev validates in process and compiles React natively](0256-next-dev-validates-in-process-and-compiles-react-natively.md)
 
 The catalog intentionally omits the Phase 9a planning workspace. That
 workspace remains useful to maintainers, but it is not a newcomer evidence

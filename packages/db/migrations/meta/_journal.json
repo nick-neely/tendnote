@@ -642,8 +642,22 @@
     {
       "idx": 91,
       "version": "7",
-      "when": 1791061571037,
-      "tag": "0091_beta_sunset",
+      "when": 1791061760264,
+      "tag": "0091_account_funnel_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1791063864437,
+      "tag": "0092_spend_breaker_days",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1791065863694,
+      "tag": "0093_beta_sunset",
       "breakpoints": true
     }
   ]

@@ -2,6 +2,7 @@
 
 import { resolveBetterAuthBaseUrl } from "@tendnote/auth";
 import { getStripeCustomerId, recordStripeCustomer } from "@tendnote/db/queries/stripe-customers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Stripe from "stripe";
 import { REACCEPTANCE_PATH } from "@/lib/access/access-state";
@@ -12,6 +13,7 @@ import {
   readStripeBillingConfig,
 } from "@/lib/billing/checkout";
 import { isCheckoutOpen } from "@/lib/billing/checkout-availability";
+import { captureRequestFunnelStage } from "@/lib/telemetry/account-funnel";
 
 /**
  * Subscribe from the pending area (#606), or resubscribe from the Lapsed area
@@ -40,5 +42,10 @@ export async function startCheckoutAction(formData: FormData): Promise<void> {
     },
     { userId: access.user.id, email: access.user.email, interval },
   );
+  await captureRequestFunnelStage({
+    userId: access.user.id,
+    stage: "checkout_started",
+    headers: await headers(),
+  });
   redirect(url);
 }

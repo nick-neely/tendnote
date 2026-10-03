@@ -228,7 +228,7 @@ async function HomeRail({ searchParams }: HomeProps) {
       people={people}
       reviewContent={<ReviewQueueStreams ownerUserId={ownerUserId} />}
       reviewCount={reviewCount}
-      usageNotice={<BackgroundUsageNotice notice={backgroundUsage} />}
+      usageNotice={<BackgroundUsageNotice usage={backgroundUsage} />}
       weeklyBrief={weeklyBrief}
     />
   );

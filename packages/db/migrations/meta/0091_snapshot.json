@@ -1,5 +1,5 @@
 {
-  "id": "7ffec7b1-7468-40ba-85b0-7dc6cf767902",
+  "id": "bf2d4b2e-5f44-4746-b601-faf95bb8eb1d",
   "prevId": "f759397c-91a2-4c6e-b888-1bd9ce8a975f",
   "version": "7",
   "dialect": "postgresql",
@@ -126,6 +126,13 @@
           "notNull": true,
           "default": "'ask'"
         },
+        "telemetry_opted_out": {
+          "name": "telemetry_opted_out",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "usage_period_anchor": {
           "name": "usage_period_anchor",
           "type": "date",
@@ -141,13 +148,6 @@
         "paid_access_subscription_id": {
           "name": "paid_access_subscription_id",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pending_reason": {
-          "name": "pending_reason",
-          "type": "access_pending_reason",
-          "typeSchema": "public",
           "primaryKey": false,
           "notNull": false
         },
@@ -291,6 +291,139 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.account_funnel_events": {
+      "name": "account_funnel_events",
+      "schema": "",
+      "columns": {
+        "funnel_account_id": {
+          "name": "funnel_account_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stage": {
+          "name": "stage",
+          "type": "account_funnel_stage",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "account_funnel_events_occurred_at_idx": {
+          "name": "account_funnel_events_occurred_at_idx",
+          "columns": [
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "account_funnel_events_funnel_account_id_funnel_accounts_id_fk": {
+          "name": "account_funnel_events_funnel_account_id_funnel_accounts_id_fk",
+          "tableFrom": "account_funnel_events",
+          "tableTo": "funnel_accounts",
+          "columnsFrom": [
+            "funnel_account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "account_funnel_events_pkey": {
+          "name": "account_funnel_events_pkey",
+          "columns": [
+            "funnel_account_id",
+            "stage"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.funnel_accounts": {
+      "name": "funnel_accounts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enrolled_at": {
+          "name": "enrolled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "region_eligible": {
+          "name": "region_eligible",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "funnel_accounts_user_id_user_id_fk": {
+          "name": "funnel_accounts_user_id_user_id_fk",
+          "tableFrom": "funnel_accounts",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "funnel_accounts_user_id_unique": {
+          "name": "funnel_accounts_user_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -14609,13 +14742,6 @@
     }
   },
   "enums": {
-    "public.access_pending_reason": {
-      "name": "access_pending_reason",
-      "schema": "public",
-      "values": [
-        "beta_ended"
-      ]
-    },
     "public.access_source": {
       "name": "access_source",
       "schema": "public",
@@ -14635,6 +14761,21 @@
         "pending",
         "granted",
         "denied"
+      ]
+    },
+    "public.account_funnel_stage": {
+      "name": "account_funnel_stage",
+      "schema": "public",
+      "values": [
+        "signup_completed",
+        "checkout_started",
+        "payment_confirmed",
+        "paid_access_granted",
+        "first_person_created",
+        "first_memory_confirmed",
+        "first_followup_scheduled",
+        "first_grounded_eve_answer",
+        "first_value_reached"
       ]
     },
     "public.activation_milestone": {

@@ -1,15 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { redirect, getCurrentAccess, isCheckoutOpen, openCheckout } = vi.hoisted(() => ({
+const {
+  redirect,
+  getCurrentAccess,
+  isCheckoutOpen,
+  openCheckout,
+  captureRequestFunnelStage,
+  requestHeaders,
+} = vi.hoisted(() => ({
   redirect: vi.fn((to: string) => {
     throw new Error(`REDIRECT:${to}`);
   }),
   getCurrentAccess: vi.fn(),
   isCheckoutOpen: vi.fn(),
   openCheckout: vi.fn(),
+  captureRequestFunnelStage: vi.fn(),
+  requestHeaders: new Headers({ "x-vercel-ip-country": "US" }),
 }));
 
 vi.mock("next/navigation", () => ({ redirect }));
+vi.mock("next/headers", () => ({ headers: async () => requestHeaders }));
+vi.mock("@/lib/telemetry/account-funnel", () => ({ captureRequestFunnelStage }));
 vi.mock("@tendnote/auth", () => ({ resolveBetterAuthBaseUrl: () => "https://app.tendnote.test" }));
 vi.mock("@tendnote/db/queries/stripe-customers", () => ({
   getStripeCustomerId: vi.fn(),
@@ -53,6 +64,16 @@ describe("Subscribe from the pending area", () => {
     );
   });
 
+  it("captures the checkout start for the account funnel with the request's own headers", async () => {
+    await expect(startCheckoutAction(intervalForm("annual"))).rejects.toThrow("REDIRECT:");
+
+    expect(captureRequestFunnelStage).toHaveBeenCalledExactlyOnceWith({
+      userId: user.id,
+      stage: "checkout_started",
+      headers: requestHeaders,
+    });
+  });
+
   it("lets a Lapsed account resubscribe (#609)", async () => {
     getCurrentAccess.mockResolvedValueOnce({
       state: "lapsed",
@@ -78,6 +99,7 @@ describe("Subscribe from the pending area", () => {
     await expect(startCheckoutAction(intervalForm("monthly"))).rejects.toThrow("REDIRECT:/");
 
     expect(openCheckout).not.toHaveBeenCalled();
+    expect(captureRequestFunnelStage).not.toHaveBeenCalled();
   });
 
   it("opens nothing while Checkout is closed, unconfigured, or asked for an unknown interval", async () => {
