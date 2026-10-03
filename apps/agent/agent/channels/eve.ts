@@ -1,6 +1,7 @@
 import { checkAccess, grantAccess } from "@tendnote/db/queries/access-profiles";
 import { listAccountDeletionAdmissionBlocks } from "@tendnote/db/queries/account-deletion";
 import { getEveSessionOwnerUserId } from "@tendnote/db/queries/eve-session-owners";
+import { readEveUsageNotice } from "@tendnote/db/queries/usage-bounds";
 import { eveChannel } from "eve/channels/eve";
 import { getAgentAuth } from "../lib/auth-server";
 import {
@@ -8,6 +9,7 @@ import {
   createSessionOwnershipGuard,
   createTendnoteAdmissionAuth,
 } from "../lib/eve-auth";
+import { createUsagePauseGuard } from "../lib/eve-usage-guard";
 import { getAgentRateLimiter } from "../lib/rate-limit";
 
 const hostedSessionAuth = createTendnoteAdmissionAuth({
@@ -35,10 +37,16 @@ const hostedSessionAuth = createTendnoteAdmissionAuth({
  * stream, cancel, compact, clear, reset) is checked against the durable
  * session -> owner binding, and a foreign or unknown session fails closed with
  * an opaque 404. The binding itself is written by the `session.started` hook.
+ *
+ * Outermost, the usage pause guard refuses a new turn while the owner's
+ * interactive Account Ceiling is reached, once ownership has been proven.
  */
 export default eveChannel({
-  auth: createSessionOwnershipGuard({
-    auth: [hostedSessionAuth, createLocalOwnerAuth()],
-    getOwnerUserId: getEveSessionOwnerUserId,
+  auth: createUsagePauseGuard({
+    auth: createSessionOwnershipGuard({
+      auth: [hostedSessionAuth, createLocalOwnerAuth()],
+      getOwnerUserId: getEveSessionOwnerUserId,
+    }),
+    readUsageNotice: (userId) => readEveUsageNotice({ userId }),
   }),
 });

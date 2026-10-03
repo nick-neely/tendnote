@@ -9,6 +9,8 @@ export type StripeWebhookDependencies = {
   findAccountByStripeCustomer: (stripeCustomerId: string) => Promise<string | null>;
   /** Grant the account the Paid Access source. Must be idempotent. */
   grantPaidAccess: (userId: string) => Promise<unknown>;
+  /** Anchor the account's Usage Period to its subscription's start. Must be idempotent. */
+  anchorUsagePeriod: (userId: string, startedAt: Date) => Promise<unknown>;
   log?: (message: string) => void;
 };
 
@@ -18,27 +20,34 @@ function stripeId(value: string | { id: string } | null): string | null {
 }
 
 /**
- * The Stripe customer whose account an event admits, or `null` when the event
- * is not admission evidence. Only the paid first invoice of a subscription is
- * (ADR 0245): a Checkout redirect, a completed session, an `active` subscription
- * whose invoice is unpaid, a created customer, and a later renewal all admit
- * nobody.
+ * The Stripe customer whose account an event admits, and when its subscription
+ * started, or `null` when the event is not admission evidence. Only the paid
+ * first invoice of a subscription is (ADR 0245): a Checkout redirect, a
+ * completed session, an `active` subscription whose invoice is unpaid, a
+ * created customer, and a later renewal all admit nobody.
+ *
+ * A subscription's first invoice covers a single instant, its creation, so its
+ * `period_start` is the moment the subscription started.
  */
-function firstPaidInvoiceCustomer(event: Stripe.Event): string | null {
+function firstPaidInvoice(
+  event: Stripe.Event,
+): { stripeCustomerId: string; startedAt: Date } | null {
   if (event.type !== "invoice.paid") return null;
   const invoice = event.data.object;
   if (invoice.status !== "paid" || invoice.billing_reason !== "subscription_create") return null;
   if (!invoice.parent?.subscription_details) return null;
-  return stripeId(invoice.customer);
+  const stripeCustomerId = stripeId(invoice.customer);
+  if (!stripeCustomerId) return null;
+  return { stripeCustomerId, startedAt: new Date(invoice.period_start * 1000) };
 }
 
 /**
  * The Stripe webhook receiver (#606). It verifies the signature over the raw
  * body before reading anything, then projects the first paid invoice onto Paid
- * Access. The projection only ever grants the one idempotent source, so a
- * duplicate delivery is a no-op, and the customer was recorded before Checkout
- * opened, so an invoice can always be matched to its account without any
- * earlier event having arrived. Nothing revokes Paid Access yet; whatever first
+ * Access and the account's Usage Period anchor (#625). Both writes are
+ * idempotent, so a duplicate delivery is a no-op, and the customer was
+ * recorded before Checkout opened, so an invoice can always be matched to its
+ * account without any earlier event having arrived. Nothing revokes Paid Access yet; whatever first
  * does must also stop a redelivered first invoice from re-admitting.
  *
  * A failure after verification surfaces as a 500 so Stripe redelivers;
@@ -72,12 +81,12 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
       return new Response("Invalid Stripe signature.", { status: 400 });
     }
 
-    const stripeCustomerId = firstPaidInvoiceCustomer(event);
-    if (!stripeCustomerId) {
+    const paid = firstPaidInvoice(event);
+    if (!paid) {
       return new Response(null, { status: 200 });
     }
 
-    const userId = await deps.findAccountByStripeCustomer(stripeCustomerId);
+    const userId = await deps.findAccountByStripeCustomer(paid.stripeCustomerId);
     if (!userId) {
       // Not a customer Tendnote created for an account, so there is no one to
       // admit. Acknowledge it rather than have Stripe retry for days.
@@ -86,6 +95,8 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
     }
 
     await deps.grantPaidAccess(userId);
+    // After the grant, which is what guarantees the Access Profile exists.
+    await deps.anchorUsagePeriod(userId, paid.startedAt);
     return new Response(null, { status: 200 });
   };
 }

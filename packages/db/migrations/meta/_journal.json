@@ -610,6 +610,13 @@
       "when": 1790911630488,
       "tag": "0086_usage_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1790994663716,
+      "tag": "0087_usage_period_anchor_and_ledger_cost",
+      "breakpoints": true
     }
   ]
 }

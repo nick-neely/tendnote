@@ -23,6 +23,7 @@ const usage = {
   costCategory: "interactive" as const,
   inputTokens: 3,
   outputTokens: 2,
+  costMicroUsd: 5,
 };
 
 describe("recordModelUsage", () => {

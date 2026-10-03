@@ -22,6 +22,12 @@ export const usageLedger = pgTable(
     inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
     outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
     callCount: integer("call_count").notNull().default(0),
+    /**
+     * What the gateway reported charging for the calls, in millionths of a
+     * dollar. The Account Ceiling is counted in dollars, and only the gateway
+     * knows how much of the input was a cheaper cache read.
+     */
+    costMicroUsd: bigint("cost_micro_usd", { mode: "number" }).notNull().default(0),
   },
   (table) => [
     primaryKey({

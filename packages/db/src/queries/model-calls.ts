@@ -90,6 +90,25 @@ function resolveAccount(account: MeteredAccount): string | null {
   }
 }
 
+type Charge = {
+  input: number | undefined;
+  output: number | undefined;
+  /** The call's provider metadata, where the gateway reports what it charged. */
+  providerMetadata: unknown;
+};
+
+/**
+ * What the gateway reported charging for one call, in millionths of a dollar,
+ * or `null` when it reported nothing usable. The gateway knows which input was
+ * a cheaper cache read; a token count alone cannot price a call.
+ */
+function gatewayCostMicroUsd(providerMetadata: unknown): number | null {
+  const cost = (providerMetadata as { gateway?: { cost?: unknown } } | undefined)?.gateway?.cost;
+  if (typeof cost !== "number" && (typeof cost !== "string" || cost.trim() === "")) return null;
+  const dollars = Number(cost);
+  return Number.isFinite(dollars) && dollars >= 0 ? Math.round(dollars * 1_000_000) : null;
+}
+
 /**
  * Returns the Usage Ledger meter for one call, or `null` when the call has no
  * account. The account is resolved when the call starts, inside the caller's
@@ -105,23 +124,35 @@ function startMeter(input: HostedModelInput, recordUsage: UsageLedgerWriter) {
     return null;
   }
 
-  return (tokens: { input: number | undefined; output: number | undefined }) =>
-    recordUsage({
+  return (charge: Charge) => {
+    const costMicroUsd = gatewayCostMicroUsd(charge.providerMetadata);
+    if (costMicroUsd === null) {
+      // Counted as free, so it cannot move the account toward its ceiling; the
+      // Spend Breaker is what bounds a metering failure.
+      console.warn("usage-ledger: the gateway reported no cost for a model call", {
+        modelId: input.modelId,
+        costCategory: input.costCategory,
+      });
+    }
+    return recordUsage({
       accountId,
       modelId: input.modelId,
       costCategory: input.costCategory,
-      inputTokens: tokens.input ?? 0,
-      outputTokens: tokens.output ?? 0,
+      inputTokens: charge.input ?? 0,
+      outputTokens: charge.output ?? 0,
+      costMicroUsd: costMicroUsd ?? 0,
     });
+  };
 }
 
 /**
  * The model-call entry point (spec #591): every hosted model call gets its
  * model here. The returned model sends the gateway's zero-data-retention and
  * no-training flags, restricts routing to the one pinned provider, tags the
- * call with its cost category, and meters it into the Usage Ledger once it
- * finishes. `scripts/model-call-entry-point.test.ts` fails if any other module
- * builds a model or calls one without this entry point.
+ * call with its cost category, and meters it, with the cost the gateway
+ * reports, into the Usage Ledger once it finishes.
+ * `scripts/model-call-entry-point.test.ts` fails if any other module builds a
+ * model or calls one without this entry point.
  */
 export function hostedModel(
   input: HostedModelInput,
@@ -141,6 +172,7 @@ export function hostedModel(
         await meter?.({
           input: result.usage.inputTokens.total,
           output: result.usage.outputTokens.total,
+          providerMetadata: result.providerMetadata,
         });
         return result;
       },
@@ -163,6 +195,7 @@ export function hostedModel(
               await meter({
                 input: finished.usage.inputTokens.total,
                 output: finished.usage.outputTokens.total,
+                providerMetadata: finished.providerMetadata,
               });
             },
           }),
@@ -189,7 +222,11 @@ export function hostedEmbeddingModel(
       wrapEmbed: async ({ doEmbed }) => {
         const meter = startMeter(input, recordUsage);
         const result = await doEmbed();
-        await meter?.({ input: result.usage?.tokens, output: 0 });
+        await meter?.({
+          input: result.usage?.tokens,
+          output: 0,
+          providerMetadata: result.providerMetadata,
+        });
         return result;
       },
     },
