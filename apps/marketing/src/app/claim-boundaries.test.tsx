@@ -76,6 +76,15 @@ describe("tracking disclosure", () => {
   const rendered = text(PrivacyAndAiPage);
 
   it.each([
+    ["no cookies on this site", /This site sets no cookies\./],
+    ["the anonymous page counters", /keeps a daily count of which pages are viewed/],
+    ["the demo and signup counters", /demo is started and finished, and how often Subscribe/],
+    [
+      "no identifier and no join",
+      /no visitor ID and nothing that ties a count to you or to an account/,
+    ],
+    ["US-only page counts", /Counted only for visits from the United States/],
+    ["page count retention from the constant", /kept 13 months/],
     ["the account funnel", /notes when your account first reaches a few steps/],
     ["what it never holds", /never records your notes or the people in them/],
     [

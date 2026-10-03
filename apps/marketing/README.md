@@ -1,6 +1,6 @@
 # @tendnote/marketing
 
-The public marketing site for `tendnote.com`, deployed as its own Vercel project. It is static, has no authentication, never reads the product session, and sets no cookies or tracking. It reuses the product's design system through `@tendnote/ui`.
+The public marketing site for `tendnote.com`, deployed as its own Vercel project. It is static, has no authentication, never reads the product session, and sets no cookies. Its only telemetry is anonymous public activity: a page view, the demo starting or finishing, or a Subscribe click is reported as one fixed event and page name to the product app's `/api/public-activity`, which adds one to a daily total for known-US requests only. It reuses the product's design system through `@tendnote/ui`.
 
 ```bash
 pnpm dev:marketing   # http://localhost:3002
@@ -24,9 +24,10 @@ The offer's figures and the support address live once in `src/lib/offer.ts`. The
 
 ## Configuration
 
-Both variables are read at build time and are optional.
+Every variable is read at build time and is optional.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TENDNOTE_APP_ORIGIN` | `https://app.tendnote.com` | Origin that Sign in and Subscribe link to. Must be a bare origin, such as a preview app deployment |
+| `VERCEL_ENV` | set by Vercel | Public activity is reported only from a `production` build, or to an explicitly set `TENDNOTE_APP_ORIGIN`, so local and preview builds never move the production counters |
 | `TENDNOTE_STATUS_PAGE_URL` | unset | The independently hosted status page. The footer omits Status until it is set |

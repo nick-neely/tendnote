@@ -39,6 +39,17 @@ export function appLinks(env: Env = process.env) {
   };
 }
 
+/**
+ * Where the site reports anonymous public activity (#646), or `undefined` when
+ * it should report nothing. Only a production deployment reports to the
+ * production default; a local or preview build reports only to an app origin
+ * it was explicitly given, so testing the site never moves the real counters.
+ */
+export function publicActivityEndpoint(env: Env = process.env): string | undefined {
+  if (!env.TENDNOTE_APP_ORIGIN?.trim() && env.VERCEL_ENV !== "production") return undefined;
+  return `${appOrigin(env)}/api/public-activity`;
+}
+
 export const primaryNav: SiteLink[] = [
   { label: "Product", href: "/product" },
   { label: "Demo", href: "/demo" },

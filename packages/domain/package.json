@@ -9,6 +9,7 @@
     "./account-funnel": "./src/account-funnel.ts",
     "./activation-milestones": "./src/activation-milestones.ts",
     "./admission": "./src/admission.ts",
+    "./public-activity": "./src/public-activity.ts",
     "./region-block": "./src/region-block.ts",
     "./retention": "./src/retention.ts",
     "./assets": "./src/assets.ts",

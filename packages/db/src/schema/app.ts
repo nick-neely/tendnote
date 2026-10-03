@@ -46,6 +46,7 @@ export * from "./app/people";
 export * from "./app/person-references";
 export * from "./app/person-updates";
 export * from "./app/provider-connections";
+export * from "./app/public-activity";
 export * from "./app/refund-records";
 export * from "./app/relations";
 export * from "./app/reminders";

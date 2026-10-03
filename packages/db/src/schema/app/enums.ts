@@ -2,6 +2,7 @@ import { HOUSEHOLD_RECORD_OWNERSHIP_VALUES } from "@tendnote/domain";
 import { ACCOUNT_FUNNEL_STAGES } from "@tendnote/domain/account-funnel";
 import { ACTIVATION_MILESTONES } from "@tendnote/domain/activation-milestones";
 import { LEGAL_DOCUMENT_KEYS } from "@tendnote/domain/legal-documents";
+import { PUBLIC_ACTIVITY_EVENTS, PUBLIC_PAGES } from "@tendnote/domain/public-activity";
 import { COST_CATEGORIES } from "@tendnote/domain/usage-ledger";
 import { pgEnum } from "drizzle-orm/pg-core";
 
@@ -38,6 +39,11 @@ export const activationMilestone = pgEnum("activation_milestone", ACTIVATION_MIL
 
 // The closed account funnel stage set, a disclosed boundary like the milestones.
 export const accountFunnelStage = pgEnum("account_funnel_stage", ACCOUNT_FUNNEL_STAGES);
+
+// The closed public activity events and the fixed public page names they are
+// counted on. Enums, so no raw URL or free text can ever become a counter.
+export const publicActivityEvent = pgEnum("public_activity_event", PUBLIC_ACTIVITY_EVENTS);
+export const publicPage = pgEnum("public_page", PUBLIC_PAGES);
 
 export const costCategory = pgEnum("cost_category", COST_CATEGORIES);
 

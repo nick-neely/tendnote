@@ -4,9 +4,9 @@
  * The Privacy Policy's retention table is generated from these values, and
  * every sweep that deletes data reads its period from here (the ADR 0221
  * pattern), so what the policy promises and what actually gets deleted cannot
- * drift apart. Today the household purge, audit, and account funnel retention
- * sweeps and the Lapsed retention deadline read it; the Lapsed, Deletion Record,
- * fence, and anonymous daily total sweeps must when built. Changing a value here is a
+ * drift apart. Today the household purge, audit, account funnel, and anonymous
+ * daily total retention sweeps and the Lapsed retention deadline read it; the
+ * Lapsed, Deletion Record, and fence sweeps must when built. Changing a value here is a
  * reviewed change to a published promise: the committed table in
  * `docs/legal/privacy-retention-table.md` fails its test until it is
  * regenerated from here.

@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { sweepAccountFunnelEvents } from "@tendnote/db/queries/account-telemetry";
 import { sweepFileStorage } from "@tendnote/db/queries/file-uploads";
+import { sweepPublicActivityCounts } from "@tendnote/db/queries/public-activity";
 import { sweepUsageLedger } from "@tendnote/db/queries/usage-ledger";
 import { parseAdmissionPolicy } from "@tendnote/domain";
 import { type NextRequest, NextResponse } from "next/server";
@@ -42,8 +43,8 @@ function timingSafeEqualStrings(a: string, b: string): boolean {
 
 /**
  * This route triggers expensive and irreversible recovery work (extraction/embedding
- * backfills, owner-export generation, household purges, audit, Usage Ledger, and
- * account funnel retention sweeps), so it must never run unauthenticated.
+ * backfills, owner-export generation, household purges, audit, Usage Ledger,
+ * account funnel, and public activity retention sweeps), so it must never run unauthenticated.
  *
  * Vercel Cron invokes it with `Authorization: Bearer $CRON_SECRET`, so a configured
  * secret is compared against that header in constant time.
@@ -97,11 +98,13 @@ export async function GET(request: NextRequest) {
   const files = await sweepFileStorage();
   const usageLedger = await sweepUsageLedger();
   const accountFunnel = await sweepAccountFunnelEvents();
+  const publicActivity = await sweepPublicActivityCounts();
   return NextResponse.json({
     ...result,
     files,
     usageLedger,
     accountFunnel,
+    publicActivity,
     stripeReconciliation,
   });
 }
