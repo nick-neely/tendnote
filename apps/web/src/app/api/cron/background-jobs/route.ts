@@ -1,8 +1,12 @@
 import { timingSafeEqual } from "node:crypto";
 import { sweepFileStorage } from "@tendnote/db/queries/file-uploads";
 import { sweepUsageLedger } from "@tendnote/db/queries/usage-ledger";
+import { parseAdmissionPolicy } from "@tendnote/domain";
 import { type NextRequest, NextResponse } from "next/server";
+import Stripe from "stripe";
 import { runBackgroundJobRecovery } from "@/lib/background-jobs/recovery";
+import { paidAccessProjection } from "@/lib/billing/paid-access-projection";
+import { createStripeReconciliation } from "@/lib/billing/stripe-reconciliation";
 
 const DELIVERY_LIMIT = 25;
 const EXTRACTION_BACKFILL_LIMIT = 5;
@@ -65,6 +69,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // First, because it never throws: a failing recovery stage below must not
+  // stop a paying customer whose webhook was dropped from being admitted.
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  const reconcileStripe = createStripeReconciliation({
+    ...paidAccessProjection,
+    policy: parseAdmissionPolicy(),
+    stripe: secretKey ? new Stripe(secretKey) : null,
+    logger: console,
+  });
+  const stripeReconciliation = await reconcileStripe();
+
   const result = await runBackgroundJobRecovery({
     deliveryLimit: DELIVERY_LIMIT,
     extractionBackfillLimit: EXTRACTION_BACKFILL_LIMIT,
@@ -80,5 +95,5 @@ export async function GET(request: NextRequest) {
 
   const files = await sweepFileStorage();
   const usageLedger = await sweepUsageLedger();
-  return NextResponse.json({ ...result, files, usageLedger });
+  return NextResponse.json({ ...result, files, usageLedger, stripeReconciliation });
 }

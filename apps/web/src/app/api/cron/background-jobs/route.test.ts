@@ -15,6 +15,12 @@ const { sweepUsageLedger } = vi.hoisted(() => ({
 }));
 vi.mock("@tendnote/db/queries/usage-ledger", () => ({ sweepUsageLedger }));
 
+const { reconcileStripe } = vi.hoisted(() => ({ reconcileStripe: vi.fn() }));
+vi.mock("@/lib/billing/stripe-reconciliation", () => ({
+  createStripeReconciliation: () => reconcileStripe,
+}));
+vi.mock("@/lib/billing/paid-access-projection", () => ({ paidAccessProjection: {} }));
+
 import { GET } from "./route";
 
 const SECRET = "cron-secret-value";
@@ -28,6 +34,7 @@ function request(authorization?: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   runBackgroundJobRecovery.mockResolvedValue({ ok: true });
+  reconcileStripe.mockResolvedValue({ status: "skipped" });
   // Default to the local-test environment with no opt-in.
   vi.stubEnv("NODE_ENV", "test");
   vi.stubEnv("CRON_SECRET", "");
@@ -92,5 +99,26 @@ describe("background-jobs recovery cron route", () => {
 
     expect(response.status).toBe(401);
     expect(runBackgroundJobRecovery).not.toHaveBeenCalled();
+  });
+
+  it("reconciles Stripe on every authorized pass and reports it", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    reconcileStripe.mockResolvedValue({ status: "ran", scanned: 1, admitted: 1 });
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+
+    expect(reconcileStripe).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toMatchObject({
+      stripeReconciliation: { status: "ran", admitted: 1 },
+    });
+  });
+
+  it("reconciles Stripe even when a later recovery stage fails", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    runBackgroundJobRecovery.mockRejectedValue(new Error("recovery stage failed"));
+
+    await expect(GET(request(`Bearer ${SECRET}`))).rejects.toThrow(/recovery stage failed/);
+
+    expect(reconcileStripe).toHaveBeenCalledOnce();
   });
 });

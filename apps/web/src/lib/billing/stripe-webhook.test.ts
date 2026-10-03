@@ -3,12 +3,9 @@ import { ForbiddenError } from "eve/channels/auth";
 import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness } from "../access/admission-harness";
-import {
-  admitFirstPaidInvoice,
-  createStripeWebhookHandler,
-  type StripeWebhookDependencies,
-} from "./stripe-webhook";
-import type { SubscriptionSnapshot } from "./subscription-projection";
+import { admitFromFirstPaidInvoice } from "./paid-access-admission";
+import { createStripeSubscriptionsFake } from "./stripe-subscriptions-fake";
+import { createStripeWebhookHandler, type StripeWebhookDependencies } from "./stripe-webhook";
 
 const SECRET = "whsec_test_secret";
 const user = { id: "subscriber-1", email: "subscriber@example.com" };
@@ -70,31 +67,8 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
   const customers = new Map([[CUSTOMER, user.id]]);
   const anchors = new Map<string, Date>();
   const log = vi.fn();
-  // Stripe's current copy of each subscription, which the receiver re-reads.
-  const stripeSubscriptions = new Map<string, SubscriptionSnapshot>([
-    ["sub_1", { id: "sub_1", stripeCustomerId: CUSTOMER, cancelAt: null, endedAt: null }],
-  ]);
-  // Tendnote's projection of them, ending terminally like the Drizzle store.
-  const recorded = new Map<
-    string,
-    { userId: string; cancelAt: Date | null; endedAt: Date | null }
-  >();
-  const confirmCancellation = vi.fn(
-    async (_input: { userId: string; stripeSubscriptionId: string; endsAt: Date }) => {},
-  );
-  const subscriptions: StripeWebhookDependencies["subscriptions"] = {
-    getSubscription: async ({ stripeSubscriptionId }) => recorded.get(stripeSubscriptionId) ?? null,
-    recordSubscription: async ({ stripeSubscriptionId, userId, cancelAt, endedAt }) => {
-      const previous = recorded.get(stripeSubscriptionId);
-      recorded.set(stripeSubscriptionId, {
-        userId,
-        cancelAt,
-        endedAt: previous?.endedAt ?? endedAt,
-      });
-    },
-    lapsePaidAccess: (input) => harness.queries.lapsePaidAccess(input),
-    confirmCancellation,
-  };
+  const { subscriptions, retrieveSubscription, recorded, confirmCancellation, stripeChanges } =
+    createStripeSubscriptionsFake(harness.queries, { stripeCustomerId: CUSTOMER });
   const announceAdmission = vi.fn(async (_input: { userId: string; invoiceId: string }) => {
     // The email may only follow a recorded admission.
     const profile = await harness.queries.getAccessProfile({ userId: user.id });
@@ -108,26 +82,11 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
       harness.queries.grantAccess({ userId, source: "paid_access", stripeSubscriptionId }),
     anchorUsagePeriod: async (userId, startedAt) => anchors.set(userId, startedAt),
     announceAdmission,
-    retrieveSubscription: async (id) => {
-      const subscription = stripeSubscriptions.get(id);
-      if (!subscription) throw new Error(`No such subscription: ${id}`);
-      return subscription;
-    },
+    retrieveSubscription,
     subscriptions,
     log,
   };
   const receive = createStripeWebhookHandler(deps);
-
-  /** Change Stripe's copy of a subscription, as the portal or a period end does. */
-  function stripeChanges(id: string, change: Partial<SubscriptionSnapshot>) {
-    const current = stripeSubscriptions.get(id) ?? {
-      id,
-      stripeCustomerId: CUSTOMER,
-      cancelAt: null,
-      endedAt: null,
-    };
-    stripeSubscriptions.set(id, { ...current, ...change });
-  }
 
   async function deliver(event: object) {
     return receive(await signedDelivery(event));
@@ -540,13 +499,13 @@ describe("cancellation through the portal ends in a Lapsed Account (#609)", () =
     await subscriber.deliver(subscriptionEvent("deleted"));
 
     await expect(
-      admitFirstPaidInvoice(subscriber.deps, user.id, {
+      admitFromFirstPaidInvoice(subscriber.deps, user.id, {
         invoiceId: "in_first",
         stripeCustomerId: CUSTOMER,
         stripeSubscriptionId: "sub_1",
         startedAt: new Date(SUBSCRIPTION_STARTED * 1000),
       }),
-    ).resolves.toBe("subscription_ended");
+    ).resolves.toBeNull();
 
     await subscriber.expectNotAdmitted();
     await expect(profile(subscriber)).resolves.toMatchObject({
