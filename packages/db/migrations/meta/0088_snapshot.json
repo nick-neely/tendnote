@@ -1,5 +1,5 @@
 {
-  "id": "af148de1-ea59-475e-ad46-49ede2318192",
+  "id": "66c18717-c4dc-4733-bc64-bfd765f8bbd9",
   "prevId": "e57832ad-1f0b-4bd0-9527-8c9b30107560",
   "version": "7",
   "dialect": "postgresql",
@@ -135,6 +135,12 @@
         "retention_deadline": {
           "name": "retention_deadline",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paid_access_subscription_id": {
+          "name": "paid_access_subscription_id",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

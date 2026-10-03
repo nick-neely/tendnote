@@ -12,8 +12,8 @@ export type StripeWebhookDependencies = {
   webhookSecret: string | undefined;
   /** The account a Tendnote-created Stripe customer belongs to, read locally. */
   findAccountByStripeCustomer: (stripeCustomerId: string) => Promise<string | null>;
-  /** Grant the account the Paid Access source. Must be idempotent. */
-  grantPaidAccess: (userId: string) => Promise<unknown>;
+  /** Grant the account Paid Access from this subscription. Must be idempotent. */
+  grantPaidAccess: (userId: string, stripeSubscriptionId: string) => Promise<unknown>;
   /** Anchor the account's Usage Period to its subscription's start. Must be idempotent. */
   anchorUsagePeriod: (userId: string, startedAt: Date) => Promise<unknown>;
   /**
@@ -66,6 +66,42 @@ function firstPaidInvoice(event: Stripe.Event): {
     stripeSubscriptionId,
     startedAt: new Date(invoice.period_start * 1000),
   };
+}
+
+type FirstPaidInvoice = NonNullable<ReturnType<typeof firstPaidInvoice>>;
+
+/**
+ * Admit an account on its subscription's first paid invoice: the one way Paid
+ * Access is granted, for the webhook and for any later re-projection such as
+ * reconciliation (#608). The subscription is projected from Stripe's current
+ * copy first, and one that has ended admits nobody, so re-projecting a still-
+ * paid first invoice can never bring back an account its end made Lapsed.
+ *
+ * Every write is idempotent. The "you're in" email goes last, once admission is
+ * fully recorded; a failed send throws like any other failure, so the caller's
+ * retry sends it again.
+ */
+export async function admitFirstPaidInvoice(
+  deps: Pick<
+    StripeWebhookDependencies,
+    | "retrieveSubscription"
+    | "subscriptions"
+    | "grantPaidAccess"
+    | "anchorUsagePeriod"
+    | "announceAdmission"
+  >,
+  userId: string,
+  paid: FirstPaidInvoice,
+): Promise<"admitted" | "subscription_ended"> {
+  const subscription = await deps.retrieveSubscription(paid.stripeSubscriptionId);
+  await projectSubscription(deps.subscriptions, userId, subscription);
+  if (subscription.endedAt) return "subscription_ended";
+
+  await deps.grantPaidAccess(userId, paid.stripeSubscriptionId);
+  // After the grant, which is what guarantees the Access Profile exists.
+  await deps.anchorUsagePeriod(userId, paid.startedAt);
+  await deps.announceAdmission({ userId, invoiceId: paid.invoiceId });
+  return "admitted";
 }
 
 /** The subscription a portal change or a period end touched, if this event is one. */
@@ -154,22 +190,11 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
       return new Response(null, { status: 200 });
     }
 
-    const subscription = await deps.retrieveSubscription(paid.stripeSubscriptionId);
-    await projectSubscription(deps.subscriptions, userId, subscription);
-    if (subscription.endedAt) {
+    if ((await admitFirstPaidInvoice(deps, userId, paid)) === "subscription_ended") {
       log(
         `[tendnote] Stripe event ${event.id} pays a subscription that has ended; nothing was admitted`,
       );
-      return new Response(null, { status: 200 });
     }
-
-    await deps.grantPaidAccess(userId);
-    // After the grant, which is what guarantees the Access Profile exists.
-    await deps.anchorUsagePeriod(userId, paid.startedAt);
-    // Last, once admission is fully recorded. A failed send surfaces as a 500
-    // like any other failure, so Stripe's redelivery retries it; both writes
-    // above are idempotent.
-    await deps.announceAdmission({ userId, invoiceId: paid.invoiceId });
     return new Response(null, { status: 200 });
   };
 }

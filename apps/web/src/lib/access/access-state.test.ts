@@ -34,6 +34,7 @@ const admittedDecision: AccessDecision = {
     householdCheckinEnabled: false,
     eveApprovalMode: "ask",
     retentionDeadline: null,
+    paidAccessSubscriptionId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   },

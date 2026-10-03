@@ -20,6 +20,7 @@ function grantedProfileFixture(userId: string): AccessProfile {
     householdCheckinEnabled: false,
     eveApprovalMode: "ask",
     retentionDeadline: null,
+    paidAccessSubscriptionId: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -165,10 +166,17 @@ describe("access profile queries", () => {
 
   it("lapses Paid Access with a retention deadline set once on entry", async () => {
     const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
-    await queries.grantAccess({ userId: FIRST_USER, source: "paid_access" });
+    await queries.grantAccess({
+      userId: FIRST_USER,
+      source: "paid_access",
+      stripeSubscriptionId: "sub_1",
+    });
     const lapsedAt = new Date("2026-10-31T17:04:05.000Z");
 
-    await expect(queries.lapsePaidAccess({ userId: FIRST_USER, lapsedAt })).resolves.toMatchObject({
+    await expect(
+      queries.lapsePaidAccess({ userId: FIRST_USER, stripeSubscriptionId: "sub_1", lapsedAt }),
+    ).resolves.toBe(true);
+    await expect(queries.getAccessProfile({ userId: FIRST_USER })).resolves.toMatchObject({
       status: "pending",
       retentionDeadline: new Date("2027-01-29T17:04:05.000Z"),
     });
@@ -177,7 +185,13 @@ describe("access profile queries", () => {
     });
 
     // A second lapse, however late, never moves the deadline already promised.
-    await queries.lapsePaidAccess({ userId: FIRST_USER, lapsedAt: new Date("2026-12-01") });
+    await expect(
+      queries.lapsePaidAccess({
+        userId: FIRST_USER,
+        stripeSubscriptionId: "sub_1",
+        lapsedAt: new Date("2026-12-01"),
+      }),
+    ).resolves.toBe(false);
     await expect(queries.getAccessProfile({ userId: FIRST_USER })).resolves.toMatchObject({
       retentionDeadline: new Date("2027-01-29T17:04:05.000Z"),
     });
@@ -189,7 +203,11 @@ describe("access profile queries", () => {
     await queries.ensureAccessProfile({ userId: SECOND_USER });
 
     for (const userId of [FIRST_USER, SECOND_USER, "user-unknown"]) {
-      await queries.lapsePaidAccess({ userId, lapsedAt: new Date("2026-10-31") });
+      await queries.lapsePaidAccess({
+        userId,
+        stripeSubscriptionId: "sub_1",
+        lapsedAt: new Date("2026-10-31"),
+      });
     }
 
     await expect(queries.getAccessProfile({ userId: FIRST_USER })).resolves.toMatchObject({
@@ -203,13 +221,59 @@ describe("access profile queries", () => {
     });
   });
 
+  it("never lapses an account on the end of a subscription other than the one paying for it", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    await queries.grantAccess({
+      userId: FIRST_USER,
+      source: "paid_access",
+      stripeSubscriptionId: "sub_1",
+    });
+    await queries.lapsePaidAccess({
+      userId: FIRST_USER,
+      stripeSubscriptionId: "sub_1",
+      lapsedAt: new Date("2026-10-31"),
+    });
+    await queries.grantAccess({
+      userId: FIRST_USER,
+      source: "paid_access",
+      stripeSubscriptionId: "sub_2",
+    });
+
+    // The old subscription's end arrives late, after the resubscription.
+    await expect(
+      queries.lapsePaidAccess({
+        userId: FIRST_USER,
+        stripeSubscriptionId: "sub_1",
+        lapsedAt: new Date("2026-10-31"),
+      }),
+    ).resolves.toBe(false);
+    await expect(queries.getAccessProfile({ userId: FIRST_USER })).resolves.toMatchObject({
+      status: "granted",
+      source: "paid_access",
+      paidAccessSubscriptionId: "sub_2",
+      retentionDeadline: null,
+    });
+  });
+
   it("clears the retention deadline when a Lapsed account is admitted again", async () => {
     const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
-    await queries.grantAccess({ userId: FIRST_USER, source: "paid_access" });
-    await queries.lapsePaidAccess({ userId: FIRST_USER, lapsedAt: new Date("2026-10-31") });
+    await queries.grantAccess({
+      userId: FIRST_USER,
+      source: "paid_access",
+      stripeSubscriptionId: "sub_1",
+    });
+    await queries.lapsePaidAccess({
+      userId: FIRST_USER,
+      stripeSubscriptionId: "sub_1",
+      lapsedAt: new Date("2026-10-31"),
+    });
 
     await expect(
-      queries.grantAccess({ userId: FIRST_USER, source: "paid_access" }),
+      queries.grantAccess({
+        userId: FIRST_USER,
+        source: "paid_access",
+        stripeSubscriptionId: "sub_2",
+      }),
     ).resolves.toMatchObject({ status: "granted", source: "paid_access", retentionDeadline: null });
   });
 

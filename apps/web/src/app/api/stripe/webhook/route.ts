@@ -3,7 +3,6 @@ import { getAuthUserEmail } from "@tendnote/db/queries/auth-users";
 import { findUserIdByStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
 import {
   getStripeSubscription,
-  hasOtherLiveStripeSubscription,
   recordStripeSubscription,
 } from "@tendnote/db/queries/stripe-subscriptions";
 import { anchorUsagePeriod } from "@tendnote/db/queries/usage-bounds";
@@ -21,7 +20,8 @@ export async function POST(request: Request) {
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
     findAccountByStripeCustomer: (stripeCustomerId) =>
       findUserIdByStripeCustomerId({ stripeCustomerId }),
-    grantPaidAccess: (userId) => grantAccess({ userId, source: "paid_access" }),
+    grantPaidAccess: (userId, stripeSubscriptionId) =>
+      grantAccess({ userId, source: "paid_access", stripeSubscriptionId }),
     anchorUsagePeriod: (userId, startedAt) => anchorUsagePeriod({ userId, startedAt }),
     announceAdmission: async ({ userId, invoiceId }) => {
       // An account deleted since it paid has nobody left to tell.
@@ -38,7 +38,6 @@ export async function POST(request: Request) {
     subscriptions: {
       getSubscription: getStripeSubscription,
       recordSubscription: recordStripeSubscription,
-      hasOtherLiveSubscription: hasOtherLiveStripeSubscription,
       lapsePaidAccess,
       confirmCancellation: async ({ userId, stripeSubscriptionId, endsAt }) => {
         const to = await getAuthUserEmail({ userId });

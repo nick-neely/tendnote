@@ -47,12 +47,16 @@ export type SubscriptionProjectionDependencies = {
     cancelAt: Date | null;
     endedAt: Date | null;
   }) => Promise<unknown>;
-  hasOtherLiveSubscription: (input: {
+  /**
+   * End the Paid Access this subscription granted, making the account Lapsed.
+   * Must be atomic and idempotent, and change nothing when another subscription
+   * now pays for the account.
+   */
+  lapsePaidAccess: (input: {
     userId: string;
     stripeSubscriptionId: string;
-  }) => Promise<boolean>;
-  /** End Paid Access, making the account Lapsed. Must be idempotent. */
-  lapsePaidAccess: (input: { userId: string; lapsedAt: Date }) => Promise<unknown>;
+    lapsedAt: Date;
+  }) => Promise<unknown>;
   /** Send the content-free cancellation confirmation, keyed on the cancellation. */
   confirmCancellation: (input: {
     userId: string;
@@ -65,9 +69,9 @@ export type SubscriptionProjectionDependencies = {
  * Project one subscription's current state onto its account (#609). A newly
  * scheduled cancellation is confirmed by email before it is recorded, so a
  * failed send leaves nothing recorded and Stripe's redelivery retries it. An
- * ended subscription makes the account Lapsed, unless the account already pays
- * through another one, such as a resubscription whose predecessor's end arrived
- * late. Every step is idempotent, and the snapshot is always Stripe's current
+ * ended subscription makes the account Lapsed if it is the one paying for the
+ * account, so a resubscription whose predecessor's end arrives late is left
+ * alone. Every step is idempotent, and the snapshot is always Stripe's current
  * copy, so duplicate and reordered events project the same state.
  */
 export async function projectSubscription(
@@ -93,10 +97,7 @@ export async function projectSubscription(
     endedAt: snapshot.endedAt,
   });
 
-  if (
-    snapshot.endedAt &&
-    !(await deps.hasOtherLiveSubscription({ userId, stripeSubscriptionId }))
-  ) {
-    await deps.lapsePaidAccess({ userId, lapsedAt: snapshot.endedAt });
+  if (snapshot.endedAt) {
+    await deps.lapsePaidAccess({ userId, stripeSubscriptionId, lapsedAt: snapshot.endedAt });
   }
 }

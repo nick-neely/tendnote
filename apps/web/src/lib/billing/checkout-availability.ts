@@ -1,10 +1,9 @@
 import "server-only";
 
 import { vercelAdapter } from "@flags-sdk/vercel";
-import { parseAdmissionPolicy } from "@tendnote/domain";
 import { flag } from "flags/next";
 import type { PrivateBetaEntities } from "@/lib/access/private-beta-flag";
-import { readStripeBillingConfig } from "./checkout";
+import { readHostedStripeBillingConfig } from "./checkout";
 
 /**
  * Hides Checkout until Stage 2 of the launch. The webhook receiver is not behind
@@ -27,7 +26,7 @@ export const checkoutFlag = flag<boolean, PrivateBetaEntities>({
  * Checkout rather than failing the page.
  */
 export async function isCheckoutOpen(user: { id: string; email: string }): Promise<boolean> {
-  if (parseAdmissionPolicy().mode !== "hosted" || !readStripeBillingConfig()) return false;
+  if (!readHostedStripeBillingConfig()) return false;
   try {
     return await checkoutFlag.run({ identify: { user: { id: user.id, email: user.email } } });
   } catch {

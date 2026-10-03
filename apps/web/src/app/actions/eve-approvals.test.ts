@@ -29,6 +29,7 @@ vi.mock("@tendnote/db/queries/access-profiles", async () => {
         householdCheckinEnabled: false,
         eveApprovalMode: "ask",
         retentionDeadline: null,
+        paidAccessSubscriptionId: null,
         createdAt: new Date("2026-01-01T00:00:00.000Z"),
         updatedAt: new Date("2026-01-01T00:00:00.000Z"),
       },

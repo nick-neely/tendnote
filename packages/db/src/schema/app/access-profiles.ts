@@ -46,6 +46,9 @@ export const accessProfiles = pgTable(
     // written once on entering Lapsed and cleared by any later grant. Its
     // presence on a not-admitted profile is what makes the account Lapsed.
     retentionDeadline: timestamp("retention_deadline", { withTimezone: true }),
+    // The Stripe subscription whose first paid invoice granted Paid Access.
+    // Only its end lapses the account (#609).
+    paidAccessSubscriptionId: text("paid_access_subscription_id"),
     ...timestamps,
   },
   (table) => [

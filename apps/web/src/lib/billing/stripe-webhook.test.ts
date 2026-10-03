@@ -3,7 +3,11 @@ import { ForbiddenError } from "eve/channels/auth";
 import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness } from "../access/admission-harness";
-import { createStripeWebhookHandler, type StripeWebhookDependencies } from "./stripe-webhook";
+import {
+  admitFirstPaidInvoice,
+  createStripeWebhookHandler,
+  type StripeWebhookDependencies,
+} from "./stripe-webhook";
 import type { SubscriptionSnapshot } from "./subscription-projection";
 
 const SECRET = "whsec_test_secret";
@@ -88,11 +92,6 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
         endedAt: previous?.endedAt ?? endedAt,
       });
     },
-    hasOtherLiveSubscription: async ({ userId, stripeSubscriptionId }) =>
-      [...recorded].some(
-        ([id, record]) =>
-          id !== stripeSubscriptionId && record.userId === userId && record.endedAt === null,
-      ),
     lapsePaidAccess: (input) => harness.queries.lapsePaidAccess(input),
     confirmCancellation,
   };
@@ -101,11 +100,12 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
     const profile = await harness.queries.getAccessProfile({ userId: user.id });
     if (profile?.status !== "granted") throw new Error("announced before admission");
   });
-  const receive = createStripeWebhookHandler({
+  const deps: StripeWebhookDependencies = {
     policy,
     webhookSecret: SECRET,
     findAccountByStripeCustomer: async (id) => customers.get(id) ?? null,
-    grantPaidAccess: (userId) => harness.queries.grantAccess({ userId, source: "paid_access" }),
+    grantPaidAccess: (userId, stripeSubscriptionId) =>
+      harness.queries.grantAccess({ userId, source: "paid_access", stripeSubscriptionId }),
     anchorUsagePeriod: async (userId, startedAt) => anchors.set(userId, startedAt),
     announceAdmission,
     retrieveSubscription: async (id) => {
@@ -115,7 +115,8 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
     },
     subscriptions,
     log,
-  });
+  };
+  const receive = createStripeWebhookHandler(deps);
 
   /** Change Stripe's copy of a subscription, as the portal or a period end does. */
   function stripeChanges(id: string, change: Partial<SubscriptionSnapshot>) {
@@ -148,6 +149,7 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
 
   return {
     ...harness,
+    deps,
     receive,
     deliver,
     log,
@@ -166,7 +168,6 @@ function inertSubscriptions(): StripeWebhookDependencies["subscriptions"] {
   return {
     getSubscription: async () => null,
     recordSubscription: vi.fn(),
-    hasOtherLiveSubscription: async () => false,
     lapsePaidAccess: vi.fn(),
     confirmCancellation: vi.fn(),
   };
@@ -531,6 +532,26 @@ describe("cancellation through the portal ends in a Lapsed Account (#609)", () =
 
     await subscriber.expectNotAdmitted();
     expect(subscriber.announceAdmission).toHaveBeenCalledOnce();
+  });
+
+  it("never re-admits when a revoked account's still-paid first invoice is re-projected, as reconciliation does", async () => {
+    const subscriber = await paying();
+    subscriber.stripeChanges("sub_1", { endedAt: PERIOD_END });
+    await subscriber.deliver(subscriptionEvent("deleted"));
+
+    await expect(
+      admitFirstPaidInvoice(subscriber.deps, user.id, {
+        invoiceId: "in_first",
+        stripeCustomerId: CUSTOMER,
+        stripeSubscriptionId: "sub_1",
+        startedAt: new Date(SUBSCRIPTION_STARTED * 1000),
+      }),
+    ).resolves.toBe("subscription_ended");
+
+    await subscriber.expectNotAdmitted();
+    await expect(profile(subscriber)).resolves.toMatchObject({
+      retentionDeadline: lapsedRetentionDeadline(PERIOD_END),
+    });
   });
 
   it("restores Paid and clears the deadline on resubscribing, and a late end of the old one changes nothing", async () => {

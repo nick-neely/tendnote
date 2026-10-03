@@ -3,7 +3,6 @@ import { getLatestOwnerDataExportJob } from "@tendnote/db/queries/owner-data-exp
 import { listReminderInstallations } from "@tendnote/db/queries/reminders";
 import { getStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
 import { getScheduledCancellation } from "@tendnote/db/queries/stripe-subscriptions";
-import { parseAdmissionPolicy } from "@tendnote/domain";
 import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
@@ -29,7 +28,7 @@ import {
   isDiscordConfigured,
   isGoogleConfigured,
 } from "@/lib/auth/social";
-import { readStripeBillingConfig } from "@/lib/billing/checkout";
+import { readHostedStripeBillingConfig } from "@/lib/billing/checkout";
 import { parseCalendarPreviewTarget } from "@/lib/integrations/calendar-preview";
 import { getOwnerCalendarPreview } from "@/lib/integrations/calendar-preview-data";
 import { buildProviderConnectionView } from "@/lib/integrations/provider-connection-view";
@@ -187,7 +186,7 @@ async function OwnerDataExportStream({ ownerUserId }: { ownerUserId: string }) {
  * renews when the read that would say it ends never landed.
  */
 async function BillingStream({ ownerUserId }: { ownerUserId: string }) {
-  if (parseAdmissionPolicy().mode !== "hosted" || !readStripeBillingConfig()) return null;
+  if (!readHostedStripeBillingConfig()) return null;
   try {
     const [customer, endsAt] = await Promise.all([
       getStripeCustomerId({ userId: ownerUserId }),

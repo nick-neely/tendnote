@@ -81,6 +81,12 @@ export const accessProfileSchema = z.object({
    * rather than never paid.
    */
   retentionDeadline: z.date().nullable().default(null),
+  /**
+   * The Stripe subscription whose first paid invoice granted Paid Access
+   * (#609). Only that subscription's end can lapse the account, so a late end
+   * of an older one never touches an account a resubscription admitted.
+   */
+  paidAccessSubscriptionId: z.string().nullable().default(null),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

@@ -46,7 +46,7 @@ export async function resolveHouseholdJoinView(secret: string): Promise<Househol
   const decision = await viewHouseholdInvitation({ secret, viewer: await viewerFor(access) });
 
   return decision.state === "ready"
-    ? { ...decision, accessPending: access.state === "pending" || access.state === "lapsed" }
+    ? { ...decision, accessPending: access.state === "pending" }
     : decision;
 }
 

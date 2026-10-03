@@ -79,11 +79,19 @@ export async function listAdmittedOwnerUserIds() {
   return defaultAccessProfileQueries.listAdmittedOwnerUserIds();
 }
 
-export async function grantAccess(input: { userId: string; source: AccessSource }) {
+export async function grantAccess(input: {
+  userId: string;
+  source: AccessSource;
+  stripeSubscriptionId?: string;
+}) {
   return defaultAccessProfileQueries.grantAccess(input);
 }
 
 /** End Paid Access when its subscription ends, making the account Lapsed (#609). */
-export async function lapsePaidAccess(input: { userId: string; lapsedAt: Date }) {
+export async function lapsePaidAccess(input: {
+  userId: string;
+  stripeSubscriptionId: string;
+  lapsedAt: Date;
+}) {
   return defaultAccessProfileQueries.lapsePaidAccess(input);
 }

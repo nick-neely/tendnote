@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { getDb } from "../client";
 import { stripeSubscriptions } from "../schema";
 
@@ -39,25 +39,6 @@ export async function recordStripeSubscription(input: {
         updatedAt: new Date(),
       },
     });
-}
-
-/** Whether the account holds a live subscription other than this one. */
-export async function hasOtherLiveStripeSubscription(input: {
-  userId: string;
-  stripeSubscriptionId: string;
-}): Promise<boolean> {
-  const [row] = await getDb()
-    .select({ id: stripeSubscriptions.stripeSubscriptionId })
-    .from(stripeSubscriptions)
-    .where(
-      and(
-        eq(stripeSubscriptions.userId, input.userId),
-        ne(stripeSubscriptions.stripeSubscriptionId, input.stripeSubscriptionId),
-        isNull(stripeSubscriptions.endedAt),
-      ),
-    )
-    .limit(1);
-  return Boolean(row);
 }
 
 /**
