@@ -9,6 +9,8 @@ export type {
   AdmissionResolverDependencies,
   GuestHousehold,
   GuestHouseholdReader,
+  GuestStanding,
+  GuestStandingReader,
   HostedFlagEvaluator,
 } from "./access-profiles/admission";
 export {

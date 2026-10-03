@@ -86,6 +86,8 @@ export type HouseholdStore = {
   listActiveHouseholdMembershipsForUser: (input: {
     userId: string;
   }) => Promise<HouseholdMembership[]>;
+  /** Every membership the account has held, in any status. */
+  listHouseholdMembershipsForUser: (input: { userId: string }) => Promise<HouseholdMembership[]>;
   createHouseholdRecordShare: (input: {
     householdId: string;
     recordKind: VisibilityRecordKind;

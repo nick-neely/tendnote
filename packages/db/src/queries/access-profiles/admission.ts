@@ -44,6 +44,16 @@ export type GuestHousehold = { householdId: string; ownerUserIds: readonly strin
 
 export type GuestHouseholdReader = (input: { userId: string }) => Promise<GuestHousehold | null>;
 
+/**
+ * What an account's memberships say about a guest view it no longer has
+ * (#637): it still holds a non-Owner membership (`household_inactive`), or it
+ * held one that ended (`membership_ended`). Membership facts only; whether the
+ * household is actually without a paying Owner is the admission reader's call.
+ */
+export type GuestStanding = "household_inactive" | "membership_ended";
+
+export type GuestStandingReader = (input: { userId: string }) => Promise<GuestStanding | null>;
+
 export type AdmissionResolverDependencies = {
   accessProfiles: AccessProfileGateway;
   evaluateFlag: HostedFlagEvaluator;
@@ -87,6 +97,8 @@ type LocalAdmissionDependencies = {
   accessProfiles: Pick<AccessProfileGateway, "checkAccess">;
   listAdmissionBlocks?: AdmissionBlockReader;
   readGuestHousehold?: GuestHouseholdReader;
+  /** Hosted only. Without it no account has a {@link GuestStanding}. */
+  readGuestStanding?: GuestStandingReader;
   policy?: AdmissionPolicy;
   environment?: AdmissionEnvironment;
 };
@@ -134,13 +146,20 @@ export function createLocalAdmissionReader(deps: LocalAdmissionDependencies) {
     );
   }
 
+  /**
+   * Whether the account holds or held Paid Access. Lapsing clears the source but
+   * sets the retention deadline, so either one is the paid history.
+   */
+  async function heldPaidAccess(userId: string): Promise<boolean> {
+    const { profile } = await deps.accessProfiles.checkAccess({ userId });
+    return profile?.source === "paid_access" || Boolean(profile?.retentionDeadline);
+  }
+
   async function liveGuestHousehold(userId: string): Promise<{ householdId: string } | null> {
     if (policy.mode !== "hosted" || !deps.readGuestHousehold) return null;
     // Household Guest is entered only from Unpaid. An account that has held
     // Paid Access is Lapsed once it ends, never a guest.
-    if ((await deps.accessProfiles.checkAccess({ userId })).profile?.source === "paid_access") {
-      return null;
-    }
+    if (await heldPaidAccess(userId)) return null;
     const household = await deps.readGuestHousehold({ userId });
     if (!household) return null;
 
@@ -152,8 +171,22 @@ export function createLocalAdmissionReader(deps: LocalAdmissionDependencies) {
     return null;
   }
 
+  /**
+   * Why a hosted account that is not a live Household Guest, and never held
+   * Paid Access, lost a guest view it had (#637): its household lost its last
+   * paying Owner, or its membership ended. An account blocked on its own
+   * account has no standing here, because its household may well be paying.
+   */
+  async function guestStanding(userId: string): Promise<GuestStanding | null> {
+    if (policy.mode !== "hosted" || !deps.readGuestStanding) return null;
+    if (await heldPaidAccess(userId)) return null;
+    if (!(await isUnblocked(userId)) || (await liveGuestHousehold(userId))) return null;
+    return deps.readGuestStanding({ userId });
+  }
+
   return {
     liveGuestHousehold,
+    guestStanding,
     /**
      * Whether the account is admitted now, fully or as a live guest. This is
      * what a household roster states about a member, and nothing more.

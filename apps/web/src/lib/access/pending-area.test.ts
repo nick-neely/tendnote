@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { pendingAreaView } from "./pending-area";
 
-const facts = { checkoutOpen: true, startedCheckout: false, ownsExportableData: false };
+const facts = {
+  checkoutOpen: true,
+  startedCheckout: false,
+  ownsExportableData: false,
+  guestStanding: null,
+} as const;
 
 describe("pendingAreaView (#607)", () => {
   it("tells a never-subscribed account nothing has been charged and offers Subscribe", () => {
@@ -40,8 +45,47 @@ describe("pendingAreaView (#607)", () => {
     expect(pendingAreaView(facts).exportData).toBe(false);
     expect(pendingAreaView({ ...facts, ownsExportableData: true }).exportData).toBe(true);
     expect(
-      pendingAreaView({ checkoutOpen: false, startedCheckout: false, ownsExportableData: true })
-        .exportData,
+      pendingAreaView({ ...facts, checkoutOpen: false, ownsExportableData: true }).exportData,
     ).toBe(true);
+  });
+});
+
+describe("pendingAreaView for a guest that is not one now (#637)", () => {
+  const namesSomeone = /owner|billing|paid|payment|subscription|\d/i;
+
+  it("tells a guest its household is not currently active, naming nobody and no date", () => {
+    const view = pendingAreaView({ ...facts, guestStanding: "household_inactive" });
+
+    expect(view).toMatchObject({
+      state: "household_inactive",
+      title: "This household is not currently active on Tendnote",
+      subscribe: true,
+      exportData: false,
+    });
+    expect(view.line).toContain("Nothing was deleted");
+    expect(`${view.title} ${view.line}`).not.toMatch(namesSomeone);
+  });
+
+  it("tells a removed guest its membership ended, naming nobody and no date", () => {
+    const view = pendingAreaView({ ...facts, guestStanding: "membership_ended" });
+
+    expect(view).toMatchObject({ state: "membership_ended", subscribe: true, exportData: false });
+    expect(`${view.title} ${view.line}`).not.toMatch(namesSomeone);
+  });
+
+  it("puts an inactive household ahead of an unfinished checkout, and an ended membership behind it", () => {
+    expect(
+      pendingAreaView({ ...facts, startedCheckout: true, guestStanding: "household_inactive" })
+        .state,
+    ).toBe("household_inactive");
+    expect(
+      pendingAreaView({ ...facts, startedCheckout: true, guestStanding: "membership_ended" }).state,
+    ).toBe("checkout_unfinished");
+  });
+
+  it("keeps the guest's line but drops Subscribe while Checkout is closed", () => {
+    expect(
+      pendingAreaView({ ...facts, checkoutOpen: false, guestStanding: "membership_ended" }),
+    ).toMatchObject({ state: "membership_ended", subscribe: false });
   });
 });
