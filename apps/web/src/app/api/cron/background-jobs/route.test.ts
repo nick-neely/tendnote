@@ -20,6 +20,11 @@ const { sweepAccountFunnelEvents } = vi.hoisted(() => ({
 }));
 vi.mock("@tendnote/db/queries/account-telemetry", () => ({ sweepAccountFunnelEvents }));
 
+const { sweepPublicActivityCounts } = vi.hoisted(() => ({
+  sweepPublicActivityCounts: vi.fn(async () => ({ deleted: 0 })),
+}));
+vi.mock("@tendnote/db/queries/public-activity", () => ({ sweepPublicActivityCounts }));
+
 const { reconcileStripe } = vi.hoisted(() => ({ reconcileStripe: vi.fn() }));
 vi.mock("@/lib/billing/stripe-reconciliation", () => ({
   createStripeReconciliation: () => reconcileStripe,
@@ -85,6 +90,7 @@ describe("background-jobs recovery cron route", () => {
     expect(runBackgroundJobRecovery).toHaveBeenCalledTimes(1);
     expect(sweepUsageLedger).toHaveBeenCalledTimes(1);
     expect(sweepAccountFunnelEvents).toHaveBeenCalledTimes(1);
+    expect(sweepPublicActivityCounts).toHaveBeenCalledTimes(1);
   });
 
   it("allows the explicit development-only opt-in when no secret is configured", async () => {

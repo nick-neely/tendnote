@@ -468,6 +468,10 @@ _Avoid_: Analytics event, activation metric, funnel step, streak
 An optional, content-free, account-linked record that an account enrolled from a known-US request first reached one fixed funnel stage, from signup through First Value, stored in Tendnote under a dedicated opaque identifier, honouring the telemetry opt-out, and deleted after ninety days or with the account. It is not an Activation Milestone, a billing or admission record, or a third-party analytics event.
 _Avoid_: Analytics event, tracking event, conversion pixel
 
+**Public Activity Count**:
+An anonymous daily total of one fixed public event (page viewed, demo started, demo completed, signup clicked) on one fixed public page, counted only for known-US requests in hosted mode and deleted after thirteen months. It has no visitor identifier, cookie, or row per visit, so it is never joined to an account. Its ratios are approximate activity ratios, not unique-person conversion rates.
+_Avoid_: Visitor, session, page analytics, unique visitors
+
 **Representative Month**:
 A synthetic month of Launch Customer activity, built from the First Value loop plus the Return, replayed through Eve's real session protocol to measure what one account costs to serve. It comes in light, typical, and heavy variants and is not a real account's history, a load test, or an eval case.
 _Avoid_: Persona workload, load test, usage scenario

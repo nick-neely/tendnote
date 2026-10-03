@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useEffect, useId, useReducer, useRef, useState } from "react";
 import { ArrowRightIcon, ArrowUpIcon, CheckIcon, PlusIcon, RestartIcon } from "@/components/icons";
 import { pageTitle, smallText } from "@/components/page-section";
+import { usePublicActivity } from "@/components/public-activity";
 import { StorySteps } from "@/components/story-steps";
 import { useReducedMotion } from "@/components/use-reduced-motion";
 import { useTypedText } from "@/components/use-typed-text";
@@ -56,11 +57,16 @@ export function DemoStory() {
   const reduced = useReducedMotion();
   const stageRef = useRef<HTMLDivElement>(null);
   const moveFocus = useRef(false);
+  const reportActivity = usePublicActivity();
 
   // After the visitor acts inside the story, focus follows to the next thing to
   // do. Choosing a step from the list leaves focus on the list.
   function act(action: DemoAction) {
     moveFocus.current = action.type !== "go-to";
+    // Sending the first note starts the demo; the time jump to the reminder
+    // completes it. Choosing a step from the list does neither.
+    if (action.type === "send") reportActivity("demo_started", "demo");
+    if (action.type === "jump") reportActivity("demo_completed", "demo");
     dispatch(action);
   }
 

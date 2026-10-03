@@ -652,6 +652,13 @@
       "when": 1791063864437,
       "tag": "0092_spend_breaker_days",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1791066099452,
+      "tag": "0093_public_activity_daily_counts",
+      "breakpoints": true
     }
   ]
 }

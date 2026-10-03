@@ -1,4 +1,5 @@
 import { ACTIVATION_MILESTONES } from "./activation-milestones";
+import { type PublicActivityTotals, renderPublicActivityLines } from "./public-activity";
 import { RETENTION } from "./retention";
 
 /**
@@ -64,6 +65,8 @@ export type AccountFunnelReportData = {
   accountsCreated: number;
   /** Accounts whose optional telemetry is switched off today. */
   accountsOptedOut: number;
+  /** Anonymous public activity over the same window's UTC days. */
+  publicActivity: PublicActivityTotals;
 };
 
 /** Each stage's account count from grouped rows, with a stage no account reached as zero. */
@@ -141,7 +144,7 @@ export function renderAccountFunnelReport(data: AccountFunnelReportData): string
     "Anonymous daily page counters, never joined to accounts. Their ratios are",
     "approximate activity ratios, not unique-person conversion rates.",
     "",
-    "  Not collected yet.",
+    ...renderPublicActivityLines(data.publicActivity),
     "",
   ].join("\n");
 }

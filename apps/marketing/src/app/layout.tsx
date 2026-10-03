@@ -1,8 +1,10 @@
 import { plexFontVariables } from "@tendnote/ui/fonts";
 import type { Metadata, Viewport } from "next";
 import { ThemeProvider } from "next-themes";
+import { PublicActivity } from "@/components/public-activity";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { appLinks, publicActivityEndpoint } from "@/lib/site-links";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -56,11 +58,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           >
             Skip to content
           </a>
-          <SiteHeader />
-          <main className="flex-1" id="main" tabIndex={-1}>
-            {children}
-          </main>
-          <SiteFooter />
+          <PublicActivity endpoint={publicActivityEndpoint()} signupHref={appLinks().subscribe}>
+            <SiteHeader />
+            <main className="flex-1" id="main" tabIndex={-1}>
+              {children}
+            </main>
+            <SiteFooter />
+          </PublicActivity>
         </ThemeProvider>
       </body>
     </html>

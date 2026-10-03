@@ -21,6 +21,7 @@ export const metadata: Metadata = {
 };
 
 const funnelRetentionDays = RETENTION.accountLinkedFunnelEvents.days;
+const publicCountMonths = RETENTION.anonymousDailyTotals.months;
 
 // Rebuilt daily so the recovery sentence leaves the page on the day a drill
 // goes stale, without anyone remembering to redeploy.
@@ -186,10 +187,10 @@ export default function PrivacyAndAiPage() {
       </SplitSection>
 
       {/*
-       * Account funnel events and their opt-out (#640) are described below.
-       * Anonymous page counters (#646) and error reports once GlitchTip is
-       * enabled (#655) each revise this section when they ship, inside the
-       * same no-cookie, no-cross-site boundary.
+       * Anonymous page counters (#646), then account funnel events and their
+       * opt-out (#640). Error reports, once GlitchTip is enabled (#655), revise
+       * this section when they ship, inside the same no-cookie, no-cross-site
+       * boundary.
        */}
       <SplitSection
         aside={<p className="max-w-[44ch] text-muted-foreground">On this site and in the app.</p>}
@@ -199,8 +200,14 @@ export default function PrivacyAndAiPage() {
       >
         <p className="max-w-[62ch]">
           There is no advertising, no cross-site tracking, no session replay, and no analytics
-          cookie, which is why there is no cookie banner. Today this site sets no cookies and
-          records nothing about your visit.
+          cookie, which is why there is no cookie banner. This site sets no cookies.
+        </p>
+        <p className="max-w-[62ch]">
+          On this site, Tendnote keeps a daily count of which pages are viewed, how often the demo
+          is started and finished, and how often Subscribe is clicked. A visit only adds one to a
+          total. There is no visitor ID and nothing that ties a count to you or to an account, so
+          there is nothing to turn off or delete. Counted only for visits from the United States,
+          and kept {publicCountMonths} months.
         </p>
         <p className="max-w-[62ch]">
           In the app, Tendnote notes when your account first reaches a few steps, like subscribing
