@@ -5,31 +5,39 @@ import {
   admitFromFirstPaidInvoice,
   type PaidAccessAdmissionDependencies,
 } from "./paid-access-admission";
+import {
+  applyStripeDispute,
+  applyStripeRefund,
+  disputeSnapshot,
+  type PaidAccessRevocationDependencies,
+  refundSnapshot,
+} from "./paid-access-revocation";
 import { projectSubscription } from "./subscription-projection";
 import { type AnnualRenewal, annualRenewal } from "./upcoming-renewal";
 
-export type StripeWebhookDependencies = PaidAccessAdmissionDependencies & {
-  policy: AdmissionPolicy;
-  /** The endpoint's signing secret. Without it every delivery is refused. */
-  webhookSecret: string | undefined;
-  /** The account a Tendnote-created Stripe customer belongs to, read locally. */
-  findAccountByStripeCustomer: (stripeCustomerId: string) => Promise<string | null>;
-  /**
-   * Send the content-free "you're in" email once admission is recorded (#607).
-   * Called again on a redelivery, so it must key the send on the invoice.
-   */
-  announceAdmission: (input: { userId: string; invoiceId: string }) => Promise<unknown>;
-  /**
-   * Send the content-free reminder before an annual renewal (#611). Called
-   * again on a redelivery, so it must key the send on the renewal.
-   */
-  remindOfRenewal: (input: {
-    userId: string;
-    stripeSubscriptionId: string;
-    renewsAt: Date;
-  }) => Promise<unknown>;
-  log?: (message: string) => void;
-};
+export type StripeWebhookDependencies = PaidAccessAdmissionDependencies &
+  PaidAccessRevocationDependencies & {
+    policy: AdmissionPolicy;
+    /** The endpoint's signing secret. Without it every delivery is refused. */
+    webhookSecret: string | undefined;
+    /** The account a Tendnote-created Stripe customer belongs to, read locally. */
+    findAccountByStripeCustomer: (stripeCustomerId: string) => Promise<string | null>;
+    /**
+     * Send the content-free "you're in" email once admission is recorded (#607).
+     * Called again on a redelivery, so it must key the send on the invoice.
+     */
+    announceAdmission: (input: { userId: string; invoiceId: string }) => Promise<unknown>;
+    /**
+     * Send the content-free reminder before an annual renewal (#611). Called
+     * again on a redelivery, so it must key the send on the renewal.
+     */
+    remindOfRenewal: (input: {
+      userId: string;
+      stripeSubscriptionId: string;
+      renewsAt: Date;
+    }) => Promise<unknown>;
+    log?: (message: string) => void;
+  };
 
 /** The subscription a portal change or a period end touched, if this event is one. */
 function changedSubscriptionId(event: Stripe.Event): string | null {
@@ -60,6 +68,12 @@ function changedSubscriptionId(event: Stripe.Event): string | null {
  * many as the dashboard's Upcoming renewal events setting says (#611). An
  * annual renewal gets the reminder email, unless Stripe's current copy of the
  * subscription ends first; a monthly one gets nothing.
+ *
+ * A refund revokes Paid Access only when it matches a Refund Operator Action
+ * record, on the subscription that record names; one matching nothing changes
+ * nothing and is logged as `stripe_reconciliation.failed`, the record the
+ * operator alert reads (ADR 0249). A dispute revokes at once unless a
+ * re-admission grant names it (#617).
  *
  * A failure after verification surfaces as a 500 so Stripe redelivers;
  * accepting the HTTP delivery is not treated as completion. Self-hosted
@@ -123,6 +137,26 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
       return new Response("Invalid Stripe signature.", { status: 400 });
     }
 
+    if (event.type === "refund.created") {
+      const refund = refundSnapshot(event.data.object);
+      if ((await applyStripeRefund(deps, refund)) === "unmatched") {
+        log(
+          `[tendnote] stripe_reconciliation.failed: refund ${refund.id} matches no Refund record; nothing was changed`,
+        );
+      }
+      return new Response(null, { status: 200 });
+    }
+
+    if (event.type === "charge.dispute.created") {
+      const outcome = await applyStripeDispute(deps, disputeSnapshot(event.data.object));
+      if (outcome === "outside_subscription" || outcome === "unknown_customer") {
+        log(
+          `[tendnote] Stripe event ${event.id} disputes no Tendnote subscription; nothing was changed`,
+        );
+      }
+      return new Response(null, { status: 200 });
+    }
+
     const renewal = event.type === "invoice.upcoming" ? annualRenewal(event.data.object) : null;
     if (renewal) {
       await remindOfRenewal(renewal, event.id);
@@ -149,7 +183,7 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
 
     if (!(await admitFromFirstPaidInvoice(deps, userId, paid))) {
       log(
-        `[tendnote] Stripe event ${event.id} pays a subscription that has ended; nothing was admitted`,
+        `[tendnote] Stripe event ${event.id} pays a subscription that has ended or was revoked; nothing was admitted`,
       );
       return new Response(null, { status: 200 });
     }

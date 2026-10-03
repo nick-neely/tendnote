@@ -1,9 +1,11 @@
+import type { AccessProfile } from "@tendnote/domain";
 import { vi } from "vitest";
 import type { PaidAccessAdmissionDependencies } from "./paid-access-admission";
 import type { PastDue, SubscriptionSnapshot } from "./subscription-projection";
 
 type AccessProfileWrites = {
   lapsePaidAccess: PaidAccessAdmissionDependencies["subscriptions"]["lapsePaidAccess"];
+  getAccessProfile: (input: { userId: string }) => Promise<AccessProfile | null>;
 };
 
 /**
@@ -14,7 +16,7 @@ type AccessProfileWrites = {
  */
 export function createStripeSubscriptionsFake(
   profiles: AccessProfileWrites,
-  input: { stripeCustomerId: string; now?: () => Date },
+  input: { stripeCustomerId: string; now?: () => Date; periodEnd?: Date },
 ) {
   const now = input.now ?? (() => new Date());
   const live = (id: string): SubscriptionSnapshot => ({
@@ -45,6 +47,15 @@ export function createStripeSubscriptionsFake(
       });
     },
     lapsePaidAccess: (lapse) => profiles.lapsePaidAccess(lapse),
+    // The production rule over the same Access Profile store.
+    paysForAccount: async ({ userId, stripeSubscriptionId }) => {
+      const profile = await profiles.getAccessProfile({ userId });
+      return (
+        profile?.status === "granted" &&
+        profile.source === "paid_access" &&
+        (profile.paidAccessSubscriptionId ?? stripeSubscriptionId) === stripeSubscriptionId
+      );
+    },
     confirmCancellation,
   };
 
@@ -61,6 +72,19 @@ export function createStripeSubscriptionsFake(
     const ended = { ...subscription, endedAt: now(), pastDue: null };
     stripe.set(id, ended);
     return ended;
+  });
+
+  /** Stop or resume renewal: Stripe schedules, or clears, cancellation at the period end. */
+  const periodEnd = input.periodEnd ?? new Date("2026-11-01T09:30:00.000Z");
+  const stopRenewal = vi.fn(async (id: string) => {
+    const subscription = { ...(await retrieveSubscription(id)), cancelAt: periodEnd };
+    stripe.set(id, subscription);
+    return subscription;
+  });
+  const resumeRenewal = vi.fn(async (id: string) => {
+    const subscription = { ...(await retrieveSubscription(id)), cancelAt: null };
+    stripe.set(id, subscription);
+    return subscription;
   });
 
   /** The Drizzle query's filter over the recorded projection. */
@@ -80,6 +104,8 @@ export function createStripeSubscriptionsFake(
     subscriptions,
     retrieveSubscription,
     cancelSubscription,
+    stopRenewal,
+    resumeRenewal,
     listClosedDunningWindows,
     recorded,
     confirmCancellation,

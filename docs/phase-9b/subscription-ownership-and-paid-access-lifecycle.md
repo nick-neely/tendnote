@@ -110,14 +110,21 @@ returned for denied service, not the unwinding of a sale, so it is not a
 refund for admission purposes, and a refund matching no record alerts rather
 than changing access
 ([ADR 0249](../adr/0249-refund-revocation-is-matched-to-its-operator-action-record.md)).
-The guarantee is the answer to "no free trial" - someone can buy, try the real
+A matched refund also ends the refunded subscription in Stripe at once, so the
+customer is never charged again, and sends a content-free refund confirmation
+(#617). The guarantee is the answer to "no free trial" - someone can buy, try the real
 product, and get their money back, without Tendnote operating a trial state.
 
 **Disputes and chargebacks.** Treated like a refund: Paid Access is revoked
 immediately. Winning the dispute later does not re-admit the account
 automatically; the author re-admits manually. Automatic re-admission on a
 provider signal that can itself be reversed is the wrong default at this scale,
-and one account is cheap to handle by hand.
+and one account is cheap to handle by hand. A dispute does not end the
+subscription: Tendnote stops its renewal, so the Lapsed account is never
+charged again, and a re-admission grant naming the won dispute resumes that
+renewal and restores Paid Access on the same subscription. A grant never
+resumes a renewal the customer cancelled, and a subscription that reached its
+period end first restores nothing; the customer resubscribes (#617).
 
 ## The Lapsed account
 

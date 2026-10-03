@@ -4,6 +4,7 @@ import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness } from "../access/admission-harness";
 import { admitFromFirstPaidInvoice } from "./paid-access-admission";
+import { createPaidAccessRevocationsFake } from "./paid-access-revocations-fake";
 import { createStripeSubscriptionsFake } from "./stripe-subscriptions-fake";
 import { createStripeWebhookHandler, type StripeWebhookDependencies } from "./stripe-webhook";
 
@@ -67,8 +68,17 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
   const customers = new Map([[CUSTOMER, user.id]]);
   const anchors = new Map<string, Date>();
   const log = vi.fn();
+  const stripeSubscriptions = createStripeSubscriptionsFake(harness.queries, {
+    stripeCustomerId: CUSTOMER,
+  });
   const { subscriptions, retrieveSubscription, recorded, confirmCancellation, stripeChanges } =
-    createStripeSubscriptionsFake(harness.queries, { stripeCustomerId: CUSTOMER });
+    stripeSubscriptions;
+  const revocations = createPaidAccessRevocationsFake();
+  const confirmRefund = vi.fn(async (_input: { userId: string; refundRecordId: string }) => {});
+  // The subscription each payment paid for, as Stripe's invoice payments say.
+  const payments = new Map([
+    ["pi_first", { stripeSubscriptionId: "sub_1", stripeCustomerId: CUSTOMER }],
+  ]);
   const announceAdmission = vi.fn(async (_input: { userId: string; invoiceId: string }) => {
     // The email may only follow a recorded admission.
     const profile = await harness.queries.getAccessProfile({ userId: user.id });
@@ -88,6 +98,11 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
     remindOfRenewal,
     retrieveSubscription,
     subscriptions,
+    revocations: revocations.revocations,
+    cancelSubscription: stripeSubscriptions.cancelSubscription,
+    stopRenewal: stripeSubscriptions.stopRenewal,
+    resolvePaymentSubscription: async (paymentIntentId) => payments.get(paymentIntentId) ?? null,
+    confirmRefund,
     log,
   };
   const receive = createStripeWebhookHandler(deps);
@@ -120,8 +135,11 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
     announceAdmission,
     remindOfRenewal,
     confirmCancellation,
+    confirmRefund,
     recorded,
     stripeChanges,
+    stripeSubscriptions,
+    revocations,
     expectAdmitted,
     expectNotAdmitted,
   };
@@ -133,7 +151,19 @@ function inertSubscriptions(): StripeWebhookDependencies["subscriptions"] {
     getSubscription: async () => null,
     recordSubscription: vi.fn(),
     lapsePaidAccess: vi.fn(),
+    paysForAccount: vi.fn(),
     confirmCancellation: vi.fn(),
+  };
+}
+
+/** Revocation dependencies for handlers whose test never sees a refund or dispute. */
+function inertRevocations() {
+  return {
+    revocations: createPaidAccessRevocationsFake().revocations,
+    cancelSubscription: vi.fn(),
+    stopRenewal: vi.fn(),
+    resolvePaymentSubscription: vi.fn(),
+    confirmRefund: vi.fn(),
   };
 }
 
@@ -330,6 +360,7 @@ describe("Paid Access from the first paid invoice", () => {
         pastDue: null,
       }),
       subscriptions: inertSubscriptions(),
+      ...inertRevocations(),
     });
 
     await expect(receive(await signedDelivery(invoicePaid()))).rejects.toThrow(/unavailable/);
@@ -388,6 +419,7 @@ describe("Stripe webhook signature", () => {
       remindOfRenewal: vi.fn(),
       retrieveSubscription: vi.fn(),
       subscriptions: inertSubscriptions(),
+      ...inertRevocations(),
     });
 
     expect((await receive(await signedDelivery(invoicePaid()))).status).toBe(503);
@@ -734,5 +766,218 @@ describe("self-hosted deployments", () => {
     await subscriber.queries.grantAccess({ userId: user.id, source: "paid_access" });
 
     await subscriber.expectNotAdmitted();
+  });
+});
+
+describe("refunds and disputes (#617)", () => {
+  /** When the fixture refund was taken, inside the fourteen-day guarantee. */
+  const REFUNDED_AT = new Date("2026-03-20T12:00:00.000Z");
+  /** When the fixture dispute was opened. */
+  const DISPUTED_AT = new Date("2026-03-25T08:00:00.000Z");
+
+  const refundCreated = (overrides: Record<string, unknown> = {}) =>
+    stripeEvent("refund.created", {
+      id: "re_1",
+      object: "refund",
+      payment_intent: "pi_first",
+      amount: 2000,
+      created: REFUNDED_AT.getTime() / 1000,
+      status: "succeeded",
+      ...overrides,
+    });
+
+  const disputeCreated = (overrides: Record<string, unknown> = {}) =>
+    stripeEvent("charge.dispute.created", {
+      id: "du_1",
+      object: "dispute",
+      payment_intent: "pi_first",
+      created: DISPUTED_AT.getTime() / 1000,
+      status: "needs_response",
+      ...overrides,
+    });
+
+  async function paying() {
+    const subscriber = await signedUp();
+    await subscriber.deliver(invoicePaid());
+    await subscriber.expectAdmitted();
+    return subscriber;
+  }
+
+  /** The Refund Operator Action's record, with the Stripe refund id stored unless `null`. */
+  async function refundRecord(
+    subscriber: Awaited<ReturnType<typeof signedUp>>,
+    input: { subscription?: string; stripeRefundId?: string | null } = {},
+  ) {
+    const record = await subscriber.revocations.records.recordRefund({
+      userId: user.id,
+      stripeSubscriptionId: input.subscription ?? "sub_1",
+      invoiceId: "in_first",
+      paymentIntentId: "pi_first",
+      amount: 2000,
+      requestedAt: new Date(REFUNDED_AT.getTime() - 1000),
+    });
+    if (input.stripeRefundId !== null) {
+      await subscriber.revocations.revocations.attachStripeRefund({
+        id: record.id,
+        stripeRefundId: input.stripeRefundId ?? "re_1",
+      });
+    }
+    return record;
+  }
+
+  async function profile(subscriber: Awaited<ReturnType<typeof signedUp>>) {
+    return subscriber.queries.getAccessProfile({ userId: user.id });
+  }
+
+  it("revokes at once on a refund matching its Refund record, ends the subscription, and confirms by email", async () => {
+    const subscriber = await paying();
+    const record = await refundRecord(subscriber);
+
+    expect((await subscriber.deliver(refundCreated())).status).toBe(200);
+
+    await subscriber.expectNotAdmitted();
+    await expect(profile(subscriber)).resolves.toMatchObject({
+      retentionDeadline: lapsedRetentionDeadline(REFUNDED_AT),
+    });
+    expect(subscriber.recorded.get("sub_1")?.endedAt).not.toBeNull();
+    expect(subscriber.confirmCancellation).not.toHaveBeenCalled();
+    expect(subscriber.confirmRefund).toHaveBeenCalledExactlyOnceWith({
+      userId: user.id,
+      refundRecordId: record.id,
+    });
+  });
+
+  it("revokes and confirms one refund once, however often it is delivered", async () => {
+    const subscriber = await paying();
+    await refundRecord(subscriber);
+
+    await subscriber.deliver(refundCreated());
+    await subscriber.deliver(refundCreated());
+
+    await subscriber.expectNotAdmitted();
+    expect(subscriber.stripeSubscriptions.cancelSubscription).toHaveBeenCalledOnce();
+    expect(subscriber.confirmRefund).toHaveBeenCalledOnce();
+  });
+
+  it("matches a refund whose id was never stored on payment, amount, and time, and stores it", async () => {
+    const subscriber = await paying();
+    const record = await refundRecord(subscriber, { stripeRefundId: null });
+
+    await subscriber.deliver(refundCreated());
+
+    await subscriber.expectNotAdmitted();
+    expect(subscriber.revocations.refunds.find((each) => each.id === record.id)).toMatchObject({
+      stripeRefundId: "re_1",
+    });
+  });
+
+  it("changes nothing on a refund matching no Refund record, and raises the reconciliation alert", async () => {
+    const subscriber = await paying();
+    // Same payment, but a different amount: a dashboard refund nobody recorded.
+    await refundRecord(subscriber, { stripeRefundId: null });
+
+    const response = await subscriber.deliver(refundCreated({ amount: 500 }));
+
+    expect(response.status).toBe(200);
+    await subscriber.expectAdmitted();
+    expect(subscriber.log).toHaveBeenCalledWith(
+      expect.stringMatching(/stripe_reconciliation\.failed: refund re_1 matches no Refund record/),
+    );
+    expect(subscriber.stripeSubscriptions.cancelSubscription).not.toHaveBeenCalled();
+    expect(subscriber.confirmRefund).not.toHaveBeenCalled();
+  });
+
+  it("revokes nothing for a refund that failed", async () => {
+    const subscriber = await paying();
+    await refundRecord(subscriber);
+
+    await subscriber.deliver(refundCreated({ status: "failed" }));
+
+    await subscriber.expectAdmitted();
+    expect(subscriber.confirmRefund).not.toHaveBeenCalled();
+  });
+
+  it("leaves a fresh subscription admitted when an older one is refunded", async () => {
+    const subscriber = await paying();
+    subscriber.stripeChanges("sub_1", { endedAt: PERIOD_END });
+    await subscriber.deliver(subscriptionEvent("deleted"));
+    subscriber.stripeChanges("sub_2", {});
+    await subscriber.deliver(
+      invoicePaid({
+        id: "in_again",
+        parent: {
+          type: "subscription_details",
+          subscription_details: { subscription: "sub_2", metadata: {} },
+        },
+      }),
+    );
+    await subscriber.expectAdmitted();
+
+    await refundRecord(subscriber, { subscription: "sub_1" });
+    await subscriber.deliver(refundCreated());
+
+    await subscriber.expectAdmitted();
+    expect(subscriber.recorded.get("sub_2")).toMatchObject({ endedAt: null, cancelAt: null });
+  });
+
+  it("never re-admits a refunded account from its still-paid first invoice", async () => {
+    const subscriber = await paying();
+    await refundRecord(subscriber);
+    await subscriber.deliver(refundCreated());
+
+    await subscriber.deliver(invoicePaid());
+
+    await subscriber.expectNotAdmitted();
+    expect(subscriber.announceAdmission).toHaveBeenCalledOnce();
+  });
+
+  it("revokes at once on a dispute and stops the renewal without confirming a cancellation", async () => {
+    const subscriber = await paying();
+
+    expect((await subscriber.deliver(disputeCreated())).status).toBe(200);
+
+    await subscriber.expectNotAdmitted();
+    await expect(profile(subscriber)).resolves.toMatchObject({
+      retentionDeadline: lapsedRetentionDeadline(DISPUTED_AT),
+    });
+    // Stopped at the period end, not ended, so a won dispute can restore it.
+    expect(subscriber.recorded.get("sub_1")).toMatchObject({ endedAt: null });
+    expect(subscriber.recorded.get("sub_1")?.cancelAt).not.toBeNull();
+    expect(subscriber.revocations.disputes.get("du_1")).toMatchObject({ renewalStopped: true });
+
+    // Stripe's own notice of the stopped renewal is not the customer cancelling.
+    await subscriber.deliver(subscriptionEvent("updated"));
+    expect(subscriber.confirmCancellation).not.toHaveBeenCalled();
+  });
+
+  it("never re-admits a disputed account from its still-paid first invoice", async () => {
+    const subscriber = await paying();
+    await subscriber.deliver(disputeCreated());
+
+    await subscriber.deliver(invoicePaid());
+
+    await subscriber.expectNotAdmitted();
+  });
+
+  it("does not stop a renewal the customer already cancelled, so re-admission can never resume it", async () => {
+    const subscriber = await paying();
+    subscriber.stripeChanges("sub_1", { cancelAt: PERIOD_END });
+    await subscriber.deliver(subscriptionEvent("updated"));
+
+    await subscriber.deliver(disputeCreated());
+
+    await subscriber.expectNotAdmitted();
+    expect(subscriber.stripeSubscriptions.stopRenewal).not.toHaveBeenCalled();
+    expect(subscriber.revocations.disputes.get("du_1")).toMatchObject({ renewalStopped: false });
+  });
+
+  it("changes nothing for a dispute on a payment outside any subscription, and says so", async () => {
+    const subscriber = await paying();
+
+    const response = await subscriber.deliver(disputeCreated({ payment_intent: "pi_elsewhere" }));
+
+    expect(response.status).toBe(200);
+    await subscriber.expectAdmitted();
+    expect(subscriber.log).toHaveBeenCalledWith(expect.stringMatching(/disputes no Tendnote/));
   });
 });
