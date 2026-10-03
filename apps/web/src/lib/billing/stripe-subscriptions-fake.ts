@@ -1,7 +1,7 @@
 import type { AccessProfile } from "@tendnote/domain";
 import { vi } from "vitest";
 import type { PaidAccessAdmissionDependencies } from "./paid-access-admission";
-import type { PastDue, SubscriptionSnapshot } from "./subscription-projection";
+import { type PastDue, paysForAccount, type SubscriptionSnapshot } from "./subscription-projection";
 
 type AccessProfileWrites = {
   lapsePaidAccess: PaidAccessAdmissionDependencies["subscriptions"]["lapsePaidAccess"];
@@ -48,14 +48,8 @@ export function createStripeSubscriptionsFake(
     },
     lapsePaidAccess: (lapse) => profiles.lapsePaidAccess(lapse),
     // The production rule over the same Access Profile store.
-    paysForAccount: async ({ userId, stripeSubscriptionId }) => {
-      const profile = await profiles.getAccessProfile({ userId });
-      return (
-        profile?.status === "granted" &&
-        profile.source === "paid_access" &&
-        (profile.paidAccessSubscriptionId ?? stripeSubscriptionId) === stripeSubscriptionId
-      );
-    },
+    paysForAccount: async ({ userId, stripeSubscriptionId }) =>
+      paysForAccount(await profiles.getAccessProfile({ userId }), stripeSubscriptionId),
     confirmCancellation,
   };
 

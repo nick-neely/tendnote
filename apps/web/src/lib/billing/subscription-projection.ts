@@ -1,3 +1,4 @@
+import type { AccessProfile } from "@tendnote/domain";
 import type Stripe from "stripe";
 
 /** The parts of a Stripe subscription Tendnote projects, read from Stripe's current copy. */
@@ -63,6 +64,22 @@ export function subscriptionSnapshot(subscription: Stripe.Subscription): Subscri
     endedAt: subscription.ended_at ? fromUnix(subscription.ended_at) : null,
     pastDue: pastDueRenewal(subscription),
   };
+}
+
+/**
+ * Whether this subscription is the one granting the account's Paid Access. A
+ * paid grant recorded before subscriptions were tracked names none, and is
+ * taken to be paid for by whichever subscription asks.
+ */
+export function paysForAccount(
+  profile: Pick<AccessProfile, "status" | "source" | "paidAccessSubscriptionId"> | null,
+  stripeSubscriptionId: string,
+): boolean {
+  return (
+    profile?.status === "granted" &&
+    profile.source === "paid_access" &&
+    (profile.paidAccessSubscriptionId ?? stripeSubscriptionId) === stripeSubscriptionId
+  );
 }
 
 export type SubscriptionProjectionDependencies = {

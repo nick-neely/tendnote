@@ -41,10 +41,17 @@ export function disputeSnapshot(dispute: Stripe.Dispute): DisputeSnapshot {
 /**
  * How long after its Refund record a refund whose id was never stored may still
  * be matched to it on payment and amount (ADR 0249). The record is written
- * moments before the refund is created, so a day only absorbs clock skew and a
- * runbook interrupted between the two.
+ * moments before the refund is created, so a day only absorbs a runbook
+ * interrupted between the two.
  */
 const REFUND_MATCH_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How far a refund's `created` may fall before its record's `requestedAt`.
+ * Stripe states whole seconds, so a refund made in the same second as its
+ * record reads as up to a second earlier, and the two clocks are not one.
+ */
+const REFUND_CLOCK_SKEW_MS = 60 * 1000;
 
 /** Refund statuses under which no money went back, so nothing is revoked. */
 const UNREFUNDED_STATUSES = new Set(["failed", "canceled"]);
@@ -121,7 +128,7 @@ async function matchRefundRecord(
     paymentIntentId: refund.paymentIntentId,
     amount: refund.amount,
     requestedAtOrAfter: new Date(refund.createdAt.getTime() - REFUND_MATCH_WINDOW_MS),
-    requestedAtOrBefore: refund.createdAt,
+    requestedAtOrBefore: new Date(refund.createdAt.getTime() + REFUND_CLOCK_SKEW_MS),
   });
   if (!record) return null;
   // The id write the Refund Operator Action lost, repaired here.

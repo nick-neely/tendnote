@@ -311,6 +311,8 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
           const outcome = await applyStripeRefund(deps, refund);
           if (outcome === "revoked") result.revoked += 1;
           if (outcome === "unmatched") {
+            // Counted apart from `failed`: nothing failed to run, and the
+            // alert repeats every pass until the operator records the refund.
             result.unmatchedRefunds += 1;
             deps.logger?.error?.("stripe_reconciliation.failed", {
               stage: "unmatched_refund",

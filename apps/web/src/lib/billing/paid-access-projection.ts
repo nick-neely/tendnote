@@ -27,10 +27,10 @@ import Stripe from "stripe";
 import { sendAdmittedEmail } from "./admitted-email";
 import { sendCancellationEmail } from "./cancellation-email";
 import { readStripeBillingConfig } from "./checkout";
-import { stripeId } from "./first-paid-invoice";
+import { invoiceSubscription } from "./first-paid-invoice";
 import { sendRefundEmail } from "./refund-email";
 import { sendRenewalReminderEmail } from "./renewal-reminder-email";
-import { subscriptionSnapshot } from "./subscription-projection";
+import { paysForAccount, subscriptionSnapshot } from "./subscription-projection";
 
 export function configuredStripe(): Stripe {
   const config = readStripeBillingConfig();
@@ -96,13 +96,8 @@ export const paidAccessProjection = {
       limit: 1,
     });
     const invoice = payments.data[0]?.invoice;
-    if (!invoice || typeof invoice === "string" || invoice.deleted) return null;
-    const stripeSubscriptionId = stripeId(
-      invoice.parent?.subscription_details?.subscription ?? null,
-    );
-    const stripeCustomerId = stripeId(invoice.customer);
-    return stripeSubscriptionId && stripeCustomerId
-      ? { stripeSubscriptionId, stripeCustomerId }
+    return invoice && typeof invoice !== "string" && !invoice.deleted
+      ? invoiceSubscription(invoice)
       : null;
   },
   confirmRefund: async (input: { userId: string; refundRecordId: string }) => {
@@ -123,15 +118,8 @@ export const paidAccessProjection = {
     getSubscription: getStripeSubscription,
     recordSubscription: recordStripeSubscription,
     lapsePaidAccess,
-    paysForAccount: async (input: { userId: string; stripeSubscriptionId: string }) => {
-      const profile = await getAccessProfile({ userId: input.userId });
-      return (
-        profile?.status === "granted" &&
-        profile.source === "paid_access" &&
-        (profile.paidAccessSubscriptionId ?? input.stripeSubscriptionId) ===
-          input.stripeSubscriptionId
-      );
-    },
+    paysForAccount: async (input: { userId: string; stripeSubscriptionId: string }) =>
+      paysForAccount(await getAccessProfile({ userId: input.userId }), input.stripeSubscriptionId),
     confirmCancellation: async (input: {
       userId: string;
       stripeSubscriptionId: string;

@@ -1,4 +1,7 @@
+import type { RefundRecord } from "@tendnote/db/queries/paid-access-revocations";
 import type { AccessProfile, RecoveryJournal } from "@tendnote/domain";
+import type Stripe from "stripe";
+import { invoiceSubscription, stripeId } from "./first-paid-invoice";
 import {
   applyStripeRefund,
   isSubscriptionRevoked,
@@ -16,10 +19,23 @@ export type RefundableInvoice = {
   amountPaid: number;
 };
 
+/** The refundable parts of a paid subscription invoice read with its payments expanded. */
+export function refundableInvoice(invoice: Stripe.Invoice): RefundableInvoice {
+  const owner = invoiceSubscription(invoice);
+  const payment = invoice.payments?.data.find((each) => each.status === "paid");
+  const paymentIntentId = stripeId(payment?.payment.payment_intent ?? null);
+  if (invoice.status !== "paid" || !invoice.id || !owner || !paymentIntentId) {
+    throw new Error(`Invoice ${invoice.id} is not a card-paid subscription invoice.`);
+  }
+  return { invoiceId: invoice.id, ...owner, paymentIntentId, amountPaid: invoice.amount_paid };
+}
+
 export type OperatorActionDependencies = PaidAccessRevocationDependencies & {
   journal: RecoveryJournal;
   /** The Operator Action records (ADR 0248), written before any Stripe call. */
   records: {
+    /** The newest Refund record naming this invoice, if any. */
+    findRefundRecordForInvoice: (input: { invoiceId: string }) => Promise<RefundRecord | null>;
     recordRefund: (input: {
       userId: string;
       stripeSubscriptionId: string;
@@ -58,6 +74,11 @@ export type OperatorActionDependencies = PaidAccessRevocationDependencies & {
  * then applied at once, which revokes Paid Access on the refunded subscription
  * and sends the confirmation.
  *
+ * One Refund per invoice. Running it again resumes an unfinished record under
+ * the same idempotency key, so Stripe answers with the refund it already made
+ * rather than a second one, and an invoice already refunded is refused. A
+ * refund Stripe reports failed leaves the record open and revokes nothing.
+ *
  * Defaults to the full amount paid, as the fourteen-day guarantee refunds.
  */
 export async function refundInvoice(
@@ -74,14 +95,7 @@ export async function refundInvoice(
   const userId = await deps.findAccountByStripeCustomer(invoice.stripeCustomerId);
   if (!userId) throw new Error(`Invoice ${invoice.invoiceId} belongs to no Tendnote account.`);
 
-  const record = await deps.records.recordRefund({
-    userId,
-    stripeSubscriptionId: invoice.stripeSubscriptionId,
-    invoiceId: invoice.invoiceId,
-    paymentIntentId: invoice.paymentIntentId,
-    amount,
-    requestedAt: input.now ?? new Date(),
-  });
+  const record = await openRefundRecord(deps, { ...invoice, userId, amount, now: input.now });
   await deps.journal.write({
     kind: "refund",
     accountId: userId,
@@ -94,9 +108,49 @@ export async function refundInvoice(
     amount,
     idempotencyKey: `refund:${record.id}`,
   });
-  await deps.revocations.attachStripeRefund({ id: record.id, stripeRefundId: refund.id });
-  const outcome = await applyStripeRefund(deps, refund, input.now);
+  const outcome = await applyRefundOf(deps, record.id, refund, input.now);
   return { refundRecordId: record.id, stripeRefundId: refund.id, outcome };
+}
+
+/** The invoice's unfinished Refund record to resume, or a new one; never a second refund. */
+async function openRefundRecord(
+  deps: OperatorActionDependencies,
+  input: RefundableInvoice & { userId: string; amount: number; now?: Date },
+): Promise<{ id: string; requestedAt: Date }> {
+  const existing = await deps.records.findRefundRecordForInvoice({ invoiceId: input.invoiceId });
+  if (existing?.stripeRefundId) {
+    throw new Error(
+      `Invoice ${input.invoiceId} was already refunded as ${existing.stripeRefundId} under Refund record ${existing.id}.`,
+    );
+  }
+  if (existing && existing.amount !== input.amount) {
+    throw new Error(
+      `Refund record ${existing.id} for ${input.invoiceId} is unfinished for ${existing.amount}; run it again with that amount.`,
+    );
+  }
+  return (
+    existing ??
+    deps.records.recordRefund({
+      userId: input.userId,
+      stripeSubscriptionId: input.stripeSubscriptionId,
+      invoiceId: input.invoiceId,
+      paymentIntentId: input.paymentIntentId,
+      amount: input.amount,
+      requestedAt: input.now ?? new Date(),
+    })
+  );
+}
+
+/** Store the refund on its record and apply it, unless no money went back. */
+async function applyRefundOf(
+  deps: OperatorActionDependencies,
+  refundRecordId: string,
+  refund: RefundSnapshot,
+  now: Date | undefined,
+) {
+  if (refund.status === "failed" || refund.status === "canceled") return "not_refunded" as const;
+  await deps.revocations.attachStripeRefund({ id: refundRecordId, stripeRefundId: refund.id });
+  return applyStripeRefund(deps, refund, now);
 }
 
 type ReadmissionResult =
@@ -159,4 +213,25 @@ export async function readmitAfterWonDispute(
   }
   await projectSubscription(deps.subscriptions, userId, subscription);
   return { restored: true, grantId: grant.id };
+}
+
+export const OPERATOR_USAGE = `Usage:
+  operator refund <invoice id> [amount in cents]
+  operator readmit-dispute <dispute id>`;
+
+/** One Operator Action from the operator CLI's arguments; anything else is refused with the usage. */
+export function runOperatorCommand(
+  deps: OperatorActionDependencies,
+  [action, id, amount, ...rest]: readonly string[],
+): Promise<unknown> {
+  if (action === "refund" && id && rest.length === 0) {
+    return refundInvoice(deps, {
+      invoiceId: id,
+      amount: amount === undefined ? undefined : Number(amount),
+    });
+  }
+  if (action === "readmit-dispute" && id && amount === undefined) {
+    return readmitAfterWonDispute(deps, { stripeDisputeId: id });
+  }
+  return Promise.reject(new Error(OPERATOR_USAGE));
 }

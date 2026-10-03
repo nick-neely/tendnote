@@ -42,6 +42,19 @@ export async function recordRefund(input: {
   return row;
 }
 
+/** The newest Refund record naming an invoice, so the Refund Operator Action never refunds it twice. */
+export async function findRefundRecordForInvoice(input: {
+  invoiceId: string;
+}): Promise<RefundRecord | null> {
+  const [row] = await getDb()
+    .select(refundColumns)
+    .from(refundRecords)
+    .where(eq(refundRecords.invoiceId, input.invoiceId))
+    .orderBy(desc(refundRecords.requestedAt))
+    .limit(1);
+  return row ?? null;
+}
+
 /** The Refund record a Stripe refund was matched to, by the refund's id. */
 export async function getRefundRecordByStripeRefund(input: {
   stripeRefundId: string;

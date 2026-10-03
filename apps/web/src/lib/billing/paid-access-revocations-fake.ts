@@ -75,6 +75,12 @@ export function createPaidAccessRevocationsFake(input: { steps?: string[] } = {}
   };
 
   const records = {
+    findRefundRecordForInvoice: async ({ invoiceId }: { invoiceId: string }) => {
+      const record = refunds
+        .filter((each) => each.invoiceId === invoiceId)
+        .sort((a, b) => b.requestedAt.getTime() - a.requestedAt.getTime())[0];
+      return record ? { ...record } : null;
+    },
     recordRefund: async (refund: Omit<RefundRecord, "id" | "stripeRefundId" | "revokedAt">) => {
       const record: RefundRecord = {
         ...refund,

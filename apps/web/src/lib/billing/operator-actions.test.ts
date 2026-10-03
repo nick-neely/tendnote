@@ -7,11 +7,18 @@ import { ForbiddenError } from "eve/channels/auth";
 import { describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness } from "../access/admission-harness";
 import {
+  OPERATOR_USAGE,
   type OperatorActionDependencies,
   readmitAfterWonDispute,
+  refundableInvoice,
   refundInvoice,
+  runOperatorCommand,
 } from "./operator-actions";
-import { applyStripeDispute, applyStripeRefund } from "./paid-access-revocation";
+import {
+  applyStripeDispute,
+  applyStripeRefund,
+  type RefundSnapshot,
+} from "./paid-access-revocation";
 import { createPaidAccessRevocationsFake } from "./paid-access-revocations-fake";
 import { createStripeSubscriptionsFake } from "./stripe-subscriptions-fake";
 
@@ -19,7 +26,9 @@ const user = { id: "subscriber-1", email: "subscriber@example.com" };
 const CUSTOMER = "cus_subscriber";
 const hosted: AdmissionPolicy = { mode: "hosted", valid: true };
 const eveRequest = new Request("https://app.tendnote.test/eve/v1/session");
-const NOW = new Date("2026-10-03T12:00:00.000Z");
+/** Mid-second, as a record's own clock is: Stripe states the refund in whole seconds. */
+const NOW = new Date("2026-10-03T12:00:00.250Z");
+const NOW_IN_STRIPE = new Date("2026-10-03T12:00:00.000Z");
 const DISPUTED_AT = new Date("2026-10-02T08:00:00.000Z");
 
 /**
@@ -47,7 +56,8 @@ async function operator() {
     }),
   };
   const disputeStatuses = new Map<string, string>();
-  let refunds = 0;
+  const refundsByKey = new Map<string, RefundSnapshot>();
+  let refundStatus = "succeeded";
 
   const deps: OperatorActionDependencies = {
     revocations: revocations.revocations,
@@ -74,16 +84,18 @@ async function operator() {
       paymentIntentId: "pi_first",
       amountPaid: 2000,
     }),
-    createRefund: vi.fn(async ({ amount }: { amount: number }) => {
+    // Stripe's idempotency: one key, one refund, however often it is asked.
+    createRefund: vi.fn(async ({ amount, idempotencyKey }) => {
       steps.push("stripe:refund");
-      refunds += 1;
-      return {
-        id: `re_${refunds}`,
+      const refund = refundsByKey.get(idempotencyKey) ?? {
+        id: `re_${refundsByKey.size + 1}`,
         paymentIntentId: "pi_first",
         amount,
-        createdAt: NOW,
-        status: "succeeded",
+        createdAt: NOW_IN_STRIPE,
+        status: refundStatus,
       };
+      refundsByKey.set(idempotencyKey, refund);
+      return refund;
     }),
     retrieveDisputeStatus: async (id) => disputeStatuses.get(id) ?? "needs_response",
     readAccessProfile: (userId) => harness.queries.getAccessProfile({ userId }),
@@ -127,6 +139,9 @@ async function operator() {
     stripeSubscriptions,
     disputeStatuses,
     disputed,
+    refundFails: () => {
+      refundStatus = "failed";
+    },
     expectAdmitted,
     expectNotAdmitted,
   };
@@ -157,7 +172,7 @@ describe("the Refund Operator Action (#617, ADR 0249)", () => {
     });
     await op.expectNotAdmitted();
     await expect(op.queries.getAccessProfile({ userId: user.id })).resolves.toMatchObject({
-      retentionDeadline: lapsedRetentionDeadline(NOW),
+      retentionDeadline: lapsedRetentionDeadline(NOW_IN_STRIPE),
     });
     expect(op.deps.confirmRefund).toHaveBeenCalledExactlyOnceWith({
       userId: user.id,
@@ -192,13 +207,63 @@ describe("the Refund Operator Action (#617, ADR 0249)", () => {
       id: "re_lost",
       paymentIntentId: "pi_first",
       amount: 2000,
-      createdAt: new Date(NOW.getTime() + 500),
+      createdAt: NOW_IN_STRIPE,
       status: "succeeded",
     });
 
     expect(outcome).toBe("revoked");
     expect(op.revocations.refunds[0]).toMatchObject({ stripeRefundId: "re_lost" });
     await op.expectNotAdmitted();
+  });
+
+  it("resumes an unfinished record when run again, so Stripe answers with the one refund it made", async () => {
+    const op = await operator();
+    vi.mocked(op.deps.createRefund).mockImplementationOnce(async (input) => {
+      // Stripe makes the refund, and the response is lost on the way back.
+      await op.deps.createRefund(input);
+      throw new Error("connection reset after Stripe created the refund");
+    });
+    await expect(refundInvoice(op.deps, { invoiceId: "in_first", now: NOW })).rejects.toThrow(
+      /connection reset/,
+    );
+
+    const result = await refundInvoice(op.deps, { invoiceId: "in_first", now: NOW });
+
+    expect(op.revocations.refunds).toHaveLength(1);
+    expect(result).toMatchObject({ stripeRefundId: "re_1", outcome: "revoked" });
+    const keys = vi.mocked(op.deps.createRefund).mock.calls.map(([call]) => call.idempotencyKey);
+    expect(new Set(keys).size).toBe(1);
+    await op.expectNotAdmitted();
+  });
+
+  it("refuses an invoice already refunded, writing nothing", async () => {
+    const op = await operator();
+    await refundInvoice(op.deps, { invoiceId: "in_first", now: NOW });
+
+    await expect(
+      refundInvoice(op.deps, { invoiceId: "in_first", amount: 500, now: NOW }),
+    ).rejects.toThrow(/already refunded as re_1/);
+
+    expect(op.revocations.refunds).toHaveLength(1);
+    expect(op.deps.createRefund).toHaveBeenCalledOnce();
+  });
+
+  it("revokes nothing and leaves the record open when Stripe reports the refund failed", async () => {
+    const op = await operator();
+    op.refundFails();
+
+    await expect(
+      refundInvoice(op.deps, { invoiceId: "in_first", now: NOW }),
+    ).resolves.toMatchObject({ outcome: "not_refunded" });
+
+    await op.expectAdmitted();
+    expect(op.revocations.refunds[0]).toMatchObject({ stripeRefundId: null, revokedAt: null });
+    await expect(
+      op.revocations.revocations.listSubscriptionRevocationBlocks({
+        stripeSubscriptionId: "sub_1",
+      }),
+    ).resolves.toEqual([]);
+    expect(op.deps.confirmRefund).not.toHaveBeenCalled();
   });
 
   it("refuses an amount beyond what was paid before writing anything", async () => {
@@ -283,5 +348,67 @@ describe("re-admission after a won dispute (#617, ADR 0248)", () => {
 
     await op.expectNotAdmitted();
     expect(op.deps.resumeRenewal).not.toHaveBeenCalled();
+  });
+});
+
+describe("reading a refundable invoice", () => {
+  const paidInvoice = (overrides: Record<string, unknown> = {}) =>
+    ({
+      id: "in_first",
+      status: "paid",
+      customer: CUSTOMER,
+      amount_paid: 2000,
+      parent: { subscription_details: { subscription: "sub_1" } },
+      payments: {
+        data: [
+          { status: "canceled", payment: { payment_intent: "pi_abandoned" } },
+          { status: "paid", payment: { payment_intent: { id: "pi_first" } } },
+        ],
+      },
+      ...overrides,
+    }) as unknown as Parameters<typeof refundableInvoice>[0];
+
+  it("reads the subscription, customer, amount, and the payment that paid it", () => {
+    expect(refundableInvoice(paidInvoice())).toEqual({
+      invoiceId: "in_first",
+      stripeCustomerId: CUSTOMER,
+      stripeSubscriptionId: "sub_1",
+      paymentIntentId: "pi_first",
+      amountPaid: 2000,
+    });
+  });
+
+  it("refuses an unpaid invoice and one outside a subscription", () => {
+    expect(() => refundableInvoice(paidInvoice({ status: "open" }))).toThrow(/not a card-paid/);
+    expect(() => refundableInvoice(paidInvoice({ parent: null }))).toThrow(/not a card-paid/);
+  });
+});
+
+describe("the operator CLI's commands", () => {
+  it("refunds an invoice, in full or by an amount", async () => {
+    const op = await operator();
+
+    await expect(
+      runOperatorCommand(op.deps, ["refund", "in_first", "1500"]),
+    ).resolves.toMatchObject({ outcome: "revoked" });
+    expect(op.revocations.refunds[0]).toMatchObject({ amount: 1500 });
+  });
+
+  it("re-admits after a won dispute", async () => {
+    const op = await operator();
+    await op.disputed("du_1", "won");
+
+    await expect(runOperatorCommand(op.deps, ["readmit-dispute", "du_1"])).resolves.toMatchObject({
+      restored: true,
+    });
+  });
+
+  it("refuses anything else with the usage, touching nothing", async () => {
+    const op = await operator();
+
+    for (const argv of [[], ["refund"], ["readmit-dispute", "du_1", "extra"], ["delete", "x"]]) {
+      await expect(runOperatorCommand(op.deps, argv)).rejects.toThrow(OPERATOR_USAGE);
+    }
+    expect(op.steps).toEqual([]);
   });
 });

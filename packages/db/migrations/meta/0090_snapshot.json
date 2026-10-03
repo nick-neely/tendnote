@@ -1,5 +1,5 @@
 {
-  "id": "ad8b7400-c84c-4f09-98c3-e3dadecb165c",
+  "id": "f759397c-91a2-4c6e-b888-1bd9ce8a975f",
   "prevId": "f25f74a9-074a-41b0-9459-dba9e1358b96",
   "version": "7",
   "dialect": "postgresql",
@@ -288,6 +288,61 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.activation_milestones": {
+      "name": "activation_milestones",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "milestone": {
+          "name": "milestone",
+          "type": "activation_milestone",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reached_at": {
+          "name": "reached_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "activation_milestones_user_id_user_id_fk": {
+          "name": "activation_milestones_user_id_user_id_fk",
+          "tableFrom": "activation_milestones",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "activation_milestones_pkey": {
+          "name": "activation_milestones_pkey",
+          "columns": [
+            "user_id",
+            "milestone"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.admission_exceptions": {
       "name": "admission_exceptions",
       "schema": "",
@@ -352,61 +407,6 @@
           ]
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.activation_milestones": {
-      "name": "activation_milestones",
-      "schema": "",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "milestone": {
-          "name": "milestone",
-          "type": "activation_milestone",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reached_at": {
-          "name": "reached_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "activation_milestones_user_id_user_id_fk": {
-          "name": "activation_milestones_user_id_user_id_fk",
-          "tableFrom": "activation_milestones",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "activation_milestones_pkey": {
-          "name": "activation_milestones_pkey",
-          "columns": [
-            "user_id",
-            "milestone"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -10654,6 +10654,21 @@
           "columns": [
             {
               "expression": "stripe_subscription_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "refund_records_invoice_idx": {
+          "name": "refund_records_invoice_idx",
+          "columns": [
+            {
+              "expression": "invoice_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

@@ -113,6 +113,33 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
     });
   }
 
+  /**
+   * Apply a refund or a dispute to Paid Access (#617), returning whether the
+   * event was one. A refund matching no Refund record is logged under the
+   * reconciliation alert's name, since it changes nothing on its own.
+   */
+  async function applyRevocation(event: Stripe.Event): Promise<boolean> {
+    if (event.type === "refund.created") {
+      const refund = refundSnapshot(event.data.object);
+      if ((await applyStripeRefund(deps, refund)) === "unmatched") {
+        log(
+          `[tendnote] stripe_reconciliation.failed: refund ${refund.id} matches no Refund record; nothing was changed`,
+        );
+      }
+      return true;
+    }
+    if (event.type === "charge.dispute.created") {
+      const outcome = await applyStripeDispute(deps, disputeSnapshot(event.data.object));
+      if (outcome === "outside_subscription" || outcome === "unknown_customer") {
+        log(
+          `[tendnote] Stripe event ${event.id} disputes no Tendnote subscription; nothing was changed`,
+        );
+      }
+      return true;
+    }
+    return false;
+  }
+
   return async function handleStripeWebhook(request: Request): Promise<Response> {
     if (deps.policy.mode !== "hosted") {
       return new Response(null, { status: 404 });
@@ -137,23 +164,7 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
       return new Response("Invalid Stripe signature.", { status: 400 });
     }
 
-    if (event.type === "refund.created") {
-      const refund = refundSnapshot(event.data.object);
-      if ((await applyStripeRefund(deps, refund)) === "unmatched") {
-        log(
-          `[tendnote] stripe_reconciliation.failed: refund ${refund.id} matches no Refund record; nothing was changed`,
-        );
-      }
-      return new Response(null, { status: 200 });
-    }
-
-    if (event.type === "charge.dispute.created") {
-      const outcome = await applyStripeDispute(deps, disputeSnapshot(event.data.object));
-      if (outcome === "outside_subscription" || outcome === "unknown_customer") {
-        log(
-          `[tendnote] Stripe event ${event.id} disputes no Tendnote subscription; nothing was changed`,
-        );
-      }
+    if (await applyRevocation(event)) {
       return new Response(null, { status: 200 });
     }
 

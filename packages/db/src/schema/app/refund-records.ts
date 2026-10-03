@@ -35,6 +35,7 @@ export const refundRecords = pgTable(
   },
   (table) => [
     index("refund_records_subscription_idx").on(table.stripeSubscriptionId),
+    index("refund_records_invoice_idx").on(table.invoiceId),
     index("refund_records_payment_intent_idx").on(table.paymentIntentId),
   ],
 );

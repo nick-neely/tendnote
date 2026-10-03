@@ -34,5 +34,6 @@ ALTER TABLE "admission_exceptions" ADD CONSTRAINT "admission_exceptions_user_id_
 ALTER TABLE "refund_records" ADD CONSTRAINT "refund_records_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "stripe_disputes" ADD CONSTRAINT "stripe_disputes_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "refund_records_subscription_idx" ON "refund_records" USING btree ("stripe_subscription_id");--> statement-breakpoint
+CREATE INDEX "refund_records_invoice_idx" ON "refund_records" USING btree ("invoice_id");--> statement-breakpoint
 CREATE INDEX "refund_records_payment_intent_idx" ON "refund_records" USING btree ("payment_intent_id");--> statement-breakpoint
 CREATE INDEX "stripe_disputes_subscription_idx" ON "stripe_disputes" USING btree ("stripe_subscription_id");
