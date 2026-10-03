@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { BackgroundUsageNotice } from "@/components/usage-notice-card";
+import type { BackgroundUsage } from "@/lib/assistant/usage-notice";
 import { requestLocalEveDraftSubmission, useLocalComposerDraft } from "@/lib/local-composer-draft";
 
 const EveFlow = dynamic(
@@ -50,7 +51,7 @@ export function MobileTodayDestination({
   /** Interactive Eve's usage notice, read server-side by the destination (#625). */
   usage?: UsageNotice;
   /** Background work's usage notice, shown on Today while it is paused. */
-  backgroundUsage?: UsageNotice;
+  backgroundUsage?: BackgroundUsage;
 }) {
   const [eveOpen, setEveOpen] = useState(false);
   const [eveDraftRevision, setEveDraftRevision] = useState(0);
@@ -112,7 +113,7 @@ function MobileTodayHome({
   todayLocalDate: string;
   todayTimeZone: string;
   usage?: UsageNotice;
-  backgroundUsage?: UsageNotice;
+  backgroundUsage?: BackgroundUsage;
 }) {
   return (
     <div className="min-h-dvh pb-[calc(6.5rem+env(safe-area-inset-bottom))] lg:hidden">
@@ -144,7 +145,7 @@ function TodayEveComposer({
   /** Shown under the composer while Eve is reduced or paused, so Today says so too (#626). */
   usage?: UsageNotice;
   /** Shown under it while background work is paused, which is why no brief arrived. */
-  backgroundUsage?: UsageNotice;
+  backgroundUsage?: BackgroundUsage;
 }) {
   const draft = useLocalComposerDraft(ownerUserId, "eve");
   const submitButton = useRef<HTMLButtonElement>(null);
@@ -216,9 +217,9 @@ function TodayEveComposer({
           <AssistantUsageNotice notice={usage} />
         </div>
       ) : null}
-      {backgroundUsage && backgroundUsage.state !== "normal" ? (
+      {backgroundUsage && backgroundUsage.background.state !== "normal" ? (
         <div className="mt-3">
-          <BackgroundUsageNotice notice={backgroundUsage} />
+          <BackgroundUsageNotice usage={backgroundUsage} />
         </div>
       ) : null}
     </div>

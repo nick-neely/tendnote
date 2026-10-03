@@ -1,6 +1,5 @@
 import {
   HOSTED_PLAN,
-  interactiveUsageNotice,
   overFairUseBudget,
   type PeriodSpend,
   type UsageNotice,
@@ -13,6 +12,7 @@ import { COST_CATEGORIES, usageLedgerDay } from "@tendnote/domain/usage-ledger";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { getDb } from "../client";
 import { accessProfiles, usageLedger } from "../schema";
+import { readSpendBreakerStage, type SpendBreakerStage } from "./spend-breaker";
 
 export type { UsageNotice, UsageNotices, UsagePeriod };
 
@@ -78,31 +78,47 @@ async function readPeriodSpend(input: { userId: string; now?: Date }): Promise<P
 
 /**
  * What every metered function shows this account now: interactive Eve, search,
- * background work (capture processing and scheduled workflows), and web search.
+ * background work (capture processing), scheduled workflows, and web search,
+ * from the account's own ceilings and the Spend Breaker together.
  */
 export async function readUsageNotices(input: {
   userId: string;
   now?: Date;
 }): Promise<UsageNotices> {
-  return usageNotices({ plan: HOSTED_PLAN, spend: await readPeriodSpend(input) });
+  const [spend, breaker] = await Promise.all([
+    readPeriodSpend(input),
+    readBreakerOrClosed(input.now),
+  ]);
+  return usageNotices({ plan: HOSTED_PLAN, spend, breaker });
+}
+
+/**
+ * The Spend Breaker's stage, or closed when it cannot be read, so a broken
+ * breaker never takes the account's own ceilings down with it. Each ceiling
+ * still fails the way its door chose; the log is how the gap shows.
+ */
+async function readBreakerOrClosed(now: Date | undefined): Promise<SpendBreakerStage> {
+  try {
+    return await readSpendBreakerStage({ now });
+  } catch (error) {
+    console.error("spend_breaker.read_failed", {
+      reason: error instanceof Error ? error.name : "unknown",
+    });
+    return "closed";
+  }
 }
 
 /**
  * What interactive Eve shows this account now: normal; reduced to the Fallback
- * Model from the plan's Fair-Use Budget; or paused at its Account Ceiling until
- * its Usage Period resets.
+ * Model from the plan's Fair-Use Budget; paused at its Account Ceiling until
+ * its Usage Period resets; or paused by the Spend Breaker until service is
+ * restored.
  */
 export async function readEveUsageNotice(input: {
   userId: string;
   now?: Date;
 }): Promise<UsageNotice> {
-  const spend = await readPeriodSpend(input);
-  if (!spend) return { state: "normal" };
-  return interactiveUsageNotice({
-    plan: HOSTED_PLAN,
-    period: spend.period,
-    spentMicroUsd: spend.spentMicroUsd.interactive,
-  });
+  return (await readUsageNotices(input)).eve;
 }
 
 /** Whether the account's interactive turns run on the Fallback Model now. */

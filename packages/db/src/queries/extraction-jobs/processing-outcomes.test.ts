@@ -359,7 +359,7 @@ describe("extraction job suggested-memory creation", () => {
       kind: "llm",
       model: "test-model",
       async extractCandidates(input) {
-        if (paused) throw new UsagePausedError("2026-11-15");
+        if (paused) throw UsagePausedError.atCeiling("2026-11-15");
         return {
           candidates: [
             {
@@ -401,6 +401,48 @@ describe("extraction job suggested-memory creation", () => {
 
     expect(resumed.outcome).toBe("completed");
     expect(resumed.suggestedMemories).toHaveLength(1);
+  });
+
+  it("waits in its pending state while the Spend Breaker sheds, then resumes on its next day", async () => {
+    let shedding = true;
+    const retryAt = new Date("2026-10-21T00:00:00Z");
+    const adapter: SuggestedMemoryExtractionAdapter = {
+      kind: "llm",
+      model: "test-model",
+      async extractCandidates(input) {
+        if (shedding) throw UsagePausedError.byBreaker(retryAt);
+        return {
+          candidates: [
+            {
+              personId: input.resolvedPeople[0]?.id ?? "",
+              content: "Mark is considering a move to Denver.",
+              memoryType: "life_event",
+            },
+          ],
+        };
+      },
+    };
+    const { processor, createPerson, captureRecord, link, auditActions } = createHarness({
+      extractionAdapter: adapter,
+    });
+    const mark = await createPerson("Mark");
+    const sourceRecord = await captureRecord({ retainedContent: "Mark may be moving." });
+    await link(sourceRecord.id, mark.id);
+    const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+
+    const deferred = await processor.processExtractionJob({
+      jobId: job.id,
+      now: new Date("2026-10-20T12:00:00Z"),
+    });
+
+    expect(deferred.outcome).toBe("deferred");
+    expect(deferred.job.status).toBe("pending");
+    expect(deferred.job.runAfter).toEqual(retryAt);
+    await expect(auditActions()).resolves.not.toContain("extraction_job.failed");
+
+    shedding = false;
+    const resumed = await processor.processExtractionJob({ jobId: job.id, now: retryAt });
+    expect(resumed.outcome).toBe("completed");
   });
 
   it("creates a suggested memory tied to the person and source record, then completes", async () => {

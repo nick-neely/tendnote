@@ -1,4 +1,8 @@
-import { type UsageNotice, UsagePausedError } from "@tendnote/domain/usage-bounds";
+import {
+  spendBreakerRetryAt,
+  type UsageNotice,
+  UsagePausedError,
+} from "@tendnote/domain/usage-bounds";
 import type { CostCategory } from "@tendnote/domain/usage-ledger";
 import {
   gateway,
@@ -27,13 +31,21 @@ type MeteredAccount = string | (() => string | null);
 type HostedModelInput = { modelId: string; costCategory: CostCategory; account: MeteredAccount };
 
 /**
+ * Which background work a background call is: capture processing and the rest
+ * by default, or a scheduled workflow's. Both pause at the background Account
+ * Ceiling, but the Spend Breaker sheds scheduled workflows second.
+ */
+export type BackgroundWork = "background" | "scheduled";
+
+/**
  * An interactive model may name a Fallback Model: the cheaper model its calls
  * run on while the account is over its Fair-Use Budget. Only interactive Eve
  * has one (spec #591).
  */
 type HostedLanguageModelInput =
   | (HostedModelInput & { costCategory: "interactive"; fallbackModelId?: string })
-  | (HostedModelInput & { costCategory: Exclude<CostCategory, "interactive"> });
+  | (HostedModelInput & { costCategory: "web_search" })
+  | (HostedModelInput & { costCategory: "background"; work?: BackgroundWork });
 
 type StreamPart =
   Awaited<
@@ -47,12 +59,12 @@ type UsageLedgerWriter = (usage: ModelUsage) => Promise<void>;
 type EntryPointDependencies<Provider> = {
   provider?: Provider;
   recordUsage?: UsageLedgerWriter;
-  /** What background work shows an account, which refuses its calls while paused. */
-  backgroundNotice?: (accountId: string) => Promise<UsageNotice>;
+  /** What a kind of background work shows an account, which refuses its calls while paused. */
+  backgroundNotice?: (accountId: string, work: BackgroundWork) => Promise<UsageNotice>;
 };
 
-const readBackgroundNotice = async (accountId: string) =>
-  (await readUsageNotices({ userId: accountId })).background;
+const readBackgroundNotice = async (accountId: string, work: BackgroundWork) =>
+  (await readUsageNotices({ userId: accountId }))[work];
 
 /**
  * Eve's `web_search` runs on the gateway's Exa search, which bills each request
@@ -167,8 +179,9 @@ function startMeter(input: HostedModelInput, recordUsage: UsageLedgerWriter) {
   const call = (charge: Charge) => {
     const costMicroUsd = gatewayCostMicroUsd(charge.providerMetadata);
     if (costMicroUsd === null) {
-      // Counted as free, so it cannot move the account toward its ceiling; the
-      // Spend Breaker is what bounds a metering failure.
+      // Counted as free, so it moves neither the account's ceiling nor the
+      // Spend Breaker, which reads the same ledger; this warning is how a
+      // missing report shows.
       console.warn("usage-ledger: the gateway reported no cost for a model call", {
         modelId: input.modelId,
         costCategory: input.costCategory,
@@ -196,16 +209,16 @@ function startMeter(input: HostedModelInput, recordUsage: UsageLedgerWriter) {
 }
 
 /**
- * Refuses a background call while the account's background work is paused at
- * its Account Ceiling, before the call reaches the model, so the overshoot is
- * at most the call already running. A job that meets the refusal waits in its
- * pending state until the period resets; a caller with a deterministic
- * fallback uses that instead. When the read fails the call goes ahead: the
- * Spend Breaker, not a guess, bounds a usage read that cannot be made.
+ * Refuses a background call while the account's background work is paused, at
+ * its Account Ceiling or by the Spend Breaker, before the call reaches the
+ * model, so the overshoot is at most the call already running. A job that
+ * meets the refusal waits in its pending state until the period resets, or
+ * until the breaker's next day; a caller with a deterministic fallback uses
+ * that instead. When the read fails the call goes ahead rather than guessing.
  */
 async function refuseWhenPaused(
-  input: HostedModelInput,
-  backgroundNotice: (accountId: string) => Promise<UsageNotice>,
+  input: HostedModelInput & { work?: BackgroundWork },
+  backgroundNotice: (accountId: string, work: BackgroundWork) => Promise<UsageNotice>,
 ) {
   if (input.costCategory !== "background") return;
   const accountId = resolveAccount(input.account);
@@ -213,15 +226,17 @@ async function refuseWhenPaused(
 
   let notice: UsageNotice;
   try {
-    notice = await backgroundNotice(accountId);
+    notice = await backgroundNotice(accountId, input.work ?? "background");
   } catch {
     console.warn("usage: could not read the background allowance, so the call goes ahead", {
       modelId: input.modelId,
     });
     return;
   }
-  if (notice.state === "paused" && notice.recovery.kind === "resets_on") {
-    throw new UsagePausedError(notice.recovery.date);
+  if (notice.state !== "paused") return;
+  if (notice.recovery.kind === "resets_on") throw UsagePausedError.atCeiling(notice.recovery.date);
+  if (notice.recovery.kind === "service_restored") {
+    throw UsagePausedError.byBreaker(spendBreakerRetryAt(new Date()));
   }
 }
 
@@ -294,7 +309,7 @@ async function runsOnFallback(
  * searches the provider runs inside a call are metered as they appear.
  */
 function meteredModel(
-  input: HostedModelInput,
+  input: HostedModelInput & { work?: BackgroundWork },
   {
     provider,
     recordUsage,

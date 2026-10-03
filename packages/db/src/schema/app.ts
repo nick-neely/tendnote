@@ -53,6 +53,7 @@ export * from "./app/saved-items";
 export * from "./app/scheduled-workflow-deliveries";
 export * from "./app/semantic-retrieval";
 export * from "./app/source-records";
+export * from "./app/spend-breaker-days";
 export * from "./app/stripe-customers";
 export * from "./app/stripe-disputes";
 export * from "./app/stripe-subscriptions";

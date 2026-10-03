@@ -45,7 +45,7 @@ describe("model-safe tool store errors", () => {
       new SavedItemUnavailableDestinationError("Tendnote cannot save that yet."),
       new ConversationalCaptureUndoError("not_found", "That Saved Item is no longer available."),
       // A semantic search refused at the account's background Account Ceiling.
-      new UsagePausedError("2026-11-15"),
+      UsagePausedError.atCeiling("2026-11-15"),
     ];
 
     for (const error of errors) {

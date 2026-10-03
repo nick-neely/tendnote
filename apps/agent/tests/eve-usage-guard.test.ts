@@ -47,6 +47,18 @@ describe("the interactive Account Ceiling at Eve's door", () => {
     });
   });
 
+  it("refuses a new turn with no reset date while the Spend Breaker sheds Eve", async () => {
+    const shed: UsageNotice = { state: "paused", recovery: { kind: "service_restored" } };
+    const guard = createUsagePauseGuard({ auth, readUsageNotice: async () => shed });
+
+    const response = await refusal(guard(post("/eve/v1/session", { message: "hello" })));
+
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: "eve_usage_paused", notice: shed });
+    expect(JSON.stringify(body)).not.toMatch(/reset|date/i);
+  });
+
   it("refuses a follow-up message while Eve is paused", async () => {
     const readUsageNotice = vi.fn(async () => paused);
     const guard = createUsagePauseGuard({ auth, readUsageNotice });

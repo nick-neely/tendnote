@@ -29,6 +29,15 @@ vi.mock("../client", () => {
   };
 });
 
+const breaker = vi.hoisted(() => ({ stage: "closed" as string, fails: false }));
+
+vi.mock("./spend-breaker", () => ({
+  readSpendBreakerStage: async () => {
+    if (breaker.fails) throw new Error("spend_breaker_days unavailable");
+    return breaker.stage;
+  },
+}));
+
 import {
   anchorUsagePeriod,
   readEveOverFairUseBudget,
@@ -41,6 +50,8 @@ const now = new Date("2026-10-20T12:00:00Z");
 beforeEach(() => {
   db.reads = [];
   db.updated = [];
+  breaker.stage = "closed";
+  breaker.fails = false;
 });
 
 describe("readEveUsageNotice", () => {
@@ -130,6 +141,7 @@ describe("readUsageNotices", () => {
       eve: { state: "normal" },
       search: { ...paused, state: "reduced" },
       background: paused,
+      scheduled: paused,
       webSearch: paused,
     });
   });
@@ -182,5 +194,48 @@ describe("anchorUsagePeriod", () => {
     await expect(
       anchorUsagePeriod({ userId: "owner-1", startedAt: new Date("2026-03-15T17:04:05Z") }),
     ).rejects.toThrow(/No Access Profile/);
+  });
+});
+
+describe("the Spend Breaker in usage reads", () => {
+  const restored = { state: "paused", recovery: { kind: "service_restored" } };
+
+  it("pauses Eve with no reset date once the breaker sheds interactive work", async () => {
+    breaker.stage = "interactive";
+    db.reads = [[{ anchor: "2026-03-15" }], [{ costCategory: "interactive", microUsd: "1" }]];
+
+    await expect(readEveUsageNotice({ userId: "owner-1", now })).resolves.toEqual(restored);
+  });
+
+  it("covers an account with no plan, such as the operator's", async () => {
+    breaker.stage = "background";
+    db.reads = [[{ anchor: null }]];
+
+    const notices = await readUsageNotices({ userId: "owner-1", now });
+    expect(notices.background).toEqual(restored);
+    expect(notices.scheduled).toEqual({ state: "normal" });
+    expect(notices.eve).toEqual({ state: "normal" });
+  });
+
+  it("keeps the account's own ceilings when the breaker cannot be read, and logs it", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    breaker.fails = true;
+    db.reads = [[{ anchor: "2026-03-15" }], [{ costCategory: "background", microUsd: "1300000" }]];
+
+    const notices = await readUsageNotices({ userId: "owner-1", now });
+
+    expect(notices.background).toEqual({
+      state: "paused",
+      recovery: { kind: "resets_on", date: "2026-11-15" },
+    });
+    expect(error).toHaveBeenCalledWith("spend_breaker.read_failed", { reason: "Error" });
+    error.mockRestore();
+  });
+
+  it("never moves an account to the Fallback Model", async () => {
+    breaker.stage = "interactive";
+    db.reads = [[{ anchor: "2026-03-15" }], [{ costCategory: "interactive", microUsd: "1" }]];
+
+    await expect(readEveOverFairUseBudget({ userId: "owner-1", now })).resolves.toBe(false);
   });
 });

@@ -241,7 +241,7 @@ describe("semantic embedding jobs - approved memories", () => {
     const { store, processor, createApprovedMemory } = createHarness({
       adapter: {
         async embedText(request) {
-          if (paused) throw new UsagePausedError("2026-11-15");
+          if (paused) throw UsagePausedError.atCeiling("2026-11-15");
           return { vector: [0, 1, 0, 0], model: request.model, version: request.version };
         },
       },

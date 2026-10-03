@@ -2,9 +2,13 @@ import {
   EVE_USAGE_PAUSED_CODE,
   recoveryText,
   type UsageNotice,
+  type UsageNotices,
   type UsageRestriction,
 } from "@tendnote/domain/usage-bounds";
 import { z } from "zod";
+
+/** What Home shows about background work: capture processing and scheduled workflows. */
+export type BackgroundUsage = Pick<UsageNotices, "background" | "scheduled">;
 
 const pausedNoticeSchema = z.object({
   state: z.literal("paused"),
@@ -41,19 +45,31 @@ export function eveUsageNoticeText(notice: UsageRestriction): {
 }
 
 /**
- * What background work's notice says when it is paused at the account's
- * background Account Ceiling: captures wait in their pending state and the
- * next scheduled delivery is skipped. Reminders are not background work and are
- * never shed, so they are covered by "everything else".
+ * What background work's notice says when it is paused: captures wait in their
+ * pending state, and while scheduled workflows are paused too, their next
+ * delivery is skipped. At the background Account Ceiling both pause together;
+ * the Spend Breaker sheds captures first and briefs only later, so the notice
+ * names briefs only when they are actually skipped. Reminders are not
+ * background work and are never shed, so they are covered by "everything else".
  */
-export function backgroundUsageNoticeText(notice: UsageRestriction): {
+export function backgroundUsageNoticeText({
+  background: notice,
+  scheduled,
+}: {
+  background: UsageRestriction;
+  scheduled: UsageNotice;
+}): {
   headline: string;
   detail: string;
 } {
   const monthly = notice.recovery.kind === "resets_on";
+  const paused =
+    scheduled.state === "paused"
+      ? "New captures wait to be processed, and scheduled briefs and reviews skip their next delivery."
+      : "New captures wait to be processed.";
   return {
     headline: monthly ? "Background work is paused for this month." : "Background work is paused.",
-    detail: `New captures wait to be processed, and scheduled briefs and reviews skip their next delivery. Everything else in Tendnote still works. ${recoveryText(notice.recovery)}`,
+    detail: `${paused} Everything else in Tendnote still works. ${recoveryText(notice.recovery)}`,
   };
 }
 
