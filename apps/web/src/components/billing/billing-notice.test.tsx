@@ -65,7 +65,7 @@ describe("the Past Due notice (#610)", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("shows the days of full access left and the date to fix the card by, with the way to fix it", async () => {
+  it("shows the days of full access left, with the way to fix the card", async () => {
     getBillingStanding.mockResolvedValue({
       endsAt: null,
       pastDueSince: new Date("2026-11-01T10:30:00Z"),
@@ -74,9 +74,7 @@ describe("the Past Due notice (#610)", () => {
     const html = await renderNotice();
 
     expect(html).toContain("Your renewal payment didn&#x27;t go through.");
-    expect(html).toContain(
-      "Full access continues for 5 more days. Update your card by November 8, 2026 to keep it.",
-    );
+    expect(html).toContain("Full access continues for 5 more days. Update your card to keep it.");
     expect(html).toContain("<b>Manage billing</b>");
   });
 
