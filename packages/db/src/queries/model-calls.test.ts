@@ -459,6 +459,27 @@ describe("the Fallback Model", () => {
     expect(eve.reached()).toEqual(["google/gemini-3.7-flash", "openai/gpt-6-luna"]);
   });
 
+  it("hands the Fallback Model the caller's provider options, so its thinking still shows", async () => {
+    const eve = interactiveEve(async () => true);
+
+    await generateText({
+      model: eve.model,
+      prompt: "hi",
+      providerOptions: {
+        google: { thinkingConfig: { includeThoughts: true } },
+        openai: { reasoningSummary: "auto" },
+      },
+    });
+
+    expect(eve.fake.sentProviderOptions()).toEqual([
+      expect.objectContaining({
+        google: { thinkingConfig: { includeThoughts: true } },
+        openai: { reasoningSummary: "auto" },
+        gateway: expect.objectContaining({ only: ["openai"] }),
+      }),
+    ]);
+  });
+
   it("stays on the production model when the usage read fails, and says so", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const eve = interactiveEve(async () => {

@@ -42,17 +42,22 @@ export default defineAgent({
    *   keys *over* the effort-derived ones (`{...fromEffort, ...authored}`), so a
    *   Gemini 3 request would carry `thinkingLevel` and `thinkingBudget`
    *   together, two mutually exclusive thinking controls in one call.
-   * - An OpenAI reasoning model gets its `reasoningEffort` from it, so an
-   *   authored `openai` block would only duplicate the effort.
+   * - An OpenAI reasoning model gets its `reasoningEffort` from it, so the
+   *   `openai` block below must never carry an effort of its own: the gateway
+   *   lets any authored effort replace the top-level one outright.
    *
-   * `includeThoughts` is the exception: it carries no effort semantics, it is
-   * Google-only, and without it Gemini thinks silently and the disclosure has
-   * nothing to show.
+   * The summary switches are the exception, one per provider: they carry no
+   * effort semantics, and without them the model thinks silently and the
+   * disclosure has nothing to show. Each provider reads only its own block, so
+   * both are always sent. `includeThoughts` covers Gemini; `reasoningSummary`
+   * covers OpenAI, which is how the Fallback Model (GPT-6 Luna) shows its
+   * thinking too. `"auto"` asks for the richest summary the model offers.
    */
   reasoning: "low",
   modelOptions: {
     providerOptions: {
       google: { thinkingConfig: { includeThoughts: true } },
+      openai: { reasoningSummary: "auto" },
     },
   },
   build: {
