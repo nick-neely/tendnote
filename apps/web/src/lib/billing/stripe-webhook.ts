@@ -1,5 +1,6 @@
 import type { AdmissionPolicy } from "@tendnote/domain";
 import Stripe from "stripe";
+import { firstPaidInvoice } from "./first-paid-invoice";
 
 export type StripeWebhookDependencies = {
   policy: AdmissionPolicy;
@@ -19,37 +20,6 @@ export type StripeWebhookDependencies = {
   log?: (message: string) => void;
 };
 
-function stripeId(value: string | { id: string } | null): string | null {
-  if (value === null) return null;
-  return typeof value === "string" ? value : value.id;
-}
-
-/**
- * The invoice and Stripe customer whose account an event admits, and when its
- * subscription started, or `null` when the event is not admission evidence.
- * Only the paid first invoice of a subscription is (ADR 0245): a Checkout
- * redirect, a completed session, an `active` subscription whose invoice is
- * unpaid, a created customer, and a later renewal all admit nobody.
- *
- * A subscription's first invoice covers a single instant, its creation, so its
- * `period_start` is the moment the subscription started.
- */
-function firstPaidInvoice(
-  event: Stripe.Event,
-): { invoiceId: string; stripeCustomerId: string; startedAt: Date } | null {
-  if (event.type !== "invoice.paid") return null;
-  const invoice = event.data.object;
-  if (invoice.status !== "paid" || invoice.billing_reason !== "subscription_create") return null;
-  if (!invoice.parent?.subscription_details || !invoice.id) return null;
-  const stripeCustomerId = stripeId(invoice.customer);
-  if (!stripeCustomerId) return null;
-  return {
-    invoiceId: invoice.id,
-    stripeCustomerId,
-    startedAt: new Date(invoice.period_start * 1000),
-  };
-}
-
 /**
  * The Stripe webhook receiver (#606). It verifies the signature over the raw
  * body before reading anything, then projects the first paid invoice onto Paid
@@ -57,9 +27,8 @@ function firstPaidInvoice(
  * idempotent, so a duplicate delivery is a no-op, and the customer was
  * recorded before Checkout opened, so an invoice can always be matched to its
  * account without any earlier event having arrived. Once admission is recorded
- * the "you're in" email follows, never before it (#607). Nothing revokes Paid
- * Access yet; whatever first
- * does must also stop a redelivered first invoice from re-admitting.
+ * the "you're in" email follows, never before it (#607). A dropped delivery is
+ * repaired by the reconciliation job on the recovery cron (#608).
  *
  * A failure after verification surfaces as a 500 so Stripe redelivers;
  * accepting the HTTP delivery is not treated as completion. Self-hosted
@@ -92,7 +61,7 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
       return new Response("Invalid Stripe signature.", { status: 400 });
     }
 
-    const paid = firstPaidInvoice(event);
+    const paid = event.type === "invoice.paid" ? firstPaidInvoice(event.data.object) : null;
     if (!paid) {
       return new Response(null, { status: 200 });
     }
