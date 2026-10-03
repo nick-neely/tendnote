@@ -5,9 +5,11 @@ import {
   admitFromFirstPaidInvoice,
   type PaidAccessAdmissionDependencies,
 } from "./paid-access-admission";
+import { projectSubscription } from "./subscription-projection";
 
 /**
- * How far back each pass reads Stripe's paid invoices. It covers Stripe's
+ * How far back each pass reads Stripe's paid invoices and subscription events.
+ * Stripe keeps events for exactly this long. It covers Stripe's
  * three-day webhook retry schedule, a restore from anywhere in the seven-day
  * Backup Window (ADR 0250), and a cron outage of weeks on top. A first invoice
  * is paid when Checkout completes, so one older than this was either projected
@@ -18,7 +20,11 @@ export const RECONCILIATION_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 /** The slice of the Stripe client reconciliation reads. Listing pages lazily. */
 export type ReconciliationStripeClient = {
   invoices: { list: (params: Stripe.InvoiceListParams) => AsyncIterable<Stripe.Invoice> };
+  events: { list: (params: Stripe.EventListParams) => AsyncIterable<Stripe.Event> };
 };
+
+/** The subscription changes the webhook projects, replayed here when a delivery was lost. */
+const SUBSCRIPTION_EVENT_TYPES = ["customer.subscription.updated", "customer.subscription.deleted"];
 
 type ProfileStanding = Pick<AccessProfile, "status" | "source">;
 
@@ -51,8 +57,9 @@ function errorMessage(error: unknown): string {
 /**
  * The Stripe reconciliation job (#608). On the background recovery cron it
  * recomputes the Paid Access projection from Stripe's current paid invoices
- * through the same first-paid-invoice rule as the webhook, so a delivery that
- * was dropped or failed for good is repaired on the next pass.
+ * through the same first-paid-invoice rule as the webhook, and re-projects every
+ * subscription changed inside the window (#609), so a delivery that was
+ * dropped or failed for good is repaired on the next pass.
  *
  * It is idempotent: an account already standing where the invoice would put it
  * is left as it is and is sent no second email. It only ever adds the Paid
@@ -120,6 +127,68 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
     }
   }
 
+  /**
+   * Re-project one subscription from Stripe's current copy, exactly as the
+   * webhook does, so a lost end makes the account Lapsed and a lost scheduled
+   * cancellation shows its Ending notice and is confirmed (#609).
+   */
+  async function reprojectSubscription(
+    stripeSubscriptionId: string,
+    result: Extract<StripeReconciliationResult, { status: "ran" }>,
+  ) {
+    try {
+      const subscription = await deps.retrieveSubscription(stripeSubscriptionId);
+      const userId = await deps.findAccountByStripeCustomer(subscription.stripeCustomerId);
+      if (!userId) {
+        result.unknownCustomer += 1;
+        deps.logger?.warn?.("stripe_reconciliation.unknown_customer", { stripeSubscriptionId });
+        return;
+      }
+      await projectSubscription(deps.subscriptions, userId, subscription);
+    } catch (error) {
+      result.failed += 1;
+      deps.logger?.error?.("stripe_reconciliation.failed", {
+        stage: "subscription",
+        stripeSubscriptionId,
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  /**
+   * Every subscription changed inside the window, once each. The first-invoice
+   * pass already re-reads young subscriptions; this reaches the ones whose first
+   * invoice is older than the window, which is where a lost end would otherwise
+   * leave a cancelled account admitted for good.
+   */
+  async function reconcileSubscriptions(
+    stripe: ReconciliationStripeClient,
+    since: number,
+    result: Extract<StripeReconciliationResult, { status: "ran" }>,
+  ) {
+    const changed = new Set<string>();
+    try {
+      const events = stripe.events.list({
+        types: SUBSCRIPTION_EVENT_TYPES,
+        created: { gte: since },
+        limit: 100,
+      });
+      for await (const event of events) {
+        const object = event.data.object as { object?: string; id?: string };
+        if (object.object === "subscription" && object.id) changed.add(object.id);
+      }
+    } catch (error) {
+      result.failed += 1;
+      deps.logger?.error?.("stripe_reconciliation.failed", {
+        stage: "events",
+        error: errorMessage(error),
+      });
+    }
+    for (const stripeSubscriptionId of changed) {
+      await reprojectSubscription(stripeSubscriptionId, result);
+    }
+  }
+
   return async function reconcile(input: { now?: Date } = {}): Promise<StripeReconciliationResult> {
     if (deps.policy.mode !== "hosted" || !deps.stripe) return { status: "skipped" };
 
@@ -131,10 +200,11 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
       unknownCustomer: 0,
       failed: 0,
     };
+    const since = Math.floor((now.getTime() - RECONCILIATION_LOOKBACK_MS) / 1000);
     try {
       const invoices = deps.stripe.invoices.list({
         status: "paid",
-        created: { gte: Math.floor((now.getTime() - RECONCILIATION_LOOKBACK_MS) / 1000) },
+        created: { gte: since },
         limit: 100,
       });
       for await (const invoice of invoices) {
@@ -148,6 +218,7 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
         error: errorMessage(error),
       });
     }
+    await reconcileSubscriptions(deps.stripe, since, result);
     return result;
   };
 }

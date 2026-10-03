@@ -36,7 +36,10 @@ function invoice(overrides: Record<string, unknown> = {}): Stripe.Invoice {
  * Stripe's current paid invoices, listed the way the real client pages them.
  * `failAfter` makes the listing break partway, as a Stripe outage would.
  */
-function fakeStripe(current: () => Stripe.Invoice[], options: { failAfter?: number } = {}) {
+function fakeStripe(
+  current: () => Stripe.Invoice[],
+  options: { failAfter?: number; events?: () => Stripe.Event[] } = {},
+) {
   const list = vi.fn((_params: Stripe.InvoiceListParams) =>
     (async function* () {
       let yielded = 0;
@@ -49,7 +52,23 @@ function fakeStripe(current: () => Stripe.Invoice[], options: { failAfter?: numb
       }
     })(),
   );
-  return { invoices: { list } };
+  // Stripe's recent subscription events, newest first as Stripe lists them.
+  const listEvents = vi.fn((_params: Stripe.EventListParams) =>
+    (async function* () {
+      yield* options.events?.() ?? [];
+    })(),
+  );
+  return { invoices: { list }, events: { list: listEvents } };
+}
+
+/** A subscription event whose own copy is deliberately stale: reconciliation re-reads Stripe. */
+function subscriptionEvent(type: "updated" | "deleted", id = "sub_1"): Stripe.Event {
+  return {
+    id: `evt_${type}_${id}`,
+    object: "event",
+    type: `customer.subscription.${type}`,
+    data: { object: { id, object: "subscription", customer: CUSTOMER, status: "active" } },
+  } as unknown as Stripe.Event;
 }
 
 /**
@@ -61,6 +80,7 @@ function droppedWebhook(
   input: {
     policy?: AdmissionPolicy;
     invoices?: Stripe.Invoice[];
+    events?: Stripe.Event[];
     customers?: [string, string][];
     failAfter?: number;
   } = {},
@@ -72,7 +92,11 @@ function droppedWebhook(
     user,
   });
   const stripeInvoices = input.invoices ?? [invoice()];
-  const stripe = fakeStripe(() => stripeInvoices, { failAfter: input.failAfter });
+  const stripeEvents = input.events ?? [];
+  const stripe = fakeStripe(() => stripeInvoices, {
+    failAfter: input.failAfter,
+    events: () => stripeEvents,
+  });
   const customers = new Map([[CUSTOMER, user.id], ...(input.customers ?? [])]);
   const anchors = new Map<string, Date>();
   const logger = { warn: vi.fn(), error: vi.fn() };
@@ -123,6 +147,7 @@ function droppedWebhook(
     reconcile: () => reconcile({ now: NOW }),
     stripe,
     stripeInvoices,
+    stripeEvents,
     anchors,
     logger,
     announceAdmission,
@@ -362,6 +387,107 @@ describe("Stripe reconciliation failures", () => {
   });
 });
 
+describe("Stripe reconciliation of subscription changes (#609)", () => {
+  const PERIOD_END = new Date("2026-11-01T09:30:00Z");
+
+  /**
+   * An account admitted long enough ago that its first invoice has left the
+   * lookback window, so only its subscription's own events can reach it.
+   */
+  async function paying(input?: Parameters<typeof droppedWebhook>[0]) {
+    const subscriber = await signedUp(input);
+    await subscriber.reconcile();
+    await subscriber.expectAdmitted();
+    subscriber.stripeInvoices.length = 0;
+    return subscriber;
+  }
+
+  it("repairs a dropped subscription end: the account becomes Lapsed", async () => {
+    const subscriber = await paying();
+
+    subscriber.stripeSubscriptions.stripeChanges("sub_1", { endedAt: PERIOD_END });
+    subscriber.stripeEvents.push(subscriptionEvent("deleted"));
+    const result = await subscriber.reconcile();
+
+    expect(result).toMatchObject({ status: "ran", failed: 0 });
+    await subscriber.expectNotAdmitted();
+    await expect(subscriber.queries.getAccessProfile({ userId: user.id })).resolves.toMatchObject({
+      retentionDeadline: lapsedRetentionDeadline(PERIOD_END),
+    });
+  });
+
+  it("repairs a dropped scheduled cancellation and confirms it once, however many passes see it", async () => {
+    const subscriber = await paying();
+
+    subscriber.stripeSubscriptions.stripeChanges("sub_1", { cancelAt: PERIOD_END });
+    // Two events for one subscription are projected once per pass.
+    subscriber.stripeEvents.push(subscriptionEvent("updated"), subscriptionEvent("updated"));
+    await subscriber.reconcile();
+    await subscriber.reconcile();
+
+    await subscriber.expectAdmitted();
+    expect(subscriber.stripeSubscriptions.recorded.get("sub_1")).toMatchObject({
+      cancelAt: PERIOD_END,
+      endedAt: null,
+    });
+    expect(subscriber.stripeSubscriptions.confirmCancellation).toHaveBeenCalledOnce();
+    expect(subscriber.stripeSubscriptions.retrieveSubscription).toHaveBeenCalledTimes(3);
+  });
+
+  it("leaves a resubscribed account admitted when the old subscription's end is replayed", async () => {
+    const resubscribed = invoice({
+      id: "in_again",
+      parent: {
+        type: "subscription_details",
+        subscription_details: { subscription: "sub_2", metadata: {} },
+      },
+    });
+    const subscriber = await signedUp({ invoices: [resubscribed] });
+    subscriber.stripeSubscriptions.stripeChanges("sub_1", { endedAt: PERIOD_END });
+    subscriber.stripeSubscriptions.stripeChanges("sub_2", {});
+    subscriber.stripeEvents.push(subscriptionEvent("deleted", "sub_1"));
+
+    await subscriber.reconcile();
+
+    await subscriber.expectAdmitted();
+    await expect(subscriber.queries.getAccessProfile({ userId: user.id })).resolves.toMatchObject({
+      paidAccessSubscriptionId: "sub_2",
+      retentionDeadline: null,
+    });
+  });
+
+  it("reads only subscription changes inside the lookback window", async () => {
+    const subscriber = await signedUp();
+
+    await subscriber.reconcile();
+
+    expect(subscriber.stripe.events.list).toHaveBeenCalledExactlyOnceWith({
+      types: ["customer.subscription.updated", "customer.subscription.deleted"],
+      created: { gte: Math.floor((NOW.getTime() - RECONCILIATION_LOOKBACK_MS) / 1000) },
+      limit: 100,
+    });
+  });
+
+  it("records an alertable failure for a subscription it cannot read, and goes on", async () => {
+    const subscriber = await paying();
+    subscriber.stripeSubscriptions.stripeChanges("sub_1", { endedAt: PERIOD_END });
+    subscriber.stripeEvents.push(
+      subscriptionEvent("updated", "sub_gone"),
+      subscriptionEvent("deleted"),
+    );
+
+    const result = await subscriber.reconcile();
+
+    expect(result).toMatchObject({ status: "ran", failed: 1 });
+    expect(subscriber.logger.error).toHaveBeenCalledWith("stripe_reconciliation.failed", {
+      stage: "subscription",
+      stripeSubscriptionId: "sub_gone",
+      error: "No such subscription: sub_gone",
+    });
+    await subscriber.expectNotAdmitted();
+  });
+});
+
 describe("self-hosted deployments", () => {
   it("run none of the reconciliation, even with a paid first invoice in Stripe", async () => {
     const subscriber = await signedUp({ policy: { mode: "self-hosted" } as AdmissionPolicy });
@@ -370,6 +496,7 @@ describe("self-hosted deployments", () => {
 
     expect(result).toEqual({ status: "skipped" });
     expect(subscriber.stripe.invoices.list).not.toHaveBeenCalled();
+    expect(subscriber.stripe.events.list).not.toHaveBeenCalled();
     expect(subscriber.grantPaidAccess).not.toHaveBeenCalled();
   });
 });
