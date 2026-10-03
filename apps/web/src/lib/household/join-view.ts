@@ -4,16 +4,19 @@ import {
   listActiveHouseholdMembershipsForUser,
   viewHouseholdInvitation,
 } from "@tendnote/db/queries/households";
+import { parseAdmissionPolicy } from "@tendnote/domain";
 import type { HouseholdJoinDecision } from "@tendnote/domain/household-invitations";
 import { getCurrentAccess } from "@/lib/access/current-access";
 
 /** The one decision that names anything, plus what Tendnote's front door knows. */
 export type HouseholdJoinReady = Extract<HouseholdJoinDecision, { state: "ready" }> & {
   /**
-   * True when this account has no Private Beta Access yet. The invitation is
-   * still usable; only the rest of Tendnote is not.
+   * True when accepting makes this account a read-only Household Guest rather
+   * than a full member: a hosted account that is not admitted (#635). The
+   * invitation is still usable; only the rest of Tendnote is not. Self-hosted
+   * acceptance admits durably, so it is never true there.
    */
-  accessPending: boolean;
+  joinsAsGuest: boolean;
 };
 
 /**
@@ -35,18 +38,25 @@ export type HouseholdJoinView =
  * pending visitor is run through the same decision as anyone else and the access
  * fact is attached only to a decision that already reached `ready`.
  *
- * What that fact does *not* do is refuse. Private Beta Access is the global
- * denier for the site; it is not a household's doorman. A pending recipient may
- * accept and hold a real membership, and Tendnote opens for them later - so the
- * page explains that rather than turning them away from an invitation that will
- * expire while they wait.
+ * What that fact does *not* do is refuse. Admission is the global denier for
+ * the site; it is not a household's doorman. An unpaid hosted recipient may
+ * accept and hold a real membership as a read-only guest, and the rest of
+ * Tendnote opens when they subscribe - so the page explains that rather than
+ * turning them away from an invitation that would expire mid-checkout.
  */
 export async function resolveHouseholdJoinView(secret: string): Promise<HouseholdJoinView> {
   const access = await getCurrentAccess();
   const decision = await viewHouseholdInvitation({ secret, viewer: await viewerFor(access) });
 
   return decision.state === "ready"
-    ? { ...decision, accessPending: access.state === "pending" }
+    ? {
+        ...decision,
+        // A Lapsed account has held Paid Access and is never a guest.
+        joinsAsGuest:
+          access.state === "pending" &&
+          access.decision.profile?.source !== "paid_access" &&
+          parseAdmissionPolicy().mode === "hosted",
+      }
     : decision;
 }
 

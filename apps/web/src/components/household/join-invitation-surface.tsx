@@ -10,6 +10,7 @@ import {
 } from "@/app/actions/household-invitations";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Button } from "@/components/ui/button";
+import { GUEST_PATH } from "@/lib/access/access-state";
 import { HOUSEHOLD_GENERIC_ERROR, INVITATION_DATE_FORMAT } from "@/lib/household/invitation-copy";
 import type { HouseholdJoinView } from "@/lib/household/join-view";
 
@@ -80,7 +81,7 @@ function JoinBody({
       return (
         <JoinDecision
           acceptAction={acceptAction}
-          accessPending={view.accessPending}
+          joinsAsGuest={view.joinsAsGuest}
           declineAction={declineAction}
           expiresAt={view.expiresAt}
           householdName={view.householdName}
@@ -190,16 +191,16 @@ function JoinNotice({
  * actually being agreed to. Declining burns the link, so its confirm step says
  * so. Neither is a modal: the page has one job and can afford to change in place.
  *
- * `accessPending` changes what joining *leads to*, never whether it is offered.
- * Someone still waiting on Private Beta Access joins a real household and then
- * goes back to waiting for the site, so the page says that before the press, in
- * the confirm step, and again in what it announces afterwards. Saying it once
- * would leave the surprise for whichever of the three the reader skipped.
+ * `joinsAsGuest` changes what joining *leads to*, never whether it is offered.
+ * An unpaid hosted account joins a real household as a read-only Household
+ * Guest (#635), so the page says that before the press, in the confirm step,
+ * and again in what it announces afterwards. Saying it once would leave the
+ * surprise for whichever of the three the reader skipped.
  */
 function JoinDecision({
   householdName,
   expiresAt,
-  accessPending,
+  joinsAsGuest,
   secret,
   acceptAction,
   declineAction,
@@ -207,7 +208,7 @@ function JoinDecision({
 }: {
   householdName: string;
   expiresAt: Date;
-  accessPending: boolean;
+  joinsAsGuest: boolean;
   secret: string;
   acceptAction: HouseholdJoinAction;
   declineAction: HouseholdJoinAction;
@@ -265,10 +266,11 @@ function JoinDecision({
           Joining <span className="font-medium">{householdName}</span> gives you a small shared
           layer with the people in it. Anything you don&rsquo;t share stays private to you.
         </p>
-        {accessPending ? (
+        {joinsAsGuest ? (
           <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty">
-            Your Tendnote account is still waiting for Private Beta Access. Joining now gives you
-            your place in the household; the rest of Tendnote opens when your access comes through.
+            Your account doesn&rsquo;t have a subscription yet, so you&rsquo;ll join as a guest: you
+            can read what the household shares with you, but not add or change anything. The rest of
+            Tendnote opens when you subscribe.
           </p>
         ) : null}
         <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
@@ -279,17 +281,17 @@ function JoinDecision({
       {confirming === "join" ? (
         <ConfirmStep
           confirmLabel={pending ? "Joining…" : `Yes, join ${householdName}`}
-          explanation={`You'll become a member of ${householdName}. People there will see anything you choose to give household visibility — nothing you've already written moves, and nothing else is shared.${accessPending ? " Tendnote itself stays shut until your access comes through, so you'll land back on the waiting page." : ""}`}
+          explanation={`You'll become a member of ${householdName}. People there will see anything you choose to give household visibility — nothing you've already written moves, and nothing else is shared.${joinsAsGuest ? " Until you subscribe, you'll be a read-only guest." : ""}`}
           explanationId={explanationId}
           onBack={() => setConfirming(null)}
           onConfirm={() =>
             run(acceptAction, () => {
               onAnnounce(
-                accessPending
-                  ? `You've joined ${householdName}. Tendnote opens when your access comes through.`
+                joinsAsGuest
+                  ? `You've joined ${householdName} as a read-only guest.`
                   : `You've joined ${householdName}.`,
               );
-              router.replace(accessPending ? "/pending" : "/account/household");
+              router.replace(joinsAsGuest ? GUEST_PATH : "/account/household");
               router.refresh();
             })
           }

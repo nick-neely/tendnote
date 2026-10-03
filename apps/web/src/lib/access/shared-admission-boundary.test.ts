@@ -226,6 +226,49 @@ describe("shared Web/Eve admission boundary", () => {
     await expect(eve(request)).rejects.toBeInstanceOf(ForbiddenError);
   });
 
+  it("keeps a hosted Household Guest read-only at both boundaries, live with its last admitted Owner", async () => {
+    const guest = { id: "guest-1", email: "guest@example.com" };
+    const { blocks, eve, households, queries, web } = createAdmissionHarness({
+      evaluateFlag: vi.fn().mockResolvedValue(false),
+      policy: { mode: "hosted", valid: true },
+      user: guest,
+    });
+    households.set(guest.id, { householdId: "household-1", ownerUserIds: ["owner-1"] });
+    await queries.grantAccess({ userId: "owner-1", source: "paid_access" });
+    const resolve = () => web.resolveAccess({ userId: guest.id, email: guest.email });
+
+    await expect(resolve()).resolves.toMatchObject({
+      admitted: false,
+      guest: { householdId: "household-1" },
+    });
+    // A guest consumes no inference: Eve refuses it like any unadmitted account.
+    await expect(eve(request)).rejects.toBeInstanceOf(ForbiddenError);
+
+    // The last admitted Owner lapses: the guest collapses on the next request.
+    blocks.set("owner-1", [{ kind: "dunning_expiry", event: "in_failed", exceptions: [] }]);
+    expect((await resolve()).guest).toBeUndefined();
+
+    // And returns on the next request after the Owner does.
+    blocks.delete("owner-1");
+    await expect(resolve()).resolves.toMatchObject({ guest: { householdId: "household-1" } });
+  });
+
+  it("never makes a self-hosted member a guest", async () => {
+    const member = { id: "member-1", email: "member@example.com" };
+    const { households, queries, web } = createAdmissionHarness({
+      evaluateFlag: vi.fn().mockResolvedValue(false),
+      policy: { mode: "self-hosted", valid: true, bootstrapOwnerEmail: "owner@example.com" },
+      user: member,
+    });
+    households.set(member.id, { householdId: "household-1", ownerUserIds: ["owner-1"] });
+    await queries.grantAccess({ userId: "owner-1", source: "self_hosted_bootstrap" });
+
+    const decision = await web.resolveAccess({ userId: member.id, email: member.email });
+
+    expect(decision).toMatchObject({ admitted: false, status: "pending" });
+    expect(decision.guest).toBeUndefined();
+  });
+
   it("does not read blocks for an account no source admits", async () => {
     const readBlocks = vi.fn().mockResolvedValue([]);
     const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());

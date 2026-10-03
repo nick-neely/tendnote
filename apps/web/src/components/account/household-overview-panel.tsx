@@ -149,6 +149,12 @@ export function HouseholdOverviewPanel({
                   <Badge variant={member.role === "owner" ? "secondary" : "outline"}>
                     {ROLE_LABEL[member.role]}
                   </Badge>
+                  {/* A plain fact: no reason, no billing detail, no action (ADR 0245). */}
+                  {member.notCurrentlyAdmitted ? (
+                    <span className="shrink-0 text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
+                      Not currently admitted
+                    </span>
+                  ) : null}
                 </span>
                 <span className="truncate text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
                   {member.email}

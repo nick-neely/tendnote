@@ -24,6 +24,7 @@ export function member(
     role: "member",
     isViewer: true,
     awaitingOwnerReply: false,
+    notCurrentlyAdmitted: false,
     promote: NONE,
     remove: NONE,
     ...overrides,

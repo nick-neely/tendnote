@@ -11,6 +11,7 @@ import {
   householdInvitationExpiresAt,
   isHouseholdInvitationLive,
   normalizeInvitationEmail,
+  parseAdmissionPolicy,
   parseInvitationRecipient,
   type RecipientProof,
   resendCooldownRemainingMs,
@@ -37,6 +38,15 @@ export type SentHouseholdInvitation = {
 export type HouseholdInvitationLifecycleOptions = {
   now?: () => Date;
   mintSecret?: () => HouseholdInvitationSecret;
+  /**
+   * Whether acceptance durably grants admission. Hosted acceptance creates the
+   * membership alone, and the account is a Household Guest only while the
+   * admission resolver finds an Owner with Paid Access behind it (ADR 0245).
+   * Every other mode keeps the durable grant (ADR 0232), including an invalid
+   * one, so fixing a misconfigured self-hosted deployment loses no member.
+   * Defaults to the configured mode.
+   */
+  acceptanceGrantsAdmission?: () => boolean;
 };
 
 const LINK_NOT_LIVE = "That invitation is no longer live. Send a new one instead.";
@@ -278,6 +288,8 @@ export function createHouseholdInvitationLifecycle(
 ) {
   const now = options.now ?? (() => new Date());
   const mintSecret = options.mintSecret ?? mintHouseholdInvitationSecret;
+  const acceptanceGrantsAdmission =
+    options.acceptanceGrantsAdmission ?? (() => parseAdmissionPolicy().mode !== "hosted");
 
   /**
    * Resolves the household the caller owns, or refuses. Ownership is re-decided
@@ -323,10 +335,12 @@ export function createHouseholdInvitationLifecycle(
       unusableLink();
     }
 
-    // A successful first acceptance always leaves this grant in the same
-    // transaction. Repairing a legacy accepted row that lacks it is
+    // A successful self-hosted acceptance always leaves this grant in the
+    // same transaction. Repairing a legacy accepted row that lacks it is
     // idempotent and keeps the persisted admission invariant true.
-    await grantHouseholdInvitationAccess(tx, proof.userId);
+    if (acceptanceGrantsAdmission()) {
+      await grantHouseholdInvitationAccess(tx, proof.userId);
+    }
     return { householdId: invitation.householdId };
   }
 
@@ -662,10 +676,14 @@ export function createHouseholdInvitationLifecycle(
         );
         await assertSeatAvailable(tx, { householdId: invitation.householdId, at });
 
-        // Admission is a durable consequence of the same mailbox proof as the
-        // membership. Keep it on the transaction-bound access query seam so a
-        // failure in either write rolls the other back in production.
-        await grantHouseholdInvitationAccess(tx, proof.userId);
+        // Self-hosted admission is a durable consequence of the same mailbox
+        // proof as the membership. Keep it on the transaction-bound access
+        // query seam so a failure in either write rolls the other back in
+        // production. Hosted acceptance grants nothing: the membership alone
+        // makes an unpaid account a Household Guest.
+        if (acceptanceGrantsAdmission()) {
+          await grantHouseholdInvitationAccess(tx, proof.userId);
+        }
 
         await admitMembership(tx, invitation, proof.userId, at);
 

@@ -18,10 +18,17 @@ export type SessionUser = {
 /** Where the re-acceptance gate lives (#614). */
 export const REACCEPTANCE_PATH = "/accept-terms";
 
+/** Where a live Household Guest lands: read-only, outside the app shell (#635). */
+export const GUEST_PATH = "/guest";
+
 /**
  * Resolved Private Beta Access for the current request. `admitted` carries the
  * owner id used to scope product data; `pending` carries identity only so the
  * limited pending-access area can render without loading relationship data.
+ *
+ * `guest` is a hosted account that is not admitted but is a live Household
+ * Guest (ADR 0245). It carries no owner id either, so every product surface
+ * keyed on admission refuses it; only the guest area reads its household.
  *
  * `reacceptance` is any signed-in account, admitted or not, that owes
  * acceptance of a flagged document version (#614). It carries no owner id, so
@@ -32,6 +39,7 @@ export type AccessState =
   | { state: "unauthenticated" }
   | { state: "pending"; user: SessionUser; decision: AccessDecision }
   | { state: "admitted"; user: SessionUser; ownerUserId: string; decision: AccessDecision }
+  | { state: "guest"; user: SessionUser; householdId: string; decision: AccessDecision }
   | {
       state: "reacceptance";
       user: SessionUser;
@@ -72,8 +80,11 @@ export async function resolveAccessState(
     return { state: "reacceptance", user, decision, documents };
   }
 
-  return decision.admitted
-    ? { state: "admitted", user, ownerUserId: user.id, decision }
+  if (decision.admitted) {
+    return { state: "admitted", user, ownerUserId: user.id, decision };
+  }
+  return decision.guest
+    ? { state: "guest", user, householdId: decision.guest.householdId, decision }
     : { state: "pending", user, decision };
 }
 
@@ -98,7 +109,10 @@ export function localFallbackOwnerUserId(env: {
 /** Where a resolved access state should send the request. */
 export type AccessRoute =
   | { type: "admitted"; ownerUserId: string }
-  | { type: "redirect"; to: "/sign-in" | "/pending" | typeof REACCEPTANCE_PATH };
+  | {
+      type: "redirect";
+      to: "/sign-in" | "/pending" | typeof GUEST_PATH | typeof REACCEPTANCE_PATH;
+    };
 
 /**
  * Pure routing decision for a resolved access state, shared by every gated
@@ -115,6 +129,8 @@ export function decideAccessRoute(
       return { type: "admitted", ownerUserId: state.ownerUserId };
     case "pending":
       return { type: "redirect", to: "/pending" };
+    case "guest":
+      return { type: "redirect", to: GUEST_PATH };
     case "reacceptance":
       return { type: "redirect", to: REACCEPTANCE_PATH };
     default:
@@ -139,6 +155,7 @@ export function accountOwnerUserId(
     case "admitted":
       return state.ownerUserId;
     case "pending":
+    case "guest":
     case "reacceptance":
       // Refusing new terms never blocks export or deletion (#614).
       return state.user.id;
@@ -163,5 +180,6 @@ export function ownerForActionOrThrow(route: AccessRoute): string {
 const ACTION_REFUSALS: Record<Extract<AccessRoute, { type: "redirect" }>["to"], string> = {
   "/sign-in": "You must be signed in to do that.",
   "/pending": "Private Beta Access is required to do that.",
+  [GUEST_PATH]: "A Household Guest can read the household but not change anything.",
   [REACCEPTANCE_PATH]: "Accept the updated terms to do that.",
 };

@@ -36,11 +36,21 @@ export type AdmissionBlockReader = (input: {
   userId: string;
 }) => Promise<readonly AdmissionBlock[]>;
 
+/**
+ * Reads the household a user is an active member of, with that household's
+ * active Owners, or `null` when they have none. A local read, like blocks.
+ */
+export type GuestHousehold = { householdId: string; ownerUserIds: readonly string[] };
+
+export type GuestHouseholdReader = (input: { userId: string }) => Promise<GuestHousehold | null>;
+
 export type AdmissionResolverDependencies = {
   accessProfiles: AccessProfileGateway;
   evaluateFlag: HostedFlagEvaluator;
   /** No block records exist yet, so the default reads none. */
   listAdmissionBlocks?: AdmissionBlockReader;
+  /** Hosted only. Without it nobody resolves as a Household Guest. */
+  readGuestHousehold?: GuestHouseholdReader;
   policy?: AdmissionPolicy;
   environment?: AdmissionEnvironment;
   reportConfiguration?: (diagnostic: AdmissionConfigurationDiagnostic) => void;
@@ -73,6 +83,90 @@ function diagnosticGuidance(diagnostic: AdmissionConfigurationDiagnostic): strin
   }
 }
 
+type LocalAdmissionDependencies = {
+  accessProfiles: Pick<AccessProfileGateway, "checkAccess">;
+  listAdmissionBlocks?: AdmissionBlockReader;
+  readGuestHousehold?: GuestHouseholdReader;
+  policy?: AdmissionPolicy;
+  environment?: AdmissionEnvironment;
+};
+
+/**
+ * Admission answered from Tendnote's own records alone: durable grants,
+ * blocks, and household membership. It never evaluates Flags or grants
+ * anything, so it can describe accounts other than the requester's, such as a
+ * guest's Owners or the members a household roster lists.
+ */
+export function createLocalAdmissionReader(deps: LocalAdmissionDependencies) {
+  const policy = deps.policy ?? parseAdmissionPolicy(deps.environment);
+  const listAdmissionBlocks: AdmissionBlockReader = deps.listAdmissionBlocks ?? (async () => []);
+
+  async function isUnblocked(userId: string): Promise<boolean> {
+    return decideAdmission({ sourceAdmits: true, blocks: await listAdmissionBlocks({ userId }) });
+  }
+
+  /** A durable grant this policy honours, with no unexcepted block. */
+  async function holdsFullAdmission(userId: string): Promise<boolean> {
+    if (!policy.valid) return false;
+    const persisted = await deps.accessProfiles.checkAccess({ userId });
+    const sourceAdmits =
+      policy.mode === "self-hosted" ? isSelfHostedGrant(persisted) : persisted.admitted;
+    return sourceAdmits && (await isUnblocked(userId));
+  }
+
+  /**
+   * The household this account is a live Household Guest of, if any (ADR
+   * 0245). Hosted only. It is live while at least one active Owner of the
+   * household holds Paid Access, read on every call and never cached, so the
+   * guest collapses and returns on the next request after the last such Owner
+   * does. Any block on that Owner, such as a lapse or suspension, ends their
+   * sponsorship too, and the guest's own blocks still apply. An account that
+   * has held Paid Access is never a guest: once that ends it is Lapsed, which a
+   * household roster states as "not currently admitted".
+   */
+  /** A sponsor: Paid Access the policy honours, with no unexcepted block. */
+  async function holdsPaidAccess(userId: string): Promise<boolean> {
+    const persisted = await deps.accessProfiles.checkAccess({ userId });
+    return (
+      persisted.admitted &&
+      persisted.profile?.source === "paid_access" &&
+      (await isUnblocked(userId))
+    );
+  }
+
+  async function liveGuestHousehold(userId: string): Promise<{ householdId: string } | null> {
+    if (policy.mode !== "hosted" || !deps.readGuestHousehold) return null;
+    // Household Guest is entered only from Unpaid. An account that has held
+    // Paid Access is Lapsed once it ends, never a guest.
+    if ((await deps.accessProfiles.checkAccess({ userId })).profile?.source === "paid_access") {
+      return null;
+    }
+    const household = await deps.readGuestHousehold({ userId });
+    if (!household) return null;
+
+    for (const ownerUserId of household.ownerUserIds) {
+      if (ownerUserId !== userId && (await holdsPaidAccess(ownerUserId))) {
+        return (await isUnblocked(userId)) ? { householdId: household.householdId } : null;
+      }
+    }
+    return null;
+  }
+
+  return {
+    liveGuestHousehold,
+    /**
+     * Whether the account is admitted now, fully or as a live guest. This is
+     * what a household roster states about a member, and nothing more.
+     */
+    async isCurrentlyAdmitted(input: { userId: string }): Promise<boolean> {
+      return (
+        (await holdsFullAdmission(input.userId)) ||
+        (await liveGuestHousehold(input.userId)) !== null
+      );
+    },
+  };
+}
+
 /**
  * Resolve one request as "at least one source admits and no unexcepted block is
  * active" (ADR 0248). Sources resolve through the explicit policy and the
@@ -101,6 +195,7 @@ export function createAdmissionResolver(deps: AdmissionResolverDependencies) {
   }
 
   const listAdmissionBlocks: AdmissionBlockReader = deps.listAdmissionBlocks ?? (async () => []);
+  const localAdmission = createLocalAdmissionReader({ ...deps, policy });
 
   async function resolveSources(entity: AdmissionEntity): Promise<AccessDecision> {
     if (!policy.valid) {
@@ -170,7 +265,12 @@ export function createAdmissionResolver(deps: AdmissionResolverDependencies) {
   return {
     async resolveAccess(entity: AdmissionEntity): Promise<AccessDecision> {
       const sourceDecision = await resolveSources(entity);
-      if (!sourceDecision.admitted) return sourceDecision;
+      if (!sourceDecision.admitted) {
+        // Hosted acceptance creates a membership, not a grant, so a guest is
+        // derived here on every request rather than stored.
+        const guest = await localAdmission.liveGuestHousehold(entity.userId);
+        return guest ? { ...sourceDecision, guest } : sourceDecision;
+      }
 
       const blocks = await listAdmissionBlocks({ userId: entity.userId });
       return decideAdmission({ sourceAdmits: true, blocks })
