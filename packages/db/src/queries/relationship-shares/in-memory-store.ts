@@ -41,6 +41,18 @@ export function createInMemoryRelationshipShareStore(
     async getRelationshipRecord(input) {
       return records.get(`${input.recordKind}:${input.recordId}`) ?? null;
     },
+    async listSharedRelationshipRecordCandidates(input) {
+      // The seeded facts carry no status, so "settled and current" is read off
+      // the two facts that stand for it. The proof above decides the rest.
+      return [...records.values()].filter(
+        (record) =>
+          record.recordKind === input.recordKind &&
+          record.scope !== "private" &&
+          record.ownerUserId !== input.callerUserId &&
+          record.shareable &&
+          record.lifecycle === "active",
+      );
+    },
     async updateRelationshipRecordVisibility(input) {
       const key = `${input.recordKind}:${input.recordId}`;
       const record = records.get(key);

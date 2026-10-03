@@ -56,6 +56,16 @@ export type RelationshipShareStore = HouseholdStore & {
     recordKind: RelationshipRecordKind;
     recordId: string;
   }) => Promise<RelationshipRecordFacts | null>;
+  /**
+   * The current, settled records of one kind that other members have shared
+   * into a household the caller belongs to: approved memories, open or snoozed
+   * follow-ups. A **candidate** set, narrowed in the query and never trusted:
+   * every row is proved again before anything about it is revealed.
+   */
+  listSharedRelationshipRecordCandidates: (input: {
+    callerUserId: string;
+    recordKind: Exclude<RelationshipRecordKind, "source_record">;
+  }) => Promise<RelationshipRecordFacts[]>;
   /** Owner-keyed, so a non-owner cannot re-address a record even by mistake. */
   updateRelationshipRecordVisibility: (input: {
     recordKind: RelationshipRecordKind;

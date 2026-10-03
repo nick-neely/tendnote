@@ -1,7 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { ACTIVE_FOLLOWUP_STATUSES, type FollowupStatus } from "@tendnote/domain";
+import { and, eq, inArray, ne } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import { followups, memories, people, sourceRecords, user } from "../../schema";
 import { createDrizzleHouseholdStore } from "../households/drizzle-store";
+import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import type { RelationshipRecordFacts, RelationshipShareStore } from "./types";
 
 /**
@@ -77,6 +80,10 @@ function followupFacts(row: typeof followups.$inferSelect): RelationshipRecordFa
   };
 }
 
+const ACTIVE_STATUSES = [...ACTIVE_FOLLOWUP_STATUSES] as [FollowupStatus, ...FollowupStatus[]];
+const sharedMemories = alias(memories, "m");
+const sharedFollowups = alias(followups, "f");
+
 export function createDrizzleRelationshipShareStore(): RelationshipShareStore {
   return {
     ...createDrizzleHouseholdStore(),
@@ -109,6 +116,46 @@ export function createDrizzleRelationshipShareStore(): RelationshipShareStore {
         .where(eq(followups.id, input.recordId))
         .limit(1);
       return row ? followupFacts(row) : null;
+    },
+
+    async listSharedRelationshipRecordCandidates(input) {
+      // Never the caller's own rows and never a private one: the household
+      // audience rule alone would also return both (it serves owners too).
+      if (input.recordKind === "memory") {
+        const rows = await getDb()
+          .select()
+          .from(sharedMemories)
+          .where(
+            and(
+              visibleHouseholdRecordSql({
+                callerUserId: input.callerUserId,
+                tableAlias: "m",
+                recordKind: "memory",
+              }),
+              ne(sharedMemories.scope, "private"),
+              ne(sharedMemories.ownerUserId, input.callerUserId),
+              eq(sharedMemories.status, "approved"),
+            ),
+          );
+        return rows.map(memoryFacts);
+      }
+
+      const rows = await getDb()
+        .select()
+        .from(sharedFollowups)
+        .where(
+          and(
+            visibleHouseholdRecordSql({
+              callerUserId: input.callerUserId,
+              tableAlias: "f",
+              recordKind: "followup",
+            }),
+            ne(sharedFollowups.scope, "private"),
+            ne(sharedFollowups.ownerUserId, input.callerUserId),
+            inArray(sharedFollowups.status, ACTIVE_STATUSES),
+          ),
+        );
+      return rows.map(followupFacts);
     },
 
     async updateRelationshipRecordVisibility(input) {

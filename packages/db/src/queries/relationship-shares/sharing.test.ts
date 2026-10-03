@@ -619,3 +619,98 @@ describe("each family shares independently", () => {
     ).toEqual({ "memory-1": [MEMBER] });
   });
 });
+
+describe("listing what others shared with the caller", () => {
+  it("lists the shares addressed to the caller, as the same envelope a single read returns", async () => {
+    const { sharing } = await setup([
+      memory(),
+      memory({ recordId: "memory-2", body: "Kept to herself." }),
+      followup(),
+    ]);
+    await sharing.shareRelationshipRecord({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: "memory-1",
+      visibilityChoice: "selected_members",
+      selectedUserIds: [MEMBER],
+    });
+    await sharing.shareRelationshipRecord({
+      ownerUserId: OWNER,
+      recordKind: "followup",
+      recordId: "followup-1",
+      visibilityChoice: "whole_household",
+    });
+
+    const memories = await sharing.listSharedRelationshipRecords({
+      callerUserId: MEMBER,
+      recordKind: "memory",
+    });
+    expect(memories).toEqual([
+      await sharing.readSharedRelationshipRecord({
+        callerUserId: MEMBER,
+        recordKind: "memory",
+        recordId: "memory-1",
+      }),
+    ]);
+    expect(
+      (
+        await sharing.listSharedRelationshipRecords({
+          callerUserId: MEMBER,
+          recordKind: "followup",
+        })
+      ).map((view) => [view.recordId, view.audience]),
+    ).toEqual([["followup-1", "whole_household"]]);
+  });
+
+  it("leaves out a share addressed to someone else, and the caller's own records", async () => {
+    const { sharing } = await setup();
+    await sharing.shareRelationshipRecord({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: "memory-1",
+      visibilityChoice: "selected_members",
+      selectedUserIds: [OTHER_MEMBER],
+    });
+
+    for (const caller of [MEMBER, OWNER, OUTSIDER]) {
+      expect(
+        await sharing.listSharedRelationshipRecords({ callerUserId: caller, recordKind: "memory" }),
+      ).toEqual([]);
+    }
+  });
+
+  it("leaves out a restricted share unless the reader opened it directly", async () => {
+    const { sharing } = await setup([memory({ sensitivity: "restricted" })]);
+    await sharing.shareRelationshipRecord({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: "memory-1",
+      visibilityChoice: "whole_household",
+      confirmedRestricted: true,
+    });
+
+    const list = (purpose: "direct" | "ambient") =>
+      sharing.listSharedRelationshipRecords({
+        callerUserId: MEMBER,
+        recordKind: "memory",
+        purpose,
+      });
+    expect(await list("ambient")).toEqual([]);
+    expect(await list("direct")).toHaveLength(1);
+  });
+
+  it("stops listing a share the moment the reader leaves the household", async () => {
+    const { sharing, store, household } = await setup();
+    await sharing.shareRelationshipRecord({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: "memory-1",
+      visibilityChoice: "whole_household",
+    });
+    await removeHouseholdMember(store, { householdId: household.id, userId: MEMBER });
+
+    expect(
+      await sharing.listSharedRelationshipRecords({ callerUserId: MEMBER, recordKind: "memory" }),
+    ).toEqual([]);
+  });
+});
