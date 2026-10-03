@@ -2,6 +2,7 @@ import type {
   SuggestedMemoryExtractionAdapter,
   SuggestedMemoryExtractionInput,
 } from "@tendnote/domain";
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import { describe, expect, it, vi } from "vitest";
 import { createHarness, OWNER } from "./harness";
 
@@ -350,6 +351,56 @@ describe("extraction job suggested-memory creation", () => {
       failureMessage: "model unavailable",
     });
     expect(failed?.metadataJson).not.toHaveProperty("content");
+  });
+
+  it("waits in its pending state while background work is paused, then resumes after the reset", async () => {
+    let paused = true;
+    const adapter: SuggestedMemoryExtractionAdapter = {
+      kind: "llm",
+      model: "test-model",
+      async extractCandidates(input) {
+        if (paused) throw new UsagePausedError("2026-11-15");
+        return {
+          candidates: [
+            {
+              personId: input.resolvedPeople[0]?.id ?? "",
+              content: "Mark is considering a move to Denver.",
+              memoryType: "life_event",
+            },
+          ],
+        };
+      },
+    };
+    const { processor, createPerson, captureRecord, link, auditActions } = createHarness({
+      extractionAdapter: adapter,
+    });
+    const mark = await createPerson("Mark");
+    const sourceRecord = await captureRecord({ retainedContent: "Mark may be moving." });
+    await link(sourceRecord.id, mark.id);
+    const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+
+    const deferred = await processor.processExtractionJob({
+      jobId: job.id,
+      now: new Date("2026-10-20T12:00:00Z"),
+    });
+
+    expect(deferred.outcome).toBe("deferred");
+    expect(deferred.reason).toBe("usage_paused");
+    expect(deferred.job.status).toBe("pending");
+    expect(deferred.job.runAfter).toEqual(new Date("2026-11-15T00:00:00Z"));
+    await expect(auditActions()).resolves.not.toContain("extraction_job.failed");
+    await expect(
+      processor.claimNextExtractionJob({ now: new Date("2026-11-14T23:59:59Z") }),
+    ).resolves.toBeNull();
+
+    paused = false;
+    const resumed = await processor.processExtractionJob({
+      jobId: job.id,
+      now: new Date("2026-11-15T00:00:00Z"),
+    });
+
+    expect(resumed.outcome).toBe("completed");
+    expect(resumed.suggestedMemories).toHaveLength(1);
   });
 
   it("creates a suggested memory tied to the person and source record, then completes", async () => {

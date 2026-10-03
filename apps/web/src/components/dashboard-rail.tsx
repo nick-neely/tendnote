@@ -61,6 +61,7 @@ export function DashboardRail({
   weeklyBrief,
   reviewContent,
   householdCheckin = null,
+  usageNotice = null,
   nextFollowup = null,
   initialTab = "today",
 }: {
@@ -87,6 +88,11 @@ export function DashboardRail({
    * be a second place to look for the same kind of thing.
    */
   householdCheckin?: ReactNode;
+  /**
+   * Background work's usage notice, while it is paused: it heads Today because
+   * it explains a brief that did not arrive there.
+   */
+  usageNotice?: ReactNode;
   /** The soonest reminder past the Follow-ups horizon, named by an empty tab. */
   nextFollowup?: DashboardFollowupView | null;
   initialTab?: RailTab;
@@ -164,6 +170,7 @@ export function DashboardRail({
       {/* Today — the morning glance: today's signals, then the briefs. The
           briefs live only here; they have no tab of their own. */}
       <TabsContent className={PANEL} value="today">
+        {usageNotice}
         {birthdays.length > 0 ? <BirthdaysSection birthdays={birthdays} /> : null}
 
         {/* Persisted briefs: the current daily brief, then the weekly review (PRD

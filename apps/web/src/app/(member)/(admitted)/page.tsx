@@ -35,8 +35,12 @@ import { MobileHomeReserve } from "@/components/mobile-home-reserve";
 import { MobileTodayDestination } from "@/components/mobile-today-destination";
 import { ReviewQueueFamilySection } from "@/components/review-queue-section";
 import { EmptyState } from "@/components/ui/empty-state";
+import { BackgroundUsageNotice } from "@/components/usage-notice-card";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
-import { readEveUsageForDisplay } from "@/lib/assistant/eve-usage-display";
+import {
+  readBackgroundUsageForDisplay,
+  readEveUsageForDisplay,
+} from "@/lib/assistant/eve-usage-display";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import type { BriefView } from "@/lib/brief-view";
 import { getCachedCurrentBriefView } from "@/lib/cache/brief-views";
@@ -182,6 +186,7 @@ async function HomeRail({ searchParams }: HomeProps) {
     dailyBrief,
     weeklyBrief,
     reviewCount,
+    backgroundUsage,
   ] = await Promise.all([
     dashboardPeople(ownerUserId),
     dashboardActiveFollowups(ownerUserId),
@@ -191,6 +196,7 @@ async function HomeRail({ searchParams }: HomeProps) {
     getDashboardBrief(ownerUserId, "daily"),
     getDashboardBrief(ownerUserId, "weekly"),
     countOwnerReviewQueue(ownerUserId),
+    readBackgroundUsageForDisplay(ownerUserId),
   ]);
   const now = new Date();
   const birthdays = getUpcomingBirthdays(people);
@@ -222,6 +228,7 @@ async function HomeRail({ searchParams }: HomeProps) {
       people={people}
       reviewContent={<ReviewQueueStreams ownerUserId={ownerUserId} />}
       reviewCount={reviewCount}
+      usageNotice={<BackgroundUsageNotice notice={backgroundUsage} />}
       weeklyBrief={weeklyBrief}
     />
   );
@@ -414,13 +421,14 @@ async function HomeMobileDestination({ searchParams }: HomeProps) {
     );
   }
 
-  const [todayContext, approvalMode, usage] = await Promise.all([
+  const [todayContext, approvalMode, usage, backgroundUsage] = await Promise.all([
     getOwnerTodayContext({ ownerUserId }),
     // The assistant opens inside this destination rather than on a route of its
     // own, so the owner's Approval Mode is read here - the one place on the phone
     // that already has the admitted owner - and handed down as a prop.
     getEveApprovalMode({ userId: ownerUserId }),
     readEveUsageForDisplay(ownerUserId),
+    readBackgroundUsageForDisplay(ownerUserId),
   ]);
 
   return (
@@ -437,6 +445,7 @@ async function HomeMobileDestination({ searchParams }: HomeProps) {
       todayLocalDate={todayContext.localDate}
       todayTimeZone={todayContext.timeZone}
       usage={usage}
+      backgroundUsage={backgroundUsage}
     />
   );
 }

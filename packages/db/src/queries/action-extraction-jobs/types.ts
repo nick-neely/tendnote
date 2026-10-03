@@ -99,6 +99,7 @@ export type ProcessActionExtractionJobInput = {
 export type ProcessActionExtractionJobOutcome =
   | "not_claimable"
   | "skipped"
+  | "deferred"
   | "completed"
   | "failed";
 

@@ -149,6 +149,7 @@ const UNGATED_TOOLS = [
   "suggest_next_steps",
   "task_cancel",
   "task_update",
+  "web_search_pause",
   "write_file",
 ] as const;
 

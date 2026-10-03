@@ -3,7 +3,11 @@ import {
   HOSTED_PLAN,
   interactiveUsageNotice,
   overFairUseBudget,
+  type PeriodSpend,
+  recoveryText,
+  UsagePausedError,
   usageNotice,
+  usageNotices,
   usagePeriod,
 } from "./usage-bounds";
 
@@ -162,7 +166,13 @@ describe("interactiveUsageNotice", () => {
   });
 
   it("reads the ceiling from the plan it is given", () => {
-    const larger = { allowance: { interactive: { fairUseBudgetUsd: 18, accountCeilingUsd: 20 } } };
+    const larger = {
+      ...HOSTED_PLAN,
+      allowance: {
+        ...HOSTED_PLAN.allowance,
+        interactive: { fairUseBudgetUsd: 18, accountCeilingUsd: 20 },
+      },
+    };
     expect(
       interactiveUsageNotice({ plan: larger, period, spentMicroUsd: ceilingMicroUsd }).state,
     ).toBe("normal");
@@ -176,5 +186,100 @@ describe("overFairUseBudget", () => {
     expect(overFairUseBudget({ plan: HOSTED_PLAN, spentMicroUsd: budgetMicroUsd - 1 })).toBe(false);
     expect(overFairUseBudget({ plan: HOSTED_PLAN, spentMicroUsd: budgetMicroUsd })).toBe(true);
     expect(overFairUseBudget({ plan: HOSTED_PLAN, spentMicroUsd: 13_000_000 })).toBe(true);
+  });
+});
+
+describe("usageNotices", () => {
+  const period = { start: "2026-10-15", resetsOn: "2026-11-15" };
+  const paused = { state: "paused", recovery: { kind: "resets_on", date: "2026-11-15" } };
+  const spend = (spent: Partial<PeriodSpend["spentMicroUsd"]>): PeriodSpend => ({
+    period,
+    spentMicroUsd: { interactive: 0, background: 0, web_search: 0, ...spent },
+  });
+
+  it("carries the background and web-search ceilings as plan attributes", () => {
+    expect(HOSTED_PLAN.allowance.background).toEqual({ accountCeilingUsd: 1.3 });
+    expect(HOSTED_PLAN.allowance.webSearch).toEqual({ accountCeilingUsd: 0.7 });
+  });
+
+  it("is normal everywhere for an account with no plan", () => {
+    expect(usageNotices({ plan: HOSTED_PLAN, spend: null })).toEqual({
+      eve: { state: "normal" },
+      search: { state: "normal" },
+      background: { state: "normal" },
+      webSearch: { state: "normal" },
+    });
+  });
+
+  it("is normal everywhere below every ceiling", () => {
+    const notices = usageNotices({
+      plan: HOSTED_PLAN,
+      spend: spend({ interactive: 1_000_000, background: 1_299_999, web_search: 699_999 }),
+    });
+    expect(Object.values(notices).every((notice) => notice.state === "normal")).toBe(true);
+  });
+
+  it("pauses background work at its ceiling and reduces search to exact results", () => {
+    const notices = usageNotices({ plan: HOSTED_PLAN, spend: spend({ background: 1_300_000 }) });
+
+    expect(notices.background).toEqual(paused);
+    // Query embeddings share the background allowance, so semantic search goes
+    // with it, and exact search is the cheaper substitute that remains.
+    expect(notices.search).toEqual({ ...paused, state: "reduced" });
+    expect(notices.eve).toEqual({ state: "normal" });
+    expect(notices.webSearch).toEqual({ state: "normal" });
+  });
+
+  it("pauses web search at its ceiling of one hundred searches, and nothing else", () => {
+    const notices = usageNotices({ plan: HOSTED_PLAN, spend: spend({ web_search: 700_000 }) });
+
+    expect(notices.webSearch).toEqual(paused);
+    expect(notices.background).toEqual({ state: "normal" });
+    expect(notices.search).toEqual({ state: "normal" });
+    expect(notices.eve).toEqual({ state: "normal" });
+  });
+
+  it("gives interactive Eve the same notice as interactiveUsageNotice", () => {
+    expect(
+      usageNotices({ plan: HOSTED_PLAN, spend: spend({ interactive: 12_000_000 }) }).eve,
+    ).toEqual(paused);
+  });
+
+  it("counts each category against its own ceiling only", () => {
+    const notices = usageNotices({
+      plan: HOSTED_PLAN,
+      spend: spend({ interactive: 11_000_000, web_search: 0, background: 0 }),
+    });
+    expect(notices.background.state).toBe("normal");
+    expect(notices.webSearch.state).toBe("normal");
+  });
+});
+
+describe("UsagePausedError", () => {
+  it("names the day the paused function resumes, at the start of that UTC day", () => {
+    const error = new UsagePausedError("2026-11-15");
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.resetsOn).toBe("2026-11-15");
+    expect(error.resumesAt).toEqual(new Date("2026-11-15T00:00:00Z"));
+    expect(error.message).toContain("Resets on November 15.");
+  });
+});
+
+describe("recoveryText", () => {
+  it("states the reset day for the Usage Period", () => {
+    expect(recoveryText({ kind: "resets_on", date: "2026-11-15" })).toBe("Resets on November 15.");
+  });
+
+  it("reads the reset day as a calendar day, whatever the viewer's time zone", () => {
+    expect(recoveryText({ kind: "resets_on", date: "2026-12-01" })).toBe("Resets on December 1.");
+  });
+
+  it("gives no date while service is being restored", () => {
+    expect(recoveryText({ kind: "service_restored" })).toBe("Resumes when service is restored.");
+  });
+
+  it("says retrying for a queued retry", () => {
+    expect(recoveryText({ kind: "retrying" })).toBe("Retrying.");
   });
 });

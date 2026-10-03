@@ -82,6 +82,7 @@ the bounded publication evidence path.
 - [0251 - Private Blob files and readable chat attachments](0251-private-blob-files-and-readable-chat-attachments.md)
 - [0252 - Account Ceilings count gateway-reported cost at the turn door](0252-account-ceilings-count-gateway-reported-cost-at-the-turn-door.md)
 - [0253 - Eve dev compiles in a disposable process](0253-eve-dev-compiles-in-a-disposable-process.md)
+- [0254 - Background and web-search ceilings pause where the spend happens](0254-background-and-web-search-ceilings-pause-where-the-spend-happens.md)
 
 The catalog intentionally omits the Phase 9a planning workspace. That
 workspace remains useful to maintainers, but it is not a newcomer evidence

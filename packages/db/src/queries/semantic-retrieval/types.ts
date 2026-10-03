@@ -103,10 +103,13 @@ export type RecoverStaleEmbeddingJobsInput = {
 export const STALE_EMBEDDING_JOB_RECOVERY_MESSAGE =
   "Recovered after the embedding claim lease expired.";
 
-/** The statuses a finished pass can reach; `running` and `pending` are not verdicts. */
+/**
+ * The statuses a finished pass can reach; `running` is not a verdict. `pending` is a
+ * deferral: the pass was refused at the background Account Ceiling and waits for the reset.
+ */
 export type SettledEmbeddingJobStatus = Extract<
   EmbeddingJobStatus,
-  "completed" | "skipped" | "failed"
+  "completed" | "skipped" | "failed" | "pending"
 >;
 
 /**
@@ -327,7 +330,12 @@ export type ClaimEmbeddingJobInput = {
   now?: Date;
 };
 
-export type ProcessEmbeddingJobOutcome = "not_claimable" | "skipped" | "completed" | "failed";
+export type ProcessEmbeddingJobOutcome =
+  | "not_claimable"
+  | "skipped"
+  | "deferred"
+  | "completed"
+  | "failed";
 
 export type ProcessEmbeddingJobResult = {
   job: EmbeddingJob;

@@ -14,6 +14,8 @@ export type UpdateContextFactExtractionJobInput = {
   claimToken?: string | null;
   expectedClaimToken?: string;
   lastError?: string | null;
+  /** Set only to hand back the attempt a deferral's claim counted. */
+  attempts?: number;
   runAfter?: Date;
   claimedAt?: Date | null;
   completedAt?: Date | null;
@@ -72,6 +74,7 @@ export type ProcessContextFactExtractionJobInput = {
 export type ProcessContextFactExtractionJobOutcome =
   | "not_found"
   | "not_claimable"
+  | "deferred"
   | "completed"
   | "failed"
   | "dead_lettered";

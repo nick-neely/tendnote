@@ -23,6 +23,7 @@ import {
   type SemanticTrustLevel,
   type SourceRecord,
 } from "@tendnote/domain";
+import type { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import type {
   EmbeddingAdapter,
   EmbeddingConfig,
@@ -253,6 +254,35 @@ export async function failJob(
   });
 
   return { job: settlement.job, outcome: "failed", embedding: null, error: message };
+}
+
+/**
+ * Back to its pending state until background work resumes: the model-call entry point
+ * refused the embedding at the account's background Account Ceiling. Not a failure, so
+ * the job keeps no error and the record is embedded once the Usage Period resets.
+ */
+export async function deferJob(
+  ctx: EmbeddingContext,
+  job: ProcessEmbeddingJobResult["job"],
+  paused: UsagePausedError,
+  now: Date,
+): Promise<ProcessEmbeddingJobResult> {
+  const settlement = await ctx.store.settleEmbeddingJob({
+    jobId: job.id,
+    status: "pending",
+    now,
+    expectedClaimedAt: job.claimedAt ?? null,
+    lastError: null,
+    runAfter: paused.resumesAt,
+    claimedAt: null,
+  });
+
+  return {
+    job: settlement.job,
+    outcome: settlement.settled ? "deferred" : "not_claimable",
+    embedding: null,
+    ...(settlement.settled ? { reason: "usage_paused" } : {}),
+  };
 }
 
 type EmbeddingSkipReason = Extract<EmbeddingDecision, { action: "skip" }>["reason"];

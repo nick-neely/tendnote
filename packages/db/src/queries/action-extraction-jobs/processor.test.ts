@@ -1,4 +1,8 @@
-import { createFakeSuggestedActionExtractionAdapter } from "@tendnote/domain";
+import {
+  createFakeSuggestedActionExtractionAdapter,
+  type SuggestedActionExtractionAdapter,
+} from "@tendnote/domain";
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import { describe, expect, it } from "vitest";
 import { createHarness, enqueueAndProcess, OWNER } from "./harness";
 
@@ -142,6 +146,48 @@ describe("action extraction job lifecycle", () => {
     expect(retried.job.attempts).toBe(2);
     const actions = await listActionsForSource(source.id);
     expect(actions.map((action) => action.title).sort()).toEqual(["First action", "Second action"]);
+  });
+
+  it("waits in its pending state while background work is paused, then resumes after the reset", async () => {
+    const fake = createFakeSuggestedActionExtractionAdapter([{ title: "Book the plumber" }]);
+    let paused = true;
+    const adapter: SuggestedActionExtractionAdapter = {
+      ...fake,
+      async extractActions(input) {
+        if (paused) throw new UsagePausedError("2026-11-15");
+        return fake.extractActions(input);
+      },
+    };
+    const { processor, captureRecord, listActionsForSource } = createHarness({
+      extractionAdapter: adapter,
+    });
+    const source = await captureRecord();
+    const { job } = await processor.enqueueActionExtractionJob({
+      sourceRecordId: source.id,
+      runAfter: new Date("2026-10-20T00:00:00Z"),
+    });
+
+    const deferred = await processor.processActionExtractionJob({
+      jobId: job.id,
+      now: new Date("2026-10-20T12:00:00Z"),
+    });
+
+    expect(deferred.outcome).toBe("deferred");
+    expect(deferred.job.status).toBe("pending");
+    expect(deferred.job.runAfter).toEqual(new Date("2026-11-15T00:00:00Z"));
+    expect(deferred.job.lastError).toBeNull();
+    await expect(
+      processor.claimNextActionExtractionJob({ now: new Date("2026-11-14T23:59:59Z") }),
+    ).resolves.toBeNull();
+
+    paused = false;
+    const resumed = await processor.processActionExtractionJob({
+      jobId: job.id,
+      now: new Date("2026-11-15T00:00:00Z"),
+    });
+
+    expect(resumed.outcome).toBe("completed");
+    await expect(listActionsForSource(source.id)).resolves.toHaveLength(1);
   });
 
   it("does not re-claim a completed job", async () => {

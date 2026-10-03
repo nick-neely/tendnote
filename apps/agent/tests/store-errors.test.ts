@@ -17,6 +17,7 @@ import {
   SavedItemUnavailableDestinationError,
   SavedItemValidationError,
 } from "@tendnote/domain";
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { withModelSafeStoreErrors } from "../agent/lib/store-errors";
 
@@ -43,6 +44,8 @@ describe("model-safe tool store errors", () => {
       new SavedItemValidationError("A link capture must remain a valid URL."),
       new SavedItemUnavailableDestinationError("Tendnote cannot save that yet."),
       new ConversationalCaptureUndoError("not_found", "That Saved Item is no longer available."),
+      // A semantic search refused at the account's background Account Ceiling.
+      new UsagePausedError("2026-11-15"),
     ];
 
     for (const error of errors) {

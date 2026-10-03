@@ -1,6 +1,6 @@
 import {
   EVE_USAGE_PAUSED_CODE,
-  type RecoveryCondition,
+  recoveryText,
   type UsageNotice,
   type UsageRestriction,
 } from "@tendnote/domain/usage-bounds";
@@ -14,26 +14,6 @@ const pausedNoticeSchema = z.object({
     z.object({ kind: z.literal("retrying") }),
   ]),
 });
-
-const RESET_DAY = new Intl.DateTimeFormat("en-US", {
-  month: "long",
-  day: "numeric",
-  timeZone: "UTC",
-});
-
-/** The one recovery condition a reduced or paused notice states, as a sentence. */
-export function recoveryText(recovery: RecoveryCondition): string {
-  switch (recovery.kind) {
-    case "resets_on":
-      // A calendar day, so it is formatted in UTC rather than shifted into the
-      // viewer's zone.
-      return `Resets on ${RESET_DAY.format(new Date(`${recovery.date}T00:00:00Z`))}.`;
-    case "service_restored":
-      return "Resumes when service is restored.";
-    case "retrying":
-      return "Retrying.";
-  }
-}
 
 /**
  * What interactive Eve's notice says: over the Fair-Use Budget, that Eve
@@ -57,6 +37,23 @@ export function eveUsageNoticeText(notice: UsageRestriction): {
   return {
     headline: monthly ? "Eve has reached this month's usage limit." : "Eve is paused.",
     detail: `Everything else in Tendnote still works. ${recovery}`,
+  };
+}
+
+/**
+ * What background work's notice says when it is paused at the account's
+ * background Account Ceiling: captures wait in their pending state and the
+ * next scheduled delivery is skipped. Reminders are not background work and are
+ * never shed, so they are covered by "everything else".
+ */
+export function backgroundUsageNoticeText(notice: UsageRestriction): {
+  headline: string;
+  detail: string;
+} {
+  const monthly = notice.recovery.kind === "resets_on";
+  return {
+    headline: monthly ? "Background work is paused for this month." : "Background work is paused.",
+    detail: `New captures wait to be processed, and scheduled briefs and reviews skip their next delivery. Everything else in Tendnote still works. ${recoveryText(notice.recovery)}`,
   };
 }
 

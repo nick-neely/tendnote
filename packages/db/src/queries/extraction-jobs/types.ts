@@ -87,6 +87,7 @@ export type ProcessExtractionJobOutcome =
   | "not_claimable"
   | "skipped"
   | "delayed"
+  | "deferred"
   | "partial"
   | "completed"
   | "failed";

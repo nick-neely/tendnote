@@ -1,4 +1,5 @@
 import { createFakeContextFactExtractionAdapter } from "@tendnote/domain";
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import { describe, expect, it } from "vitest";
 import { createContextFactQueries } from "../context-facts/queries";
 import { createInMemoryContextFactExtractionJobStore } from "./in-memory-store";
@@ -184,6 +185,50 @@ describe("Context Fact extraction processor", () => {
         expect.objectContaining({ action: "context_fact_extraction_job.dead_lettered" }),
       ]),
     );
+  });
+
+  it("waits in its pending state while background work is paused, without spending an attempt", async () => {
+    const store = createInMemoryContextFactExtractionJobStore();
+    const fake = createFakeContextFactExtractionAdapter([candidate]);
+    let paused = true;
+    const processor = createContextFactExtractionProcessor(store, {
+      // One attempt: a pause counted as a failure would dead-letter the capture.
+      maxAttempts: 1,
+      extractionAdapter: {
+        ...fake,
+        async extractCandidates(input, call) {
+          if (paused) throw new UsagePausedError("2026-09-01");
+          return fake.extractCandidates(input, call);
+        },
+      },
+    });
+    const { job } = await enqueue(processor);
+
+    const deferred = await processor.processContextFactExtractionJob({ jobId: job.id, now: NOW });
+
+    expect(deferred.outcome).toBe("deferred");
+    expect(deferred.job).toMatchObject({
+      status: "pending",
+      attempts: 0,
+      runAfter: new Date("2026-09-01T00:00:00Z"),
+      claimedAt: null,
+      claimToken: null,
+    });
+    // The message waits with the job; it is only cleared once extracted.
+    expect(deferred.job.message).not.toBeNull();
+    await expect(store.listAuditLogEntries({ ownerUserId: OWNER })).resolves.not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "context_fact_extraction_job.failed" }),
+      ]),
+    );
+
+    paused = false;
+    const resumed = await processor.processContextFactExtractionJob({
+      jobId: job.id,
+      now: new Date("2026-09-01T00:00:00Z"),
+    });
+
+    expect(resumed).toMatchObject({ outcome: "completed", createdSuggestionCount: 1 });
   });
 
   it("does not block completion when a candidate is suppressed by review policy", async () => {

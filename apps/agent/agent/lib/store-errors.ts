@@ -13,6 +13,7 @@ import {
   RelationshipShareValidationError,
   SavedItemValidationError,
 } from "@tendnote/domain";
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 
 /**
  * What a tool may say when a store call fails for a reason that is not the caller's to
@@ -55,6 +56,7 @@ const CURATED_DOMAIN_FAILURES = [
   PersonReferenceValidationError,
   RelationshipShareValidationError,
   SavedItemValidationError,
+  UsagePausedError,
 ] as const;
 
 /**
