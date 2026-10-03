@@ -63,8 +63,10 @@ describe("pausedNoticeFromError", () => {
 });
 
 describe("backgroundUsageNoticeText", () => {
+  const restored = { state: "paused", recovery: { kind: "service_restored" } } as const;
+
   it("says captures wait and scheduled briefs skip until the reset, and that the rest works", () => {
-    expect(backgroundUsageNoticeText(paused)).toEqual({
+    expect(backgroundUsageNoticeText({ background: paused, scheduled: paused })).toEqual({
       headline: "Background work is paused for this month.",
       detail:
         "New captures wait to be processed, and scheduled briefs and reviews skip their next delivery. Everything else in Tendnote still works. Resets on November 15.",
@@ -72,12 +74,20 @@ describe("backgroundUsageNoticeText", () => {
   });
 
   it("states only the recovery condition it carries", () => {
-    expect(
-      backgroundUsageNoticeText({ state: "paused", recovery: { kind: "service_restored" } }),
-    ).toEqual({
+    expect(backgroundUsageNoticeText({ background: restored, scheduled: restored })).toEqual({
       headline: "Background work is paused.",
       detail:
         "New captures wait to be processed, and scheduled briefs and reviews skip their next delivery. Everything else in Tendnote still works. Resumes when service is restored.",
+    });
+  });
+
+  it("does not say briefs skip while the Spend Breaker has shed only captures", () => {
+    expect(
+      backgroundUsageNoticeText({ background: restored, scheduled: { state: "normal" } }),
+    ).toEqual({
+      headline: "Background work is paused.",
+      detail:
+        "New captures wait to be processed. Everything else in Tendnote still works. Resumes when service is restored.",
     });
   });
 });

@@ -154,7 +154,7 @@ describe("action extraction job lifecycle", () => {
     const adapter: SuggestedActionExtractionAdapter = {
       ...fake,
       async extractActions(input) {
-        if (paused) throw new UsagePausedError("2026-11-15");
+        if (paused) throw UsagePausedError.atCeiling("2026-11-15");
         return fake.extractActions(input);
       },
     };

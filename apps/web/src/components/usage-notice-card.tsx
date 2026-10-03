@@ -1,5 +1,4 @@
-import type { UsageNotice } from "@tendnote/domain/usage-bounds";
-import { backgroundUsageNoticeText } from "@/lib/assistant/usage-notice";
+import { type BackgroundUsage, backgroundUsageNoticeText } from "@/lib/assistant/usage-notice";
 
 /**
  * A usage notice: a plain fact rather than an error, in a quiet dashed card,
@@ -18,11 +17,15 @@ export function UsageNoticeCard({ headline, detail }: { headline: string; detail
 }
 
 /**
- * Background work's notice on Home while it is paused at the account's
- * background Account Ceiling, and nothing otherwise. It explains the brief that
- * did not arrive and the capture still waiting to be processed.
+ * Background work's notice on Home while it is paused, and nothing otherwise.
+ * It explains the capture still waiting to be processed and, while scheduled
+ * workflows are paused too, the brief that did not arrive.
  */
-export function BackgroundUsageNotice({ notice }: { notice?: UsageNotice }) {
-  if (!notice || notice.state === "normal") return null;
-  return <UsageNoticeCard {...backgroundUsageNoticeText(notice)} />;
+export function BackgroundUsageNotice({ usage }: { usage?: BackgroundUsage }) {
+  if (!usage || usage.background.state === "normal") return null;
+  return (
+    <UsageNoticeCard
+      {...backgroundUsageNoticeText({ background: usage.background, scheduled: usage.scheduled })}
+    />
+  );
 }

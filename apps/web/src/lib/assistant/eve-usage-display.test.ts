@@ -34,15 +34,16 @@ describe("readBackgroundUsageForDisplay", () => {
   const normal = { state: "normal" } as const;
   const paused = { state: "paused", recovery: { kind: "resets_on", date: "2026-11-15" } } as const;
 
-  it("passes background work's notice through", async () => {
+  it("passes background work's and scheduled workflows' notices through", async () => {
     await expect(
       readBackgroundUsageForDisplay("owner-1", async () => ({
         eve: normal,
         search: { ...paused, state: "reduced" },
         background: paused,
+        scheduled: normal,
         webSearch: normal,
       })),
-    ).resolves.toEqual(paused);
+    ).resolves.toEqual({ background: paused, scheduled: normal });
   });
 
   it("shows no notice rather than failing the page when the read fails", async () => {

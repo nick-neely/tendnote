@@ -44,9 +44,9 @@ function briefDiscordOptions(sender: DiscordProactiveDeliverySender) {
  * Vercel evaluates cron in UTC; waking every 15 minutes lets the application rows'
  * timezone-derived next-run times fire close to each owner's local schedule.
  *
- * An owner whose background work is paused at its Account Ceiling skips the
- * delivery: a due brief or review rolls forward to its next run, and aftercare
- * does not run this tick.
+ * An owner whose scheduled workflows are paused, at their Account Ceiling or by
+ * the Spend Breaker, skips the delivery: a due brief or review rolls forward to
+ * its next run, and aftercare does not run this tick.
  */
 export default defineSchedule({
   cron: "*/15 * * * *",
