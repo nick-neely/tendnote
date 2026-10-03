@@ -51,7 +51,10 @@ its busiest. Measured on a 2-vCPU, 8 GB VM ([ADR 0253](adr/0253-eve-dev-compiles
 | Eve (`eve dev` plus its per-rebuild compiler) | 0.5-0.9 GiB | ~2.3 GiB during a rebuild |
 | Next (`next dev` plus its PostCSS worker) | 0.9-1.2 GiB after four routes | ~2.2 GiB while first compiling routes |
 
-Neither grows with use. Eve compiles each rebuild in a short-lived process.
+Through routes, assistant turns, edits, and 16 minutes of ordinary use, neither
+showed sustained growth. A burst of back-to-back requests still raises Next by
+about 2-3 MiB per request until V8 collects (1.7 GiB after 180). Eve compiles
+each rebuild in a short-lived process.
 `next dev` runs Turbopack's Rust React Compiler and validates Cache Components
 in process, because Next's validation worker kept more memory with every page
 request. Production builds keep the Babel React Compiler; if a component behaves
