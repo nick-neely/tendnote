@@ -1,3 +1,4 @@
+import type { AccessProfile } from "@tendnote/domain";
 import type Stripe from "stripe";
 
 /** The parts of a Stripe subscription Tendnote projects, read from Stripe's current copy. */
@@ -65,6 +66,22 @@ export function subscriptionSnapshot(subscription: Stripe.Subscription): Subscri
   };
 }
 
+/**
+ * Whether this subscription is the one granting the account's Paid Access. A
+ * paid grant recorded before subscriptions were tracked names none, and is
+ * taken to be paid for by whichever subscription asks.
+ */
+export function paysForAccount(
+  profile: Pick<AccessProfile, "status" | "source" | "paidAccessSubscriptionId"> | null,
+  stripeSubscriptionId: string,
+): boolean {
+  return (
+    profile?.status === "granted" &&
+    profile.source === "paid_access" &&
+    (profile.paidAccessSubscriptionId ?? stripeSubscriptionId) === stripeSubscriptionId
+  );
+}
+
 export type SubscriptionProjectionDependencies = {
   getSubscription: (input: {
     stripeSubscriptionId: string;
@@ -87,6 +104,12 @@ export type SubscriptionProjectionDependencies = {
     stripeSubscriptionId: string;
     lapsedAt: Date;
   }) => Promise<unknown>;
+  /**
+   * Whether this subscription is the one granting the account's Paid Access.
+   * Only that one's cancellation is confirmed: a disputed subscription whose
+   * renewal Tendnote stopped (#617) is not the customer cancelling anything.
+   */
+  paysForAccount: (input: { userId: string; stripeSubscriptionId: string }) => Promise<boolean>;
   /** Send the content-free cancellation confirmation, keyed on the cancellation. */
   confirmCancellation: (input: {
     userId: string;
@@ -97,8 +120,9 @@ export type SubscriptionProjectionDependencies = {
 
 /**
  * Project one subscription's current state onto its account (#609). A newly
- * scheduled cancellation is confirmed by email before it is recorded, so a
- * failed send leaves nothing recorded and Stripe's redelivery retries it. An
+ * scheduled cancellation of the subscription paying for the account is
+ * confirmed by email before it is recorded, so a failed send leaves nothing
+ * recorded and Stripe's redelivery retries it. An
  * ended subscription makes the account Lapsed if it is the one paying for the
  * account, so a resubscription whose predecessor's end arrives late is left
  * alone. A failed renewal is recorded as Past Due for its notice and cleared
@@ -118,7 +142,8 @@ export async function projectSubscription(
   if (
     snapshot.cancelAt &&
     !snapshot.endedAt &&
-    previous?.cancelAt?.getTime() !== snapshot.cancelAt.getTime()
+    previous?.cancelAt?.getTime() !== snapshot.cancelAt.getTime() &&
+    (await deps.paysForAccount({ userId, stripeSubscriptionId }))
   ) {
     await deps.confirmCancellation({ userId, stripeSubscriptionId, endsAt: snapshot.cancelAt });
   }

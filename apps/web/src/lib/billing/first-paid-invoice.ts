@@ -29,14 +29,23 @@ export function stripeId(value: string | { id: string } | null): string | null {
  */
 export function firstPaidInvoice(invoice: Stripe.Invoice): FirstPaidInvoice | null {
   if (invoice.status !== "paid" || invoice.billing_reason !== "subscription_create") return null;
+  const owner = invoiceSubscription(invoice);
+  if (!owner || !invoice.id) return null;
+  return { invoiceId: invoice.id, ...owner, startedAt: new Date(invoice.period_start * 1000) };
+}
+
+/**
+ * The subscription an invoice bills and the customer it bills, or `null`
+ * outside a subscription. Takes an invoice reference as Stripe may return it,
+ * so an unexpanded, deleted, or missing one is `null` too.
+ */
+export function invoiceSubscription(
+  invoice: Stripe.Invoice | Stripe.DeletedInvoice | string | null | undefined,
+): { stripeSubscriptionId: string; stripeCustomerId: string } | null {
+  if (!invoice || typeof invoice === "string" || invoice.deleted) return null;
   const stripeSubscriptionId = stripeId(invoice.parent?.subscription_details?.subscription ?? null);
-  if (!stripeSubscriptionId || !invoice.id) return null;
   const stripeCustomerId = stripeId(invoice.customer);
-  if (!stripeCustomerId) return null;
-  return {
-    invoiceId: invoice.id,
-    stripeCustomerId,
-    stripeSubscriptionId,
-    startedAt: new Date(invoice.period_start * 1000),
-  };
+  return stripeSubscriptionId && stripeCustomerId
+    ? { stripeSubscriptionId, stripeCustomerId }
+    : null;
 }

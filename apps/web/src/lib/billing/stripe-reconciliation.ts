@@ -11,7 +11,14 @@ import {
   admitFromFirstPaidInvoice,
   type PaidAccessAdmissionDependencies,
 } from "./paid-access-admission";
-import { projectSubscription, type SubscriptionSnapshot } from "./subscription-projection";
+import {
+  applyStripeDispute,
+  applyStripeRefund,
+  disputeSnapshot,
+  type PaidAccessRevocationDependencies,
+  refundSnapshot,
+} from "./paid-access-revocation";
+import { projectSubscription } from "./subscription-projection";
 
 /**
  * How far back each pass reads Stripe's paid invoices and subscription events.
@@ -27,6 +34,8 @@ export const RECONCILIATION_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 export type ReconciliationStripeClient = {
   invoices: { list: (params: Stripe.InvoiceListParams) => AsyncIterable<Stripe.Invoice> };
   events: { list: (params: Stripe.EventListParams) => AsyncIterable<Stripe.Event> };
+  refunds: { list: (params: Stripe.RefundListParams) => AsyncIterable<Stripe.Refund> };
+  disputes: { list: (params: Stripe.DisputeListParams) => AsyncIterable<Stripe.Dispute> };
 };
 
 /** The subscription changes the webhook projects, replayed here when a delivery was lost. */
@@ -34,27 +43,28 @@ const SUBSCRIPTION_EVENT_TYPES = ["customer.subscription.updated", "customer.sub
 
 type ProfileStanding = Pick<AccessProfile, "status" | "source">;
 
-export type StripeReconciliationDependencies = PaidAccessAdmissionDependencies & {
-  policy: AdmissionPolicy;
-  /** `null` when Stripe is not configured, which also means nobody could have paid. */
-  stripe: ReconciliationStripeClient | null;
-  findAccountByStripeCustomer: (stripeCustomerId: string) => Promise<string | null>;
-  readAccessProfile: (userId: string) => Promise<ProfileStanding | null>;
-  /** Live subscriptions recorded Past Due since at or before `pastDueAtOrBefore` (#610). */
-  listClosedDunningWindows: (input: { pastDueAtOrBefore: Date }) => Promise<ClosedDunningWindow[]>;
-  /** End a subscription in Stripe at once, returning Stripe's copy of the ended subscription. */
-  cancelSubscription: (stripeSubscriptionId: string) => Promise<SubscriptionSnapshot>;
-  /**
-   * The "you're in" email (#607), sent only when this pass is what admitted the
-   * account. Keyed on the invoice, as for the webhook, so a pass racing a late
-   * delivery still sends one message.
-   */
-  announceAdmission: (input: { userId: string; invoiceId: string }) => Promise<unknown>;
-  logger?: {
-    warn?: (message: string, context?: Record<string, unknown>) => void;
-    error?: (message: string, context?: Record<string, unknown>) => void;
+export type StripeReconciliationDependencies = PaidAccessAdmissionDependencies &
+  PaidAccessRevocationDependencies & {
+    policy: AdmissionPolicy;
+    /** `null` when Stripe is not configured, which also means nobody could have paid. */
+    stripe: ReconciliationStripeClient | null;
+    findAccountByStripeCustomer: (stripeCustomerId: string) => Promise<string | null>;
+    readAccessProfile: (userId: string) => Promise<ProfileStanding | null>;
+    /** Live subscriptions recorded Past Due since at or before `pastDueAtOrBefore` (#610). */
+    listClosedDunningWindows: (input: {
+      pastDueAtOrBefore: Date;
+    }) => Promise<ClosedDunningWindow[]>;
+    /**
+     * The "you're in" email (#607), sent only when this pass is what admitted the
+     * account. Keyed on the invoice, as for the webhook, so a pass racing a late
+     * delivery still sends one message.
+     */
+    announceAdmission: (input: { userId: string; invoiceId: string }) => Promise<unknown>;
+    logger?: {
+      warn?: (message: string, context?: Record<string, unknown>) => void;
+      error?: (message: string, context?: Record<string, unknown>) => void;
+    };
   };
-};
 
 type StripeReconciliationResult =
   | { status: "skipped" }
@@ -64,6 +74,10 @@ type StripeReconciliationResult =
       admitted: number;
       /** Subscriptions this pass ended because their dunning window closed (#610). */
       dunningClosed: number;
+      /** Refunds and disputes this pass revoked Paid Access for (#617). */
+      revoked: number;
+      /** Refunds matching no Refund record: each one alerts, and changes nothing. */
+      unmatchedRefunds: number;
       unknownCustomer: number;
       failed: number;
     };
@@ -78,7 +92,10 @@ function errorMessage(error: unknown): string {
  * through the same first-paid-invoice rule as the webhook, and re-projects every
  * subscription changed inside the window (#609), so a delivery that was
  * dropped or failed for good is repaired on the next pass. It also closes every
- * dunning window that has run its seven days (#610).
+ * dunning window that has run its seven days (#610), and replays every refund
+ * and dispute inside the window through the webhook's revocation rules (#617):
+ * a refund matching no Refund record is logged as `stripe_reconciliation.failed`
+ * on every pass, and changes nothing, until the operator records what it was.
  *
  * It is idempotent: an account already standing where the invoice would put it
  * is left as it is and is sent no second email. It only ever adds the Paid
@@ -268,6 +285,63 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
     for (const window of closed) await closeDunningWindow(window, now, result);
   }
 
+  /**
+   * Every refund and dispute inside the window, applied exactly as the webhook
+   * applies them. Both are idempotent: a refund already revoked and a dispute
+   * already on record change and send nothing on a later pass.
+   */
+  async function reconcileRevocations(
+    stripe: ReconciliationStripeClient,
+    since: number,
+    result: Extract<StripeReconciliationResult, { status: "ran" }>,
+  ) {
+    const fail = (stage: string, error: unknown, context: Record<string, unknown> = {}) => {
+      result.failed += 1;
+      deps.logger?.error?.("stripe_reconciliation.failed", {
+        stage,
+        ...context,
+        error: errorMessage(error),
+      });
+    };
+
+    try {
+      for await (const listed of stripe.refunds.list({ created: { gte: since }, limit: 100 })) {
+        const refund = refundSnapshot(listed);
+        try {
+          const outcome = await applyStripeRefund(deps, refund);
+          if (outcome === "revoked") result.revoked += 1;
+          if (outcome === "unmatched") {
+            // Counted apart from `failed`: nothing failed to run, and the
+            // alert repeats every pass until the operator records the refund.
+            result.unmatchedRefunds += 1;
+            deps.logger?.error?.("stripe_reconciliation.failed", {
+              stage: "unmatched_refund",
+              refundId: refund.id,
+            });
+          }
+        } catch (error) {
+          fail("refund", error, { refundId: refund.id });
+        }
+      }
+    } catch (error) {
+      fail("refunds", error);
+    }
+
+    try {
+      for await (const listed of stripe.disputes.list({ created: { gte: since }, limit: 100 })) {
+        try {
+          if ((await applyStripeDispute(deps, disputeSnapshot(listed))) === "revoked") {
+            result.revoked += 1;
+          }
+        } catch (error) {
+          fail("dispute", error, { disputeId: listed.id });
+        }
+      }
+    } catch (error) {
+      fail("disputes", error);
+    }
+  }
+
   return async function reconcile(input: { now?: Date } = {}): Promise<StripeReconciliationResult> {
     if (deps.policy.mode !== "hosted" || !deps.stripe) return { status: "skipped" };
 
@@ -277,6 +351,8 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
       scanned: 0,
       admitted: 0,
       dunningClosed: 0,
+      revoked: 0,
+      unmatchedRefunds: 0,
       unknownCustomer: 0,
       failed: 0,
     };
@@ -299,6 +375,7 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
       });
     }
     await reconcileSubscriptions(deps.stripe, since, result);
+    await reconcileRevocations(deps.stripe, since, result);
     // After the replay, so a recovery whose webhook was lost is on record first.
     await closeDunningWindows(now, result);
     return result;

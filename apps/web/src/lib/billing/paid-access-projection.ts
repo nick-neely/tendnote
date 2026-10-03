@@ -6,6 +6,16 @@ import {
   lapsePaidAccess,
 } from "@tendnote/db/queries/access-profiles";
 import { getAuthUserEmail } from "@tendnote/db/queries/auth-users";
+import {
+  attachStripeRefund,
+  findUnmatchedRefundRecord,
+  getDispute,
+  getRefundRecordByStripeRefund,
+  listSubscriptionRevocationBlocks,
+  markDisputeRenewalStopped,
+  markRefundRevoked,
+  recordDispute,
+} from "@tendnote/db/queries/paid-access-revocations";
 import { findUserIdByStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
 import {
   getStripeSubscription,
@@ -17,10 +27,12 @@ import Stripe from "stripe";
 import { sendAdmittedEmail } from "./admitted-email";
 import { sendCancellationEmail } from "./cancellation-email";
 import { readStripeBillingConfig } from "./checkout";
+import { invoiceSubscription } from "./first-paid-invoice";
+import { sendRefundEmail } from "./refund-email";
 import { sendRenewalReminderEmail } from "./renewal-reminder-email";
-import { subscriptionSnapshot } from "./subscription-projection";
+import { paysForAccount, subscriptionSnapshot } from "./subscription-projection";
 
-function configuredStripe(): Stripe {
+export function configuredStripe(): Stripe {
   const config = readStripeBillingConfig();
   // Unconfigured, the work fails and is retried once Stripe is configured.
   if (!config) throw new Error("Stripe is not configured.");
@@ -68,10 +80,43 @@ export const paidAccessProjection = {
   listClosedDunningWindows,
   cancelSubscription: async (stripeSubscriptionId: string) =>
     subscriptionSnapshot(await configuredStripe().subscriptions.cancel(stripeSubscriptionId)),
+  stopRenewal: async (stripeSubscriptionId: string) =>
+    subscriptionSnapshot(
+      // Expanded like a read: a Past Due subscription stays Past Due (#610).
+      await configuredStripe().subscriptions.update(stripeSubscriptionId, {
+        cancel_at_period_end: true,
+        expand: ["latest_invoice"],
+      }),
+    ),
+  /** The subscription a payment paid for, through the invoice it paid (#617). */
+  resolvePaymentSubscription: async (paymentIntentId: string) => {
+    const payments = await configuredStripe().invoicePayments.list({
+      payment: { type: "payment_intent", payment_intent: paymentIntentId },
+      expand: ["data.invoice"],
+      limit: 1,
+    });
+    return invoiceSubscription(payments.data[0]?.invoice);
+  },
+  confirmRefund: async (input: { userId: string; refundRecordId: string }) => {
+    const to = await getAuthUserEmail({ userId: input.userId });
+    if (to) await sendRefundEmail({ to, refundRecordId: input.refundRecordId });
+  },
+  revocations: {
+    getRefundRecordByStripeRefund,
+    findUnmatchedRefundRecord,
+    attachStripeRefund,
+    markRefundRevoked,
+    getDispute,
+    recordDispute,
+    markDisputeRenewalStopped,
+    listSubscriptionRevocationBlocks,
+  },
   subscriptions: {
     getSubscription: getStripeSubscription,
     recordSubscription: recordStripeSubscription,
     lapsePaidAccess,
+    paysForAccount: async (input: { userId: string; stripeSubscriptionId: string }) =>
+      paysForAccount(await getAccessProfile({ userId: input.userId }), input.stripeSubscriptionId),
     confirmCancellation: async (input: {
       userId: string;
       stripeSubscriptionId: string;

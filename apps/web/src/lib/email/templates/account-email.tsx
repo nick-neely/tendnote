@@ -18,15 +18,16 @@ import type { TransactionalEmailContent } from "../transactional";
 /**
  * The account and sign-in emails: the two Better Auth asks Tendnote to deliver,
  * the "you're in" message sent on admission (#607), the confirmation of a
- * cancellation scheduled in the portal (#609), and the reminder before an
- * annual renewal (#611).
+ * cancellation scheduled in the portal (#609), the reminder before an annual
+ * renewal (#611), and the confirmation of a refund (#617).
  */
 export type AccountEmailPurpose =
   | "verify-email"
   | "reset-password"
   | "admitted"
   | "cancellation"
-  | "renewal-reminder";
+  | "renewal-reminder"
+  | "refund";
 
 export type AccountEmailProps = {
   purpose: AccountEmailPurpose;
@@ -89,6 +90,16 @@ const COPY = {
     fallback: "Open your account in your browser",
     reason:
       "This email address has a Tendnote subscription that renews automatically. We send this reminder before it renews, so the charge is never a surprise.",
+  },
+  refund: {
+    subject: "Your Tendnote refund is on its way",
+    preview: "Your payment is being returned to the card you paid with.",
+    heading: "Your refund is on its way",
+    body: "We’ve refunded your Tendnote payment to the card you paid with. When it appears is up to your card issuer, and often takes 5 to 10 business days. Your subscription has ended and won’t charge you again. Your account page shows how long your data is kept, and you can export it or resubscribe from there.",
+    action: "Open your account",
+    fallback: "Open your account in your browser",
+    reason:
+      "A payment for the Tendnote subscription at this email address was refunded. If you didn’t ask for this, reply to this email and we’ll look into it.",
   },
 } as const satisfies Record<AccountEmailPurpose, Record<string, string>>;
 

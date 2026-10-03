@@ -3,6 +3,7 @@ import { ForbiddenError } from "eve/channels/auth";
 import type Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness } from "../access/admission-harness";
+import { createPaidAccessRevocationsFake } from "./paid-access-revocations-fake";
 import { createStripeReconciliation, RECONCILIATION_LOOKBACK_MS } from "./stripe-reconciliation";
 import { createStripeSubscriptionsFake } from "./stripe-subscriptions-fake";
 import { projectSubscription } from "./subscription-projection";
@@ -38,7 +39,12 @@ function invoice(overrides: Record<string, unknown> = {}): Stripe.Invoice {
  */
 function fakeStripe(
   current: () => Stripe.Invoice[],
-  options: { failAfter?: number; events?: () => Stripe.Event[] } = {},
+  options: {
+    failAfter?: number;
+    events?: () => Stripe.Event[];
+    refunds?: () => Stripe.Refund[];
+    disputes?: () => Stripe.Dispute[];
+  } = {},
 ) {
   const list = vi.fn((_params: Stripe.InvoiceListParams) =>
     (async function* () {
@@ -58,7 +64,22 @@ function fakeStripe(
       yield* options.events?.() ?? [];
     })(),
   );
-  return { invoices: { list }, events: { list: listEvents } };
+  const listRefunds = vi.fn((_params: Stripe.RefundListParams) =>
+    (async function* () {
+      yield* options.refunds?.() ?? [];
+    })(),
+  );
+  const listDisputes = vi.fn((_params: Stripe.DisputeListParams) =>
+    (async function* () {
+      yield* options.disputes?.() ?? [];
+    })(),
+  );
+  return {
+    invoices: { list },
+    events: { list: listEvents },
+    refunds: { list: listRefunds },
+    disputes: { list: listDisputes },
+  };
 }
 
 /** A subscription event whose own copy is deliberately stale: reconciliation re-reads Stripe. */
@@ -93,10 +114,16 @@ function droppedWebhook(
   });
   const stripeInvoices = input.invoices ?? [invoice()];
   const stripeEvents = input.events ?? [];
+  const stripeRefunds: Stripe.Refund[] = [];
+  const stripeDisputes: Stripe.Dispute[] = [];
   const stripe = fakeStripe(() => stripeInvoices, {
     failAfter: input.failAfter,
     events: () => stripeEvents,
+    refunds: () => stripeRefunds,
+    disputes: () => stripeDisputes,
   });
+  const revocations = createPaidAccessRevocationsFake();
+  const confirmRefund = vi.fn(async (_input: { userId: string; refundRecordId: string }) => {});
   const customers = new Map([[CUSTOMER, user.id], ...(input.customers ?? [])]);
   const anchors = new Map<string, Date>();
   const logger = { warn: vi.fn(), error: vi.fn() };
@@ -125,6 +152,13 @@ function droppedWebhook(
     subscriptions: stripeSubscriptions.subscriptions,
     listClosedDunningWindows: stripeSubscriptions.listClosedDunningWindows,
     cancelSubscription: stripeSubscriptions.cancelSubscription,
+    stopRenewal: stripeSubscriptions.stopRenewal,
+    revocations: revocations.revocations,
+    resolvePaymentSubscription: async (paymentIntentId) =>
+      paymentIntentId === "pi_first"
+        ? { stripeSubscriptionId: "sub_1", stripeCustomerId: CUSTOMER }
+        : null,
+    confirmRefund,
     anchorUsagePeriod: async (userId, startedAt) => {
       anchors.set(userId, startedAt);
     },
@@ -156,6 +190,10 @@ function droppedWebhook(
     stripe,
     stripeInvoices,
     stripeEvents,
+    stripeRefunds,
+    stripeDisputes,
+    revocations,
+    confirmRefund,
     anchors,
     logger,
     announceAdmission,
@@ -625,6 +663,111 @@ describe("renewal failure: Past Due for seven days, then Lapsed (#610)", () => {
   });
 });
 
+describe("refunds and disputes on the reconciliation pass (#617)", () => {
+  const REFUNDED_AT = new Date("2026-10-02T15:00:00.000Z");
+
+  function stripeRefund(overrides: Record<string, unknown> = {}): Stripe.Refund {
+    return {
+      id: "re_1",
+      object: "refund",
+      payment_intent: "pi_first",
+      amount: 2000,
+      created: REFUNDED_AT.getTime() / 1000,
+      status: "succeeded",
+      ...overrides,
+    } as unknown as Stripe.Refund;
+  }
+
+  function stripeDispute(id = "du_1"): Stripe.Dispute {
+    return {
+      id,
+      object: "dispute",
+      payment_intent: "pi_first",
+      created: REFUNDED_AT.getTime() / 1000,
+      status: "needs_response",
+    } as unknown as Stripe.Dispute;
+  }
+
+  async function admitted() {
+    const subscriber = await signedUp();
+    await subscriber.reconcile();
+    await subscriber.expectAdmitted();
+    return subscriber;
+  }
+
+  it("revokes on a matched refund whose webhook was lost, and never re-admits from the still-paid first invoice", async () => {
+    const subscriber = await admitted();
+    const record = await subscriber.revocations.records.recordRefund({
+      userId: user.id,
+      stripeSubscriptionId: "sub_1",
+      invoiceId: "in_first",
+      paymentIntentId: "pi_first",
+      amount: 2000,
+      requestedAt: new Date(REFUNDED_AT.getTime() - 1000),
+    });
+    // The Refund Operator Action lost Stripe's response, so no id was stored.
+    subscriber.stripeRefunds.push(stripeRefund());
+
+    expect(await subscriber.reconcile()).toMatchObject({ revoked: 1, failed: 0 });
+    await subscriber.expectNotAdmitted();
+    expect(subscriber.revocations.refunds[0]).toMatchObject({
+      id: record.id,
+      stripeRefundId: "re_1",
+    });
+
+    // The first invoice stays paid in Stripe for the whole lookback window.
+    expect(await subscriber.reconcile()).toMatchObject({ admitted: 0, revoked: 0 });
+    await subscriber.expectNotAdmitted();
+    expect(subscriber.confirmRefund).toHaveBeenCalledOnce();
+    expect(subscriber.announceAdmission).toHaveBeenCalledOnce();
+  });
+
+  it("alerts on every pass for a refund matching no record, and changes nothing", async () => {
+    const subscriber = await admitted();
+    subscriber.stripeRefunds.push(stripeRefund());
+
+    expect(await subscriber.reconcile()).toMatchObject({ unmatchedRefunds: 1, revoked: 0 });
+    expect(await subscriber.reconcile()).toMatchObject({ unmatchedRefunds: 1 });
+
+    await subscriber.expectAdmitted();
+    expect(subscriber.logger.error).toHaveBeenCalledWith("stripe_reconciliation.failed", {
+      stage: "unmatched_refund",
+      refundId: "re_1",
+    });
+    expect(subscriber.stripeSubscriptions.cancelSubscription).not.toHaveBeenCalled();
+  });
+
+  it("revokes on a dispute whose webhook was lost, and keeps it revoked while the subscription lives on", async () => {
+    const subscriber = await admitted();
+    subscriber.stripeDisputes.push(stripeDispute());
+
+    expect(await subscriber.reconcile()).toMatchObject({ revoked: 1, failed: 0 });
+    await subscriber.expectNotAdmitted();
+
+    // Renewal is stopped, not ended: the paid first invoice must not re-admit.
+    expect(await subscriber.reconcile()).toMatchObject({ admitted: 0, revoked: 0 });
+    await subscriber.expectNotAdmitted();
+    expect(subscriber.stripeSubscriptions.stopRenewal).toHaveBeenCalledOnce();
+  });
+
+  it("records a failed refund listing as an alertable failure without stopping the pass", async () => {
+    const subscriber = await admitted();
+    subscriber.stripe.refunds.list.mockImplementationOnce(() =>
+      (async function* () {
+        yield* [];
+        throw new Error("Stripe is unavailable");
+      })(),
+    );
+    subscriber.stripeDisputes.push(stripeDispute());
+
+    expect(await subscriber.reconcile()).toMatchObject({ failed: 1, revoked: 1 });
+    expect(subscriber.logger.error).toHaveBeenCalledWith("stripe_reconciliation.failed", {
+      stage: "refunds",
+      error: "Stripe is unavailable",
+    });
+  });
+});
+
 describe("self-hosted deployments", () => {
   it("run none of the reconciliation, even with a paid first invoice in Stripe", async () => {
     const subscriber = await signedUp({ policy: { mode: "self-hosted" } as AdmissionPolicy });
@@ -634,6 +777,8 @@ describe("self-hosted deployments", () => {
     expect(result).toEqual({ status: "skipped" });
     expect(subscriber.stripe.invoices.list).not.toHaveBeenCalled();
     expect(subscriber.stripe.events.list).not.toHaveBeenCalled();
+    expect(subscriber.stripe.refunds.list).not.toHaveBeenCalled();
+    expect(subscriber.stripe.disputes.list).not.toHaveBeenCalled();
     expect(subscriber.grantPaidAccess).not.toHaveBeenCalled();
   });
 });
