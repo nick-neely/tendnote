@@ -12,19 +12,23 @@ import { createContext, useCallback, useContext, useEffect, useRef } from "react
  * requests, as a daily total.
  */
 
-/** The approved public pages by path. Any other path, a 404 included, is never counted. */
-const PAGE_BY_PATH: Record<string, PublicPage> = {
-  "/": "home",
-  "/product": "product",
-  "/demo": "demo",
-  "/pricing": "pricing",
-  "/about": "about",
-  "/privacy-and-ai": "privacy_and_ai",
-  "/support": "support",
-  "/fair-use": "fair_use",
-  "/terms": "terms",
-  "/privacy": "privacy",
+/** Every approved public page's path. Any other path, a 404 included, is never counted. */
+const PATH_BY_PAGE: Record<PublicPage, string> = {
+  home: "/",
+  product: "/product",
+  demo: "/demo",
+  pricing: "/pricing",
+  about: "/about",
+  privacy_and_ai: "/privacy-and-ai",
+  support: "/support",
+  fair_use: "/fair-use",
+  terms: "/terms",
+  privacy: "/privacy",
 };
+
+const PAGE_BY_PATH = new Map(
+  Object.entries(PATH_BY_PAGE).map(([page, path]) => [path, page as PublicPage]),
+);
 
 type Report = (event: PublicActivityEvent, page: PublicPage) => void;
 
@@ -72,14 +76,14 @@ export function PublicActivity({
     // Once per arrival at a page; a re-run for the same path is not a new view.
     if (lastViewed.current === pathname) return;
     lastViewed.current = pathname;
-    const page = PAGE_BY_PATH[pathname];
+    const page = PAGE_BY_PATH.get(pathname);
     if (page) report("page_viewed", page);
   }, [pathname, report]);
 
   useEffect(() => {
     function onClick(event: MouseEvent) {
       const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
-      const page = PAGE_BY_PATH[window.location.pathname];
+      const page = PAGE_BY_PATH.get(window.location.pathname);
       if (link?.getAttribute("href") === signupHref && page) report("signup_clicked", page);
     }
     document.addEventListener("click", onClick);

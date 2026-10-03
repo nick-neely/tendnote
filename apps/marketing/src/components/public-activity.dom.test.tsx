@@ -66,6 +66,7 @@ describe("PublicActivity", () => {
       credentials: "omit",
       referrerPolicy: "no-referrer",
       keepalive: true,
+      mode: "no-cors",
     });
     expect(init?.headers).toBeUndefined();
     expect(Object.keys(JSON.parse(String(init?.body)))).toEqual(["event", "page"]);

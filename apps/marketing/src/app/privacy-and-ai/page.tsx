@@ -204,9 +204,9 @@ export default function PrivacyAndAiPage() {
         </p>
         <p className="max-w-[62ch]">
           On this site, Tendnote keeps a daily count of which pages are viewed, how often the demo
-          is started and finished, and how often Subscribe is clicked. A visit only adds one to a
-          total. There is no visitor ID and nothing that ties a count to you or to an account, so
-          there is nothing to turn off or delete. Counted only for visits from the United States,
+          is started and finished, and how often Subscribe is clicked. Each of these only adds one
+          to a total. There is no visitor ID and nothing that ties a count to you or to an account,
+          so there is nothing to turn off or delete. Counted only for visits from the United States,
           and kept {publicCountMonths} months.
         </p>
         <p className="max-w-[62ch]">

@@ -120,8 +120,10 @@ describe("the saved operator report", () => {
     expect(section).toMatch(/Privacy & AI\s+0/);
     expect(section).toMatch(/Signup clicked\s+5/);
     expect(section).toMatch(/Demo completed per demo started: 75%/);
-    expect(section).toMatch(/Signup clicked per Pricing view: 25%/);
+    expect(section).toMatch(/Signup clicked on any page per Pricing view: 25%/);
     expect(section).toMatch(/known to come from the US/);
+    expect(section).toMatch(/a write that fails, is not retried/);
+    expect(section).toMatch(/a count can also run high/);
     expect(section).toMatch(/kept 13 months/);
   });
 

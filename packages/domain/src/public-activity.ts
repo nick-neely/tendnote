@@ -139,11 +139,13 @@ export function renderPublicActivityLines(totals: PublicActivityTotals): string[
     line(EVENT_LABELS.signup_clicked, events.signup_clicked),
     "",
     `  Demo completed per demo started: ${per(events.demo_completed, events.demo_started)}`,
-    `  Signup clicked per Pricing view: ${per(events.signup_clicked, pageViews.pricing)}`,
+    `  Signup clicked on any page per Pricing view: ${per(events.signup_clicked, pageViews.pricing)}`,
     "",
     "Coverage",
-    "  Counted only for requests known to come from the US, and not at all when a",
-    "  browser blocks the request, so every count is a floor. Totals are per UTC",
-    `  day and kept ${RETENTION.anonymousDailyTotals.months} months.`,
+    "  Counted only for requests known to come from the US. A browser that blocks",
+    "  the report, or a write that fails, is not retried, so a count can fall",
+    "  short. Anyone can send a report, so a count can also run high: read the",
+    "  numbers as rough activity, never a census. Totals are per UTC day, the",
+    `  window's last day excluded, and kept ${RETENTION.anonymousDailyTotals.months} months.`,
   ];
 }

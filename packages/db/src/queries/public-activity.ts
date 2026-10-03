@@ -5,7 +5,7 @@ import {
   publicActivityDay,
   publicActivityTotals,
 } from "@tendnote/domain/public-activity";
-import { and, gte, lt, lte, sql, sum } from "drizzle-orm";
+import { and, gte, lt, sql, sum } from "drizzle-orm";
 import { getDb } from "../client";
 import { publicActivityDailyCounts } from "../schema";
 import { queryErrorCode } from "./query-error-code";
@@ -51,7 +51,11 @@ export async function sweepPublicActivityCounts(now = new Date()) {
   return { deleted: deleted.length };
 }
 
-/** The public totals for the UTC days a report window touches. */
+/**
+ * The public totals for a report window, by UTC day: from the day `since`
+ * falls on, up to but not including the day `until` falls on, so a thirty-day
+ * window reads thirty days, as the account funnel does.
+ */
 export async function readPublicActivityTotals(input: {
   since: Date;
   until: Date;
@@ -66,7 +70,7 @@ export async function readPublicActivityTotals(input: {
     .where(
       and(
         gte(publicActivityDailyCounts.day, publicActivityDay(input.since)),
-        lte(publicActivityDailyCounts.day, publicActivityDay(input.until)),
+        lt(publicActivityDailyCounts.day, publicActivityDay(input.until)),
       ),
     )
     .groupBy(publicActivityDailyCounts.event, publicActivityDailyCounts.page);
