@@ -3,7 +3,9 @@
 import type { UsageNotice, UsageRestriction } from "@tendnote/domain/usage-bounds";
 import { Client, type MessageStreamEvent } from "eve/client";
 import { type EveMessageData, type UseEveAgentHelpers, useEveAgent } from "eve/react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { readEveUsageAction } from "@/app/actions/eve-usage";
 import { isSessionNotActive } from "@/lib/assistant/session-errors";
 import { pausedNoticeFromError } from "@/lib/assistant/usage-notice";
 import { resumePlanFromEvents } from "@/lib/eve/resume-plan";
@@ -152,6 +154,16 @@ function eveSessionConfig(resumed: AssistantResumeSettled) {
 /** One shared value, so an absent prop is the same read on every render. */
 const NORMAL_USAGE: UsageNotice = { state: "normal" };
 
+function sameNotice(a: UsageNotice, b: UsageNotice): boolean {
+  if (a.state === "normal" || b.state === "normal") return a.state === b.state;
+  return (
+    a.state === b.state &&
+    a.recovery.kind === b.recovery.kind &&
+    (a.recovery.kind !== "resets_on" ||
+      (b.recovery.kind === "resets_on" && a.recovery.date === b.recovery.date))
+  );
+}
+
 export function useAssistantSession({
   context,
   onSessionStarted,
@@ -176,6 +188,8 @@ export function useAssistantSession({
    * Interactive Eve's usage notice as the page read it. Eve's door is the
    * authority: a turn it refuses because the account reached its Account
    * Ceiling since the read replaces this with the notice it was refused with.
+   * Each finished turn re-reads it too, since the turn's own spend may have
+   * crossed the Fair-Use Budget.
    */
   usage?: UsageNotice;
 }): {
@@ -185,6 +199,8 @@ export function useAssistantSession({
   closed: boolean;
   /** Interactive Eve's paused notice, or `null` while turns can start or the thread has ended. */
   paused: UsageRestriction | null;
+  /** Interactive Eve's notice while it runs on the Fallback Model, or `null`. */
+  reduced: UsageRestriction | null;
 } {
   const resumedSessionId = resumed.kind === "fresh" ? undefined : resumed.sessionId;
 
@@ -209,11 +225,7 @@ export function useAssistantSession({
   // can already know this - a refused stream is the same dead end a refused send
   // reaches - so the composer never appears rather than appearing and dying.
   const [ended, setEnded] = useState(resumed.kind === "ended");
-  // A refusal at the door overrides the page's read until the page reads again:
-  // a new read (a refresh, or a remount after the reset) is recomputed on the
-  // server against whatever restrictions still apply.
-  const [refusal, setRefusal] = useState<{ notice: UsageNotice; over: UsageNotice } | null>(null);
-  const usage = refusal && refusal.over === initialUsage ? refusal.notice : initialUsage;
+  const eveUsage = useEveUsage(initialUsage);
 
   // Stream turns directly from the same-origin Eve mount (withEve). The hook owns
   // the durable Eve session, so follow-up turns continue the same conversation
@@ -226,9 +238,9 @@ export function useAssistantSession({
     onError: (error) => {
       turnFailure.current = error;
       if (isSessionNotActive(error)) setEnded(true);
-      const paused = pausedNoticeFromError(error);
-      if (paused) setRefusal({ notice: paused, over: initialUsage });
+      eveUsage.turnFailed(error);
     },
+    onFinish: eveUsage.turnFinished,
     // Re-registered on every render by the hook, so this closure is always the
     // current one and needs no ref of its own.
     onSessionChange: (session) => {
@@ -271,7 +283,56 @@ export function useAssistantSession({
   );
 
   // An ended thread says so instead; it could not be continued after a reset either.
+  const { usage } = eveUsage;
   const paused = !ended && usage.state === "paused" ? usage : null;
+  const reduced = !ended && usage.state === "reduced" ? usage : null;
 
-  return { agent, closed: ended || paused !== null, deliver, paused };
+  return { agent, closed: ended || paused !== null, deliver, paused, reduced };
+}
+
+/**
+ * Interactive Eve's usage notice for one conversation. The page's read holds
+ * until something newer is known: a refusal at the door, or a re-read after a
+ * turn, overrides it until the page reads again (a refresh, or a remount after
+ * the reset), which the server recomputes against whatever still applies.
+ */
+function useEveUsage(pageRead: UsageNotice) {
+  const [latest, setLatest] = useState<{ notice: UsageNotice; pageRead: UsageNotice } | null>(null);
+  // Set when the door refuses the turn now settling, whose refusal is the
+  // authority, and the count of re-reads started, so an older one never lands
+  // over a newer one.
+  const refusedThisTurn = useRef(false);
+  const rereads = useRef(0);
+  const router = useRouter();
+
+  // A turn may cross the Fair-Use Budget or the Account Ceiling, and the next
+  // turn would then run on the Fallback Model, or be refused, with nothing on
+  // screen saying so. When the re-read differs from the page's read, the page
+  // reads again too, so every notice on it (Today's included) agrees.
+  const reread = async () => {
+    const attempt = ++rereads.current;
+    const result = await readEveUsageAction().catch(() => null);
+    if (attempt !== rereads.current || !result?.ok || !result.view) return;
+    setLatest({ notice: result.view, pageRead });
+    if (!sameNotice(result.view, pageRead)) router.refresh();
+  };
+
+  return {
+    usage: latest && latest.pageRead === pageRead ? latest.notice : pageRead,
+    turnFailed: (error: Error) => {
+      const paused = pausedNoticeFromError(error);
+      if (!paused) return;
+      refusedThisTurn.current = true;
+      setLatest({ notice: paused, pageRead });
+    },
+    turnFinished: () => {
+      // A turn the door refused already carries the authoritative notice.
+      if (refusedThisTurn.current) {
+        refusedThisTurn.current = false;
+        rereads.current += 1;
+        return;
+      }
+      void reread();
+    },
+  };
 }

@@ -1,6 +1,6 @@
 import type { UsageRestriction } from "@tendnote/domain/usage-bounds";
 import type { ReactNode } from "react";
-import { recoveryText } from "@/lib/assistant/usage-notice";
+import { eveUsageNoticeText } from "@/lib/assistant/usage-notice";
 import { cn } from "@/lib/utils";
 
 /**
@@ -226,16 +226,14 @@ export function AssistantEndedNotice({ children }: { children: ReactNode }) {
 }
 
 /**
- * Interactive Eve at the account's monthly limit, in place of the composer
- * (#625). Like the ended notice it is a plain fact rather than an error: the
- * transcript, records, reminders, export, and billing all keep working, and it
- * states exactly one recovery condition, the one the notice carries.
+ * Interactive Eve's usage notice. Paused at the account's monthly limit, it
+ * stands in place of the composer (#625); over the Fair-Use Budget, it sits
+ * above the composer so the lighter model is never silent (#626). Like the
+ * ended notice it is a plain fact rather than an error, and it states exactly
+ * one recovery condition, the one the notice carries.
  */
-export function AssistantPausedNotice({ notice }: { notice: UsageRestriction }) {
-  const headline =
-    notice.recovery.kind === "resets_on"
-      ? "Eve has reached this month's usage limit."
-      : "Eve is paused.";
+export function AssistantUsageNotice({ notice }: { notice: UsageRestriction }) {
+  const { headline, detail } = eveUsageNoticeText(notice);
 
   return (
     <div
@@ -243,9 +241,7 @@ export function AssistantPausedNotice({ notice }: { notice: UsageRestriction }) 
       role="status"
     >
       <p className="font-medium text-foreground">{headline}</p>
-      <p className="text-muted-foreground">
-        Everything else in Tendnote still works. {recoveryText(notice.recovery)}
-      </p>
+      <p className="text-muted-foreground">{detail}</p>
     </div>
   );
 }

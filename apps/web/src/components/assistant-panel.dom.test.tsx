@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { UsageNotice } from "@tendnote/domain/usage-bounds";
 import type { EveMessage } from "eve/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { AssistantTurnCardUnit } from "@/lib/eve/message-views";
@@ -47,6 +48,7 @@ const { eve } = vi.hoisted(() => {
     initialEvents?: unknown;
     initialSession?: unknown;
     onError?: (error: Error) => void;
+    onFinish?: () => void;
     onSessionChange?: (session: { sessionId: string } | undefined) => void;
     resume?: boolean;
   };
@@ -60,6 +62,7 @@ const { eve } = vi.hoisted(() => {
   let prefix: { events: readonly { type: string }[] } | { failure: Error } = { events: [] };
   let snapshot: Snapshot = initial;
   let onError: ((error: Error) => void) | undefined;
+  let onFinish: (() => void) | undefined;
   let onSessionChange: ((session: { sessionId: string } | undefined) => void) | undefined;
   let settleTurn: ((failure?: Error) => void) | null = null;
   let respondFailure: Error | null = null;
@@ -74,6 +77,7 @@ const { eve } = vi.hoisted(() => {
   /** Latches the callbacks `onError`/`failWith` and `onSessionChange`/`nameSession` call. */
   function applyCallbacks(options: CallbackOptions | undefined): void {
     onError = options?.onError;
+    onFinish = options?.onFinish;
     onSessionChange = options?.onSessionChange;
   }
 
@@ -154,6 +158,8 @@ const { eve } = vi.hoisted(() => {
             } else {
               publish({ error: undefined, status: "ready" });
             }
+            // The real store announces every settled turn, failed or not.
+            onFinish?.();
             resolve();
           };
         });
@@ -222,6 +228,7 @@ vi.mock("eve/react", async () => {
       initialEvents?: unknown;
       initialSession?: unknown;
       onError?: (error: Error) => void;
+      onFinish?: () => void;
       onSessionChange?: (session: { sessionId: string } | undefined) => void;
       resume?: boolean;
     }) => {
@@ -286,7 +293,14 @@ vi.mock("@/app/actions/eve-approvals", () => ({
   ),
 }));
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+// The usage notice each finished turn re-reads (#626). Normal unless a test says otherwise.
+const readEveUsageAction = vi.hoisted(() =>
+  vi.fn<() => Promise<{ ok: true; view: UsageNotice | null }>>(),
+);
+vi.mock("@/app/actions/eve-usage", () => ({ readEveUsageAction }));
+
+const routerRefresh = vi.hoisted(() => vi.fn());
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefresh }) }));
 
 import { AssistantPanel } from "./assistant-panel";
 
@@ -305,6 +319,9 @@ beforeEach(() => {
   vi.stubGlobal("MutationObserver", ObserverStub);
   window.localStorage.clear();
   eve.reset();
+  readEveUsageAction.mockReset();
+  readEveUsageAction.mockResolvedValue({ ok: true, view: { state: "normal" } });
+  routerRefresh.mockClear();
 });
 
 function composer(): HTMLTextAreaElement {
@@ -1090,6 +1107,60 @@ it("takes the composer back when a new read of the page finds the restriction cl
 
   await waitFor(() => expect(screen.getByRole("textbox")).toBeDefined());
   expect(screen.queryByText(/usage limit/)).toBeNull();
+});
+
+/**
+ * Over the Fair-Use Budget, Eve continues on the Fallback Model (#626). The
+ * composer stays, and the notice above it says so: the fallback is never silent.
+ */
+const reduced: UsageNotice = {
+  state: "reduced",
+  recovery: { kind: "resets_on", date: "2026-11-15" },
+};
+
+it("keeps the composer with the lighter-model notice above it over the Fair-Use Budget", () => {
+  render(<AssistantPanel ownerUserId="owner-1" surface="page" usage={reduced} />);
+
+  expect(screen.getByText("Eve is using a lighter model.")).toBeDefined();
+  expect(screen.getByText(/full-quality turns.*Resets on November 15\./)).toBeDefined();
+  expect(composer()).toBeDefined();
+});
+
+it("shows the lighter-model notice once a turn crosses the Fair-Use Budget", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" surface="page" usage={{ state: "normal" }} />);
+  readEveUsageAction.mockResolvedValueOnce({ ok: true, view: reduced });
+
+  await sendMessage("Mara adopted a cat");
+  await settleTurn();
+
+  await waitFor(() => expect(screen.getByText("Eve is using a lighter model.")).toBeDefined());
+  expect(composer()).toBeDefined();
+  // The page reads again, so every notice on it, Today's included, agrees.
+  expect(routerRefresh).toHaveBeenCalledTimes(1);
+});
+
+it("re-reads after every turn but reads the page again only when the notice changed", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" surface="page" usage={reduced} />);
+  readEveUsageAction.mockResolvedValue({ ok: true, view: reduced });
+
+  await sendMessage("Mara adopted a cat");
+  await settleTurn();
+  await waitFor(() => expect(readEveUsageAction).toHaveBeenCalledTimes(1));
+
+  expect(routerRefresh).not.toHaveBeenCalled();
+  expect(screen.getByText("Eve is using a lighter model.")).toBeDefined();
+});
+
+it("keeps the notice it has when the re-read fails", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" surface="page" usage={reduced} />);
+  readEveUsageAction.mockRejectedValueOnce(new Error("network"));
+
+  await sendMessage("Mara adopted a cat");
+  await settleTurn();
+  await waitFor(() => expect(readEveUsageAction).toHaveBeenCalledTimes(1));
+
+  expect(screen.getByText("Eve is using a lighter model.")).toBeDefined();
+  expect(routerRefresh).not.toHaveBeenCalled();
 });
 
 /** An outage is not an ending: the composer stays, because the next try may work. */

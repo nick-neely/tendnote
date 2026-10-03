@@ -28,7 +28,7 @@ vi.mock("../client", () => {
   };
 });
 
-import { anchorUsagePeriod, readEveUsageNotice } from "./usage-bounds";
+import { anchorUsagePeriod, readEveOverFairUseBudget, readEveUsageNotice } from "./usage-bounds";
 
 const now = new Date("2026-10-20T12:00:00Z");
 
@@ -55,11 +55,20 @@ describe("readEveUsageNotice", () => {
     });
   });
 
-  it("is normal below the plan's interactive ceiling", async () => {
-    db.reads = [[{ anchor: "2026-03-15" }], [{ microUsd: "11999999" }]];
+  it("is normal below the plan's interactive Fair-Use Budget", async () => {
+    db.reads = [[{ anchor: "2026-03-15" }], [{ microUsd: "10499999" }]];
 
     await expect(readEveUsageNotice({ userId: "owner-1", now })).resolves.toEqual({
       state: "normal",
+    });
+  });
+
+  it("is reduced from the Fair-Use Budget until the anchored Usage Period resets", async () => {
+    db.reads = [[{ anchor: "2026-03-15" }], [{ microUsd: "11999999" }]];
+
+    await expect(readEveUsageNotice({ userId: "owner-1", now })).resolves.toEqual({
+      state: "reduced",
+      recovery: { kind: "resets_on", date: "2026-11-15" },
     });
   });
 
@@ -78,6 +87,26 @@ describe("readEveUsageNotice", () => {
     await expect(readEveUsageNotice({ userId: "owner-1", now })).resolves.toEqual({
       state: "normal",
     });
+  });
+});
+
+describe("readEveOverFairUseBudget", () => {
+  it("is false for an account with no subscription anchor", async () => {
+    db.reads = [[{ anchor: null }]];
+
+    await expect(readEveOverFairUseBudget({ userId: "owner-1", now })).resolves.toBe(false);
+  });
+
+  it("is true from the plan's Fair-Use Budget", async () => {
+    db.reads = [[{ anchor: "2026-03-15" }], [{ microUsd: "10500000" }]];
+
+    await expect(readEveOverFairUseBudget({ userId: "owner-1", now })).resolves.toBe(true);
+  });
+
+  it("is false below it", async () => {
+    db.reads = [[{ anchor: "2026-03-15" }], [{ microUsd: "10499999" }]];
+
+    await expect(readEveOverFairUseBudget({ userId: "owner-1", now })).resolves.toBe(false);
   });
 });
 

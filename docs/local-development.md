@@ -72,6 +72,8 @@ Several other model overrides follow the same fallback chain — the specific va
 
 Each Eve subagent also has its own override following the same pattern - `TENDNOTE_MEMORY_CURATOR_MODEL`, `TENDNOTE_MESSAGE_DRAFTER_MODEL`, `TENDNOTE_PRIVACY_GUARD_MODEL`, `TENDNOTE_RELATIONSHIP_STRATEGIST_MODEL` - set at `apps/agent/agent/subagents/<name>/agent.ts`.
 
+Over an account's interactive Fair-Use Budget, Eve, its subagents, and conversation titles run on the Fallback Model instead. `TENDNOTE_FALLBACK_MODEL` chooses it: `openai/gpt-6-luna` by default, or `google/gemini-3.1-flash-lite`, the named alternate if Luna fails qualification. Any other value fails at startup. Accounts with no subscription (every local and self-hosted account) never reach the budget.
+
 In production, extraction and embedding jobs are delivered through Vercel Queues with an outbox-style ledger and a recovery cron. None of that is needed locally — inline processing and deterministic adapters cover the path, and `pnpm verify` never touches a live queue. See [`background-job-delivery.md`](background-job-delivery.md) for the production foundation and the optional live smoke test.
 
 ## Eve evals

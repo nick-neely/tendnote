@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { HOSTED_PLAN, interactiveUsageNotice, usageNotice, usagePeriod } from "./usage-bounds";
+import {
+  HOSTED_PLAN,
+  interactiveUsageNotice,
+  overFairUseBudget,
+  usageNotice,
+  usagePeriod,
+} from "./usage-bounds";
 
 describe("usagePeriod", () => {
   it("runs from the anchor day this month to the anchor day next month", () => {
@@ -124,15 +130,29 @@ describe("usageNotice", () => {
 describe("interactiveUsageNotice", () => {
   const period = { start: "2026-10-15", resetsOn: "2026-11-15" };
   const ceilingMicroUsd = HOSTED_PLAN.allowance.interactive.accountCeilingUsd * 1_000_000;
+  const budgetMicroUsd = HOSTED_PLAN.allowance.interactive.fairUseBudgetUsd * 1_000_000;
 
-  it("carries the plan's interactive Account Ceiling as a plan attribute", () => {
-    expect(HOSTED_PLAN.allowance.interactive.accountCeilingUsd).toBe(12);
+  it("carries the plan's interactive Fair-Use Budget and Account Ceiling as plan attributes", () => {
+    expect(HOSTED_PLAN.allowance.interactive).toEqual({
+      fairUseBudgetUsd: 10.5,
+      accountCeilingUsd: 12,
+    });
   });
 
-  it("is normal below the ceiling", () => {
+  it("is normal below the Fair-Use Budget", () => {
+    expect(
+      interactiveUsageNotice({ plan: HOSTED_PLAN, period, spentMicroUsd: budgetMicroUsd - 1 }),
+    ).toEqual({ state: "normal" });
+  });
+
+  it("is reduced from the Fair-Use Budget until the Usage Period resets", () => {
+    const reduced = { state: "reduced", recovery: { kind: "resets_on", date: "2026-11-15" } };
+    expect(
+      interactiveUsageNotice({ plan: HOSTED_PLAN, period, spentMicroUsd: budgetMicroUsd }),
+    ).toEqual(reduced);
     expect(
       interactiveUsageNotice({ plan: HOSTED_PLAN, period, spentMicroUsd: ceilingMicroUsd - 1 }),
-    ).toEqual({ state: "normal" });
+    ).toEqual(reduced);
   });
 
   it("pauses at the ceiling until the Usage Period resets", () => {
@@ -142,9 +162,19 @@ describe("interactiveUsageNotice", () => {
   });
 
   it("reads the ceiling from the plan it is given", () => {
-    const larger = { allowance: { interactive: { accountCeilingUsd: 20 } } };
+    const larger = { allowance: { interactive: { fairUseBudgetUsd: 18, accountCeilingUsd: 20 } } };
     expect(
       interactiveUsageNotice({ plan: larger, period, spentMicroUsd: ceilingMicroUsd }).state,
     ).toBe("normal");
+  });
+});
+
+describe("overFairUseBudget", () => {
+  const budgetMicroUsd = HOSTED_PLAN.allowance.interactive.fairUseBudgetUsd * 1_000_000;
+
+  it("is reached at the plan's Fair-Use Budget, and stays reached past the ceiling", () => {
+    expect(overFairUseBudget({ plan: HOSTED_PLAN, spentMicroUsd: budgetMicroUsd - 1 })).toBe(false);
+    expect(overFairUseBudget({ plan: HOSTED_PLAN, spentMicroUsd: budgetMicroUsd })).toBe(true);
+    expect(overFairUseBudget({ plan: HOSTED_PLAN, spentMicroUsd: 13_000_000 })).toBe(true);
   });
 });

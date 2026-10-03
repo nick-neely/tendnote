@@ -35,9 +35,9 @@ import {
   AssistantPageGreeting,
   AssistantPanelHeader,
   AssistantPanelShell,
-  AssistantPausedNotice,
   AssistantResumeSkeleton,
   type AssistantSurface,
+  AssistantUsageNotice,
   assistantSubtitleFor,
 } from "@/components/assistant-panel-chrome";
 import { AssistantPromptNudges } from "@/components/assistant-prompt-nudges";
@@ -146,7 +146,8 @@ type AssistantPanelProps = {
   /**
    * Interactive Eve's usage notice, read server-side by the destination. While
    * it is paused the composer gives way to the notice; the transcript and its
-   * approval cards stay usable (#625).
+   * approval cards stay usable (#625). While it is reduced to the Fallback
+   * Model, the notice sits above the composer (#626).
    */
   usage?: UsageNotice;
 };
@@ -220,7 +221,7 @@ function AssistantConversationPanel({
   // the failure eve announces out of band, and `closed` (an ended session, or Eve
   // paused at its ceiling) is what the reader must never be invited to retry
   // (see `useAssistantSession`).
-  const { agent, closed, deliver, paused } = useAssistantSession({
+  const { agent, closed, deliver, paused, reduced } = useAssistantSession({
     context,
     onSessionStarted,
     resumed,
@@ -331,6 +332,7 @@ function AssistantConversationPanel({
           closed={closed}
           evidence={evidence}
           paused={paused}
+          reduced={reduced}
           nudges={nudges}
           onStop={() => void agent.cancel()}
           onSend={sendPrompt}
@@ -432,6 +434,7 @@ function AssistantComposerRegion({
   ownerUserId,
   paused,
   queue,
+  reduced,
   status,
   suggestPersonName,
   surface,
@@ -452,6 +455,8 @@ function AssistantComposerRegion({
   /** Interactive Eve's paused notice, or `null` while turns can start. */
   paused: UsageRestriction | null;
   queue: AssistantSendQueueControls;
+  /** Interactive Eve's notice while it runs on the Fallback Model, or `null`. */
+  reduced: UsageRestriction | null;
   status: ChatStatus;
   suggestPersonName: string | null;
   surface: AssistantSurface;
@@ -461,8 +466,7 @@ function AssistantComposerRegion({
 
   return (
     <>
-      {/* The greeting invites a message, which a paused composer cannot take. */}
-      {centered && !paused ? <AssistantPageGreeting /> : null}
+      <ComposerGreeting centered={centered} paused={paused} />
       <AssistantComposerShell surface={surface}>
         <PendingApprovalNote closed={closed} request={approvals.pendingApproval} />
         <AssistantSendQueue
@@ -471,6 +475,7 @@ function AssistantComposerRegion({
           onRemove={queue.remove}
           onSendNow={strip.onSendNow}
         />
+        <ReducedComposerNotice reduced={reduced} />
         {closed ? (
           <ClosedComposerNotice paused={paused} />
         ) : (
@@ -504,13 +509,29 @@ function sendQueueStrip(queue: AssistantSendQueueControls, closed: boolean) {
     : { note: undefined, onSendNow: queue.sendNow };
 }
 
+/** The greeting invites a message, which a paused composer cannot take. */
+function ComposerGreeting({
+  centered,
+  paused,
+}: {
+  centered: boolean;
+  paused: UsageRestriction | null;
+}) {
+  return centered && !paused ? <AssistantPageGreeting /> : null;
+}
+
+/** Over the Fair-Use Budget the composer stays, with the notice above it (#626). */
+function ReducedComposerNotice({ reduced }: { reduced: UsageRestriction | null }) {
+  return reduced ? <AssistantUsageNotice notice={reduced} /> : null;
+}
+
 /**
  * What stands where the composer was: a paused thread can be continued once its
  * restriction clears, an ended one never can, so only the ending offers a new
  * conversation. Ending wins when both apply, because no reset revives it.
  */
 function ClosedComposerNotice({ paused }: { paused: UsageRestriction | null }) {
-  if (paused) return <AssistantPausedNotice notice={paused} />;
+  if (paused) return <AssistantUsageNotice notice={paused} />;
 
   return (
     <AssistantEndedNotice>

@@ -2,6 +2,7 @@ import {
   EVE_USAGE_PAUSED_CODE,
   type RecoveryCondition,
   type UsageNotice,
+  type UsageRestriction,
 } from "@tendnote/domain/usage-bounds";
 import { z } from "zod";
 
@@ -32,6 +33,31 @@ export function recoveryText(recovery: RecoveryCondition): string {
     case "retrying":
       return "Retrying.";
   }
+}
+
+/**
+ * What interactive Eve's notice says: over the Fair-Use Budget, that Eve
+ * continues on a lighter model (#626); at the Account Ceiling, that it is paused
+ * (#625). Each states exactly one recovery condition, the one the notice carries.
+ */
+export function eveUsageNoticeText(notice: UsageRestriction): {
+  headline: string;
+  detail: string;
+} {
+  const monthly = notice.recovery.kind === "resets_on";
+  const recovery = recoveryText(notice.recovery);
+  if (notice.state === "reduced") {
+    return {
+      headline: "Eve is using a lighter model.",
+      detail: monthly
+        ? `You've used this month's full-quality turns, so Eve continues on a lighter model up to the monthly limit. ${recovery}`
+        : recovery,
+    };
+  }
+  return {
+    headline: monthly ? "Eve has reached this month's usage limit." : "Eve is paused.",
+    detail: `Everything else in Tendnote still works. ${recovery}`,
+  };
 }
 
 /**

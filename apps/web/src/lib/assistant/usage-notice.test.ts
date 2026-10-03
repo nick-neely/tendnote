@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pausedNoticeFromError, recoveryText } from "./usage-notice";
+import { eveUsageNoticeText, pausedNoticeFromError, recoveryText } from "./usage-notice";
 
 const paused = { state: "paused", recovery: { kind: "resets_on", date: "2026-11-15" } } as const;
 
@@ -18,6 +18,37 @@ describe("recoveryText", () => {
 
   it("says retrying for a queued retry", () => {
     expect(recoveryText({ kind: "retrying" })).toBe("Retrying.");
+  });
+});
+
+describe("eveUsageNoticeText", () => {
+  it("says Eve is on a lighter model over the Fair-Use Budget, until the reset", () => {
+    expect(
+      eveUsageNoticeText({ state: "reduced", recovery: { kind: "resets_on", date: "2026-11-15" } }),
+    ).toEqual({
+      headline: "Eve is using a lighter model.",
+      detail:
+        "You've used this month's full-quality turns, so Eve continues on a lighter model up to the monthly limit. Resets on November 15.",
+    });
+  });
+
+  it("says Eve has reached the monthly limit at the Account Ceiling", () => {
+    expect(eveUsageNoticeText(paused)).toEqual({
+      headline: "Eve has reached this month's usage limit.",
+      detail: "Everything else in Tendnote still works. Resets on November 15.",
+    });
+  });
+
+  it("names no month for a restriction that is not the Usage Period's", () => {
+    const restored = { kind: "service_restored" } as const;
+    expect(eveUsageNoticeText({ state: "paused", recovery: restored })).toEqual({
+      headline: "Eve is paused.",
+      detail: "Everything else in Tendnote still works. Resumes when service is restored.",
+    });
+    expect(eveUsageNoticeText({ state: "reduced", recovery: restored })).toEqual({
+      headline: "Eve is using a lighter model.",
+      detail: "Resumes when service is restored.",
+    });
   });
 });
 
