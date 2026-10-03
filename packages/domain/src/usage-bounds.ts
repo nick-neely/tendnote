@@ -79,38 +79,60 @@ export type PeriodSpend = {
 };
 
 /**
- * What each metered function shows an account. `background` covers capture
- * processing and scheduled workflows, which pause together at the background
- * ceiling; `search` is the semantic half of search, which shares that allowance.
+ * What each metered function shows an account. `background` is capture
+ * processing and every other background model call; `scheduled` is the
+ * scheduled workflows. Both pause together at the background ceiling, but the
+ * Spend Breaker sheds them one after the other. `search` is the semantic half of
+ * search, which shares the background allowance.
  */
 export type UsageNotices = {
   eve: UsageNotice;
   search: UsageNotice;
   background: UsageNotice;
+  scheduled: UsageNotice;
   webSearch: UsageNotice;
 };
 
+type PausedRecovery = Exclude<RecoveryCondition, { kind: "retrying" }>;
+
 /**
- * Refuses a model call whose function is paused at its Account Ceiling until
- * the Usage Period resets. The model-call entry point throws it; a background
- * job that meets it waits in its pending state until `resumesAt`. Its message
- * is safe to show the account's owner.
+ * Refuses a model call whose function is paused: at its Account Ceiling until
+ * the Usage Period resets, or by the Spend Breaker until service is restored.
+ * The model-call entry point throws it; a background job that meets it waits in
+ * its pending state until `resumesAt`. Its message is safe to show the
+ * account's owner.
  */
 export class UsagePausedError extends Error {
-  readonly resetsOn: string;
+  readonly recovery: PausedRecovery;
+  /** When a deferred job tries again: the reset day, or the Spend Breaker's next day. */
+  readonly resumesAt: Date;
 
-  constructor(resetsOn: string) {
-    super(
-      `This month's limit for background work is reached, so it is paused. ${recoveryText({ kind: "resets_on", date: resetsOn })} ` +
-        "Records, reminders, and exact search still work.",
-    );
+  private constructor(reason: string, recovery: PausedRecovery, resumesAt: Date) {
+    super(`${reason} ${recoveryText(recovery)} Records, reminders, and exact search still work.`);
     this.name = "UsagePausedError";
-    this.resetsOn = resetsOn;
+    this.recovery = recovery;
+    this.resumesAt = resumesAt;
   }
 
-  /** The start of the reset day, in UTC, which is when the Usage Ledger's new period begins. */
-  get resumesAt(): Date {
-    return new Date(`${this.resetsOn}T00:00:00Z`);
+  /**
+   * Paused at the Account Ceiling until the Usage Period resets on `resetsOn`,
+   * from the start of that UTC day, when the Usage Ledger's new period begins.
+   */
+  static atCeiling(resetsOn: string): UsagePausedError {
+    return new UsagePausedError(
+      "This month's limit for background work is reached, so it is paused.",
+      { kind: "resets_on", date: resetsOn },
+      new Date(`${resetsOn}T00:00:00Z`),
+    );
+  }
+
+  /** Paused by the Spend Breaker. No date is promised; a deferred job tries again at `retryAt`. */
+  static byBreaker(retryAt: Date): UsagePausedError {
+    return new UsagePausedError(
+      "Background work is paused.",
+      { kind: "service_restored" },
+      retryAt,
+    );
   }
 }
 
@@ -217,17 +239,23 @@ function ceilingNotice(input: {
     : { state: "normal" };
 }
 
-/**
- * Every metered function's notice from what the account has spent this Usage
- * Period, or all normal for an account with no plan. Interactive Eve follows
- * {@link interactiveUsageNotice}. Background work and web search pause at their
- * own ceilings. Search is reduced to exact results while background work is
- * paused, because its query embeddings are charged to the background allowance.
- */
-export function usageNotices(input: { plan: Plan; spend: PeriodSpend | null }): UsageNotices {
+/** The notice with one more restriction on it, recomputed by the one-recovery-condition rule. */
+function restrictedBy(notice: UsageNotice, restriction: UsageRestriction | null): UsageNotice {
+  if (!restriction) return notice;
+  return usageNotice(notice.state === "normal" ? [restriction] : [notice, restriction]);
+}
+
+/** Every function's notice from the account's own ceilings, before the Spend Breaker. */
+function accountNotices(input: { plan: Plan; spend: PeriodSpend | null }): UsageNotices {
   if (!input.spend) {
     const normal = { state: "normal" } as const;
-    return { eve: normal, search: normal, background: normal, webSearch: normal };
+    return {
+      eve: normal,
+      search: normal,
+      background: normal,
+      scheduled: normal,
+      webSearch: normal,
+    };
   }
 
   const { period, spentMicroUsd } = input.spend;
@@ -245,11 +273,42 @@ export function usageNotices(input: { plan: Plan; spend: PeriodSpend | null }): 
     }),
     search: background.state === "paused" ? { ...background, state: "reduced" } : background,
     background,
+    scheduled: background,
     webSearch: ceilingNotice({
       period,
       spentMicroUsd: spentMicroUsd.web_search,
       accountCeilingUsd: allowance.webSearch.accountCeilingUsd,
     }),
+  };
+}
+
+/**
+ * Every metered function's notice from what the account has spent this Usage
+ * Period and how far the Spend Breaker has shed today. Interactive Eve follows
+ * {@link interactiveUsageNotice}. Background work and web search pause at their
+ * own ceilings. Search is reduced to exact results while background work is
+ * paused, because its query embeddings are charged to the background allowance.
+ * An account with no plan has no ceilings, but the Spend Breaker covers it too.
+ * While the breaker sheds a function, its notice carries no reset date.
+ */
+export function usageNotices(input: {
+  plan: Plan;
+  spend: PeriodSpend | null;
+  breaker?: SpendBreakerStage;
+}): UsageNotices {
+  const notices = accountNotices(input);
+  const breaker = input.breaker ?? "closed";
+  const shedding = (stage: ShedStage, state: UsageRestriction["state"] = "paused") =>
+    sheds(breaker, stage) ? { state, recovery: { kind: "service_restored" } as const } : null;
+
+  return {
+    eve: restrictedBy(notices.eve, shedding("interactive")),
+    search: restrictedBy(notices.search, shedding("background", "reduced")),
+    background: restrictedBy(notices.background, shedding("background")),
+    scheduled: restrictedBy(notices.scheduled, shedding("scheduled")),
+    // Web search runs only inside an interactive turn, which the breaker
+    // refuses at Eve's door, so it needs no stage of its own.
+    webSearch: notices.webSearch,
   };
 }
 
@@ -273,4 +332,74 @@ export function interactiveUsageNotice(input: {
     restrictions.push({ state: "paused", recovery });
   }
   return usageNotice(restrictions);
+}
+
+// The Spend Breaker (ADR 0246, ADR 0255): a deployment-wide daily ceiling on
+// hosted inference that sheds work in a fixed order once crossed. It changes
+// pace only, never authority: it sits beside Eve's mode gate, never inside it.
+
+/**
+ * How far the breaker has shed today. Each stage includes the ones before it:
+ * background extraction and embeddings first, then scheduled workflows, then
+ * interactive Eve last. Reminder delivery is not a stage, so it is never shed.
+ */
+export type SpendBreakerStage = "closed" | ShedStage;
+
+/** The fixed shedding order, cheapest work to defer first. */
+export const SPEND_BREAKER_STAGES = ["background", "scheduled", "interactive"] as const;
+
+type ShedStage = (typeof SPEND_BREAKER_STAGES)[number];
+
+/**
+ * Where each stage sheds, as a multiple of the day's ceiling. Crossing the
+ * ceiling trips the breaker and sheds the cheapest work to defer; a runaway the
+ * first stage did not stop keeps spending, and the next stages follow it.
+ */
+const SHED_AT_CEILING_MULTIPLE: Record<ShedStage, number> = {
+  background: 1,
+  scheduled: 1.25,
+  interactive: 1.5,
+};
+
+/** Whether the breaker at `breaker` sheds `stage`: it has reached it or a later one. */
+export function sheds(breaker: SpendBreakerStage, stage: ShedStage): boolean {
+  return (
+    breaker !== "closed" &&
+    SPEND_BREAKER_STAGES.indexOf(breaker) >= SPEND_BREAKER_STAGES.indexOf(stage)
+  );
+}
+
+/**
+ * The day's ceiling, in millionths of a dollar: twice the pace at which every
+ * admitted account would spend its whole Account Ceiling over thirty days, plus
+ * $5.00 for the operator's own use. Per-account ceilings already bound customer
+ * spend, so the breaker trips only when metering has failed, never on growth.
+ * The $14.00 is the plan's ceilings summed, so it follows the plan.
+ */
+export function spendBreakerCeilingMicroUsd(admittedAccounts: number, plan: Plan = HOSTED_PLAN) {
+  const { interactive, background, webSearch } = plan.allowance;
+  const accountCeilingUsd =
+    interactive.accountCeilingUsd + background.accountCeilingUsd + webSearch.accountCeilingUsd;
+  const dailyUsd = 2 * ((admittedAccounts * accountCeilingUsd) / 30) + 5;
+  return Math.round(dailyUsd * MICRO_USD_PER_USD);
+}
+
+/** How far the breaker sheds at what the whole deployment has spent today. */
+export function spendBreakerStage(input: {
+  ceilingMicroUsd: number;
+  spentMicroUsd: number;
+}): SpendBreakerStage {
+  const reached = SPEND_BREAKER_STAGES.filter(
+    (stage) => input.spentMicroUsd >= input.ceilingMicroUsd * SHED_AT_CEILING_MULTIPLE[stage],
+  );
+  return reached.at(-1) ?? "closed";
+}
+
+/**
+ * When the breaker's day ends and it closes again under a fresh ceiling: the
+ * next UTC midnight, matching the Usage Ledger's days. Deferred work tries
+ * again then; a notice never shows it, since the breaker promises no date.
+ */
+export function spendBreakerRetryAt(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
 }

@@ -197,7 +197,7 @@ describe("Context Fact extraction processor", () => {
       extractionAdapter: {
         ...fake,
         async extractCandidates(input, call) {
-          if (paused) throw new UsagePausedError("2026-09-01");
+          if (paused) throw UsagePausedError.atCeiling("2026-09-01");
           return fake.extractCandidates(input, call);
         },
       },

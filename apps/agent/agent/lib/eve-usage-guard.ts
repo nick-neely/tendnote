@@ -18,7 +18,8 @@ function startsModelWork(request: Request): boolean {
 /**
  * Thrown to refuse a new turn. Eve's route auth returns any thrown value
  * carrying a `Response` verbatim; a 403 rather than a 429, because Eve's client
- * retries a 429 and this answer will not change until the Usage Period resets.
+ * retries a 429 and this answer will not change until the Usage Period resets or
+ * service is restored.
  */
 class EveUsagePausedError extends Error {
   readonly response: Response;
@@ -30,7 +31,7 @@ class EveUsagePausedError extends Error {
       {
         ok: false,
         code: EVE_USAGE_PAUSED_CODE,
-        error: "Eve is paused until your usage resets.",
+        error: "Eve is paused.",
         notice,
       },
       { status: 403, headers: { "cache-control": "no-store" } },
@@ -46,11 +47,12 @@ export type UsagePauseGuardDependencies = {
 };
 
 /**
- * Interactive Eve's Account Ceiling, at the one door every turn comes through.
- * While the account's notice is paused, a new conversation, message, or answer
- * is refused with that notice. A turn already streaming finishes; one parked on
- * an approval stays parked until the reset, since resuming it spends model
- * calls too. Every other route is untouched.
+ * Interactive Eve's Account Ceiling and the Spend Breaker's last stage, at the
+ * one door every turn comes through. While the account's notice is paused, a
+ * new conversation, message, or answer is refused with that notice. A turn
+ * already streaming finishes; one parked on an approval stays parked until the
+ * pause lifts, since resuming it spends model calls too. Every other route is
+ * untouched.
  *
  * It decides only whether a turn may start. The principal it passes on is the
  * inner policy's, unchanged, so the mode gate, approval gates, and egress rules

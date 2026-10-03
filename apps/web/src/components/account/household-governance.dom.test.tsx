@@ -511,11 +511,12 @@ describe("ending the household", () => {
       );
     });
     // Nothing ended, and the same dialog is now asking the irreversible
-    // question - which cannot be answered until the phrase is retyped.
+    // question - which cannot be answered until the phrase is retyped. The
+    // status can land a tick before the dialog swaps, so wait for the swap.
     expect(screen.queryByRole("heading", { name: "The Neely house has ended" })).toBeNull();
     const dialog = within(screen.getByRole("alertdialog"));
+    const endIt = await dialog.findByRole("button", { name: "End it" });
     expect(dialog.getByText(/Everyone's access ends the moment you press this/i)).toBeTruthy();
-    const endIt = dialog.getByRole("button", { name: "End it" });
     expect(endIt.dataset.variant).toBe("destructive");
     expect(endIt.hasAttribute("disabled")).toBe(true);
   });

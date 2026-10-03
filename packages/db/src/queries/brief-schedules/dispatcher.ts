@@ -29,9 +29,9 @@ export type RunDueBriefSchedulesInput = {
   maxAttempts?: number;
   // Max rows to claim in one dispatcher tick.
   limit?: number;
-  // Whether an owner's scheduled delivery is skipped this time, because their
-  // background work is paused at its Account Ceiling. A skipped occurrence rolls
-  // forward to the next run; it is never generated late.
+  // Whether an owner's scheduled delivery is skipped this time, because it is
+  // paused at their Account Ceiling or by the Spend Breaker. A skipped
+  // occurrence rolls forward to the next run; it is never generated late.
   skipOwner?: (ownerUserId: string) => Promise<boolean>;
 };
 
@@ -76,7 +76,7 @@ export function createBriefScheduleDispatcher(
         if (await input.skipOwner?.(schedule.ownerUserId)) {
           await store.releaseBriefSchedule({
             id: schedule.id,
-            lastError: "Skipped: background work is paused until the Usage Period resets.",
+            lastError: "Skipped: scheduled delivery is paused.",
             nextRunAt: computeNextBriefRun(schedule, now),
           });
           skipped += 1;

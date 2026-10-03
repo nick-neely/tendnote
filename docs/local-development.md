@@ -48,7 +48,7 @@ dev-asset requests from origins other than the one it started on
 
 The full stack fits an 8 GB machine without swap with about 2.5 GiB to spare at
 its busiest. Measured on a 2-vCPU, 8 GB VM ([ADR 0253](adr/0253-eve-dev-compiles-in-a-disposable-process.md),
-[ADR 0255](adr/0255-next-dev-validates-in-process-and-compiles-react-natively.md)):
+[ADR 0256](adr/0256-next-dev-validates-in-process-and-compiles-react-natively.md)):
 
 | Process | Steady | Peak |
 | --- | --- | --- |

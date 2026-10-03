@@ -553,10 +553,67 @@ describe("the background Account Ceiling", () => {
     const refusal = generateText({ model: background.model, prompt: "hi", maxRetries: 0 });
 
     await expect(refusal).rejects.toBeInstanceOf(UsagePausedError);
-    await expect(refusal).rejects.toMatchObject({ resetsOn });
+    await expect(refusal).rejects.toMatchObject({
+      recovery: { kind: "resets_on", date: resetsOn },
+    });
     expect(reads).toEqual(["user-1"]);
     expect(background.fake.calls()).toEqual([]);
     expect(background.ledger.entries).toEqual([]);
+  });
+
+  it("refuses a call while the Spend Breaker sheds background work, retrying when its day ends", async () => {
+    const background = backgroundModel(async () => ({
+      state: "paused",
+      recovery: { kind: "service_restored" },
+    }));
+    const before = Date.now();
+
+    const refusal = generateText({ model: background.model, prompt: "hi", maxRetries: 0 });
+
+    await expect(refusal).rejects.toBeInstanceOf(UsagePausedError);
+    const error = (await refusal.catch((caught: unknown) => caught)) as UsagePausedError;
+    expect(error.recovery).toEqual({ kind: "service_restored" });
+    // The next UTC midnight: a job deferred on it is picked up once the breaker
+    // closes under the next day's ceiling.
+    expect(error.resumesAt.getTime()).toBeGreaterThan(before);
+    expect(error.resumesAt.getTime() - before).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
+    expect(error.resumesAt.toISOString()).toMatch(/T00:00:00\.000Z$/);
+    expect(background.fake.calls()).toEqual([]);
+  });
+
+  it("reads a scheduled workflow's call against the scheduled notice, which the breaker sheds second", async () => {
+    const restored = { state: "paused", recovery: { kind: "service_restored" } } as const;
+    // The breaker has shed capture processing but not scheduled workflows yet.
+    const notices = { background: restored, scheduled: normal };
+    const fake = fakeGatewayProvider();
+    const backgroundNotice = vi.fn(
+      async (_accountId: string, work: "background" | "scheduled") => notices[work],
+    );
+    const options = { provider: fake.provider, recordUsage: ignoreUsage, backgroundNotice };
+    const scheduled = hostedModel(
+      {
+        modelId: "google/gemini-3.7-flash",
+        costCategory: "background",
+        work: "scheduled",
+        account: "user-1",
+      },
+      options,
+    );
+    const capture = hostedModel(
+      { modelId: "google/gemini-3.7-flash", costCategory: "background", account: "user-1" },
+      options,
+    );
+
+    await expect(generateText({ model: scheduled, prompt: "hi" })).resolves.toMatchObject({
+      text: "ok",
+    });
+    await expect(generateText({ model: capture, prompt: "hi" })).rejects.toBeInstanceOf(
+      UsagePausedError,
+    );
+    expect(backgroundNotice.mock.calls).toEqual([
+      ["user-1", "scheduled"],
+      ["user-1", "background"],
+    ]);
   });
 
   it("refuses a paused call unwrapped, so a caller can tell a pause from a failure", async () => {
