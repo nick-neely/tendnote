@@ -7,9 +7,14 @@ export type {
   AdmissionBlockReader,
   AdmissionEntity,
   AdmissionResolverDependencies,
+  GuestHousehold,
+  GuestHouseholdReader,
   HostedFlagEvaluator,
 } from "./access-profiles/admission";
-export { createAdmissionResolver } from "./access-profiles/admission";
+export {
+  createAdmissionResolver,
+  createLocalAdmissionReader,
+} from "./access-profiles/admission";
 export { createDrizzleAccessProfileStore } from "./access-profiles/drizzle-store";
 export { createInMemoryAccessProfileStore } from "./access-profiles/in-memory-store";
 export { createAccessProfileQueries } from "./access-profiles/queries";

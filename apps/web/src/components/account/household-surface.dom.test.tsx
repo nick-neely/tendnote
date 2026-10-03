@@ -201,6 +201,26 @@ describe("household overview", () => {
 
     expect(screen.getByText("2 of 8 places taken")).toBeTruthy();
   });
+
+  it("states that a lapsed member is not currently admitted, and nothing more", () => {
+    render(
+      <HouseholdSurface
+        initialOverview={{
+          ...OVERVIEW,
+          isSoleMember: false,
+          members: [
+            ...OVERVIEW.members,
+            member({ userId: "member-1", isViewer: false, notCurrentlyAdmitted: true }),
+          ],
+        }}
+      />,
+    );
+
+    const [owner, lapsed] = screen.getAllByRole("listitem");
+    expect(within(lapsed as HTMLElement).getByText("Not currently admitted")).toBeTruthy();
+    expect(within(lapsed as HTMLElement).getByText("Sam")).toBeTruthy();
+    expect(within(owner as HTMLElement).queryByText("Not currently admitted")).toBeNull();
+  });
 });
 
 const PENDING_INVITATION = {

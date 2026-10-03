@@ -3,6 +3,7 @@ import {
   type AdmissionBlockReader,
   type AdmissionEntity,
   createAdmissionResolver,
+  type GuestHouseholdReader,
   type HostedFlagEvaluator,
 } from "@tendnote/db/queries/access-profiles";
 import type {
@@ -27,6 +28,7 @@ export function createPrivateBetaAccessResolver(deps: {
   accessProfiles: AccessProfileGateway;
   evaluateFlag: PrivateBetaFlagEvaluator;
   listAdmissionBlocks?: AdmissionBlockReader;
+  readGuestHousehold?: GuestHouseholdReader;
   policy?: AdmissionPolicy;
   environment?: AdmissionEnvironment;
   reportConfiguration?: (diagnostic: AdmissionConfigurationDiagnostic) => void;

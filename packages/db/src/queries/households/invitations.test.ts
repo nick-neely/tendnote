@@ -22,6 +22,8 @@ async function setup(
     identities?: { id: string; name: string | null; email: string }[];
     accessProfiles?: ReturnType<typeof createInMemoryAccessProfileStore>;
     lockHook?: (input: { kind: "user" | "household"; id: string }) => Promise<void> | void;
+    /** Self-hosted acceptance grants admission; hosted acceptance does not. */
+    mode?: "hosted" | "self-hosted";
   } = {},
 ) {
   clock = SENT_AT;
@@ -37,7 +39,10 @@ async function setup(
     name: "The Neely house",
     members: options.members ?? [[OWNER, "owner"]],
   });
-  const invitations = createHouseholdInvitationLifecycle(store, { now: () => clock });
+  const invitations = createHouseholdInvitationLifecycle(store, {
+    now: () => clock,
+    acceptanceGrantsAdmission: () => (options.mode ?? "self-hosted") === "self-hosted",
+  });
   return { households, store, household, invitations };
 }
 
@@ -259,6 +264,61 @@ describe("cancelling an invitation", () => {
     await invitations.cancelInvitation({ ownerUserId: OWNER, invitationId: sent.invitation.id });
 
     expect(await invitations.countLiveInvitations({ householdId: household.id })).toBe(0);
+  });
+});
+
+describe("accepting an invitation on hosted", () => {
+  it("creates the membership without granting admission, so an unpaid account becomes a guest", async () => {
+    const { invitations, households, household, store } = await setup({ mode: "hosted" });
+    const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
+
+    await invitations.acceptInvitation({
+      secret: sent.secret,
+      userId: "sam-1",
+      userEmail: "sam@example.com",
+    });
+
+    expect(
+      await households.getHouseholdMembership({ householdId: household.id, userId: "sam-1" }),
+    ).toMatchObject({ status: "active", role: "member" });
+    expect(await store.accessProfiles.getByUserId("sam-1")).toBeNull();
+    expect((await store.listInvitations({ householdId: household.id }))[0]?.state).toBe("accepted");
+  });
+
+  it("leaves a paying account's own admission untouched", async () => {
+    const accessProfiles = createInMemoryAccessProfileStore();
+    await accessProfiles.insertIfAbsent({
+      userId: "sam-1",
+      status: "granted",
+      source: "paid_access",
+      grantedAt: SENT_AT,
+    });
+    const { invitations, store } = await setup({ accessProfiles, mode: "hosted" });
+    const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
+
+    await invitations.acceptInvitation({
+      secret: sent.secret,
+      userId: "sam-1",
+      userEmail: "sam@example.com",
+    });
+
+    expect(await store.accessProfiles.getByUserId("sam-1")).toMatchObject({
+      status: "granted",
+      source: "paid_access",
+    });
+  });
+
+  it("replays an accepted invitation without granting admission", async () => {
+    const { invitations, store } = await setup({ mode: "hosted" });
+    const sent = await invitations.sendInvitation({ ownerUserId: OWNER, email: "sam@example.com" });
+    const proof = { secret: sent.secret, userId: "sam-1", userEmail: "sam@example.com" };
+
+    await invitations.acceptInvitation(proof);
+    await expect(invitations.acceptInvitation(proof)).resolves.toMatchObject({
+      householdId: expect.any(String),
+    });
+
+    expect(await store.accessProfiles.getByUserId("sam-1")).toBeNull();
   });
 });
 

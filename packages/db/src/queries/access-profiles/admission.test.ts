@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAdmissionResolver } from "./admission";
+import {
+  createAdmissionResolver,
+  createLocalAdmissionReader,
+  type GuestHousehold,
+} from "./admission";
 import { createInMemoryAccessProfileStore } from "./in-memory-store";
 import { createAccessProfileQueries } from "./queries";
 
@@ -247,5 +251,200 @@ describe("shared admission resolver", () => {
       status: "pending",
       profile: { source: "manual_grant" },
     });
+  });
+});
+
+describe("Household Guest", () => {
+  const GUEST = { userId: "guest-1", email: "guest@example.com" };
+  const HOUSEHOLD = { householdId: "household-1", ownerUserIds: ["owner-a", "owner-b"] };
+
+  function setup(
+    input: {
+      policy?: Parameters<typeof createAdmissionResolver>[0]["policy"];
+      blocked?: string[];
+      household?: GuestHousehold | null;
+    } = {},
+  ) {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    const readGuestHousehold = vi.fn(async ({ userId }: { userId: string }) =>
+      userId === GUEST.userId
+        ? input.household === undefined
+          ? HOUSEHOLD
+          : input.household
+        : null,
+    );
+    const deps = {
+      accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
+      evaluateFlag: vi.fn().mockResolvedValue(false),
+      listAdmissionBlocks: async ({ userId }: { userId: string }) =>
+        (input.blocked ?? []).includes(userId)
+          ? [{ kind: "suspension", event: `suspension:${userId}`, exceptions: [] }]
+          : [],
+      readGuestHousehold,
+      policy: input.policy ?? { mode: "hosted" as const, valid: true as const },
+    };
+    return {
+      queries,
+      readGuestHousehold,
+      resolver: createAdmissionResolver(deps),
+      reader: createLocalAdmissionReader(deps),
+    };
+  }
+
+  it("makes an unpaid member a read-only guest while an Owner of the household is admitted", async () => {
+    const { queries, resolver, reader } = setup();
+    await queries.grantAccess({ userId: "owner-b", source: "paid_access" });
+
+    const decision = await resolver.resolveAccess(GUEST);
+
+    expect(decision).toMatchObject({
+      admitted: false,
+      guest: { householdId: HOUSEHOLD.householdId },
+    });
+    await expect(reader.isCurrentlyAdmitted({ userId: GUEST.userId })).resolves.toBe(true);
+  });
+
+  it("collapses on the next request when the last admitted Owner stops being admitted, and returns with them", async () => {
+    const blocked: string[] = [];
+    const { queries, resolver } = setup({ blocked });
+    await queries.grantAccess({ userId: "owner-a", source: "paid_access" });
+
+    await expect(resolver.resolveAccess(GUEST)).resolves.toMatchObject({
+      guest: { householdId: HOUSEHOLD.householdId },
+    });
+
+    blocked.push("owner-a");
+    const collapsed = await resolver.resolveAccess(GUEST);
+    expect(collapsed).toMatchObject({ admitted: false });
+    expect(collapsed.guest).toBeUndefined();
+
+    blocked.pop();
+    await expect(resolver.resolveAccess(GUEST)).resolves.toMatchObject({
+      guest: { householdId: HOUSEHOLD.householdId },
+    });
+  });
+
+  it("is sponsored only by Paid Access, not by an Owner admitted another way", async () => {
+    const { queries, resolver } = setup();
+    await queries.grantAccess({ userId: "owner-a", source: "manual_grant" });
+    await queries.grantAccess({ userId: "owner-b", source: "household_invitation" });
+
+    expect((await resolver.resolveAccess(GUEST)).guest).toBeUndefined();
+  });
+
+  it("is not a guest when no Owner of the household is admitted", async () => {
+    const { reader, resolver } = setup();
+
+    const decision = await resolver.resolveAccess(GUEST);
+
+    expect(decision).toMatchObject({ admitted: false, status: "pending" });
+    expect(decision.guest).toBeUndefined();
+    await expect(reader.isCurrentlyAdmitted({ userId: GUEST.userId })).resolves.toBe(false);
+  });
+
+  it("does not let one guest sponsor another", async () => {
+    const { resolver } = setup({
+      household: { householdId: "household-1", ownerUserIds: [GUEST.userId] },
+    });
+
+    const decision = await resolver.resolveAccess(GUEST);
+
+    expect(decision.guest).toBeUndefined();
+  });
+
+  it("never makes a lapsed account a guest: Household Guest is for accounts that never paid", async () => {
+    const { queries, reader, resolver } = setup({ blocked: [GUEST.userId] });
+    await queries.grantAccess({ userId: "owner-a", source: "paid_access" });
+    await queries.grantAccess({ userId: GUEST.userId, source: "paid_access" });
+
+    const decision = await resolver.resolveAccess(GUEST);
+
+    expect(decision.guest).toBeUndefined();
+    await expect(reader.isCurrentlyAdmitted({ userId: GUEST.userId })).resolves.toBe(false);
+  });
+
+  it("never makes an account whose Paid Access ended a guest, whatever its blocks", async () => {
+    const store = createInMemoryAccessProfileStore();
+    const queries = createAccessProfileQueries(store);
+    await queries.grantAccess({ userId: "owner-a", source: "paid_access" });
+    await store.insertIfAbsent({
+      userId: GUEST.userId,
+      status: "pending",
+      source: "paid_access",
+      grantedAt: null,
+    });
+    const resolver = createAdmissionResolver({
+      accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
+      evaluateFlag: vi.fn().mockResolvedValue(false),
+      readGuestHousehold: async () => HOUSEHOLD,
+      policy: { mode: "hosted", valid: true },
+    });
+
+    expect((await resolver.resolveAccess(GUEST)).guest).toBeUndefined();
+  });
+
+  it("applies the guest's own blocks", async () => {
+    const { queries, resolver } = setup({ blocked: [GUEST.userId] });
+    await queries.grantAccess({ userId: "owner-a", source: "paid_access" });
+
+    const decision = await resolver.resolveAccess(GUEST);
+
+    expect(decision).toMatchObject({ admitted: false });
+    expect(decision.guest).toBeUndefined();
+  });
+
+  it("leaves a fully admitted account admitted rather than a guest", async () => {
+    const { queries, resolver } = setup();
+    await queries.grantAccess({ userId: "owner-a", source: "paid_access" });
+    await queries.grantAccess({ userId: GUEST.userId, source: "paid_access" });
+
+    const decision = await resolver.resolveAccess(GUEST);
+
+    expect(decision).toMatchObject({ admitted: true });
+    expect(decision.guest).toBeUndefined();
+  });
+
+  it("never reads guest households in self-hosted mode", async () => {
+    const { queries, readGuestHousehold, resolver, reader } = setup({
+      policy: { mode: "self-hosted", valid: true, bootstrapOwnerEmail: "owner@example.com" },
+    });
+    await queries.grantAccess({ userId: "owner-a", source: "self_hosted_bootstrap" });
+
+    const decision = await resolver.resolveAccess(GUEST);
+
+    expect(decision.guest).toBeUndefined();
+    await expect(reader.isCurrentlyAdmitted({ userId: GUEST.userId })).resolves.toBe(false);
+    expect(readGuestHousehold).not.toHaveBeenCalled();
+  });
+});
+
+describe("local admission reader", () => {
+  it("reads full admission from durable grants and blocks without evaluating Flags", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    await queries.grantAccess({ userId: "paid-1", source: "paid_access" });
+    await queries.grantAccess({ userId: "blocked-1", source: "paid_access" });
+    const reader = createLocalAdmissionReader({
+      accessProfiles: { checkAccess: queries.checkAccess },
+      listAdmissionBlocks: async ({ userId }) =>
+        userId === "blocked-1" ? [{ kind: "deletion", event: "deletion", exceptions: [] }] : [],
+      policy: { mode: "hosted", valid: true },
+    });
+
+    await expect(reader.isCurrentlyAdmitted({ userId: "paid-1" })).resolves.toBe(true);
+    await expect(reader.isCurrentlyAdmitted({ userId: "blocked-1" })).resolves.toBe(false);
+    await expect(reader.isCurrentlyAdmitted({ userId: "nobody" })).resolves.toBe(false);
+  });
+
+  it("honours only self-hosted provenance in self-hosted mode", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    await queries.grantAccess({ userId: "legacy-1", source: "beta_flag" });
+    await queries.grantAccess({ userId: "member-1", source: "household_invitation" });
+    const reader = createLocalAdmissionReader({
+      accessProfiles: { checkAccess: queries.checkAccess },
+      policy: { mode: "self-hosted", valid: true, bootstrapOwnerEmail: "owner@example.com" },
+    });
+
+    await expect(reader.isCurrentlyAdmitted({ userId: "legacy-1" })).resolves.toBe(false);
+    await expect(reader.isCurrentlyAdmitted({ userId: "member-1" })).resolves.toBe(true);
   });
 });
