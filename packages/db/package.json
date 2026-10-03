@@ -99,6 +99,7 @@
     "db:eve-approval-decisions:check": "TMPDIR=/tmp tsx src/eve-approval-decisions-live-check.ts",
     "db:purge:check": "TMPDIR=/tmp tsx src/household-purge-live-check.ts",
     "db:account-deletion:check": "TMPDIR=/tmp tsx src/household-account-deletion-live-check.ts",
+    "db:owner-data-export:check": "TMPDIR=/tmp tsx src/owner-data-export-live-check.ts",
     "db:eval:reset": "TMPDIR=/tmp tsx src/eval/reset.ts",
     "db:instant:seed": "TMPDIR=/tmp tsx src/instant/seed.ts",
     "db:files:migrate": "tsx src/migrate-evidence-to-blob.ts"

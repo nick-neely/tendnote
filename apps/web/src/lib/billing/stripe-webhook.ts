@@ -11,6 +11,11 @@ export type StripeWebhookDependencies = {
   grantPaidAccess: (userId: string) => Promise<unknown>;
   /** Anchor the account's Usage Period to its subscription's start. Must be idempotent. */
   anchorUsagePeriod: (userId: string, startedAt: Date) => Promise<unknown>;
+  /**
+   * Send the content-free "you're in" email once admission is recorded (#607).
+   * Called again on a redelivery, so it must key the send on the invoice.
+   */
+  announceAdmission: (input: { userId: string; invoiceId: string }) => Promise<unknown>;
   log?: (message: string) => void;
 };
 
@@ -20,25 +25,29 @@ function stripeId(value: string | { id: string } | null): string | null {
 }
 
 /**
- * The Stripe customer whose account an event admits, and when its subscription
- * started, or `null` when the event is not admission evidence. Only the paid
- * first invoice of a subscription is (ADR 0245): a Checkout redirect, a
- * completed session, an `active` subscription whose invoice is unpaid, a
- * created customer, and a later renewal all admit nobody.
+ * The invoice and Stripe customer whose account an event admits, and when its
+ * subscription started, or `null` when the event is not admission evidence.
+ * Only the paid first invoice of a subscription is (ADR 0245): a Checkout
+ * redirect, a completed session, an `active` subscription whose invoice is
+ * unpaid, a created customer, and a later renewal all admit nobody.
  *
  * A subscription's first invoice covers a single instant, its creation, so its
  * `period_start` is the moment the subscription started.
  */
 function firstPaidInvoice(
   event: Stripe.Event,
-): { stripeCustomerId: string; startedAt: Date } | null {
+): { invoiceId: string; stripeCustomerId: string; startedAt: Date } | null {
   if (event.type !== "invoice.paid") return null;
   const invoice = event.data.object;
   if (invoice.status !== "paid" || invoice.billing_reason !== "subscription_create") return null;
-  if (!invoice.parent?.subscription_details) return null;
+  if (!invoice.parent?.subscription_details || !invoice.id) return null;
   const stripeCustomerId = stripeId(invoice.customer);
   if (!stripeCustomerId) return null;
-  return { stripeCustomerId, startedAt: new Date(invoice.period_start * 1000) };
+  return {
+    invoiceId: invoice.id,
+    stripeCustomerId,
+    startedAt: new Date(invoice.period_start * 1000),
+  };
 }
 
 /**
@@ -47,7 +56,9 @@ function firstPaidInvoice(
  * Access and the account's Usage Period anchor (#625). Both writes are
  * idempotent, so a duplicate delivery is a no-op, and the customer was
  * recorded before Checkout opened, so an invoice can always be matched to its
- * account without any earlier event having arrived. Nothing revokes Paid Access yet; whatever first
+ * account without any earlier event having arrived. Once admission is recorded
+ * the "you're in" email follows, never before it (#607). Nothing revokes Paid
+ * Access yet; whatever first
  * does must also stop a redelivered first invoice from re-admitting.
  *
  * A failure after verification surfaces as a 500 so Stripe redelivers;
@@ -97,6 +108,10 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
     await deps.grantPaidAccess(userId);
     // After the grant, which is what guarantees the Access Profile exists.
     await deps.anchorUsagePeriod(userId, paid.startedAt);
+    // Last, once admission is fully recorded. A failed send surfaces as a 500
+    // like any other failure, so Stripe's redelivery retries it; both writes
+    // above are idempotent.
+    await deps.announceAdmission({ userId, invoiceId: paid.invoiceId });
     return new Response(null, { status: 200 });
   };
 }

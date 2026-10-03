@@ -2,6 +2,7 @@ import type { AccessDecision } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
   type AccessState,
+  accountOwnerUserId,
   decideAccessRoute,
   localFallbackOwnerUserId,
   ownerForActionOrThrow,
@@ -198,5 +199,29 @@ describe("ownerForActionOrThrow (#87 server-action gate fails closed)", () => {
 
   it("throws for an unauthenticated caller", () => {
     expect(() => ownerForActionOrThrow({ type: "redirect", to: "/sign-in" })).toThrow(/signed in/);
+  });
+});
+
+describe("accountOwnerUserId (#607 an account's exits stay open while not admitted)", () => {
+  it("speaks for an admitted account", () => {
+    const state: AccessState = {
+      state: "admitted",
+      user: USER,
+      ownerUserId: "user-1",
+      decision: admittedDecision,
+    };
+    expect(accountOwnerUserId(state)).toBe("user-1");
+  });
+
+  it("speaks for a pending account too, so it can still export", () => {
+    const state: AccessState = { state: "pending", user: USER, decision: pendingDecision };
+    expect(accountOwnerUserId(state)).toBe("user-1");
+  });
+
+  it("speaks for nobody when signed out, unless a local-dev fallback owner is supplied", () => {
+    expect(accountOwnerUserId({ state: "unauthenticated" })).toBeNull();
+    expect(
+      accountOwnerUserId({ state: "unauthenticated" }, { localFallbackOwnerUserId: "demo-user" }),
+    ).toBe("demo-user");
   });
 });

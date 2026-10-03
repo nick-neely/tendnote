@@ -3,18 +3,19 @@ import {
   createDrizzleOwnerDataExportJobStore,
 } from "@tendnote/db/queries/owner-data-export";
 import { NextResponse } from "next/server";
-import { admittedOwnerOrNull } from "@/lib/access/current-access";
+import { accountOwnerOrNull } from "@/lib/access/current-access";
 
 const OPAQUE_NOT_FOUND = { error: "Export unavailable." } as const;
 
 /**
  * Download is an authorization boundary, not a capability URL. Every request
- * resolves the current admitted owner, reloads the job with that owner scope,
+ * resolves the signed-in account, admitted or not (export is an exit the
+ * pending area offers too, #607), reloads the job with that owner scope,
  * and asks the artifact store to enforce the same owner + expiry predicate.
  * Unknown artifacts and another owner's artifacts intentionally share one 404.
  */
 export async function GET(_request: Request, context: { params: Promise<{ jobId: string }> }) {
-  const ownerUserId = await admittedOwnerOrNull();
+  const ownerUserId = await accountOwnerOrNull();
   const { jobId } = await context.params;
   if (!ownerUserId) return NextResponse.json(OPAQUE_NOT_FOUND, { status: 404 });
 

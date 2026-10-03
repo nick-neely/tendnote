@@ -98,6 +98,27 @@ export function decideAccessRoute(
 }
 
 /**
+ * The account a signed-in request speaks for, admitted or not. Only an
+ * account's own exits use this: export and deletion stay open to a
+ * not-admitted account, so leaving with its data is never blocked (#607).
+ * Everything that touches the product goes through {@link decideAccessRoute};
+ * a new access state must be decided in both.
+ */
+export function accountOwnerUserId(
+  state: AccessState,
+  options: { localFallbackOwnerUserId?: string } = {},
+): string | null {
+  switch (state.state) {
+    case "admitted":
+      return state.ownerUserId;
+    case "pending":
+      return state.user.id;
+    default:
+      return options.localFallbackOwnerUserId ?? null;
+  }
+}
+
+/**
  * Resolve an {@link AccessRoute} to an owner id for a server action, throwing a
  * user-safe error instead of redirecting. A mutation by an unauthenticated or
  * pending caller (e.g. a stale client) fails closed rather than proceeding.

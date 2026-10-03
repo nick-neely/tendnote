@@ -8,14 +8,18 @@ import {
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { enqueueAndPublishOwnerDataExportJob } from "@/lib/background-jobs/owner-data-export-queue";
-import { runOwnerAction } from "@/lib/owner-action";
+import { runAccountOwnerAction } from "@/lib/owner-action";
 
 const emptyInputSchema = z.undefined();
 
+/**
+ * Request an owner data export. Open to any signed-in account, admitted or not,
+ * because export is an exit and the pending area offers it too (#607).
+ */
 export async function requestOwnerDataExportAction(): Promise<
   { ok: true; view: OwnerDataExportJob } | { ok: false; error: string }
 > {
-  const result = await runOwnerAction({
+  const result = await runAccountOwnerAction({
     schema: emptyInputSchema,
     input: undefined,
     body: async ({ ownerUserId }) => {
@@ -39,6 +43,9 @@ export async function requestOwnerDataExportAction(): Promise<
     ],
     result: (job) => job,
   });
-  if (result.ok) revalidatePath("/account");
+  if (result.ok) {
+    revalidatePath("/account");
+    revalidatePath("/pending");
+  }
   return result;
 }

@@ -63,12 +63,18 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
   const customers = new Map([[CUSTOMER, user.id]]);
   const anchors = new Map<string, Date>();
   const log = vi.fn();
+  const announceAdmission = vi.fn(async (_input: { userId: string; invoiceId: string }) => {
+    // The email may only follow a recorded admission.
+    const profile = await harness.queries.getAccessProfile({ userId: user.id });
+    if (profile?.status !== "granted") throw new Error("announced before admission");
+  });
   const receive = createStripeWebhookHandler({
     policy,
     webhookSecret: SECRET,
     findAccountByStripeCustomer: async (id) => customers.get(id) ?? null,
     grantPaidAccess: (userId) => harness.queries.grantAccess({ userId, source: "paid_access" }),
     anchorUsagePeriod: async (userId, startedAt) => anchors.set(userId, startedAt),
+    announceAdmission,
     log,
   });
 
@@ -90,7 +96,16 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
     await expect(harness.eve(eveRequest)).rejects.toBeInstanceOf(ForbiddenError);
   }
 
-  return { ...harness, receive, deliver, log, anchors, expectAdmitted, expectNotAdmitted };
+  return {
+    ...harness,
+    receive,
+    deliver,
+    log,
+    anchors,
+    announceAdmission,
+    expectAdmitted,
+    expectNotAdmitted,
+  };
 }
 
 async function signedUp(policy?: AdmissionPolicy) {
@@ -107,6 +122,27 @@ describe("Paid Access from the first paid invoice", () => {
     const response = await subscriber.deliver(invoicePaid());
 
     expect(response.status).toBe(200);
+    await subscriber.expectAdmitted();
+  });
+
+  it("sends the 'you're in' email once admission is recorded, keyed on the invoice", async () => {
+    const subscriber = await signedUp();
+
+    await subscriber.deliver(invoicePaid());
+
+    expect(subscriber.announceAdmission).toHaveBeenCalledOnce();
+    expect(subscriber.announceAdmission).toHaveBeenCalledWith({
+      userId: user.id,
+      invoiceId: "in_first",
+    });
+    await expect(subscriber.announceAdmission.mock.results[0]?.value).resolves.toBeUndefined();
+  });
+
+  it("asks Stripe to redeliver when the email fails, keeping the admission", async () => {
+    const subscriber = await signedUp();
+    subscriber.announceAdmission.mockRejectedValueOnce(new Error("email provider down"));
+
+    await expect(subscriber.deliver(invoicePaid())).rejects.toThrow(/provider down/);
     await subscriber.expectAdmitted();
   });
 
@@ -135,6 +171,28 @@ describe("Paid Access from the first paid invoice", () => {
     }
 
     await subscriber.expectNotAdmitted();
+    expect(subscriber.announceAdmission).not.toHaveBeenCalled();
+  });
+
+  it("sends no email for an abandoned or expired checkout", async () => {
+    const subscriber = await signedUp();
+
+    for (const event of [
+      stripeEvent("checkout.session.expired", {
+        id: "cs_1",
+        object: "checkout.session",
+        client_reference_id: user.id,
+        customer: CUSTOMER,
+        status: "expired",
+        payment_status: "unpaid",
+      }),
+      stripeEvent("invoice.voided", invoice("void")),
+    ]) {
+      expect((await subscriber.deliver(event)).status).toBe(200);
+    }
+
+    await subscriber.expectNotAdmitted();
+    expect(subscriber.announceAdmission).not.toHaveBeenCalled();
   });
 
   it("does not treat a paid renewal as the first paid invoice", async () => {
@@ -198,6 +256,9 @@ describe("Paid Access from the first paid invoice", () => {
       status: "granted",
       source: "paid_access",
     });
+    // Every redelivery names the same invoice, so the provider sends one message.
+    const invoices = subscriber.announceAdmission.mock.calls.map(([input]) => input.invoiceId);
+    expect(new Set(invoices)).toEqual(new Set(["in_first"]));
   });
 
   it("admits nobody for a customer Tendnote never created, and says so", async () => {
@@ -208,9 +269,11 @@ describe("Paid Access from the first paid invoice", () => {
     expect(response.status).toBe(200);
     expect(subscriber.log).toHaveBeenCalledWith(expect.stringMatching(/unknown customer/));
     await subscriber.expectNotAdmitted();
+    expect(subscriber.announceAdmission).not.toHaveBeenCalled();
   });
 
-  it("asks Stripe to redeliver when recording Paid Access fails", async () => {
+  it("asks Stripe to redeliver when recording Paid Access fails, sending nothing", async () => {
+    const announceAdmission = vi.fn();
     const receive = createStripeWebhookHandler({
       policy: hosted,
       webhookSecret: SECRET,
@@ -219,9 +282,11 @@ describe("Paid Access from the first paid invoice", () => {
         throw new Error("database unavailable");
       },
       anchorUsagePeriod: vi.fn(),
+      announceAdmission,
     });
 
     await expect(receive(await signedDelivery(invoicePaid()))).rejects.toThrow(/unavailable/);
+    expect(announceAdmission).not.toHaveBeenCalled();
   });
 });
 
@@ -272,6 +337,7 @@ describe("Stripe webhook signature", () => {
       findAccountByStripeCustomer: async () => user.id,
       grantPaidAccess,
       anchorUsagePeriod: vi.fn(),
+      announceAdmission: vi.fn(),
     });
 
     expect((await receive(await signedDelivery(invoicePaid()))).status).toBe(503);
@@ -294,6 +360,7 @@ describe("self-hosted deployments", () => {
       status: "pending",
       source: null,
     });
+    expect(subscriber.announceAdmission).not.toHaveBeenCalled();
   });
 
   it("never admit through a Paid Access grant", async () => {
