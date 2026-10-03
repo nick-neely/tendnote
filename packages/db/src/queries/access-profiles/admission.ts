@@ -146,13 +146,20 @@ export function createLocalAdmissionReader(deps: LocalAdmissionDependencies) {
     );
   }
 
+  /**
+   * Whether the account holds or held Paid Access. Lapsing clears the source but
+   * sets the retention deadline, so either one is the paid history.
+   */
+  async function heldPaidAccess(userId: string): Promise<boolean> {
+    const { profile } = await deps.accessProfiles.checkAccess({ userId });
+    return profile?.source === "paid_access" || Boolean(profile?.retentionDeadline);
+  }
+
   async function liveGuestHousehold(userId: string): Promise<{ householdId: string } | null> {
     if (policy.mode !== "hosted" || !deps.readGuestHousehold) return null;
     // Household Guest is entered only from Unpaid. An account that has held
     // Paid Access is Lapsed once it ends, never a guest.
-    if ((await deps.accessProfiles.checkAccess({ userId })).profile?.source === "paid_access") {
-      return null;
-    }
+    if (await heldPaidAccess(userId)) return null;
     const household = await deps.readGuestHousehold({ userId });
     if (!household) return null;
 
@@ -172,9 +179,7 @@ export function createLocalAdmissionReader(deps: LocalAdmissionDependencies) {
    */
   async function guestStanding(userId: string): Promise<GuestStanding | null> {
     if (policy.mode !== "hosted" || !deps.readGuestStanding) return null;
-    if ((await deps.accessProfiles.checkAccess({ userId })).profile?.source === "paid_access") {
-      return null;
-    }
+    if (await heldPaidAccess(userId)) return null;
     if (!(await isUnblocked(userId)) || (await liveGuestHousehold(userId))) return null;
     return deps.readGuestStanding({ userId });
   }

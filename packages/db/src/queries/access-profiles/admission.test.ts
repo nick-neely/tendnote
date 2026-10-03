@@ -446,6 +446,29 @@ describe("Household Guest", () => {
       await expect(reader.guestStanding(GUEST.userId)).resolves.toBeNull();
     });
 
+    it("has no standing for an account that lapsed, whose source was cleared", async () => {
+      const store = createInMemoryAccessProfileStore();
+      const queries = createAccessProfileQueries(store);
+      await queries.grantAccess({
+        userId: GUEST.userId,
+        source: "paid_access",
+        stripeSubscriptionId: "sub_guest",
+      });
+      await queries.lapsePaidAccess({
+        userId: GUEST.userId,
+        stripeSubscriptionId: "sub_guest",
+        lapsedAt: new Date("2026-09-01T00:00:00Z"),
+      });
+      const reader = createLocalAdmissionReader({
+        accessProfiles: queries,
+        readGuestHousehold: async () => HOUSEHOLD,
+        readGuestStanding: async () => "household_inactive",
+        policy: { mode: "hosted", valid: true },
+      });
+
+      await expect(reader.guestStanding(GUEST.userId)).resolves.toBeNull();
+    });
+
     it("has no standing in self-hosted mode", async () => {
       const { reader } = setup({
         policy: { mode: "self-hosted", valid: true, bootstrapOwnerEmail: "owner@example.com" },
