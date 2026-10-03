@@ -1,3 +1,5 @@
+import type { GuestStanding } from "@tendnote/db/queries/access-profiles";
+
 /**
  * What the pending area knows about a signed-in, not-admitted account. All of
  * it is read from Tendnote's own records; the pending area never asks Stripe.
@@ -17,11 +19,21 @@ export type PendingAreaFacts = {
   startedCheckout: boolean;
   /** The account owns records an owner export would carry. */
   ownsExportableData: boolean;
+  /**
+   * Why a hosted account lost a guest view it had (#637), or `null` when it
+   * never had one.
+   */
+  guestStanding: GuestStanding | null;
 };
 
 export type PendingAreaView = {
   /** Which not-admitted state this is, rendered as a data attribute for tests. */
-  state: "awaiting_access" | "never_subscribed" | "checkout_unfinished";
+  state:
+    | "awaiting_access"
+    | "never_subscribed"
+    | "checkout_unfinished"
+    | "household_inactive"
+    | "membership_ended";
   title: string;
   /** The one line of what happened. */
   line: string;
@@ -40,6 +52,19 @@ export type PendingAreaView = {
 export function pendingAreaView(facts: PendingAreaFacts): PendingAreaView {
   const exportData = facts.ownsExportableData;
 
+  // A guest that lost its view hears what happened, and nothing more: no
+  // Owner, no billing detail, no date, nobody to chase (#637). A household
+  // without a paying Owner is today's news, so it comes first.
+  if (facts.guestStanding === "household_inactive") {
+    return {
+      state: "household_inactive",
+      title: "This household is not currently active on Tendnote",
+      line: "Nothing was deleted and your membership hasn't changed. Your view comes back as soon as the household is active again.",
+      subscribe: facts.checkoutOpen,
+      exportData,
+    };
+  }
+
   // What happened to the account comes first and never depends on whether
   // Checkout is open right now; availability only decides whether Subscribe
   // renders. A flag turned off or a flag outage must not rewrite an unfinished
@@ -51,6 +76,17 @@ export function pendingAreaView(facts: PendingAreaFacts): PendingAreaView {
       line: facts.checkoutOpen
         ? "Your subscription hasn't started yet. Just paid? You'll be let in as soon as it's confirmed."
         : "Just paid? You'll be let in as soon as it's confirmed. Otherwise, subscribing isn't available right now.",
+      subscribe: facts.checkoutOpen,
+      exportData,
+    };
+  }
+
+  // An ended membership may be old news; an unfinished checkout is not.
+  if (facts.guestStanding === "membership_ended") {
+    return {
+      state: "membership_ended",
+      title: "Your household membership ended",
+      line: "You no longer have access to the household's records. Your own account is unchanged.",
       subscribe: facts.checkoutOpen,
       exportData,
     };

@@ -1,3 +1,4 @@
+import { readGuestStanding } from "@tendnote/db/queries/households";
 import {
   getLatestOwnerDataExportJob,
   ownerHasExportableData,
@@ -16,15 +17,19 @@ import { requirePendingAccess } from "@/lib/access/pending-access";
 import { pendingAreaView } from "@/lib/access/pending-area";
 import { isCheckoutOpen } from "@/lib/billing/checkout-availability";
 
-/** Checkout state and owned data, read only from Tendnote's own records. */
+/** Checkout state, owned data, and any past guest membership, read only from Tendnote's own records. */
 async function readPendingAreaFacts(user: { id: string; email: string }) {
-  const [checkoutOpen, startedCheckout, ownsExportableData] = await Promise.all([
+  const [checkoutOpen, startedCheckout, ownsExportableData, guestStanding] = await Promise.all([
     isCheckoutOpen(user),
     getStripeCustomerId({ userId: user.id }).then(Boolean),
     ownerHasExportableData(user.id),
+    readGuestStanding({ userId: user.id }),
   ]);
   const exportJob = ownsExportableData ? await getLatestOwnerDataExportJob(user.id) : null;
-  return { facts: { checkoutOpen, startedCheckout, ownsExportableData }, exportJob };
+  return {
+    facts: { checkoutOpen, startedCheckout, ownsExportableData, guestStanding },
+    exportJob,
+  };
 }
 
 /**
