@@ -90,7 +90,13 @@ is an explicit later addition rather than something inherited by accident.
 in-app notice. Stripe's retry schedule does the mechanical work; the seven days
 are Tendnote's policy for how long an admitted account stays admitted while a
 card is being fixed. When the window ends, Paid Access lapses. This is not a
-trial: the account already paid at least once.
+trial: the account already paid at least once. The window belongs to the failed
+invoice, and Tendnote closes it by cancelling the subscription in Stripe, which
+stops the retries: a Lapsed account is never charged for that invoice, and its
+resubscription is a new subscription. Stripe's own retry schedule must
+therefore outlast the seven days, or Stripe would end access first. A dunning
+extension names the invoice and is checked when its window would close, so it
+must be granted before then (#610).
 
 **Cancellation.** Self-service through the Stripe customer portal, effective at
 period end. No proration and no refund of the remainder. The customer keeps

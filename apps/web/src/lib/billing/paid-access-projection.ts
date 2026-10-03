@@ -9,6 +9,7 @@ import { getAuthUserEmail } from "@tendnote/db/queries/auth-users";
 import { findUserIdByStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
 import {
   getStripeSubscription,
+  listClosedDunningWindows,
   recordStripeSubscription,
 } from "@tendnote/db/queries/stripe-subscriptions";
 import { anchorUsagePeriod } from "@tendnote/db/queries/usage-bounds";
@@ -17,6 +18,13 @@ import { sendAdmittedEmail } from "./admitted-email";
 import { sendCancellationEmail } from "./cancellation-email";
 import { readStripeBillingConfig } from "./checkout";
 import { subscriptionSnapshot } from "./subscription-projection";
+
+function configuredStripe(): Stripe {
+  const config = readStripeBillingConfig();
+  // Unconfigured, the work fails and is retried once Stripe is configured.
+  if (!config) throw new Error("Stripe is not configured.");
+  return new Stripe(config.secretKey);
+}
 
 /**
  * The production writes behind the Paid Access projection, shared by the
@@ -34,13 +42,16 @@ export const paidAccessProjection = {
     const to = await getAuthUserEmail({ userId });
     if (to) await sendAdmittedEmail({ to, invoiceId });
   },
-  retrieveSubscription: async (stripeSubscriptionId: string) => {
-    const config = readStripeBillingConfig();
-    // Unconfigured, the work fails and is retried once Stripe is configured.
-    if (!config) throw new Error("Stripe is not configured.");
-    const stripe = new Stripe(config.secretKey);
-    return subscriptionSnapshot(await stripe.subscriptions.retrieve(stripeSubscriptionId));
-  },
+  retrieveSubscription: async (stripeSubscriptionId: string) =>
+    subscriptionSnapshot(
+      // The latest invoice is the renewal a Past Due subscription is retrying (#610).
+      await configuredStripe().subscriptions.retrieve(stripeSubscriptionId, {
+        expand: ["latest_invoice"],
+      }),
+    ),
+  listClosedDunningWindows,
+  cancelSubscription: async (stripeSubscriptionId: string) =>
+    subscriptionSnapshot(await configuredStripe().subscriptions.cancel(stripeSubscriptionId)),
   subscriptions: {
     getSubscription: getStripeSubscription,
     recordSubscription: recordStripeSubscription,

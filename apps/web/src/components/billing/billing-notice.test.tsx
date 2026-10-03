@@ -1,40 +1,43 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { admittedOwnerOrNull, getScheduledCancellation } = vi.hoisted(() => ({
+const { admittedOwnerOrNull, getBillingStanding } = vi.hoisted(() => ({
   admittedOwnerOrNull: vi.fn(),
-  getScheduledCancellation: vi.fn(),
+  getBillingStanding: vi.fn(),
 }));
 
 vi.mock("@/lib/access/current-access", () => ({ admittedOwnerOrNull }));
-vi.mock("@tendnote/db/queries/stripe-subscriptions", () => ({ getScheduledCancellation }));
+vi.mock("@tendnote/db/queries/stripe-subscriptions", () => ({ getBillingStanding }));
 vi.mock("./manage-billing-button", () => ({
   ManageBillingButton: () => <b>Manage billing</b>,
 }));
 
-import { EndingNoticeBanner } from "./billing-notice";
+import { BillingNoticeBanner } from "./billing-notice";
 
 async function renderNotice() {
-  const notice = await EndingNoticeBanner();
+  const notice = await BillingNoticeBanner();
   return notice ? renderToStaticMarkup(notice) : "";
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   admittedOwnerOrNull.mockResolvedValue("subscriber-1");
-  getScheduledCancellation.mockResolvedValue(null);
+  getBillingStanding.mockResolvedValue({ endsAt: null, pastDueSince: null });
 });
 
 describe("the Ending notice (#609)", () => {
   it("shows when a scheduled cancellation ends, with the way to change it", async () => {
-    getScheduledCancellation.mockResolvedValue(new Date("2026-04-15T17:04:05.000Z"));
+    getBillingStanding.mockResolvedValue({
+      endsAt: new Date("2026-04-15T17:04:05.000Z"),
+      pastDueSince: null,
+    });
 
     const html = await renderNotice();
 
     expect(html).toContain("Your subscription ends on April 15, 2026.");
     expect(html).toContain("You keep full access until then.");
     expect(html).toContain("<b>Manage billing</b>");
-    expect(getScheduledCancellation).toHaveBeenCalledWith({ userId: "subscriber-1" });
+    expect(getBillingStanding).toHaveBeenCalledWith({ userId: "subscriber-1" });
   });
 
   it("shows nothing for a subscription that renews, or once it is reversed", async () => {
@@ -45,12 +48,47 @@ describe("the Ending notice (#609)", () => {
     admittedOwnerOrNull.mockResolvedValue(null);
 
     await expect(renderNotice()).resolves.toBe("");
-    expect(getScheduledCancellation).not.toHaveBeenCalled();
+    expect(getBillingStanding).not.toHaveBeenCalled();
   });
 
   it("shows nothing rather than break the shell when the read fails", async () => {
-    getScheduledCancellation.mockRejectedValue(new Error("database unavailable"));
+    getBillingStanding.mockRejectedValue(new Error("database unavailable"));
 
     await expect(renderNotice()).resolves.toBe("");
+  });
+});
+
+describe("the Past Due notice (#610)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-03T10:30:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("shows the days of full access left and the date to fix the card by, with the way to fix it", async () => {
+    getBillingStanding.mockResolvedValue({
+      endsAt: null,
+      pastDueSince: new Date("2026-11-01T10:30:00Z"),
+    });
+
+    const html = await renderNotice();
+
+    expect(html).toContain("Your renewal payment didn&#x27;t go through.");
+    expect(html).toContain(
+      "Full access continues for 5 more days. Update your card by November 8, 2026 to keep it.",
+    );
+    expect(html).toContain("<b>Manage billing</b>");
+  });
+
+  it("comes before the Ending notice when a cancelled subscription's renewal also failed", async () => {
+    getBillingStanding.mockResolvedValue({
+      endsAt: new Date("2026-12-01T10:30:00Z"),
+      pastDueSince: new Date("2026-11-01T10:30:00Z"),
+    });
+
+    const html = await renderNotice();
+
+    expect(html).toContain("didn&#x27;t go through");
+    expect(html).not.toContain("Your subscription ends");
   });
 });

@@ -1,11 +1,17 @@
-import type { AccessProfile, AdmissionPolicy } from "@tendnote/domain";
+import type { ClosedDunningWindow } from "@tendnote/db/queries/stripe-subscriptions";
+import {
+  type AccessProfile,
+  type AdmissionPolicy,
+  dunningWindowEnd,
+  dunningWindowsClosedBy,
+} from "@tendnote/domain";
 import type Stripe from "stripe";
 import { firstPaidInvoice } from "./first-paid-invoice";
 import {
   admitFromFirstPaidInvoice,
   type PaidAccessAdmissionDependencies,
 } from "./paid-access-admission";
-import { projectSubscription } from "./subscription-projection";
+import { projectSubscription, type SubscriptionSnapshot } from "./subscription-projection";
 
 /**
  * How far back each pass reads Stripe's paid invoices and subscription events.
@@ -34,6 +40,10 @@ export type StripeReconciliationDependencies = PaidAccessAdmissionDependencies &
   stripe: ReconciliationStripeClient | null;
   findAccountByStripeCustomer: (stripeCustomerId: string) => Promise<string | null>;
   readAccessProfile: (userId: string) => Promise<ProfileStanding | null>;
+  /** Live subscriptions recorded Past Due since at or before `pastDueAtOrBefore` (#610). */
+  listClosedDunningWindows: (input: { pastDueAtOrBefore: Date }) => Promise<ClosedDunningWindow[]>;
+  /** End a subscription in Stripe at once, returning Stripe's copy of the ended subscription. */
+  cancelSubscription: (stripeSubscriptionId: string) => Promise<SubscriptionSnapshot>;
   /**
    * The "you're in" email (#607), sent only when this pass is what admitted the
    * account. Keyed on the invoice, as for the webhook, so a pass racing a late
@@ -48,7 +58,15 @@ export type StripeReconciliationDependencies = PaidAccessAdmissionDependencies &
 
 type StripeReconciliationResult =
   | { status: "skipped" }
-  | { status: "ran"; scanned: number; admitted: number; unknownCustomer: number; failed: number };
+  | {
+      status: "ran";
+      scanned: number;
+      admitted: number;
+      /** Subscriptions this pass ended because their dunning window closed (#610). */
+      dunningClosed: number;
+      unknownCustomer: number;
+      failed: number;
+    };
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -59,7 +77,8 @@ function errorMessage(error: unknown): string {
  * recomputes the Paid Access projection from Stripe's current paid invoices
  * through the same first-paid-invoice rule as the webhook, and re-projects every
  * subscription changed inside the window (#609), so a delivery that was
- * dropped or failed for good is repaired on the next pass.
+ * dropped or failed for good is repaired on the next pass. It also closes every
+ * dunning window that has run its seven days (#610).
  *
  * It is idempotent: an account already standing where the invoice would put it
  * is left as it is and is sent no second email. It only ever adds the Paid
@@ -189,6 +208,66 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
     }
   }
 
+  /**
+   * End one subscription whose dunning window has closed (#610). Stripe's
+   * current copy decides, not the record: a payment that recovered after it was
+   * recorded, or a later failure whose own window is still open, is projected as
+   * it stands and nothing is ended. Otherwise the subscription is cancelled in
+   * Stripe, which stops its retries, so a Lapsed account is never charged for
+   * the invoice and can resubscribe, and the ended copy is projected like any
+   * other end, which makes the account Lapsed.
+   */
+  async function closeDunningWindow(
+    window: ClosedDunningWindow,
+    now: Date,
+    result: Extract<StripeReconciliationResult, { status: "ran" }>,
+  ) {
+    try {
+      const current = await deps.retrieveSubscription(window.stripeSubscriptionId);
+      const closed =
+        !current.endedAt && current.pastDue && dunningWindowEnd(current.pastDue.since) <= now;
+      const subscription = closed
+        ? await deps.cancelSubscription(window.stripeSubscriptionId)
+        : current;
+      await projectSubscription(deps.subscriptions, window.userId, subscription);
+      if (closed) result.dunningClosed += 1;
+    } catch (error) {
+      result.failed += 1;
+      deps.logger?.error?.("stripe_reconciliation.failed", {
+        stage: "dunning",
+        stripeSubscriptionId: window.stripeSubscriptionId,
+        invoiceId: window.invoiceId,
+        userId: window.userId,
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  /**
+   * Every live subscription Past Due for the whole dunning window, read from
+   * Tendnote's own record. The window is Tendnote's policy rather than Stripe's
+   * retry schedule, so it closes here and not on any Stripe event.
+   */
+  async function closeDunningWindows(
+    now: Date,
+    result: Extract<StripeReconciliationResult, { status: "ran" }>,
+  ) {
+    let closed: ClosedDunningWindow[];
+    try {
+      closed = await deps.listClosedDunningWindows({
+        pastDueAtOrBefore: dunningWindowsClosedBy(now),
+      });
+    } catch (error) {
+      result.failed += 1;
+      deps.logger?.error?.("stripe_reconciliation.failed", {
+        stage: "dunning",
+        error: errorMessage(error),
+      });
+      return;
+    }
+    for (const window of closed) await closeDunningWindow(window, now, result);
+  }
+
   return async function reconcile(input: { now?: Date } = {}): Promise<StripeReconciliationResult> {
     if (deps.policy.mode !== "hosted" || !deps.stripe) return { status: "skipped" };
 
@@ -197,6 +276,7 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
       status: "ran" as const,
       scanned: 0,
       admitted: 0,
+      dunningClosed: 0,
       unknownCustomer: 0,
       failed: 0,
     };
@@ -219,6 +299,8 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
       });
     }
     await reconcileSubscriptions(deps.stripe, since, result);
+    // After the replay, so a recovery whose webhook was lost is on record first.
+    await closeDunningWindows(now, result);
     return result;
   };
 }

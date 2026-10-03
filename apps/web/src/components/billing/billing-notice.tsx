@@ -1,20 +1,31 @@
-import { getScheduledCancellation } from "@tendnote/db/queries/stripe-subscriptions";
+import { getBillingStanding } from "@tendnote/db/queries/stripe-subscriptions";
 import { Suspense } from "react";
 import { admittedOwnerOrNull } from "@/lib/access/current-access";
 import { formatBillingDate } from "@/lib/billing/billing-date";
+import { pastDueNotice } from "@/lib/billing/past-due";
 import { ManageBillingButton } from "./manage-billing-button";
 
 /**
- * The Ending notice (#609): a paying account that scheduled a cancellation is
- * still admitted, and sees when it ends on top of the working product, with the
- * way to change its mind. Read from Tendnote's own projection, never Stripe.
- * A failed read is no notice: it is advisory and must never break the shell.
+ * The Past Due (#610) and Ending (#609) notices: a paying account whose renewal
+ * failed, or that scheduled a cancellation, is still admitted, and sees how
+ * long on top of the working product, with the way into the portal to fix it.
+ * Past Due comes first when both hold, because it ends sooner and the card is
+ * what to fix. Read from Tendnote's own projection, never Stripe. A failed read
+ * is no notice: it is advisory and must never break the shell.
  */
-export async function EndingNoticeBanner() {
+export async function BillingNoticeBanner() {
   const ownerUserId = await admittedOwnerOrNull();
   if (!ownerUserId) return null;
-  const endsAt = await getScheduledCancellation({ userId: ownerUserId }).catch(() => null);
-  if (!endsAt) return null;
+  const standing = await getBillingStanding({ userId: ownerUserId }).catch(() => null);
+  const notice = standing?.pastDueSince
+    ? pastDueNotice(standing.pastDueSince, new Date())
+    : standing?.endsAt
+      ? {
+          headline: `Your subscription ends on ${formatBillingDate(standing.endsAt)}.`,
+          detail: "You keep full access until then.",
+        }
+      : null;
+  if (!notice) return null;
 
   return (
     <div
@@ -22,8 +33,7 @@ export async function EndingNoticeBanner() {
       role="status"
     >
       <span>
-        <span className="font-medium">Your subscription ends on {formatBillingDate(endsAt)}.</span>{" "}
-        You keep full access until then.
+        <span className="font-medium">{notice.headline}</span> {notice.detail}
       </span>
       <ManageBillingButton variant="link" />
     </div>
@@ -34,7 +44,7 @@ export async function EndingNoticeBanner() {
 export function BillingNotice() {
   return (
     <Suspense fallback={null}>
-      <EndingNoticeBanner />
+      <BillingNoticeBanner />
     </Suspense>
   );
 }

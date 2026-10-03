@@ -624,6 +624,13 @@
       "when": 1791007139490,
       "tag": "0088_lapsed_accounts_and_stripe_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1791041244680,
+      "tag": "0089_stripe_subscription_past_due",
+      "breakpoints": true
     }
   ]
 }

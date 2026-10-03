@@ -2,7 +2,7 @@ import { getEveApprovalMode } from "@tendnote/db/queries/access-profiles";
 import { getLatestOwnerDataExportJob } from "@tendnote/db/queries/owner-data-export";
 import { listReminderInstallations } from "@tendnote/db/queries/reminders";
 import { getStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
-import { getScheduledCancellation } from "@tendnote/db/queries/stripe-subscriptions";
+import { getBillingStanding } from "@tendnote/db/queries/stripe-subscriptions";
 import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
@@ -183,16 +183,16 @@ async function OwnerDataExportStream({ ownerUserId }: { ownerUserId: string }) {
 /**
  * Billing for a hosted account Tendnote created a Stripe customer for. A failed
  * read is the unavailable region, never a section claiming the subscription
- * renews when the read that would say it ends never landed.
+ * renews when the read that would say it ends or is Past Due never landed.
  */
 async function BillingStream({ ownerUserId }: { ownerUserId: string }) {
   if (!readHostedStripeBillingConfig()) return null;
   try {
-    const [customer, endsAt] = await Promise.all([
+    const [customer, standing] = await Promise.all([
       getStripeCustomerId({ userId: ownerUserId }),
-      getScheduledCancellation({ userId: ownerUserId }),
+      getBillingStanding({ userId: ownerUserId }),
     ]);
-    return customer ? <BillingSection endsAt={endsAt} /> : null;
+    return customer ? <BillingSection {...standing} /> : null;
   } catch {
     return <AccountRegionUnavailable label="Billing details" />;
   }

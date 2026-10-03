@@ -321,6 +321,7 @@ describe("Paid Access from the first paid invoice", () => {
         stripeCustomerId: CUSTOMER,
         cancelAt: null,
         endedAt: null,
+        pastDue: null,
       }),
       subscriptions: inertSubscriptions(),
     });
@@ -561,6 +562,53 @@ describe("cancellation through the portal ends in a Lapsed Account (#609)", () =
     expect(response.status).toBe(200);
     expect(subscriber.log).toHaveBeenCalledWith(expect.stringMatching(/unknown customer/));
     await subscriber.expectAdmitted();
+  });
+});
+
+describe("renewal failure: Past Due while Stripe retries (#610)", () => {
+  const renewal = { invoiceId: "in_renewal", since: PERIOD_END };
+  const renewalInvoice = (status: string) =>
+    invoice(status, { id: "in_renewal", billing_reason: "subscription_cycle" });
+
+  async function pastDue() {
+    const subscriber = await signedUp();
+    await subscriber.deliver(invoicePaid());
+    subscriber.stripeChanges("sub_1", { pastDue: renewal });
+    await subscriber.deliver(stripeEvent("invoice.payment_failed", renewalInvoice("open")));
+    await subscriber.deliver(subscriptionEvent("updated"));
+    return subscriber;
+  }
+
+  it("keeps the account admitted on web and Eve, recording the failed renewal for its notice", async () => {
+    const subscriber = await pastDue();
+
+    await subscriber.expectAdmitted();
+    expect(subscriber.recorded.get("sub_1")).toMatchObject({ pastDue: renewal, endedAt: null });
+  });
+
+  it("returns to Paid when the payment recovers, clearing the notice", async () => {
+    const subscriber = await pastDue();
+
+    subscriber.stripeChanges("sub_1", { pastDue: null });
+    await subscriber.deliver(stripeEvent("invoice.paid", renewalInvoice("paid")));
+    await subscriber.deliver(subscriptionEvent("updated"));
+
+    await subscriber.expectAdmitted();
+    expect(subscriber.recorded.get("sub_1")?.pastDue).toBeNull();
+    // A recovered renewal is not a first paid invoice.
+    expect(subscriber.announceAdmission).toHaveBeenCalledOnce();
+  });
+
+  it("is safe under duplicate and reordered deliveries of the failure and the recovery", async () => {
+    const subscriber = await pastDue();
+    subscriber.stripeChanges("sub_1", { pastDue: null });
+
+    // The failure's event lands after the recovery; Stripe's current copy wins.
+    await subscriber.deliver(subscriptionEvent("updated"));
+    await subscriber.deliver(subscriptionEvent("updated"));
+
+    await subscriber.expectAdmitted();
+    expect(subscriber.recorded.get("sub_1")?.pastDue).toBeNull();
   });
 });
 

@@ -107,8 +107,10 @@ function droppedWebhook(
   const grantPaidAccess = vi.fn((userId: string, stripeSubscriptionId: string) =>
     harness.queries.grantAccess({ userId, source: "paid_access", stripeSubscriptionId }),
   );
+  let clock = NOW;
   const stripeSubscriptions = createStripeSubscriptionsFake(harness.queries, {
     stripeCustomerId: CUSTOMER,
+    now: () => clock,
   });
   const reconcile = createStripeReconciliation({
     policy,
@@ -121,6 +123,8 @@ function droppedWebhook(
     grantPaidAccess,
     retrieveSubscription: stripeSubscriptions.retrieveSubscription,
     subscriptions: stripeSubscriptions.subscriptions,
+    listClosedDunningWindows: stripeSubscriptions.listClosedDunningWindows,
+    cancelSubscription: stripeSubscriptions.cancelSubscription,
     anchorUsagePeriod: async (userId, startedAt) => {
       anchors.set(userId, startedAt);
     },
@@ -144,7 +148,11 @@ function droppedWebhook(
 
   return {
     ...harness,
-    reconcile: () => reconcile({ now: NOW }),
+    /** One pass of the job, run at `at`, which is also when Stripe ends anything it cancels. */
+    reconcile: (at = NOW) => {
+      clock = at;
+      return reconcile({ now: at });
+    },
     stripe,
     stripeInvoices,
     stripeEvents,
@@ -484,6 +492,135 @@ describe("Stripe reconciliation of subscription changes (#609)", () => {
       stripeSubscriptionId: "sub_gone",
       error: "No such subscription: sub_gone",
     });
+    await subscriber.expectNotAdmitted();
+  });
+});
+
+describe("renewal failure: Past Due for seven days, then Lapsed (#610)", () => {
+  /** When the renewal's payment first failed, a day after NOW's first pass. */
+  const FAILED = new Date("2026-11-01T10:30:00Z");
+  const WINDOW_CLOSES = new Date("2026-11-08T10:30:00Z");
+  const renewal = { invoiceId: "in_renewal", since: FAILED };
+  const atDay = (days: number) => new Date(FAILED.getTime() + days * 24 * 60 * 60 * 1000);
+
+  /** A paying account whose renewal failed, recorded from its subscription's event. */
+  async function pastDue() {
+    const subscriber = await signedUp();
+    await subscriber.reconcile();
+    subscriber.stripeInvoices.length = 0;
+    subscriber.stripeSubscriptions.stripeChanges("sub_1", { pastDue: renewal });
+    subscriber.stripeEvents.push(subscriptionEvent("updated"));
+    await subscriber.reconcile(atDay(0));
+    return subscriber;
+  }
+
+  it("keeps a failed renewal admitted on web and Eve, recorded Past Due for its notice", async () => {
+    const subscriber = await pastDue();
+
+    await subscriber.expectAdmitted();
+    expect(subscriber.stripeSubscriptions.recorded.get("sub_1")).toMatchObject({
+      pastDue: renewal,
+      endedAt: null,
+    });
+    expect(subscriber.stripeSubscriptions.cancelSubscription).not.toHaveBeenCalled();
+  });
+
+  it("stays admitted for the whole seven days", async () => {
+    const subscriber = await pastDue();
+
+    for (const day of [1, 3, 6, 6.99]) {
+      expect(await subscriber.reconcile(atDay(day))).toMatchObject({ dunningClosed: 0 });
+      await subscriber.expectAdmitted();
+    }
+    expect(subscriber.stripeSubscriptions.cancelSubscription).not.toHaveBeenCalled();
+  });
+
+  it("returns to Paid when the payment recovers inside the window, and the window never closes", async () => {
+    const subscriber = await pastDue();
+
+    subscriber.stripeSubscriptions.stripeChanges("sub_1", { pastDue: null });
+    await subscriber.reconcile(atDay(4));
+    await subscriber.reconcile(atDay(8));
+
+    await subscriber.expectAdmitted();
+    expect(subscriber.stripeSubscriptions.recorded.get("sub_1")?.pastDue).toBeNull();
+    expect(subscriber.stripeSubscriptions.cancelSubscription).not.toHaveBeenCalled();
+  });
+
+  it("makes the account Lapsed when the window closes, ending the subscription in Stripe", async () => {
+    const subscriber = await pastDue();
+
+    const result = await subscriber.reconcile(WINDOW_CLOSES);
+
+    expect(result).toMatchObject({ status: "ran", dunningClosed: 1, failed: 0 });
+    expect(subscriber.stripeSubscriptions.cancelSubscription).toHaveBeenCalledExactlyOnceWith(
+      "sub_1",
+    );
+    await subscriber.expectNotAdmitted();
+    await expect(subscriber.queries.getAccessProfile({ userId: user.id })).resolves.toMatchObject({
+      status: "pending",
+      retentionDeadline: lapsedRetentionDeadline(WINDOW_CLOSES),
+    });
+  });
+
+  it("closes the window once: later passes neither cancel again nor move the deadline", async () => {
+    const subscriber = await pastDue();
+    await subscriber.reconcile(WINDOW_CLOSES);
+
+    await subscriber.reconcile(atDay(8));
+    await subscriber.reconcile(atDay(9));
+
+    expect(subscriber.stripeSubscriptions.cancelSubscription).toHaveBeenCalledOnce();
+    await expect(subscriber.queries.getAccessProfile({ userId: user.id })).resolves.toMatchObject({
+      retentionDeadline: lapsedRetentionDeadline(WINDOW_CLOSES),
+    });
+  });
+
+  it("does not end a subscription whose payment recovered after the record, though no event says so", async () => {
+    const subscriber = await pastDue();
+    subscriber.stripeEvents.length = 0;
+
+    subscriber.stripeSubscriptions.stripeChanges("sub_1", { pastDue: null });
+    const result = await subscriber.reconcile(atDay(8));
+
+    expect(result).toMatchObject({ dunningClosed: 0, failed: 0 });
+    expect(subscriber.stripeSubscriptions.cancelSubscription).not.toHaveBeenCalled();
+    await subscriber.expectAdmitted();
+    expect(subscriber.stripeSubscriptions.recorded.get("sub_1")?.pastDue).toBeNull();
+  });
+
+  it("gives a later failed invoice its own seven days rather than the first one's", async () => {
+    const subscriber = await pastDue();
+
+    const later = { invoiceId: "in_later", since: atDay(5) };
+    subscriber.stripeSubscriptions.stripeChanges("sub_1", { pastDue: later });
+    await subscriber.reconcile(atDay(8));
+
+    expect(subscriber.stripeSubscriptions.cancelSubscription).not.toHaveBeenCalled();
+    await subscriber.expectAdmitted();
+    expect(subscriber.stripeSubscriptions.recorded.get("sub_1")?.pastDue).toEqual(later);
+
+    await subscriber.reconcile(atDay(12));
+    await subscriber.expectNotAdmitted();
+  });
+
+  it("records an alertable failure when Stripe refuses the cancellation, and the next pass closes it", async () => {
+    const subscriber = await pastDue();
+    subscriber.stripeSubscriptions.cancelSubscription.mockRejectedValueOnce(
+      new Error("Stripe is unavailable"),
+    );
+
+    expect(await subscriber.reconcile(WINDOW_CLOSES)).toMatchObject({ failed: 1 });
+    expect(subscriber.logger.error).toHaveBeenCalledWith("stripe_reconciliation.failed", {
+      stage: "dunning",
+      stripeSubscriptionId: "sub_1",
+      invoiceId: "in_renewal",
+      userId: user.id,
+      error: "Stripe is unavailable",
+    });
+    await subscriber.expectAdmitted();
+
+    await subscriber.reconcile(atDay(7.01));
     await subscriber.expectNotAdmitted();
   });
 });
