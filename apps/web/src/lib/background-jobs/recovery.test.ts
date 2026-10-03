@@ -9,6 +9,10 @@ import {
   runExtractionBackfill,
 } from "./recovery";
 
+// The cron route is imported for its `maxDuration`, and it wires the Stripe
+// reconciliation's server-only email sender.
+vi.mock("server-only", () => ({}));
+
 describe("background job recovery", () => {
   it("republishes due pending and publish-failed deliveries with bounded work", async () => {
     const store = createInMemoryBackgroundJobDeliveryStore();
