@@ -26,7 +26,7 @@ export type AccountEmailPurpose =
   | "reset-password"
   | "admitted"
   | "cancellation"
-  | "renewal-reminder";
+  | "renewal-reminder"
   | "refund";
 
 export type AccountEmailProps = {
