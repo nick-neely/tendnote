@@ -17,8 +17,9 @@ const GENERIC_FAILURE = "That didn't go through. Nothing changed.";
  * this setting does not switch them off, and listing them here would suggest it
  * does.
  *
- * Like the Approval Mode, it moves before the write lands and moves back if the
- * write fails, and only the newest choice may settle the box.
+ * Like the Approval Mode, it moves before the write lands and moves back to the
+ * last stored value if the write fails, and only the newest choice may settle
+ * the box.
  */
 export function TelemetrySettings({ optedOut: initialOptedOut }: { optedOut: boolean }) {
   const headingId = useId();
@@ -28,10 +29,11 @@ export function TelemetrySettings({ optedOut: initialOptedOut }: { optedOut: boo
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const latestChoice = useRef(0);
+  /** What the server last stored. A failed newest write rolls back to this. */
+  const confirmed = useRef(!initialOptedOut);
 
   function choose(next: boolean) {
     if (next === sharing) return;
-    const previous = sharing;
     latestChoice.current += 1;
     const choice = latestChoice.current;
     setSharing(next);
@@ -39,16 +41,19 @@ export function TelemetrySettings({ optedOut: initialOptedOut }: { optedOut: boo
     startTransition(async () => {
       try {
         const outcome = await setTelemetryOptOutAction({ optedOut: !next });
+        // Every stored answer moves the confirmed value, even a superseded one,
+        // so a later failure rolls back to what is actually stored.
+        if (outcome.ok) confirmed.current = !outcome.view.optedOut;
         if (choice !== latestChoice.current) return;
         if (!outcome.ok) {
-          setSharing(previous);
+          setSharing(confirmed.current);
           setError(outcome.error || GENERIC_FAILURE);
           return;
         }
-        setSharing(!outcome.view.optedOut);
+        setSharing(confirmed.current);
       } catch {
         if (choice !== latestChoice.current) return;
-        setSharing(previous);
+        setSharing(confirmed.current);
         setError(GENERIC_FAILURE);
       }
     });
