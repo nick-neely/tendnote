@@ -47,7 +47,7 @@ describe("the 'you're in' email (#607)", () => {
     }
   });
 
-  it("sends one message per first paid invoice, however often it is redelivered", async () => {
+  it("keys each send on the first paid invoice, so a redelivery reuses the provider key", async () => {
     await sendAdmittedEmail({ to: "sam@example.com", invoiceId: "in_first" });
     await sendAdmittedEmail({ to: "sam@example.com", invoiceId: "in_first" });
     await sendAdmittedEmail({ to: "sam@example.com", invoiceId: "in_later" });

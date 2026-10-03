@@ -18,14 +18,12 @@ import { isCheckoutOpen } from "@/lib/billing/checkout-availability";
 
 /** Checkout state and owned data, read only from Tendnote's own records. */
 async function readPendingAreaFacts(user: { id: string; email: string }) {
-  const [checkoutOpen, ownsExportableData] = await Promise.all([
+  const [checkoutOpen, startedCheckout, ownsExportableData] = await Promise.all([
     isCheckoutOpen(user),
+    getStripeCustomerId({ userId: user.id }).then(Boolean),
     ownerHasExportableData(user.id),
   ]);
-  const [startedCheckout, exportJob] = await Promise.all([
-    checkoutOpen ? getStripeCustomerId({ userId: user.id }).then(Boolean) : false,
-    ownsExportableData ? getLatestOwnerDataExportJob(user.id) : null,
-  ]);
+  const exportJob = ownsExportableData ? await getLatestOwnerDataExportJob(user.id) : null;
   return { facts: { checkoutOpen, startedCheckout, ownsExportableData }, exportJob };
 }
 
@@ -75,9 +73,9 @@ export default async function PendingPage() {
           </div>
         </div>
 
-        {view.subscribe ? (
-          <SubscribeForm />
-        ) : (
+        {view.subscribe ? <SubscribeForm /> : null}
+
+        {view.state === "awaiting_access" ? (
           <div className="flex items-center justify-between gap-3 rounded-lg border bg-surface px-3 py-2.5">
             <span className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
               Access status
@@ -87,9 +85,9 @@ export default async function PendingPage() {
               Pending review
             </Badge>
           </div>
-        )}
+        ) : null}
 
-        <div className="flex flex-col gap-4 border-t pt-5">
+        <div className="flex flex-col gap-4 border-t pt-6">
           {view.exportData ? <OwnerDataExportSection initialJob={exportJob} /> : null}
           <div className="flex flex-col gap-1">
             <SignOutButton className="w-full" />

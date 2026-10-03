@@ -193,7 +193,9 @@ export const runOwnerAction = createOwnerActionRunner({
  */
 export const runAccountOwnerAction = createOwnerActionRunner({
   ...ownerActionInfrastructure,
-  // Resolved per call, so a module that never runs an account exit does not
-  // need this gate at import time.
+  // Deliberately a wrapper, not a bare reference: this runner is built when the
+  // module loads, so a bare reference reads the gate at import. Every test that
+  // mocks current-access without this export would then fail to import any
+  // owner action, even one that never runs an account exit.
   gate: () => requireAccountOwnerForAction(),
 });

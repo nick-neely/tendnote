@@ -40,22 +40,28 @@ export type PendingAreaView = {
 export function pendingAreaView(facts: PendingAreaFacts): PendingAreaView {
   const exportData = facts.ownsExportableData;
 
+  // What happened to the account comes first and never depends on whether
+  // Checkout is open right now; availability only decides whether Subscribe
+  // renders. A flag turned off or a flag outage must not rewrite an unfinished
+  // checkout into a beta waiting list.
+  if (facts.startedCheckout) {
+    return {
+      state: "checkout_unfinished",
+      title: facts.checkoutOpen ? "Finish subscribing" : "Your subscription hasn't started",
+      line: facts.checkoutOpen
+        ? "Your subscription hasn't started yet. Just paid? You'll be let in as soon as it's confirmed."
+        : "Just paid? You'll be let in as soon as it's confirmed. Otherwise, subscribing isn't available right now.",
+      subscribe: facts.checkoutOpen,
+      exportData,
+    };
+  }
+
   if (!facts.checkoutOpen) {
     return {
       state: "awaiting_access",
       title: "You're on the list",
       line: "Your account is set up and waiting for Private Beta Access. We'll let you in as soon as it's granted. No need to sign up again.",
       subscribe: false,
-      exportData,
-    };
-  }
-
-  if (facts.startedCheckout) {
-    return {
-      state: "checkout_unfinished",
-      title: "Finish subscribing",
-      line: "Your subscription hasn't started yet. Just paid? You'll be let in as soon as it's confirmed.",
-      subscribe: true,
       exportData,
     };
   }

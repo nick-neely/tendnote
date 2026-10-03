@@ -22,9 +22,18 @@ describe("pendingAreaView (#607)", () => {
   });
 
   it("keeps waiting for Private Beta Access while Checkout is closed, with no Subscribe", () => {
-    expect(pendingAreaView({ ...facts, checkoutOpen: false, startedCheckout: true })).toMatchObject(
-      { state: "awaiting_access", subscribe: false },
-    );
+    expect(pendingAreaView({ ...facts, checkoutOpen: false })).toMatchObject({
+      state: "awaiting_access",
+      subscribe: false,
+    });
+  });
+
+  it("keeps an unfinished checkout's line when Checkout closes, without Subscribe", () => {
+    const view = pendingAreaView({ ...facts, checkoutOpen: false, startedCheckout: true });
+
+    expect(view).toMatchObject({ state: "checkout_unfinished", subscribe: false });
+    expect(view.line).toContain("Just paid? You'll be let in as soon as it's confirmed.");
+    expect(view.line).not.toContain("Private Beta Access");
   });
 
   it("offers Export only when the account owns something to export", () => {

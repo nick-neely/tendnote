@@ -96,7 +96,18 @@ describe("the pending area (#607)", () => {
     expect(html).not.toContain("<b>Subscribe</b>");
     expect(html).toContain("<b>Delete</b>");
     expect(html).toContain("<b>Sign out</b>");
-    expect(mocks.getStripeCustomerId).not.toHaveBeenCalled();
+  });
+
+  it("still tells an account its checkout didn't finish while Checkout is closed", async () => {
+    mocks.isCheckoutOpen.mockResolvedValue(false);
+    mocks.getStripeCustomerId.mockResolvedValue("cus_newcomer");
+
+    const html = await renderPending();
+
+    expect(html).toContain("Your subscription hasn&#x27;t started");
+    expect(html).not.toContain("Pending review");
+    expect(html).not.toContain("<b>Subscribe</b>");
+    expect(html).toContain("<b>Delete</b>");
   });
 
   it("sends an admitted account home and a signed-out visitor to sign in", async () => {
