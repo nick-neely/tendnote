@@ -50,3 +50,9 @@ export const readSharedRelationshipRecord: ReturnType<
   typeof createRelationshipSharing
 >["readSharedRelationshipRecord"] = (input) =>
   relationshipSharing().readSharedRelationshipRecord(input);
+
+/** Every record of one kind shared with the caller, as its audience may see it. */
+export const listSharedRelationshipRecords: ReturnType<
+  typeof createRelationshipSharing
+>["listSharedRelationshipRecords"] = (input) =>
+  relationshipSharing().listSharedRelationshipRecords(input);

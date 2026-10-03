@@ -45,6 +45,7 @@
     "./general-action-asset-links": "./src/general-action-asset-links.ts",
     "./gift-plans": "./src/gift-plans.ts",
     "./global-recall": "./src/global-recall.ts",
+    "./guest-library": "./src/guest-library.ts",
     "./local-calendar-dates": "./src/local-calendar-dates.ts",
     "./drafts": "./src/drafts.ts",
     "./eve-approvals": "./src/eve-approvals.ts",

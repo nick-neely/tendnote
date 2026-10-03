@@ -36,4 +36,16 @@ describe("relationship share adapter", () => {
     const body = (factsFn ?? "").split("\n}")[0] ?? "";
     expect(body).toContain("personId: null");
   });
+
+  it("lists share candidates through the audience rule, never private or the caller's own", () => {
+    const [, list] = source.split("async listSharedRelationshipRecordCandidates(input) {");
+    const body = (list ?? "").split("async updateRelationshipRecordVisibility")[0] ?? "";
+    for (const alias of ["sharedMemories", "sharedFollowups"]) {
+      expect(body).toContain(`ne(${alias}.scope, "private")`);
+      expect(body).toContain(`ne(${alias}.ownerUserId, input.callerUserId)`);
+    }
+    expect(body.match(/visibleHouseholdRecordSql\(/g)).toHaveLength(2);
+    // A suggestion is the assistant's guess, not the owner's memory.
+    expect(body).toContain('eq(sharedMemories.status, "approved")');
+  });
 });
