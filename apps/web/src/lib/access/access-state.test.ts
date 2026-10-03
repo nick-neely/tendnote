@@ -1,4 +1,5 @@
 import type { AccessDecision } from "@tendnote/domain";
+import type { LegalDocument } from "@tendnote/domain/legal-documents";
 import { describe, expect, it, vi } from "vitest";
 import {
   type AccessState,
@@ -6,6 +7,7 @@ import {
   decideAccessRoute,
   localFallbackOwnerUserId,
   ownerForActionOrThrow,
+  REACCEPTANCE_PATH,
   resolveAccessState,
   type SessionUser,
 } from "./access-state";
@@ -224,4 +226,85 @@ describe("accountOwnerUserId (#607 an account's exits stay open while not admitt
       accountOwnerUserId({ state: "unauthenticated" }, { localFallbackOwnerUserId: "demo-user" }),
     ).toBe("demo-user");
   });
+});
+
+describe("re-acceptance gate (#614)", () => {
+  const updatedTerms: LegalDocument = {
+    key: "terms_of_service",
+    title: "Terms of Service",
+    version: "0.2",
+    effectiveDate: "2026-11-01",
+    path: "docs/legal/terms-of-service.md",
+    reacceptance: { changes: ["Fair-use limits are now stated in Eve turns."] },
+  };
+  const deniedDecision: AccessDecision = { admitted: false, status: "denied", profile: null };
+
+  it("puts an admitted account that owes a flagged version behind the gate", async () => {
+    const state = await resolveAccessState(
+      USER,
+      vi.fn().mockResolvedValue(admittedDecision),
+      vi.fn().mockResolvedValue([updatedTerms]),
+    );
+
+    expect(state).toMatchObject({ state: "reacceptance", documents: [updatedTerms] });
+    // Gated state never hands out an owner id for product data.
+    expect(state).not.toHaveProperty("ownerUserId");
+  });
+
+  it.each([
+    ["pending", pendingDecision],
+    ["blocked, such as Lapsed or a guest without a live household", deniedDecision],
+  ])("gates a %s account too", async (_, decision) => {
+    const state = await resolveAccessState(
+      USER,
+      vi.fn().mockResolvedValue(decision),
+      vi.fn().mockResolvedValue([updatedTerms]),
+    );
+
+    expect(state.state).toBe("reacceptance");
+  });
+
+  it("leaves an account that owes nothing exactly as admission decided", async () => {
+    const readOutstanding = vi.fn().mockResolvedValue([]);
+    const state = await resolveAccessState(
+      USER,
+      vi.fn().mockResolvedValue(admittedDecision),
+      readOutstanding,
+    );
+
+    expect(state.state).toBe("admitted");
+    expect(readOutstanding).toHaveBeenCalledWith("user-1");
+  });
+
+  it("routes the gated account to the gate, never to a local fallback owner", () => {
+    const state: AccessState = {
+      state: "reacceptance",
+      user: USER,
+      decision: admittedDecision,
+      documents: [updatedTerms],
+    };
+
+    expect(decideAccessRoute(state, { localFallbackOwnerUserId: "demo-user" })).toEqual({
+      type: "redirect",
+      to: REACCEPTANCE_PATH,
+    });
+    expect(() => ownerForActionOrThrow(decideAccessRoute(state))).toThrow(/updated terms/i);
+  });
+
+  it.each([
+    ["admitted", admittedDecision],
+    ["not admitted", pendingDecision],
+  ])(
+    "keeps an %s account's exits open at the gate, so refusing never blocks export or deletion",
+    (_, decision) => {
+      expect(
+        accountOwnerUserId({
+          state: "reacceptance",
+          user: USER,
+          decision,
+          documents: [updatedTerms],
+        }),
+      ).toBe("user-1");
+    },
+  );
 });

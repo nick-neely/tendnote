@@ -4,6 +4,7 @@ import { resolveBetterAuthBaseUrl } from "@tendnote/auth";
 import { getStripeCustomerId, recordStripeCustomer } from "@tendnote/db/queries/stripe-customers";
 import { redirect } from "next/navigation";
 import Stripe from "stripe";
+import { REACCEPTANCE_PATH } from "@/lib/access/access-state";
 import { getCurrentAccess } from "@/lib/access/current-access";
 import {
   openCheckout,
@@ -20,6 +21,7 @@ import { isCheckoutOpen } from "@/lib/billing/checkout-availability";
 export async function startCheckoutAction(formData: FormData): Promise<void> {
   const access = await getCurrentAccess();
   if (access.state === "unauthenticated") redirect("/sign-in");
+  if (access.state === "reacceptance") redirect(REACCEPTANCE_PATH);
   if (access.state === "admitted") redirect("/");
 
   const interval = parseBillingInterval(formData.get("interval"));

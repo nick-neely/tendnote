@@ -39,6 +39,7 @@ describe("semantic retrieval product-route boundaries", () => {
     // but carry no semantic-search route.
     expect(pageRoutes).toEqual([
       "/",
+      "accept-terms",
       "account",
       "account/about-you",
       "account/about-you/import",

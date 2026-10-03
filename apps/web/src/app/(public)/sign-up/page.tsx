@@ -4,9 +4,10 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { CredentialsForm } from "@/components/auth/credentials-form";
+import { REACCEPTANCE_PATH } from "@/lib/access/access-state";
 import { getCurrentAccess } from "@/lib/access/current-access";
 import { githubEnvFromProcess, isGithubConfigured } from "@/lib/auth/social";
-import { REPOSITORY_URL } from "@/lib/public-links";
+import { legalDocumentUrl } from "@/lib/public-links";
 
 /**
  * The documents a hosted account accepts at creation (#613). A self-hosted
@@ -14,20 +15,21 @@ import { REPOSITORY_URL } from "@/lib/public-links";
  */
 function hostedClickwrapDocuments() {
   if (parseAdmissionPolicy(process.env).mode !== "hosted") return undefined;
-  // Link the text as deployed, which is the version being recorded, rather
-  // than whatever a later commit on main says.
-  const ref = process.env.VERCEL_GIT_COMMIT_SHA || "main";
   return CURRENT_LEGAL_DOCUMENTS.map((doc) => ({
     key: doc.key,
     title: doc.title,
     version: doc.version,
-    href: `${REPOSITORY_URL}/blob/${ref}/${doc.path}`,
+    href: legalDocumentUrl(doc),
   }));
 }
 
 export default async function SignUpPage() {
   if (process.env.NODE_ENV !== "test") await connection();
   const access = await getCurrentAccess();
+
+  if (access.state === "reacceptance") {
+    redirect(REACCEPTANCE_PATH);
+  }
 
   if (access.state === "admitted") {
     redirect("/");

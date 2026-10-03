@@ -224,6 +224,10 @@ _Avoid_: Cancelled subscription, suspended user, expired trial, deleted account
 The stored fact that a hosted account accepted a specific version of a Tendnote legal document. It holds the account, the document, the version, and the time of acceptance, and nothing else.
 _Avoid_: Consent log, signature, terms flag, audit entry, IP record
 
+**Re-acceptance Gate**:
+The screen that holds a signed-in hosted account, admitted or not, in front of the app until it accepts a legal document version the owner flagged for re-acceptance. It shows what changed, and it never blocks export or deletion.
+_Avoid_: Terms wall, consent modal, forced update, terms lockout
+
 **Hosted Obligations Register**:
 The planning table that maps each hosted service commitment to the mechanism enforcing it, its current status, and the route by which it is reviewed. It is a planning artifact, not published policy text.
 _Avoid_: Compliance matrix, privacy policy, control catalog, risk register

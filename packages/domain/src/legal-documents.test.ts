@@ -5,6 +5,8 @@ import {
   CURRENT_LEGAL_DOCUMENTS,
   clickwrapAcceptance,
   isCurrentClickwrapAcceptance,
+  type LegalDocument,
+  outstandingReacceptance,
 } from "./legal-documents";
 
 const repoRoot = join(import.meta.dirname, "../../..");
@@ -45,5 +47,53 @@ describe("clickwrap acceptance", () => {
 
   it.each([undefined, null, "yes", true, { eligible: true }])("refuses %j", (input) => {
     expect(isCurrentClickwrapAcceptance(input)).toBe(false);
+  });
+});
+
+describe("re-acceptance", () => {
+  const terms: LegalDocument = {
+    key: "terms_of_service",
+    title: "Terms of Service",
+    version: "0.2",
+    effectiveDate: "2026-11-01",
+    path: "docs/legal/terms-of-service.md",
+    reacceptance: { changes: ["Fair-use limits are now stated in Eve turns."] },
+  };
+  const privacy: LegalDocument = {
+    key: "privacy_policy",
+    title: "Privacy Policy",
+    version: "0.2",
+    effectiveDate: "2026-11-01",
+    path: "docs/legal/privacy-policy.md",
+  };
+
+  it("owes a flagged version the account has not accepted", () => {
+    expect(
+      outstandingReacceptance(
+        [{ documentKey: "terms_of_service", version: "0.1" }],
+        [terms, privacy],
+      ),
+    ).toEqual([terms]);
+  });
+
+  it("owes a flagged version to an account with no Acceptance Records at all", () => {
+    expect(outstandingReacceptance([], [terms, privacy])).toEqual([terms]);
+  });
+
+  it("owes nothing once the flagged version is accepted", () => {
+    expect(
+      outstandingReacceptance(
+        [{ documentKey: "terms_of_service", version: "0.2" }],
+        [terms, privacy],
+      ),
+    ).toEqual([]);
+  });
+
+  it("never gates on an unflagged version, accepted or not", () => {
+    expect(outstandingReacceptance([], [privacy])).toEqual([]);
+  });
+
+  it("does not flag any launch version", () => {
+    expect(CURRENT_LEGAL_DOCUMENTS.filter((doc) => doc.reacceptance)).toEqual([]);
   });
 });

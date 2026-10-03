@@ -3,7 +3,6 @@ import {
   ownerHasExportableData,
 } from "@tendnote/db/queries/owner-data-export";
 import { getStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
-import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { DeleteAccountButton } from "@/components/account/delete-account-button";
 import { OwnerDataExportSection } from "@/components/account/owner-data-export-section";
@@ -12,7 +11,7 @@ import { SignOutButton } from "@/components/auth/sign-out-button";
 import { SubscribeForm } from "@/components/billing/subscribe-form";
 import { ClockIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
-import { getCurrentAccess } from "@/lib/access/current-access";
+import { requirePendingAccess } from "@/lib/access/pending-access";
 import { pendingAreaView } from "@/lib/access/pending-area";
 import { isCheckoutOpen } from "@/lib/billing/checkout-availability";
 
@@ -35,15 +34,7 @@ async function readPendingAreaFacts(user: { id: string; email: string }) {
  */
 export default async function PendingPage() {
   if (process.env.NODE_ENV !== "test") await connection();
-  const access = await getCurrentAccess();
-
-  if (access.state === "unauthenticated") {
-    redirect("/sign-in");
-  }
-
-  if (access.state === "admitted") {
-    redirect("/");
-  }
+  const access = await requirePendingAccess();
 
   const { user } = access;
   const initial = (user.name || user.email).trim().charAt(0).toUpperCase() || "?";

@@ -1,3 +1,4 @@
+import { listOutstandingReacceptance } from "@tendnote/db/queries/acceptance-records";
 import { checkAccess, grantAccess } from "@tendnote/db/queries/access-profiles";
 import { listAccountDeletionAdmissionBlocks } from "@tendnote/db/queries/account-deletion";
 import { getEveSessionOwnerUserId } from "@tendnote/db/queries/eve-session-owners";
@@ -22,6 +23,7 @@ const hostedSessionAuth = createTendnoteAdmissionAuth({
     listAdmissionBlocks: listAccountDeletionAdmissionBlocks,
   },
   getSession: (headers) => getAgentAuth().api.getSession({ headers }),
+  owesReacceptance: async (userId) => (await listOutstandingReacceptance({ userId })).length > 0,
   checkIngressBudget: (userId) =>
     getAgentRateLimiter().check({ subject: userId, costCategory: "eve-ingress" }),
 });
