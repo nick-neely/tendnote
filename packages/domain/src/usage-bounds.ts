@@ -13,8 +13,11 @@ import { usageLedgerDay } from "./usage-ledger";
  */
 export type Plan = {
   allowance: {
-    /** Interactive Eve: new turns pause at the Account Ceiling. */
-    interactive: { accountCeilingUsd: number };
+    /**
+     * Interactive Eve: from the Fair-Use Budget, turns run on the Fallback
+     * Model; at the Account Ceiling, new turns pause.
+     */
+    interactive: { fairUseBudgetUsd: number; accountCeilingUsd: number };
   };
 };
 
@@ -24,7 +27,7 @@ export type Plan = {
  * promise, so the decision changes first.
  */
 export const HOSTED_PLAN = {
-  allowance: { interactive: { accountCeilingUsd: 12 } },
+  allowance: { interactive: { fairUseBudgetUsd: 10.5, accountCeilingUsd: 12 } },
 } as const satisfies Plan;
 
 const MICRO_USD_PER_USD = 1_000_000;
@@ -110,18 +113,34 @@ export function usageNotice(restrictions: readonly UsageRestriction[]): UsageNot
 }
 
 /**
+ * Whether interactive Eve's spend this Usage Period has reached the plan's
+ * Fair-Use Budget, so its turns run on the Fallback Model. It is the spend
+ * alone that decides: a service-wide restriction never changes the model.
+ */
+export function overFairUseBudget(input: { plan: Plan; spentMicroUsd: number }): boolean {
+  return (
+    input.spentMicroUsd >= input.plan.allowance.interactive.fairUseBudgetUsd * MICRO_USD_PER_USD
+  );
+}
+
+/**
  * Interactive Eve's notice from what the account has spent this Usage Period.
- * At the plan's Account Ceiling, new turns pause until the period resets.
+ * From the plan's Fair-Use Budget, turns are reduced to the Fallback Model; at
+ * its Account Ceiling, new turns pause. Both last until the period resets.
  */
 export function interactiveUsageNotice(input: {
   plan: Plan;
   period: UsagePeriod;
   spentMicroUsd: number;
 }): UsageNotice {
-  const ceilingMicroUsd = input.plan.allowance.interactive.accountCeilingUsd * MICRO_USD_PER_USD;
-  const restrictions: UsageRestriction[] =
-    input.spentMicroUsd >= ceilingMicroUsd
-      ? [{ state: "paused", recovery: { kind: "resets_on", date: input.period.resetsOn } }]
-      : [];
+  const { accountCeilingUsd } = input.plan.allowance.interactive;
+  const recovery: RecoveryCondition = { kind: "resets_on", date: input.period.resetsOn };
+  const restrictions: UsageRestriction[] = [];
+  if (overFairUseBudget(input)) {
+    restrictions.push({ state: "reduced", recovery });
+  }
+  if (input.spentMicroUsd >= accountCeilingUsd * MICRO_USD_PER_USD) {
+    restrictions.push({ state: "paused", recovery });
+  }
   return usageNotice(restrictions);
 }

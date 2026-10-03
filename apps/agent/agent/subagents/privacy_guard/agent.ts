@@ -1,6 +1,7 @@
 import { hostedModel } from "@tendnote/db/queries/model-calls";
 import { defineAgent } from "eve";
 import { eveSessionAccount } from "../../lib/eve-session-account";
+import { interactiveFallbackModelId } from "../../lib/fallback-model";
 
 export default defineAgent({
   description:
@@ -12,5 +13,6 @@ export default defineAgent({
       "google/gemini-3.7-flash",
     costCategory: "interactive",
     account: eveSessionAccount,
+    fallbackModelId: interactiveFallbackModelId(),
   }),
 });

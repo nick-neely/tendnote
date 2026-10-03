@@ -6,6 +6,7 @@ import {
   wrapEmbeddingModel,
   wrapLanguageModel,
 } from "ai";
+import { readEveOverFairUseBudget } from "./usage-bounds";
 import { type ModelUsage, recordModelUsage } from "./usage-ledger";
 
 export type { CostCategory };
@@ -24,6 +25,15 @@ type MeteredAccount = string | (() => string | null);
 
 type HostedModelInput = { modelId: string; costCategory: CostCategory; account: MeteredAccount };
 
+/**
+ * An interactive model may name a Fallback Model: the cheaper model its calls
+ * run on while the account is over its Fair-Use Budget. Only interactive Eve
+ * has one (spec #591).
+ */
+type HostedLanguageModelInput =
+  | (HostedModelInput & { costCategory: "interactive"; fallbackModelId?: string })
+  | (HostedModelInput & { costCategory: Exclude<CostCategory, "interactive"> });
+
 type StreamPart =
   Awaited<
     ReturnType<NonNullable<LanguageModelMiddleware["wrapStream"]>>
@@ -36,6 +46,11 @@ type UsageLedgerWriter = (usage: ModelUsage) => Promise<void>;
 type EntryPointDependencies<Provider> = {
   provider?: Provider;
   recordUsage?: UsageLedgerWriter;
+};
+
+type LanguageEntryPointDependencies = EntryPointDependencies<HostedModelProvider> & {
+  /** Whether an account is over its interactive Fair-Use Budget, which picks the Fallback Model. */
+  overFairUseBudget?: (accountId: string) => Promise<boolean>;
 };
 
 /**
@@ -150,16 +165,71 @@ function startMeter(input: HostedModelInput, recordUsage: UsageLedgerWriter) {
  * model here. The returned model sends the gateway's zero-data-retention and
  * no-training flags, restricts routing to the one pinned provider, tags the
  * call with its cost category, and meters it, with the cost the gateway
- * reports, into the Usage Ledger once it finishes.
+ * reports, into the Usage Ledger once it finishes. A model with a Fallback
+ * Model also chooses, per call, which of the two the call runs on.
  * `scripts/model-call-entry-point.test.ts` fails if any other module builds a
  * model or calls one without this entry point.
  */
 export function hostedModel(
-  input: HostedModelInput,
+  input: HostedLanguageModelInput,
   {
     provider = gateway,
     recordUsage = recordModelUsage,
-  }: EntryPointDependencies<HostedModelProvider> = {},
+    overFairUseBudget = (accountId) => readEveOverFairUseBudget({ userId: accountId }),
+  }: LanguageEntryPointDependencies = {},
+) {
+  const production = meteredModel(input, { provider, recordUsage });
+  if (input.costCategory !== "interactive" || !input.fallbackModelId) return production;
+
+  const fallback = meteredModel(
+    { ...input, modelId: input.fallbackModelId },
+    {
+      provider,
+      recordUsage,
+    },
+  );
+  const modelForCall = async () =>
+    (await runsOnFallback(input, overFairUseBudget)) ? fallback : production;
+
+  // Each delegate applies its own pinning and metering, so the Fallback Model's
+  // calls are routed to its own provider and metered under its own id.
+  return wrapLanguageModel({
+    model: production,
+    middleware: {
+      wrapGenerate: async ({ params }) => (await modelForCall()).doGenerate(params),
+      wrapStream: async ({ params }) => (await modelForCall()).doStream(params),
+    },
+  });
+}
+
+/**
+ * Whether this call runs on the Fallback Model: its account is over its
+ * interactive Fair-Use Budget, read when the call starts so a turn switches at
+ * the step that crosses it. Past the Account Ceiling it still is, so a turn
+ * already running there finishes on the cheaper model. When the read fails the
+ * call stays on the production model: the Fallback Model is never silent, and
+ * Eve's door still enforces the ceiling on its own read.
+ */
+async function runsOnFallback(
+  input: HostedModelInput,
+  overFairUseBudget: (accountId: string) => Promise<boolean>,
+) {
+  const accountId = resolveAccount(input.account);
+  if (!accountId) return false;
+  try {
+    return await overFairUseBudget(accountId);
+  } catch {
+    console.warn("usage: could not read usage to choose the Fallback Model", {
+      modelId: input.modelId,
+    });
+    return false;
+  }
+}
+
+/** One pinned, metered model: the production model or the Fallback Model. */
+function meteredModel(
+  input: HostedModelInput,
+  { provider, recordUsage }: Required<EntryPointDependencies<HostedModelProvider>>,
 ) {
   const pinned = pinGatewayOptions(input);
   return wrapLanguageModel({

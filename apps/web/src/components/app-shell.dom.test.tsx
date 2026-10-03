@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+
+import type { UsageNotice } from "@tendnote/domain/usage-bounds";
 import { Activity } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, userEvent, waitFor, within } from "@/test/dom";
@@ -90,7 +92,7 @@ beforeEach(() => {
   sessionStorage.clear();
 });
 
-function mobileTodayDestination() {
+function mobileTodayDestination(usage?: UsageNotice) {
   const view = {
     items: [],
     candidateFingerprint: "",
@@ -110,6 +112,7 @@ function mobileTodayDestination() {
       todayInitial={view}
       todayLocalDate="2026-08-14"
       todayTimeZone="America/Chicago"
+      usage={usage}
     />
   );
 }
@@ -705,6 +708,25 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(screen.getByRole("button", { name: "Open the assistant" })).toBeDefined();
     expect(screen.getByRole("region", { name: "Today shortlist" })).toBeDefined();
     expect(screen.getByText("Nothing needs your attention today.")).toBeDefined();
+  });
+
+  it("says on Today that Eve is on a lighter model over the Fair-Use Budget", () => {
+    const { rerender } = render(
+      <AppShell ownerUserId="owner-1">{mobileTodayDestination({ state: "normal" })}</AppShell>,
+    );
+    expect(screen.queryByText("Eve is using a lighter model.")).toBeNull();
+
+    rerender(
+      <AppShell ownerUserId="owner-1">
+        {mobileTodayDestination({
+          state: "reduced",
+          recovery: { kind: "resets_on", date: "2026-11-15" },
+        })}
+      </AppShell>,
+    );
+    expect(screen.getByText("Eve is using a lighter model.")).toBeDefined();
+    expect(screen.getByText(/Resets on November 15\./)).toBeDefined();
+    expect(screen.getByRole("textbox", { name: "Ask the assistant anything" })).toBeDefined();
   });
 
   it("keeps the compact Today Eve composer usable before opening the focused flow", async () => {

@@ -6,6 +6,7 @@ import type { UsageNotice } from "@tendnote/domain/usage-bounds";
 import dynamic from "next/dynamic";
 import { useRef, useState } from "react";
 import { appDestination } from "@/components/app-destinations";
+import { AssistantUsageNotice } from "@/components/assistant-panel-chrome";
 import { CornerDownLeftIcon } from "@/components/icons";
 import { TodayShortlist, type TodayShortlistHandlers } from "@/components/today-shortlist";
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,7 @@ export function MobileTodayDestination({
         todayInitial={todayInitial}
         todayLocalDate={todayLocalDate}
         todayTimeZone={todayTimeZone}
+        usage={usage}
       />
       {eveOpen ? (
         <EveFlow
@@ -94,6 +96,7 @@ function MobileTodayHome({
   todayInitial,
   todayLocalDate,
   todayTimeZone,
+  usage,
 }: {
   eveDraftRevision: number;
   onOpenEve: (trigger: HTMLElement) => void;
@@ -102,10 +105,16 @@ function MobileTodayHome({
   todayInitial: TodayShortlistResponse;
   todayLocalDate: string;
   todayTimeZone: string;
+  usage?: UsageNotice;
 }) {
   return (
     <div className="min-h-dvh pb-[calc(6.5rem+env(safe-area-inset-bottom))] lg:hidden">
-      <TodayEveComposer key={eveDraftRevision} onOpenEve={onOpenEve} ownerUserId={ownerUserId} />
+      <TodayEveComposer
+        key={eveDraftRevision}
+        onOpenEve={onOpenEve}
+        ownerUserId={ownerUserId}
+        usage={usage}
+      />
       <TodayShortlist
         handlers={todayHandlers}
         initial={todayInitial}
@@ -119,9 +128,12 @@ function MobileTodayHome({
 function TodayEveComposer({
   onOpenEve,
   ownerUserId,
+  usage,
 }: {
   onOpenEve: (trigger: HTMLElement) => void;
   ownerUserId: string;
+  /** Shown under the composer while Eve is reduced or paused, so Today says so too (#626). */
+  usage?: UsageNotice;
 }) {
   const draft = useLocalComposerDraft(ownerUserId, "eve");
   const submitButton = useRef<HTMLButtonElement>(null);
@@ -188,6 +200,11 @@ function TodayEveComposer({
           </Button>
         </span>
       </form>
+      {usage && usage.state !== "normal" ? (
+        <div className="mt-3">
+          <AssistantUsageNotice notice={usage} />
+        </div>
+      ) : null}
     </div>
   );
 }

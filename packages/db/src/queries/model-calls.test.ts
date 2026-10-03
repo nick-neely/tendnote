@@ -389,3 +389,115 @@ describe("the Usage Ledger", () => {
     ]);
   });
 });
+
+describe("the Fallback Model", () => {
+  function interactiveEve(
+    overFairUseBudget: (accountId: string) => Promise<boolean>,
+    account: () => string | null = () => "user-1",
+  ) {
+    const fake = fakeGatewayProvider();
+    const ledger = fakeUsageLedger();
+    const model = hostedModel(
+      {
+        modelId: "google/gemini-3.7-flash",
+        costCategory: "interactive",
+        account,
+        fallbackModelId: "openai/gpt-6-luna",
+      },
+      { provider: fake.provider, recordUsage: ledger.recordUsage, overFairUseBudget },
+    );
+    /** The model each call actually reached, in order. */
+    const reached = () =>
+      fake.models.flatMap((m) =>
+        Array.from({ length: m.doGenerateCalls.length + m.doStreamCalls.length }, () => m.modelId),
+      );
+    return { fake, ledger, model, reached };
+  }
+
+  it("runs on the production model while the account is within its Fair-Use Budget", async () => {
+    const eve = interactiveEve(async () => false);
+
+    await generateText({ model: eve.model, prompt: "hi" });
+
+    expect(eve.reached()).toEqual(["google/gemini-3.7-flash"]);
+  });
+
+  it("switches to the Fallback Model, pinned and metered as itself, over the budget", async () => {
+    const reads: string[] = [];
+    const eve = interactiveEve(async (accountId) => {
+      reads.push(accountId);
+      return true;
+    });
+
+    await generateText({ model: eve.model, prompt: "hi" });
+
+    expect(reads).toEqual(["user-1"]);
+    expect(eve.reached()).toEqual(["openai/gpt-6-luna"]);
+    expect(eve.fake.sentProviderOptions()).toEqual([
+      {
+        gateway: {
+          zeroDataRetention: true,
+          disallowPromptTraining: true,
+          only: ["openai"],
+          tags: ["cost:interactive"],
+        },
+      },
+    ]);
+    expect(eve.ledger.entries).toEqual([
+      expect.objectContaining({ accountId: "user-1", modelId: "openai/gpt-6-luna" }),
+    ]);
+  });
+
+  it("decides per call, so a streamed turn switches the moment the budget is crossed", async () => {
+    let over = false;
+    const eve = interactiveEve(async () => over);
+
+    await streamText({ model: eve.model, prompt: "hi" }).consumeStream();
+    over = true;
+    await streamText({ model: eve.model, prompt: "hi" }).consumeStream();
+
+    expect(eve.reached()).toEqual(["google/gemini-3.7-flash", "openai/gpt-6-luna"]);
+  });
+
+  it("stays on the production model when the usage read fails, and says so", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const eve = interactiveEve(async () => {
+      throw new Error("database unavailable");
+    });
+
+    const { text } = await generateText({ model: eve.model, prompt: "hi" });
+
+    expect(text).toBe("ok");
+    expect(eve.reached()).toEqual(["google/gemini-3.7-flash"]);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/Fallback Model/), {
+      modelId: "google/gemini-3.7-flash",
+    });
+    warn.mockRestore();
+  });
+
+  it("does not read usage for a call with no account", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const read = vi.fn(async () => true);
+    const eve = interactiveEve(read, () => null);
+
+    await generateText({ model: eve.model, prompt: "hi" });
+
+    expect(read).not.toHaveBeenCalled();
+    expect(eve.reached()).toEqual(["google/gemini-3.7-flash"]);
+    warn.mockRestore();
+  });
+
+  it("refuses a Fallback Model with no pinned provider", () => {
+    expect(() =>
+      hostedModel(
+        {
+          modelId: "google/gemini-3.7-flash",
+          costCategory: "interactive",
+          account: "user-1",
+          fallbackModelId: "zai/glm-5.3-flash",
+        },
+        { provider: fakeGatewayProvider().provider, recordUsage: ignoreUsage },
+      ),
+    ).toThrow(/No pinned provider for model zai\/glm-5.3-flash/);
+  });
+});

@@ -1,6 +1,7 @@
 import {
   HOSTED_PLAN,
   interactiveUsageNotice,
+  overFairUseBudget,
   type UsageNotice,
   type UsagePeriod,
   usagePeriod,
@@ -35,22 +36,19 @@ export async function anchorUsagePeriod(input: { userId: string; startedAt: Date
 }
 
 /**
- * What interactive Eve shows this account now: normal, or paused at the plan's
- * Account Ceiling until its Usage Period resets. An account with no
- * subscription anchor has no plan, so no plan-derived ceiling applies to it;
- * that includes every self-hosted account.
+ * What the account has spent on interactive Eve this Usage Period, or `null`
+ * for an account with no subscription anchor: it has no plan, so no
+ * plan-derived budget or ceiling applies to it, and that includes every
+ * self-hosted account.
  */
-export async function readEveUsageNotice(input: {
-  userId: string;
-  now?: Date;
-}): Promise<UsageNotice> {
+async function readInteractiveSpend(input: { userId: string; now?: Date }) {
   const db = getDb();
   const [profile] = await db
     .select({ anchor: accessProfiles.usagePeriodAnchor })
     .from(accessProfiles)
     .where(eq(accessProfiles.userId, input.userId))
     .limit(1);
-  if (!profile?.anchor) return { state: "normal" };
+  if (!profile?.anchor) return null;
 
   const period = usagePeriod(profile.anchor, input.now ?? new Date());
   const [spent] = await db
@@ -64,10 +62,28 @@ export async function readEveUsageNotice(input: {
         lt(usageLedger.day, period.resetsOn),
       ),
     );
+  return { period, spentMicroUsd: Number(spent?.microUsd ?? 0) };
+}
 
-  return interactiveUsageNotice({
-    plan: HOSTED_PLAN,
-    period,
-    spentMicroUsd: Number(spent?.microUsd ?? 0),
-  });
+/**
+ * What interactive Eve shows this account now: normal; reduced to the Fallback
+ * Model from the plan's Fair-Use Budget; or paused at its Account Ceiling until
+ * its Usage Period resets.
+ */
+export async function readEveUsageNotice(input: {
+  userId: string;
+  now?: Date;
+}): Promise<UsageNotice> {
+  const spend = await readInteractiveSpend(input);
+  if (!spend) return { state: "normal" };
+  return interactiveUsageNotice({ plan: HOSTED_PLAN, ...spend });
+}
+
+/** Whether the account's interactive turns run on the Fallback Model now. */
+export async function readEveOverFairUseBudget(input: {
+  userId: string;
+  now?: Date;
+}): Promise<boolean> {
+  const spend = await readInteractiveSpend(input);
+  return spend !== null && overFairUseBudget({ plan: HOSTED_PLAN, ...spend });
 }

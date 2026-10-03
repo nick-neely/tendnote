@@ -8,6 +8,7 @@ import { generateText } from "ai";
 import { defineState, type SessionAuthContext, type SessionParent } from "eve/context";
 import { defineHook } from "eve/hooks";
 import { resolveSessionEveMode } from "../lib/eve-modes";
+import { interactiveFallbackModelId } from "../lib/fallback-model";
 
 /**
  * Keeps the Assistant's conversation list current from inside the session.
@@ -56,6 +57,8 @@ const USER_MESSAGE_TITLE_CHARS = 600;
 
 /** Cheap, fast, and already the agent's own family. Verified present in the Gateway catalogue. */
 const DEFAULT_TITLE_MODEL = "google/gemini-3.7-flash";
+/** Resolved at load, so a misconfigured Fallback Model fails at startup like Eve's own. */
+const TITLE_FALLBACK_MODEL = interactiveFallbackModelId();
 
 const TITLE_SYSTEM_PROMPT = [
   "You name a conversation between a person and their personal relationship notebook.",
@@ -132,7 +135,12 @@ export async function generateConversationTitle(input: {
 }): Promise<string> {
   const modelId = process.env.TENDNOTE_ASSISTANT_TITLE_MODEL ?? DEFAULT_TITLE_MODEL;
   const { text } = await generateText({
-    model: hostedModel({ modelId, costCategory: "interactive", account: input.ownerUserId }),
+    model: hostedModel({
+      modelId,
+      costCategory: "interactive",
+      account: input.ownerUserId,
+      fallbackModelId: TITLE_FALLBACK_MODEL,
+    }),
     system: TITLE_SYSTEM_PROMPT,
     prompt: [
       "Person:",

@@ -1,6 +1,7 @@
 import { hostedModel } from "@tendnote/db/queries/model-calls";
 import { defineAgent } from "eve";
 import { eveSessionAccount } from "./lib/eve-session-account";
+import { interactiveFallbackModelId } from "./lib/fallback-model";
 
 export default defineAgent({
   // Default follows the Vercel AI Gateway model id format. Override with
@@ -9,10 +10,13 @@ export default defineAgent({
   // reaches the Gemini Developer API. Eve 0.47.7 compiles a gateway instance's id
   // as `gateway/<model id>`, which has no catalog context window; the pinned Eve
   // patch keeps the gateway model id, matching how Eve's runtime resolves it.
+  // Over the account's Fair-Use Budget, each call runs on the Fallback Model
+  // instead (TENDNOTE_FALLBACK_MODEL), which the composer and Today announce.
   model: hostedModel({
     modelId: process.env.TENDNOTE_AGENT_MODEL ?? "google/gemini-3.7-flash",
     costCategory: "interactive",
     account: eveSessionAccount,
+    fallbackModelId: interactiveFallbackModelId(),
   }),
   /**
    * Thought summaries, so the Assistant can show a thinking disclosure.
