@@ -9,8 +9,8 @@ import type {
 } from "@tendnote/db/queries/owner-data-export";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  admittedOwnerOrNullSpy,
-  requireAdmittedOwnerForActionSpy,
+  accountOwnerOrNullSpy,
+  requireAccountOwnerForActionSpy,
 } from "@/test/action-adapter-mocks";
 
 type OwnerDataExportModule = typeof import("@tendnote/db/queries/owner-data-export");
@@ -850,8 +850,8 @@ function assetsContext(): OwnerDataExportAssetsContext {
 describe("owner data export Account journey", () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: NOW });
-    requireAdmittedOwnerForActionSpy.mockReset().mockResolvedValue(OWNER);
-    admittedOwnerOrNullSpy.mockReset().mockResolvedValue(OWNER);
+    requireAccountOwnerForActionSpy.mockReset().mockResolvedValue(OWNER);
+    accountOwnerOrNullSpy.mockReset().mockResolvedValue(OWNER);
     const actual = requireState(state.actual, "Owner export module");
     const jobs = actual.createInMemoryOwnerDataExportJobStore();
     const artifacts = actual.createInMemoryOwnerDataExportArtifactStore(jobs);
@@ -897,7 +897,7 @@ describe("owner data export Account journey", () => {
   it("composes Account request, queue delivery/recovery, and owner-authenticated download", async () => {
     const requested = await requestOwnerDataExportAction();
     expect(requested).toMatchObject({ ok: true, view: { ownerUserId: OWNER, status: "pending" } });
-    expect(requireAdmittedOwnerForActionSpy).toHaveBeenCalledOnce();
+    expect(requireAccountOwnerForActionSpy).toHaveBeenCalledOnce();
     expect(state.send).toHaveBeenCalledOnce();
     const published = state.messages[0];
     if (!published) throw new Error("Expected a published owner export pointer.");
@@ -971,7 +971,7 @@ describe("owner data export Account journey", () => {
     });
 
     const jobId = (requested as { ok: true; view: { id: string } }).view.id;
-    admittedOwnerOrNullSpy.mockResolvedValue(OWNER);
+    accountOwnerOrNullSpy.mockResolvedValue(OWNER);
     const downloaded = await GET(new Request("http://localhost"), {
       params: Promise.resolve({ jobId }),
     });
@@ -1113,11 +1113,11 @@ describe("owner data export Account journey", () => {
       ),
     ).toEqual(new Uint8Array([1, 2, 3, 4]));
 
-    admittedOwnerOrNullSpy.mockResolvedValue(null);
+    accountOwnerOrNullSpy.mockResolvedValue(null);
     const refusedUnauthenticated = await GET(new Request("http://localhost"), {
       params: Promise.resolve({ jobId }),
     });
-    admittedOwnerOrNullSpy.mockResolvedValue(OTHER_OWNER);
+    accountOwnerOrNullSpy.mockResolvedValue(OTHER_OWNER);
     const refusedOtherOwner = await GET(new Request("http://localhost"), {
       params: Promise.resolve({ jobId }),
     });
@@ -1125,7 +1125,7 @@ describe("owner data export Account journey", () => {
     expect(refusedOtherOwner.status).toBe(404);
     expect(await refusedOtherOwner.text()).toBe(await refusedUnauthenticated.text());
 
-    admittedOwnerOrNullSpy.mockResolvedValue(OWNER);
+    accountOwnerOrNullSpy.mockResolvedValue(OWNER);
     vi.setSystemTime(EXPIRES);
     const refusedAtExpiry = await GET(new Request("http://localhost"), {
       params: Promise.resolve({ jobId }),

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import { ownerDataExportArtifacts, ownerDataExportJobs } from "../../schema";
 import type {
@@ -227,7 +227,9 @@ export function createDrizzleOwnerDataExportArtifactStore(): OwnerDataExportArti
     async put(input) {
       const now = new Date();
       // The row lock serializes claim replacement/completion with the upsert.
-      // No bytes are written when this worker's claim is already stale.
+      // No bytes are written when this worker's claim is already stale. Dates
+      // go in as ISO strings: postgres-js cannot bind a raw Date in a `sql`
+      // template, which failed every export.
       const written = await getDb().execute(sql<{ job_id: string }>`
         with active_claim as materialized (
           select ${ownerDataExportJobs.id}
@@ -249,13 +251,13 @@ export function createDrizzleOwnerDataExportArtifactStore(): OwnerDataExportArti
           ${input.jobId},
           ${input.ownerUserId},
           ${Buffer.from(input.bytes)},
-          ${input.expiresAt}
+          ${input.expiresAt.toISOString()}::timestamptz
         from active_claim
         on conflict ("job_id") do update set
           "owner_user_id" = excluded."owner_user_id",
           "bytes" = excluded."bytes",
           "expires_at" = excluded."expires_at",
-          "updated_at" = ${now}
+          "updated_at" = ${now.toISOString()}::timestamptz
         returning "job_id"
       `);
       if (written.length === 0) return null;
@@ -279,7 +281,7 @@ export function createDrizzleOwnerDataExportArtifactStore(): OwnerDataExportArti
             eq(ownerDataExportArtifacts.ownerUserId, input.ownerUserId),
             // Do not reveal whether a mismatched/unknown artifact exists.
             // The expiry predicate keeps the object store itself authoritative.
-            sql`${ownerDataExportArtifacts.expiresAt} > ${now}`,
+            gt(ownerDataExportArtifacts.expiresAt, now),
           ),
         )
         .limit(1);

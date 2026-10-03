@@ -15,8 +15,11 @@ import {
 import { NOTEBOOK_DARK_MODE_CSS, notebookStyles as styles } from "../notebook-styles";
 import type { TransactionalEmailContent } from "../transactional";
 
-/** The sign-in emails Better Auth asks Tendnote to deliver. */
-export type AccountEmailPurpose = "verify-email" | "reset-password";
+/**
+ * The account and sign-in emails: the two Better Auth asks Tendnote to deliver,
+ * and the "you're in" message sent on admission (#607).
+ */
+export type AccountEmailPurpose = "verify-email" | "reset-password" | "admitted";
 
 export type AccountEmailProps = {
   purpose: AccountEmailPurpose;
@@ -49,6 +52,16 @@ const COPY = {
     fallback: "Reset in your browser",
     reason:
       "Someone asked to reset the password for the Tendnote account at this address. If it wasn’t you, you can ignore this email; your password stays the same.",
+  },
+  admitted: {
+    subject: "You’re in: your Tendnote account is ready",
+    preview: "Your payment is confirmed. Tendnote is ready when you are.",
+    heading: "You’re in",
+    body: "Your payment is confirmed and your Tendnote account is ready. Stripe sends your receipt separately.",
+    action: "Open Tendnote",
+    fallback: "Open Tendnote in your browser",
+    reason:
+      "This email address subscribed to Tendnote. If you didn’t, reply to this email and we’ll look into it.",
   },
 } as const satisfies Record<AccountEmailPurpose, Record<string, string>>;
 

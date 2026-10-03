@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  admittedOwnerOrNull,
+  accountOwnerOrNull,
   getJob,
   markExpired,
   markArtifactDeleted,
   getArtifact,
   deleteArtifact,
 } = vi.hoisted(() => ({
-  admittedOwnerOrNull: vi.fn(),
+  accountOwnerOrNull: vi.fn(),
   getJob: vi.fn(),
   markExpired: vi.fn().mockResolvedValue(null),
   markArtifactDeleted: vi.fn().mockResolvedValue(null),
@@ -16,7 +16,7 @@ const {
   deleteArtifact: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@/lib/access/current-access", () => ({ admittedOwnerOrNull }));
+vi.mock("@/lib/access/current-access", () => ({ accountOwnerOrNull }));
 vi.mock("@tendnote/db/queries/owner-data-export", () => ({
   createDrizzleOwnerDataExportJobStore: () => ({
     get: getJob,
@@ -30,7 +30,7 @@ import { GET } from "./route";
 
 describe("owner data export download boundary", () => {
   beforeEach(() => {
-    admittedOwnerOrNull.mockReset();
+    accountOwnerOrNull.mockReset();
     getJob.mockReset();
     markExpired.mockReset().mockResolvedValue(null);
     markArtifactDeleted.mockReset().mockResolvedValue(null);
@@ -39,13 +39,13 @@ describe("owner data export download boundary", () => {
   });
 
   it("returns the same opaque refusal for unauthenticated, unknown, and other-owner artifacts", async () => {
-    admittedOwnerOrNull.mockResolvedValue(null);
+    accountOwnerOrNull.mockResolvedValue(null);
     const unauthenticated = await GET(new Request("http://localhost"), {
       params: Promise.resolve({ jobId: "job-1" }),
     });
     expect(unauthenticated.status).toBe(404);
 
-    admittedOwnerOrNull.mockResolvedValue("owner-2");
+    accountOwnerOrNull.mockResolvedValue("owner-2");
     getJob.mockResolvedValue(null);
     const unknown = await GET(new Request("http://localhost"), {
       params: Promise.resolve({ jobId: "job-1" }),
@@ -56,7 +56,7 @@ describe("owner data export download boundary", () => {
   });
 
   it("rechecks the owner on every successful download and returns a private ZIP", async () => {
-    admittedOwnerOrNull.mockResolvedValue("owner-1");
+    accountOwnerOrNull.mockResolvedValue("owner-1");
     getJob.mockResolvedValue({
       status: "completed",
       artifactExpiresAt: new Date("2999-08-20T12:00:00.000Z"),
@@ -79,7 +79,7 @@ describe("owner data export download boundary", () => {
   });
 
   it("makes expiry opaque, marks it recoverably, and physically deletes the bytes", async () => {
-    admittedOwnerOrNull.mockResolvedValue("owner-1");
+    accountOwnerOrNull.mockResolvedValue("owner-1");
     getJob.mockResolvedValue({
       status: "completed",
       artifactExpiresAt: new Date("2000-08-20T12:00:00.000Z"),
@@ -100,7 +100,7 @@ describe("owner data export download boundary", () => {
   });
 
   it("keeps a pre-expiry missing artifact recoverable instead of falsely expiring it", async () => {
-    admittedOwnerOrNull.mockResolvedValue("owner-1");
+    accountOwnerOrNull.mockResolvedValue("owner-1");
     getJob.mockResolvedValue({
       status: "completed",
       artifactExpiresAt: new Date("2999-08-20T12:00:00.000Z"),

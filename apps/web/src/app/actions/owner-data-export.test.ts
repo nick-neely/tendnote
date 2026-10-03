@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { requireAdmittedOwnerForActionSpy, revalidatePathSpy } from "@/test/action-adapter-mocks";
+import { requireAccountOwnerForActionSpy, revalidatePathSpy } from "@/test/action-adapter-mocks";
 
 const { getLatestOwnerDataExportJob, enqueueAndPublishOwnerDataExportJob } = vi.hoisted(() => ({
   getLatestOwnerDataExportJob: vi.fn(),
@@ -35,7 +35,7 @@ const job = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  requireAdmittedOwnerForActionSpy.mockResolvedValue("owner-1");
+  requireAccountOwnerForActionSpy.mockResolvedValue("owner-1");
   getLatestOwnerDataExportJob.mockResolvedValue(null);
   enqueueAndPublishOwnerDataExportJob.mockResolvedValue({ job });
 });
@@ -58,7 +58,7 @@ describe("requestOwnerDataExportAction", () => {
       ownerUserId: "owner-1",
       idempotencyKey: "owner-data-export:request-after:initial",
     });
-    expect(requireAdmittedOwnerForActionSpy).toHaveBeenCalledTimes(2);
+    expect(requireAccountOwnerForActionSpy).toHaveBeenCalledTimes(2);
     expect(revalidatePathSpy).toHaveBeenCalledWith("/account");
   });
 

@@ -9,6 +9,11 @@ export type StripeWebhookDependencies = {
   findAccountByStripeCustomer: (stripeCustomerId: string) => Promise<string | null>;
   /** Grant the account the Paid Access source. Must be idempotent. */
   grantPaidAccess: (userId: string) => Promise<unknown>;
+  /**
+   * Send the content-free "you're in" email once admission is recorded (#607).
+   * Called again on a redelivery, so it must key the send on the invoice.
+   */
+  announceAdmission: (input: { userId: string; invoiceId: string }) => Promise<unknown>;
   log?: (message: string) => void;
 };
 
@@ -18,18 +23,21 @@ function stripeId(value: string | { id: string } | null): string | null {
 }
 
 /**
- * The Stripe customer whose account an event admits, or `null` when the event
+ * The invoice and Stripe customer whose account an event admits, or `null` when the event
  * is not admission evidence. Only the paid first invoice of a subscription is
  * (ADR 0245): a Checkout redirect, a completed session, an `active` subscription
  * whose invoice is unpaid, a created customer, and a later renewal all admit
  * nobody.
  */
-function firstPaidInvoiceCustomer(event: Stripe.Event): string | null {
+function firstPaidInvoice(
+  event: Stripe.Event,
+): { invoiceId: string; stripeCustomerId: string } | null {
   if (event.type !== "invoice.paid") return null;
   const invoice = event.data.object;
   if (invoice.status !== "paid" || invoice.billing_reason !== "subscription_create") return null;
-  if (!invoice.parent?.subscription_details) return null;
-  return stripeId(invoice.customer);
+  if (!invoice.parent?.subscription_details || !invoice.id) return null;
+  const stripeCustomerId = stripeId(invoice.customer);
+  return stripeCustomerId ? { invoiceId: invoice.id, stripeCustomerId } : null;
 }
 
 /**
@@ -38,7 +46,8 @@ function firstPaidInvoiceCustomer(event: Stripe.Event): string | null {
  * Access. The projection only ever grants the one idempotent source, so a
  * duplicate delivery is a no-op, and the customer was recorded before Checkout
  * opened, so an invoice can always be matched to its account without any
- * earlier event having arrived. Nothing revokes Paid Access yet; whatever first
+ * earlier event having arrived. Once admission is recorded the "you're in"
+ * email follows, never before it. Nothing revokes Paid Access yet; whatever first
  * does must also stop a redelivered first invoice from re-admitting.
  *
  * A failure after verification surfaces as a 500 so Stripe redelivers;
@@ -72,12 +81,12 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
       return new Response("Invalid Stripe signature.", { status: 400 });
     }
 
-    const stripeCustomerId = firstPaidInvoiceCustomer(event);
-    if (!stripeCustomerId) {
+    const paid = firstPaidInvoice(event);
+    if (!paid) {
       return new Response(null, { status: 200 });
     }
 
-    const userId = await deps.findAccountByStripeCustomer(stripeCustomerId);
+    const userId = await deps.findAccountByStripeCustomer(paid.stripeCustomerId);
     if (!userId) {
       // Not a customer Tendnote created for an account, so there is no one to
       // admit. Acknowledge it rather than have Stripe retry for days.
@@ -86,6 +95,9 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
     }
 
     await deps.grantPaidAccess(userId);
+    // A failed send surfaces as a 500 like any other failure, so Stripe's
+    // redelivery retries it; the grant above is already idempotent.
+    await deps.announceAdmission({ userId, invoiceId: paid.invoiceId });
     return new Response(null, { status: 200 });
   };
 }

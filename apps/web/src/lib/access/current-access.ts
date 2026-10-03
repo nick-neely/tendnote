@@ -7,6 +7,7 @@ import { getAuth } from "@/lib/auth/server";
 import { signInPathFor } from "../auth/return-to";
 import {
   type AccessState,
+  accountOwnerUserId,
   decideAccessRoute,
   localFallbackOwnerUserId,
   ownerForActionOrThrow,
@@ -128,4 +129,23 @@ export async function admittedOwnerOrNull(): Promise<string | null> {
   });
 
   return route.type === "admitted" ? route.ownerUserId : null;
+}
+
+/**
+ * The signed-in account's own id whether or not it is admitted, or `null` when
+ * nobody is signed in. Only an account's exits, such as its owner data export,
+ * resolve through this; a not-admitted account must always be able to leave
+ * with its data (#607).
+ */
+export async function accountOwnerOrNull(): Promise<string | null> {
+  return accountOwnerUserId(await getCurrentAccess(), {
+    localFallbackOwnerUserId: currentLocalFallbackOwnerUserId(),
+  });
+}
+
+/** {@link accountOwnerOrNull} for a server action: a signed-out caller fails closed. */
+export async function requireAccountOwnerForAction(): Promise<string> {
+  const ownerUserId = await accountOwnerOrNull();
+  if (!ownerUserId) throw new Error("You must be signed in to do that.");
+  return ownerUserId;
 }

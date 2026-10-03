@@ -3,13 +3,14 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { AdmissionPoller } from "@/components/billing/admission-poller";
-import { Spinner } from "@/components/ui/spinner";
+import { ConfirmingStatus } from "@/components/billing/confirming-status";
 import { getCurrentAccess } from "@/lib/access/current-access";
 
 /**
  * Where Stripe Checkout returns (#606). Returning admits nobody: this page only
  * reads Tendnote's own admission record, never Stripe, and lets the customer in
- * once the first paid invoice has been projected onto Paid Access.
+ * once the first paid invoice has been projected onto Paid Access. After a
+ * minute it promises the "you're in" email instead (#607).
  */
 export default async function ConfirmingPage() {
   if (process.env.NODE_ENV !== "test") await connection();
@@ -33,13 +34,7 @@ export default async function ConfirmingPage() {
       title="Confirming your payment"
       subtitle="This usually takes a few seconds. You'll be let in as soon as your payment is confirmed."
     >
-      <div
-        role="status"
-        className="flex items-center justify-center gap-2 text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground"
-      >
-        <Spinner aria-hidden />
-        Waiting for confirmation
-      </div>
+      <ConfirmingStatus email={access.user.email} />
       <AdmissionPoller />
     </AuthScaffold>
   );

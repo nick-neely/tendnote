@@ -1,6 +1,8 @@
 import { grantAccess } from "@tendnote/db/queries/access-profiles";
+import { getAuthUserEmail } from "@tendnote/db/queries/auth-users";
 import { findUserIdByStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
 import { parseAdmissionPolicy } from "@tendnote/domain";
+import { sendAdmittedEmail } from "@/lib/billing/admitted-email";
 import { createStripeWebhookHandler } from "@/lib/billing/stripe-webhook";
 
 export async function POST(request: Request) {
@@ -10,6 +12,11 @@ export async function POST(request: Request) {
     findAccountByStripeCustomer: (stripeCustomerId) =>
       findUserIdByStripeCustomerId({ stripeCustomerId }),
     grantPaidAccess: (userId) => grantAccess({ userId, source: "paid_access" }),
+    announceAdmission: async ({ userId, invoiceId }) => {
+      // An account deleted since it paid has nobody left to tell.
+      const to = await getAuthUserEmail({ userId });
+      if (to) await sendAdmittedEmail({ to, invoiceId });
+    },
   });
   return handleStripeWebhook(request);
 }

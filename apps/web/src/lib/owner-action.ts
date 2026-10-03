@@ -20,7 +20,10 @@ import {
 } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import { ZodError } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import {
+  requireAccountOwnerForAction,
+  requireAdmittedOwnerForAction,
+} from "@/lib/access/current-access";
 import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 import { enforceProductBudget, ProductRateLimitError } from "@/lib/rate-limit/guards";
@@ -171,9 +174,26 @@ export function createOwnerActionRunner(dependencies: OwnerActionDependencies) {
   };
 }
 
-export const runOwnerAction = createOwnerActionRunner({
-  gate: requireAdmittedOwnerForAction,
+/** Everything an owner action runs with except who may run it. */
+const ownerActionInfrastructure = {
   resolveScope: resolveScopeForCaller,
   enforceBudget: enforceProductBudget,
-  reconcile: (scopes) => reconcileAffectedScopes(scopes, { origin: "owner-action" }),
+  reconcile: (scopes: readonly AffectedScope[]) =>
+    reconcileAffectedScopes(scopes, { origin: "owner-action" }),
+} satisfies Omit<OwnerActionDependencies, "gate">;
+
+export const runOwnerAction = createOwnerActionRunner({
+  ...ownerActionInfrastructure,
+  gate: requireAdmittedOwnerForAction,
+});
+
+/**
+ * The same protocol for an account's own exits, gated on being signed in rather
+ * than admitted, so a not-admitted account can still take its data (#607).
+ */
+export const runAccountOwnerAction = createOwnerActionRunner({
+  ...ownerActionInfrastructure,
+  // Resolved per call, so a module that never runs an account exit does not
+  // need this gate at import time.
+  gate: () => requireAccountOwnerForAction(),
 });
