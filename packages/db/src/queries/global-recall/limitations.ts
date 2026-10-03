@@ -3,6 +3,7 @@ import type {
   GlobalRecallResponse,
   GlobalRecallResult,
 } from "@tendnote/domain";
+import { recoveryText, type UsageNotice } from "@tendnote/domain/usage-bounds";
 import { canonicalKey, matchesFamilyFilter } from "./ranking";
 import {
   RELATED_MINIMUM_SIMILARITY,
@@ -52,10 +53,12 @@ export function recallLimitations(
   plan: RecallSearchPlan,
   matches: GlobalRecallResponse["results"],
   family: GlobalRecallFilter,
+  usage: UsageNotice = { state: "normal" },
 ): GlobalRecallResponse["limitations"] {
   const reported = [
+    usageLimitation(usage),
     relationshipLimitation(outcomes, plan),
-    assetLimitation(outcomes, sources),
+    assetLimitation(outcomes, sources, usage),
     savedItemLimitation(outcomes, plan),
     followupLimitation(outcomes),
     calendarLimitation(outcomes, sources),
@@ -176,14 +179,28 @@ function relationshipLimitation(
   return null;
 }
 
+/**
+ * Search reduced to exact matches at the account's usage limit, with the one
+ * recovery condition the notice carries. It stands in for every family's own
+ * note about Related matches, since that is the reason they are missing.
+ */
+function usageLimitation(usage: UsageNotice): Limitation | null {
+  if (usage.state === "normal") return null;
+  return {
+    source: "related_search",
+    message: `Related matches are paused, so search shows exact matches only. ${recoveryText(usage.recovery)}`,
+  };
+}
+
 function assetLimitation(
   outcomes: RecallRetrievalOutcomes,
   sources: RecallSourceResults,
+  usage: UsageNotice,
 ): Limitation | null {
   if (outcomes[2].status === "rejected") {
     return { source: "assets", message: "Asset results are temporarily limited." };
   }
-  if (!sources.assets.semanticAvailable) {
+  if (!sources.assets.semanticAvailable && usage.state === "normal") {
     return {
       source: "assets",
       message: "Related Asset matches are unavailable; showing confirmed exact matches only.",

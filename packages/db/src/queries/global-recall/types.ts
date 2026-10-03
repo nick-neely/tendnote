@@ -5,6 +5,7 @@ import type {
   SavedItemSemanticResult,
   SemanticRetrievalResult,
 } from "@tendnote/domain";
+import type { UsageNotice } from "@tendnote/domain/usage-bounds";
 import type { AssetSearchOutcome } from "../asset-search/types";
 import type { OwnerCalendarReadOutcome } from "../calendar";
 import type { HouseholdContextExactResult, SelfContextExactResult } from "../context-facts/types";
@@ -15,6 +16,12 @@ import type { SavedItemWithContext } from "../saved-items/types";
 export type SearchGlobalRecallRequest = GlobalRecallInput & { ownerUserId: string };
 
 export type GlobalRecallDependencies = {
+  /**
+   * What search shows the owner now. While it is reduced, Related matches are
+   * skipped and the search answers with exact matches and a notice. Absent, search is
+   * never reduced.
+   */
+  readSearchUsage?: (ownerUserId: string) => Promise<UsageNotice>;
   searchSelfContextExact: (input: {
     callerUserId: string;
     query: string;

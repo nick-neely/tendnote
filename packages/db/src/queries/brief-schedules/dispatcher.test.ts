@@ -53,7 +53,7 @@ describe("brief schedule dispatcher", () => {
 
     const result = await dispatcher.runDueBriefSchedules({ now: NOW });
 
-    expect(result).toEqual({ claimed: 1, generated: 1, failed: 0 });
+    expect(result).toEqual({ claimed: 1, generated: 1, skipped: 0, failed: 0 });
     expect(calls).toEqual([{ ownerUserId: OWNER, cadence: "daily", localDate: "2026-06-27" }]);
 
     const after = await store.getBriefScheduleForOwner({ ownerUserId: OWNER, cadence: "daily" });
@@ -160,5 +160,27 @@ describe("brief schedule dispatcher", () => {
     await dispatcher.runDueBriefSchedules({ now: NOW });
 
     expect(calls.map((call) => call.ownerUserId).sort()).toEqual([OWNER, OTHER_OWNER].sort());
+  });
+
+  it("skips the occurrence for an owner whose background work is paused, and rolls forward", async () => {
+    const { calls, generate } = recordingGenerator();
+    const { store, dispatcher } = setup(generate);
+    const created = await store.createBriefSchedule(dailyRow());
+    await store.createBriefSchedule(dailyRow({ ownerUserId: OTHER_OWNER }));
+
+    const result = await dispatcher.runDueBriefSchedules({
+      now: NOW,
+      skipOwner: async (ownerUserId) => ownerUserId === OWNER,
+    });
+
+    expect(result).toEqual({ claimed: 2, generated: 1, skipped: 1, failed: 0 });
+    expect(calls.map((call) => call.ownerUserId)).toEqual([OTHER_OWNER]);
+    const after = await store.getBriefScheduleForOwner({ ownerUserId: OWNER, cadence: "daily" });
+    // The next delivery is skipped, not retried: the row moves on to its next run and
+    // keeps the last run it actually had.
+    expect(after?.nextRunAt.toISOString()).toBe(computeNextBriefRun(created, NOW).toISOString());
+    expect(after?.lastRunAt).toBeNull();
+    expect(after?.leaseExpiresAt).toBeNull();
+    expect(after?.attempts).toBe(0);
   });
 });

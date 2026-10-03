@@ -6,6 +6,7 @@ import {
   MAX_PENDING_CONTEXT_FACT_SUGGESTIONS_PER_OWNER,
   validateContextFactExtractionCandidates,
 } from "@tendnote/domain";
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import type { AffectedScope } from "../affected-scopes";
 import { createContextFactQueries } from "../context-facts/queries";
 import type {
@@ -102,6 +103,35 @@ async function failJob(
     ...emptyResult(updated, deadLettered ? "dead_lettered" : "failed"),
     error: message,
   };
+}
+
+/**
+ * Back to its pending state until background work resumes: the model-call
+ * entry point refused the call at the account's background Account Ceiling.
+ * The message waits with it, and the attempt its claim counted is handed back,
+ * because a pause is not a failure and must never dead-letter a capture.
+ */
+async function deferJob(
+  ctx: ProcessorContext,
+  job: ContextFactExtractionJob,
+  paused: UsagePausedError,
+): Promise<ProcessContextFactExtractionJobResult> {
+  const updated = await ctx.store.updateContextFactExtractionJob({
+    jobId: job.id,
+    status: "pending",
+    attempts: Math.max(job.attempts - 1, 0),
+    lastError: null,
+    runAfter: paused.resumesAt,
+    claimedAt: null,
+    claimToken: null,
+    expectedClaimToken: job.claimToken ?? undefined,
+  });
+
+  if (!updated) {
+    const current = await ctx.store.getContextFactExtractionJob(job.id);
+    return emptyResult(current ?? job, current ? "not_claimable" : "not_found");
+  }
+  return emptyResult(updated, "deferred");
 }
 
 type PersistedCandidateCounts = {
@@ -277,6 +307,7 @@ async function processContextFactExtractionJob(
   try {
     prepared = await prepareExtraction(ctx, claimed.job);
   } catch (error) {
+    if (error instanceof UsagePausedError) return deferJob(ctx, claimed.job, error);
     return failJob(
       ctx,
       claimed.job,

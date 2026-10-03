@@ -302,7 +302,7 @@ export function createInMemoryEmbeddingStore(
       // The Postgres store reads the marker inside the statement that writes the status;
       // here the whole method is the atomic unit, so the same read happens before the merge.
       const settled =
-        job.rerunRequestedAt && input.status !== "failed"
+        job.rerunRequestedAt && input.status !== "failed" && input.status !== "pending"
           ? rerunFields(input.now)
           : applyJobUpdateFields(job, input);
       const updated = {

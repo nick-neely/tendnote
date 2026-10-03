@@ -9,6 +9,7 @@ import {
   type SuggestedActionExtractionAdapter,
   validateSuggestedActionCandidates,
 } from "@tendnote/domain";
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import { createSuggestedGeneralActionReview } from "../general-actions/review";
 import type { SuggestGeneralActionInput } from "../general-actions/types";
 import type {
@@ -66,6 +67,27 @@ async function failJob(
   });
 
   return { job: updated, outcome: "failed", error: message, suggestedActionIds: [] };
+}
+
+/**
+ * Back to its pending state until background work resumes: the model-call
+ * entry point refused the call at the account's background Account Ceiling.
+ * Not a failure, so the job keeps no error and retries nothing early.
+ */
+async function deferJob(
+  ctx: ActionExtractionContext,
+  job: ProcessActionExtractionJobResult["job"],
+  paused: UsagePausedError,
+): Promise<ProcessActionExtractionJobResult> {
+  const updated = await ctx.store.updateActionExtractionJob({
+    jobId: job.id,
+    status: "pending",
+    lastError: null,
+    runAfter: paused.resumesAt,
+    claimedAt: null,
+  });
+
+  return { job: updated, outcome: "deferred", reason: "usage_paused", suggestedActionIds: [] };
 }
 
 /** Terminal "skip" outcome: this record cannot yield proactive action suggestions. */
@@ -336,6 +358,7 @@ async function runExtractionToCompletion(
 
     return { job: updated, outcome: "completed", suggestedActionIds };
   } catch (error) {
+    if (error instanceof UsagePausedError) return deferJob(ctx, job, error);
     const message = error instanceof Error ? error.message : String(error);
     return failJob(ctx, job, message, now, retryDelayMs);
   }

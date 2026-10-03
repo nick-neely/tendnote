@@ -410,6 +410,56 @@ describe("Global Recall", () => {
     ]);
   });
 
+  it("falls back to exact results, with a notice, while semantic search is paused", async () => {
+    const searchRelationshipRelated = vi.fn().mockResolvedValue([]);
+    const searchSavedItemsRelated = vi.fn().mockResolvedValue([]);
+    const readSearchUsage = vi.fn().mockResolvedValue({
+      state: "reduced",
+      recovery: { kind: "resets_on", date: "2026-11-15" },
+    });
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      searchSelfContextExact: async () => [exactSelfContext()],
+      searchRelationshipRelated,
+      searchSavedItemsRelated,
+      // The asset tier's own semantic note would repeat what the usage notice says.
+      searchAssets: async () => assetOutcome([], false),
+      readSearchUsage,
+    });
+
+    const result = await recall.search({ ownerUserId: OWNER, query: "software consultancy" });
+
+    expect(readSearchUsage).toHaveBeenCalledWith(OWNER);
+    expect(searchRelationshipRelated).not.toHaveBeenCalled();
+    expect(searchSavedItemsRelated).not.toHaveBeenCalled();
+    expect(result.results.map((entry) => entry.match.kind)).toEqual(["exact"]);
+    expect(result.limitations).toEqual([
+      {
+        source: "related_search",
+        message:
+          "Related matches are paused, so search shows exact matches only. Resets on November 15.",
+      },
+    ]);
+  });
+
+  it("searches as usual when the usage read fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const searchRelationshipRelated = vi.fn().mockResolvedValue([]);
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      searchRelationshipRelated,
+      readSearchUsage: async () => {
+        throw new Error("database unavailable");
+      },
+    });
+
+    const result = await recall.search({ ownerUserId: OWNER, query: "software consultancy" });
+
+    expect(searchRelationshipRelated).toHaveBeenCalled();
+    expect(result.limitations).toEqual([]);
+    warn.mockRestore();
+  });
+
   it("uses one candidate bound accepted by every typed retrieval dependency", async () => {
     const recall = createGlobalRecall({
       ...emptyDependencies,

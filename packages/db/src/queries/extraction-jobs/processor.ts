@@ -8,6 +8,7 @@ import {
   stricterSensitivity,
   validateSuggestedMemoryCandidates,
 } from "@tendnote/domain";
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import type { ApprovedMemoryEmbeddingScheduler } from "../memories/types";
 import type {
   EnqueueExtractionJobInput,
@@ -168,6 +169,38 @@ async function delayJob(
   });
 
   return { job: updated, outcome: "delayed", reason, suggestedMemories: [] };
+}
+
+/**
+ * Puts the job back in its pending state until background work resumes, when
+ * the model-call entry point refused the call because the account is at its
+ * background Account Ceiling. It is not a failure: the capture is kept as it
+ * is and extracted once the Usage Period resets.
+ */
+async function deferJob(
+  ctx: ExtractionContext,
+  job: ProcessExtractionJobResult["job"],
+  sourceRecordId: string,
+  ownerUserId: string,
+  paused: UsagePausedError,
+): Promise<ProcessExtractionJobResult> {
+  const updated = await ctx.store.updateExtractionJob({
+    jobId: job.id,
+    status: "pending",
+    lastError: null,
+    runAfter: paused.resumesAt,
+    claimedAt: null,
+  });
+
+  await ctx.store.createAuditLogEntry({
+    ownerUserId,
+    action: "extraction_job.deferred",
+    entityType: "extraction_job",
+    entityId: job.id,
+    metadataJson: { sourceRecordId, reason: "usage_paused" },
+  });
+
+  return { job: updated, outcome: "deferred", reason: "usage_paused", suggestedMemories: [] };
 }
 
 /**
@@ -490,6 +523,9 @@ async function processExtractionJob(
       retryDelayMs,
     );
   } catch (error) {
+    if (error instanceof UsagePausedError) {
+      return deferJob(ctx, job, sourceRecord.id, ownerUserId, error);
+    }
     const message = error instanceof Error ? error.message : String(error);
 
     return failJob(ctx, job, message, ownerUserId, now, retryDelayMs);

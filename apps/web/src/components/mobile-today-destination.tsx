@@ -12,6 +12,7 @@ import { TodayShortlist, type TodayShortlistHandlers } from "@/components/today-
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { BackgroundUsageNotice } from "@/components/usage-notice-card";
 import { requestLocalEveDraftSubmission, useLocalComposerDraft } from "@/lib/local-composer-draft";
 
 const EveFlow = dynamic(
@@ -34,6 +35,7 @@ export function MobileTodayDestination({
   todayLocalDate,
   todayTimeZone,
   usage,
+  backgroundUsage,
 }: {
   /**
    * The owner's Approval Mode, read on the server by this route and passed to the
@@ -47,6 +49,8 @@ export function MobileTodayDestination({
   todayTimeZone: string;
   /** Interactive Eve's usage notice, read server-side by the destination (#625). */
   usage?: UsageNotice;
+  /** Background work's usage notice, shown on Today while it is paused. */
+  backgroundUsage?: UsageNotice;
 }) {
   const [eveOpen, setEveOpen] = useState(false);
   const [eveDraftRevision, setEveDraftRevision] = useState(0);
@@ -66,6 +70,7 @@ export function MobileTodayDestination({
         todayLocalDate={todayLocalDate}
         todayTimeZone={todayTimeZone}
         usage={usage}
+        backgroundUsage={backgroundUsage}
       />
       {eveOpen ? (
         <EveFlow
@@ -97,6 +102,7 @@ function MobileTodayHome({
   todayLocalDate,
   todayTimeZone,
   usage,
+  backgroundUsage,
 }: {
   eveDraftRevision: number;
   onOpenEve: (trigger: HTMLElement) => void;
@@ -106,6 +112,7 @@ function MobileTodayHome({
   todayLocalDate: string;
   todayTimeZone: string;
   usage?: UsageNotice;
+  backgroundUsage?: UsageNotice;
 }) {
   return (
     <div className="min-h-dvh pb-[calc(6.5rem+env(safe-area-inset-bottom))] lg:hidden">
@@ -114,6 +121,7 @@ function MobileTodayHome({
         onOpenEve={onOpenEve}
         ownerUserId={ownerUserId}
         usage={usage}
+        backgroundUsage={backgroundUsage}
       />
       <TodayShortlist
         handlers={todayHandlers}
@@ -129,11 +137,14 @@ function TodayEveComposer({
   onOpenEve,
   ownerUserId,
   usage,
+  backgroundUsage,
 }: {
   onOpenEve: (trigger: HTMLElement) => void;
   ownerUserId: string;
   /** Shown under the composer while Eve is reduced or paused, so Today says so too (#626). */
   usage?: UsageNotice;
+  /** Shown under it while background work is paused, which is why no brief arrived. */
+  backgroundUsage?: UsageNotice;
 }) {
   const draft = useLocalComposerDraft(ownerUserId, "eve");
   const submitButton = useRef<HTMLButtonElement>(null);
@@ -203,6 +214,11 @@ function TodayEveComposer({
       {usage && usage.state !== "normal" ? (
         <div className="mt-3">
           <AssistantUsageNotice notice={usage} />
+        </div>
+      ) : null}
+      {backgroundUsage && backgroundUsage.state !== "normal" ? (
+        <div className="mt-3">
+          <BackgroundUsageNotice notice={backgroundUsage} />
         </div>
       ) : null}
     </div>

@@ -1,5 +1,6 @@
+import { type UsageNotice, UsagePausedError } from "@tendnote/domain/usage-bounds";
 import { embed, generateText, streamText } from "ai";
-import { MockLanguageModelV4 } from "ai/test";
+import { MockLanguageModelV4, simulateReadableStream } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 import { fakeGatewayProvider } from "./model-call-fixtures";
 import { hostedEmbeddingModel, hostedModel } from "./model-calls";
@@ -520,5 +521,196 @@ describe("the Fallback Model", () => {
         { provider: fakeGatewayProvider().provider, recordUsage: ignoreUsage },
       ),
     ).toThrow(/No pinned provider for model zai\/glm-5.3-flash/);
+  });
+});
+
+describe("the background Account Ceiling", () => {
+  const resetsOn = "2026-11-15";
+  const paused = { state: "paused", recovery: { kind: "resets_on", date: resetsOn } } as const;
+  const normal = { state: "normal" } as const;
+
+  function backgroundModel(backgroundNotice: (accountId: string) => Promise<UsageNotice>) {
+    const fake = fakeGatewayProvider();
+    const ledger = fakeUsageLedger();
+    const model = hostedModel(
+      { modelId: "google/gemini-3.7-flash", costCategory: "background", account: "user-1" },
+      { provider: fake.provider, recordUsage: ledger.recordUsage, backgroundNotice },
+    );
+    const embeddingModel = hostedEmbeddingModel(
+      { modelId: "openai/text-embedding-3-small", costCategory: "background", account: "user-1" },
+      { provider: fake.provider.embeddingModel, recordUsage: ledger.recordUsage, backgroundNotice },
+    );
+    return { fake, ledger, model, embeddingModel };
+  }
+
+  it("refuses a generated call while background work is paused, before it reaches the model", async () => {
+    const reads: string[] = [];
+    const background = backgroundModel(async (accountId) => {
+      reads.push(accountId);
+      return paused;
+    });
+
+    const refusal = generateText({ model: background.model, prompt: "hi", maxRetries: 0 });
+
+    await expect(refusal).rejects.toBeInstanceOf(UsagePausedError);
+    await expect(refusal).rejects.toMatchObject({ resetsOn });
+    expect(reads).toEqual(["user-1"]);
+    expect(background.fake.calls()).toEqual([]);
+    expect(background.ledger.entries).toEqual([]);
+  });
+
+  it("refuses a paused call unwrapped, so a caller can tell a pause from a failure", async () => {
+    const background = backgroundModel(async () => paused);
+
+    // The SDK's default retries must not bury the pause in a retry error.
+    await expect(generateText({ model: background.model, prompt: "hi" })).rejects.toBeInstanceOf(
+      UsagePausedError,
+    );
+  });
+
+  it("refuses a streamed call and an embedding call the same way", async () => {
+    const background = backgroundModel(async () => paused);
+
+    const streamErrors: unknown[] = [];
+    await streamText({
+      model: background.model,
+      prompt: "hi",
+      onError: ({ error }) => {
+        streamErrors.push(error);
+      },
+    }).consumeStream();
+    expect(streamErrors).toEqual([expect.any(UsagePausedError)]);
+    await expect(embed({ model: background.embeddingModel, value: "hi" })).rejects.toBeInstanceOf(
+      UsagePausedError,
+    );
+    expect(background.fake.calls()).toEqual([]);
+    expect(background.fake.embeddingModels.flatMap((m) => m.doEmbedCalls)).toEqual([]);
+  });
+
+  it("lets background calls through below the ceiling", async () => {
+    const background = backgroundModel(async () => normal);
+
+    const { text } = await generateText({ model: background.model, prompt: "hi" });
+    await embed({ model: background.embeddingModel, value: "hi" });
+
+    expect(text).toBe("ok");
+    expect(background.ledger.entries.map((entry) => entry.costCategory)).toEqual([
+      "background",
+      "background",
+    ]);
+  });
+
+  it("lets the call through when the usage read fails, and says so", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const background = backgroundModel(async () => {
+      throw new Error("database unavailable");
+    });
+
+    const { text } = await generateText({ model: background.model, prompt: "hi" });
+
+    expect(text).toBe("ok");
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/background/), {
+      modelId: "google/gemini-3.7-flash",
+    });
+    warn.mockRestore();
+  });
+
+  it("never reads the background allowance for an interactive call", async () => {
+    const fake = fakeGatewayProvider();
+    const backgroundNotice = vi.fn(async () => paused);
+
+    await generateText({
+      model: hostedModel(
+        { modelId: "google/gemini-3.7-flash", costCategory: "interactive", account: "user-1" },
+        { provider: fake.provider, recordUsage: ignoreUsage, backgroundNotice },
+      ),
+      prompt: "hi",
+    });
+
+    expect(backgroundNotice).not.toHaveBeenCalled();
+  });
+});
+
+describe("web searches", () => {
+  const finish = {
+    type: "finish",
+    finishReason: { unified: "stop", raw: "stop" },
+    usage: {
+      inputTokens: { total: 3, noCache: 3, cacheRead: 0, cacheWrite: 0 },
+      outputTokens: { total: 2, text: 2, reasoning: 0 },
+    },
+    providerMetadata: { gateway: { cost: "0.000123" } },
+  } as const;
+  const search = (id: string, providerExecuted = true) =>
+    ({
+      type: "tool-call",
+      toolCallId: id,
+      toolName: "web_search",
+      input: '{"query":"tendnote"}',
+      providerExecuted,
+    }) as const;
+  const searchCharge = {
+    accountId: "user-1",
+    modelId: "gateway.exa_search",
+    costCategory: "web_search",
+    inputTokens: 0,
+    outputTokens: 0,
+    costMicroUsd: 7_000,
+  };
+
+  function eveWith(content: unknown[]) {
+    const ledger = fakeUsageLedger();
+    const provider = (modelId: string) =>
+      new MockLanguageModelV4({
+        modelId,
+        doGenerate: async () => ({
+          content: content as never,
+          finishReason: finish.finishReason,
+          usage: finish.usage,
+          providerMetadata: finish.providerMetadata,
+          warnings: [],
+        }),
+        doStream: async () => ({
+          stream: simulateReadableStream({ chunks: [...content, finish] as never[] }),
+        }),
+      });
+    const model = hostedModel(
+      { modelId: "google/gemini-3.7-flash", costCategory: "interactive", account: "user-1" },
+      { provider, recordUsage: ledger.recordUsage },
+    );
+    return { ledger, model };
+  }
+
+  it("meters each search the gateway ran to the web-search category at its list price", async () => {
+    // `gateway.cost` is the inference cost only; the search fee is not in it.
+    const eve = eveWith([search("s1"), search("s2"), { type: "text", text: "found it" }]);
+
+    await generateText({ model: eve.model, prompt: "hi" });
+
+    expect(eve.ledger.entries).toEqual([
+      expect.objectContaining({ costCategory: "interactive", costMicroUsd: 123 }),
+      searchCharge,
+      searchCharge,
+    ]);
+  });
+
+  it("meters a streamed turn's searches as they run", async () => {
+    const eve = eveWith([search("s1")]);
+
+    await streamText({ model: eve.model, prompt: "hi" }).consumeStream();
+
+    expect(eve.ledger.entries).toEqual([
+      searchCharge,
+      expect.objectContaining({ costCategory: "interactive" }),
+    ]);
+  });
+
+  it("charges nothing for a web_search call the provider did not run", async () => {
+    // A withheld web_search is an ordinary tool the model called; no search ran.
+    const eve = eveWith([search("s1", false)]);
+
+    await generateText({ model: eve.model, prompt: "hi" });
+
+    expect(eve.ledger.entries.map((entry) => entry.costCategory)).toEqual(["interactive"]);
   });
 });

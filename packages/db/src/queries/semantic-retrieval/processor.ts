@@ -3,7 +3,9 @@ import {
   createEmbeddingJobSchema,
   type SemanticRecordKind,
 } from "@tendnote/domain";
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import {
+  deferJob,
   type EmbeddingContext,
   failJob,
   processApprovedMemory,
@@ -226,6 +228,7 @@ async function processEmbeddingJob(
       sourceSavedItem: result.sourceSavedItem,
     };
   } catch (error) {
+    if (error instanceof UsagePausedError) return deferJob(ctx, job, error, now);
     if (error instanceof SupersededEmbeddingClaimError) {
       const current = await store.getEmbeddingJob(job.id);
       if (!current) throw new Error("Embedding job not found.");

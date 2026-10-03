@@ -168,8 +168,9 @@ function standingValue(input: SettleEmbeddingJobInput, key: CarriedJobColumn): S
 /**
  * The `set` clause that writes a finished pass's verdict and consumes the rerun marker.
  *
- * A `failed` verdict needs no branch: its retry backoff is already the extra pass a rerun
- * request asks for, so the verdict stands as written and the marker is simply cleared. A
+ * A `failed` verdict or a `pending` deferral needs no branch: its retry is already the
+ * extra pass a rerun request asks for, so the verdict stands as written and the marker is
+ * simply cleared. A
  * `completed` or `skipped` verdict is a statement about the record as the run read it, so a
  * marker turns it into a fresh `pending` job with the run mechanics reset - the same shape
  * a repeat enqueue would have produced had it arrived a moment later.
@@ -180,7 +181,7 @@ function standingValue(input: SettleEmbeddingJobInput, key: CarriedJobColumn): S
 function buildSettleUpdate(input: SettleEmbeddingJobInput) {
   const cleared = { rerunRequestedAt: null, updatedAt: input.now };
 
-  if (input.status === "failed") {
+  if (input.status === "failed" || input.status === "pending") {
     return { ...buildJobUpdate(input), ...cleared };
   }
 

@@ -352,6 +352,8 @@ export const globalRecallResultSchema = z.discriminatedUnion("family", [
 
 export const globalRecallLimitationSchema = z.object({
   source: z.enum([
+    /** Related matches are paused at the account's usage limit; exact search still runs. */
+    "related_search",
     "relationship",
     "assets",
     "saved_items",

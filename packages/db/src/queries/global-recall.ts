@@ -8,6 +8,7 @@ import type { GlobalRecallDependencies, SearchGlobalRecallRequest } from "./glob
 import { searchRelationshipContext } from "./relationship-context-search";
 import { searchSavedItems } from "./saved-items";
 import { searchSavedItemsSemantic, searchSemanticContext } from "./semantic-retrieval";
+import { readUsageNotices } from "./usage-bounds";
 
 export { createGlobalRecall } from "./global-recall/queries";
 export { toSelfContextResult } from "./global-recall/result-normalizers";
@@ -22,6 +23,8 @@ export function createDefaultGlobalRecall(
   calendarRuntime: GlobalRecallCalendarRuntime,
 ) {
   return createGlobalRecall({
+    readSearchUsage: async (ownerUserId) =>
+      (await readUsageNotices({ userId: ownerUserId })).search,
     searchSelfContextExact: ({ callerUserId, query, directlyRequested, includeArchived, limit }) =>
       searchSelfContextFacts(
         {
