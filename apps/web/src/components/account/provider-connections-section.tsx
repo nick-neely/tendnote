@@ -149,7 +149,7 @@ export function ProviderConnectionsSection({
   const anyConnectable =
     calendarConnectable || gmailConnectable || contactsConnectable || discordConnectable;
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex scroll-mt-20 flex-col gap-3" id="integrations">
       <h2 className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-muted-foreground">
         Integrations
       </h2>

@@ -172,3 +172,6 @@ export const getPersonUpdateStatusAction = async () => ({
   ok: true as const,
   view: { status: "available" as const },
 });
+
+export const skipFirstRunAction = unusedAction;
+export const closeIntegrationOfferAction = unusedAction;
