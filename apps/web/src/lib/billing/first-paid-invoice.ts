@@ -34,10 +34,15 @@ export function firstPaidInvoice(invoice: Stripe.Invoice): FirstPaidInvoice | nu
   return { invoiceId: invoice.id, ...owner, startedAt: new Date(invoice.period_start * 1000) };
 }
 
-/** The subscription an invoice bills and the customer it bills, or `null` outside a subscription. */
+/**
+ * The subscription an invoice bills and the customer it bills, or `null`
+ * outside a subscription. Takes an invoice reference as Stripe may return it,
+ * so an unexpanded, deleted, or missing one is `null` too.
+ */
 export function invoiceSubscription(
-  invoice: Stripe.Invoice,
+  invoice: Stripe.Invoice | Stripe.DeletedInvoice | string | null | undefined,
 ): { stripeSubscriptionId: string; stripeCustomerId: string } | null {
+  if (!invoice || typeof invoice === "string" || invoice.deleted) return null;
   const stripeSubscriptionId = stripeId(invoice.parent?.subscription_details?.subscription ?? null);
   const stripeCustomerId = stripeId(invoice.customer);
   return stripeSubscriptionId && stripeCustomerId

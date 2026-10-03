@@ -95,10 +95,7 @@ export const paidAccessProjection = {
       expand: ["data.invoice"],
       limit: 1,
     });
-    const invoice = payments.data[0]?.invoice;
-    return invoice && typeof invoice !== "string" && !invoice.deleted
-      ? invoiceSubscription(invoice)
-      : null;
+    return invoiceSubscription(payments.data[0]?.invoice);
   },
   confirmRefund: async (input: { userId: string; refundRecordId: string }) => {
     const to = await getAuthUserEmail({ userId: input.userId });
