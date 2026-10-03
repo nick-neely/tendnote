@@ -6,6 +6,7 @@ import {
 import { lt, sql } from "drizzle-orm";
 import { getDb, withoutDatabaseTransaction } from "../client";
 import { usageLedger } from "../schema";
+import { queryErrorCode } from "./query-error-code";
 
 /**
  * What one metered model call adds to the Usage Ledger. The fields are the
@@ -60,19 +61,12 @@ export async function recordModelUsage(usage: ModelUsage, now = new Date()) {
         }),
     );
   } catch (error) {
-    // Only the error's code: a query error carries its parameters, the account id among them.
     console.warn("usage-ledger: could not record a model call", {
       modelId: usage.modelId,
       costCategory: usage.costCategory,
-      reason: errorCode(error),
+      reason: queryErrorCode(error),
     });
   }
-}
-
-function errorCode(error: unknown): string {
-  const cause = (error as { cause?: { code?: unknown } } | null)?.cause;
-  if (typeof cause?.code === "string") return cause.code;
-  return error instanceof Error ? error.name : "unknown";
 }
 
 /** Delete the days older than the Usage Ledger's retention constant. */

@@ -464,6 +464,10 @@ _Avoid_: User test, demo, beta invite, demand validation
 A content-free, per-account, operator-facing timestamp recording that a newcomer first reached one fixed step toward or at First Value. It is not record content, a user-facing productivity statistic, a third-party analytics event, or a streak.
 _Avoid_: Analytics event, activation metric, funnel step, streak
 
+**Account Funnel Event**:
+An optional, content-free, account-linked record that an account enrolled from a known-US request first reached one fixed funnel stage, from signup through First Value, stored in Tendnote under a dedicated opaque identifier, honouring the telemetry opt-out, and deleted after ninety days or with the account. It is not an Activation Milestone, a billing or admission record, or a third-party analytics event.
+_Avoid_: Analytics event, tracking event, conversion pixel
+
 **Representative Month**:
 A synthetic month of Launch Customer activity, built from the First Value loop plus the Return, replayed through Eve's real session protocol to measure what one account costs to serve. It comes in light, typical, and heavy variants and is not a real account's history, a load test, or an eval case.
 _Avoid_: Persona workload, load test, usage scenario

@@ -71,3 +71,22 @@ describe("demo boundaries", () => {
     expect(rendered).not.toMatch(/demo-session/);
   });
 });
+
+describe("tracking disclosure", () => {
+  const rendered = text(PrivacyAndAiPage);
+
+  it.each([
+    ["the no-cookie, no-cross-site boundary", /no cross-site tracking.*no analytics cookie/],
+    ["account-linked funnel events", /linked to your account but hold none of your notes/],
+    ["US-only collection", /collected only when you sign up or subscribe from the United States/],
+    [
+      "the same boundary in the app",
+      /no cookie, nothing shared across sites, and no outside analytics service/,
+    ],
+    ["retention from the constant", /deleted after 90 days or as soon as you delete your account/],
+    ["the opt-out setting", /Analytics and error reports, turns this off/],
+    ["no backfill", /does not fill in anything missed/],
+  ])("states %s", (_name, pattern) => {
+    expect(rendered).toMatch(pattern);
+  });
+});

@@ -1,4 +1,5 @@
 import type { AccessProfile } from "@tendnote/domain";
+import type { PaidAccessFunnelStage } from "@tendnote/domain/account-funnel";
 import type { FirstPaidInvoice } from "./first-paid-invoice";
 import { isSubscriptionRevoked, type RevocationRecords } from "./paid-access-revocation";
 import {
@@ -23,6 +24,12 @@ export type PaidAccessAdmissionDependencies = {
   grantPaidAccess: (userId: string, stripeSubscriptionId: string) => Promise<ProfileStanding>;
   /** Anchor the account's Usage Period to its subscription's start. Must be idempotent. */
   anchorUsagePeriod: (userId: string, startedAt: Date) => Promise<unknown>;
+  /**
+   * Copy a confirmed stage into the optional account funnel. Records each stage
+   * once and never throws, so a redelivery or a telemetry failure changes
+   * nothing about admission.
+   */
+  recordFunnelStage: (userId: string, stage: PaidAccessFunnelStage) => Promise<unknown>;
 };
 
 /**
@@ -34,6 +41,10 @@ export type PaidAccessAdmissionDependencies = {
  * one whose Paid Access a refund or an unexcepted dispute revoked (#617). An
  * end already on record is terminal, so it is refused without asking Stripe.
  *
+ * The paid first invoice is the account funnel's payment confirmation, and a
+ * grant that leaves the account admitted is its Paid Access stage: both come
+ * from this server state, never from the browser's return from Checkout.
+ *
  * Returns the account's standing after the grant, or `null` when the
  * subscription has ended or is revoked. Every write is idempotent.
  */
@@ -42,6 +53,9 @@ export async function admitFromFirstPaidInvoice(
   userId: string,
   paid: FirstPaidInvoice,
 ): Promise<ProfileStanding | null> {
+  // Before the ended and revoked checks: the paid first invoice is the payment,
+  // whether or not it still admits anyone.
+  await deps.recordFunnelStage(userId, "payment_confirmed");
   const recorded = await deps.subscriptions.getSubscription({
     stripeSubscriptionId: paid.stripeSubscriptionId,
   });
@@ -55,5 +69,6 @@ export async function admitFromFirstPaidInvoice(
   const standing = await deps.grantPaidAccess(userId, paid.stripeSubscriptionId);
   // After the grant, which is what guarantees the Access Profile exists.
   await deps.anchorUsagePeriod(userId, paid.startedAt);
+  if (standing.status === "granted") await deps.recordFunnelStage(userId, "paid_access_granted");
   return standing;
 }

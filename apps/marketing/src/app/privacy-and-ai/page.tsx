@@ -1,3 +1,4 @@
+import { RETENTION } from "@tendnote/domain/retention";
 import { Button } from "@tendnote/ui/button";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -18,6 +19,8 @@ export const metadata: Metadata = {
   description:
     "Where your notes go, who can see them, how AI processes them, and how to export or delete everything.",
 };
+
+const funnelRetentionDays = RETENTION.accountLinkedFunnelEvents.days;
 
 // Rebuilt daily so the recovery sentence leaves the page on the day a drill
 // goes stale, without anyone remembering to redeploy.
@@ -183,10 +186,10 @@ export default function PrivacyAndAiPage() {
       </SplitSection>
 
       {/*
-       * True as of launch planning. Anonymous page counters (#646), account
-       * funnel events with their opt-out (#640), and error reports once
-       * GlitchTip is enabled (#655) each revise this section when they ship,
-       * inside the same no-cookie, no-cross-site boundary.
+       * Account funnel events and their opt-out (#640) are described below.
+       * Anonymous page counters (#646) and error reports once GlitchTip is
+       * enabled (#655) each revise this section when they ship, inside the
+       * same no-cookie, no-cross-site boundary.
        */}
       <SplitSection
         aside={<p className="max-w-[44ch] text-muted-foreground">On this site and in the app.</p>}
@@ -198,6 +201,19 @@ export default function PrivacyAndAiPage() {
           There is no advertising, no cross-site tracking, no session replay, and no analytics
           cookie, which is why there is no cookie banner. Today this site sets no cookies and
           records nothing about your visit.
+        </p>
+        <p className="max-w-[62ch]">
+          Inside the app, Tendnote keeps its own record of when your account first reaches a few
+          fixed steps, such as signing up, subscribing, and saving your first person, so it can see
+          where newcomers get stuck. These records are linked to your account but hold none of your
+          notes, the people in them, or anything you write. They are collected only when you sign up
+          or subscribe from the United States, and are deleted after {funnelRetentionDays} days or
+          as soon as you delete your account. They stay inside the same boundary: no cookie, nothing
+          shared across sites, and no outside analytics service.
+        </p>
+        <p className="max-w-[62ch] text-muted-foreground">
+          One setting on your Account page, Analytics and error reports, turns this off. It stops
+          new records from then on; it does not fill in anything missed while it was off.
         </p>
       </SplitSection>
 
