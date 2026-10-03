@@ -16,6 +16,8 @@ export const accessSource = pgEnum("access_source", [
   "paid_access",
 ]);
 
+export const accessPendingReason = pgEnum("access_pending_reason", ["beta_ended"]);
+
 export const selfContextOnboardingStatus = pgEnum("self_context_onboarding_status", [
   "not_started",
   "dismissed",

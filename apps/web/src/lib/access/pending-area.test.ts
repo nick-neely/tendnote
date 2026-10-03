@@ -6,6 +6,7 @@ const facts = {
   startedCheckout: false,
   ownsExportableData: false,
   guestStanding: null,
+  betaEnded: false,
 } as const;
 
 describe("pendingAreaView (#607)", () => {
@@ -87,5 +88,33 @@ describe("pendingAreaView for a guest that is not one now (#637)", () => {
     expect(
       pendingAreaView({ ...facts, checkoutOpen: false, guestStanding: "membership_ended" }),
     ).toMatchObject({ state: "membership_ended", subscribe: false });
+  });
+});
+
+describe("pendingAreaView for an ex-beta account (#612)", () => {
+  it("says the beta ended and the data is intact, and offers Subscribe", () => {
+    const view = pendingAreaView({ ...facts, betaEnded: true, ownsExportableData: true });
+
+    expect(view).toMatchObject({
+      state: "beta_ended",
+      title: "The private beta has ended",
+      subscribe: true,
+      exportData: true,
+    });
+    expect(view.line).toContain("intact");
+    expect(view.line).not.toMatch(/\d/);
+  });
+
+  it("keeps the beta-ended line without Subscribe while Checkout is closed", () => {
+    const view = pendingAreaView({ ...facts, betaEnded: true, checkoutOpen: false });
+
+    expect(view).toMatchObject({ state: "beta_ended", subscribe: false });
+    expect(view.line).not.toContain("Subscribe");
+  });
+
+  it("puts an unfinished checkout ahead of the beta ending", () => {
+    expect(pendingAreaView({ ...facts, betaEnded: true, startedCheckout: true }).state).toBe(
+      "checkout_unfinished",
+    );
   });
 });
