@@ -37,6 +37,12 @@ export type HouseholdMemberSummary = {
   isViewer: boolean;
   /** A co-owner offer this person has been made and has not answered. */
   awaitingOwnerReply: boolean;
+  /**
+   * This person is neither admitted nor a live Household Guest right now. A
+   * fact stated beside them and nothing more: no reason, no billing detail, no
+   * date, and no action for anyone else (ADR 0245). Never set on the viewer.
+   */
+  notCurrentlyAdmitted: boolean;
   /** What the viewer may do about this person. Never available to a Member. */
   promote: GovernanceAvailability;
   remove: GovernanceAvailability;
@@ -128,6 +134,8 @@ export function buildHouseholdOverview(input: {
   invitations?: readonly HouseholdInvitationSummary[];
   /** Active owners who have confirmed dissolution. Matched against the roster. */
   dissolutionConfirmations?: readonly string[];
+  /** Members who are neither admitted nor a live Household Guest right now. */
+  notCurrentlyAdmittedUserIds?: readonly string[];
 }): HouseholdOverview {
   const roster: HouseholdRoster = input.memberships.map<GovernanceMember>((membership) => ({
     userId: membership.userId,
@@ -165,6 +173,8 @@ export function buildHouseholdOverview(input: {
         role: membership.role,
         isViewer,
         awaitingOwnerReply: membership.pendingRole === "owner",
+        notCurrentlyAdmitted:
+          !isViewer && (input.notCurrentlyAdmittedUserIds ?? []).includes(membership.userId),
         // A Member is offered nothing about anybody, and nobody is offered a
         // control pointed at themselves — their own moves live below the list.
         promote: availability(

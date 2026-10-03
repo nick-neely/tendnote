@@ -4,9 +4,9 @@ import {
 } from "@tendnote/db/queries/owner-data-export";
 import { getStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
 import { connection } from "next/server";
+import { AccountIdentity } from "@/components/account/account-identity";
 import { DeleteAccountButton } from "@/components/account/delete-account-button";
 import { OwnerDataExportSection } from "@/components/account/owner-data-export-section";
-import { SignedInIdentity } from "@/components/account/signed-in-identity";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { SubscribeForm } from "@/components/billing/subscribe-form";
@@ -44,7 +44,7 @@ export default async function PendingPage() {
   return (
     <AuthScaffold title={view.title} subtitle={view.line}>
       <div className="flex flex-col gap-5" data-pending-state={view.state}>
-        <SignedInIdentity user={user} />
+        <AccountIdentity user={user} />
 
         {view.subscribe ? <SubscribeForm /> : null}
 

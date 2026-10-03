@@ -3,9 +3,9 @@ import {
   ownerHasExportableData,
 } from "@tendnote/db/queries/owner-data-export";
 import { connection } from "next/server";
+import { AccountIdentity } from "@/components/account/account-identity";
 import { DeleteAccountButton } from "@/components/account/delete-account-button";
 import { OwnerDataExportSection } from "@/components/account/owner-data-export-section";
-import { SignedInIdentity } from "@/components/account/signed-in-identity";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { SubscribeForm } from "@/components/billing/subscribe-form";
@@ -36,7 +36,7 @@ export default async function LapsedPage() {
       subtitle={`Your data is kept until ${formatBillingDate(retentionDeadline)}, then deleted. Resubscribe before then and everything is where you left it.`}
     >
       <div className="flex flex-col gap-5" data-lapsed-area>
-        <SignedInIdentity user={user} />
+        <AccountIdentity user={user} />
 
         {checkoutOpen ? <SubscribeForm /> : null}
 

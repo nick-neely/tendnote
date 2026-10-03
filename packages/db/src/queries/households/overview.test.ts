@@ -57,6 +57,7 @@ describe("household overview read", () => {
           role: "owner",
           isViewer: true,
           awaitingOwnerReply: false,
+          notCurrentlyAdmitted: false,
           // Nobody is handed a governance control pointed at themselves.
           promote: { available: false, blockedReason: null },
           remove: { available: false, blockedReason: null },
@@ -177,5 +178,44 @@ describe("household overview read", () => {
     expect(memberView?.seats.occupied).toBe(3);
     expect(memberView?.invitations).toEqual([]);
     expect(memberView?.members.map((member) => member.name)).toEqual(["Sam", "Alex"]);
+  });
+
+  it("states only that a member is not currently admitted, and never about the viewer", async () => {
+    const store = createInMemoryHouseholdStore();
+    const lifecycle = createHouseholdLifecycle(store);
+    const admitted = new Set<string>();
+    const getHouseholdOverviewForUser = createHouseholdOverviewReader(
+      store,
+      identityStore(),
+      undefined,
+      { isCurrentlyAdmitted: async ({ userId }) => admitted.has(userId) },
+    );
+    const { household } = await lifecycle.createHousehold({
+      ownerUserId: "owner-user",
+      name: "The Neely house",
+    });
+    await lifecycle.inviteMember({
+      ownerUserId: "owner-user",
+      householdId: household.id,
+      invitedUserId: "member-user",
+    });
+    await lifecycle.acceptInvite({ householdId: household.id, userId: "member-user" });
+    admitted.add("member-user");
+
+    const flags = async (userId: string) =>
+      Object.fromEntries(
+        ((await getHouseholdOverviewForUser({ userId }))?.members ?? []).map((member) => [
+          member.userId,
+          member.notCurrentlyAdmitted,
+        ]),
+      );
+
+    // The owner reading is not admitted in this fixture, yet is never labelled.
+    expect(await flags("owner-user")).toEqual({ "owner-user": false, "member-user": false });
+
+    // The member lapses: the next read says so, and the membership stays.
+    admitted.delete("member-user");
+    expect(await flags("owner-user")).toEqual({ "owner-user": false, "member-user": true });
+    expect(await flags("member-user")).toEqual({ "owner-user": true, "member-user": false });
   });
 });

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
@@ -19,6 +19,10 @@ const READY = {
   role: "member",
   expiresAt: new Date("2026-08-15T09:00:00Z"),
 };
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -71,7 +75,7 @@ describe("resolveHouseholdJoinView", () => {
 
     await expect(resolveHouseholdJoinView("secret")).resolves.toEqual({
       ...READY,
-      accessPending: false,
+      joinsAsGuest: false,
     });
   });
 
@@ -81,20 +85,49 @@ describe("resolveHouseholdJoinView", () => {
    * holding someone else's link must still see the address mismatch, not a
    * signal that their own account exists and is waiting.
    */
-  it("mentions pending access only once the invited address is proven", async () => {
+  it("mentions joining as a guest only once the invited address is proven", async () => {
     getCurrentAccess.mockResolvedValue({
       state: "pending",
       user: { id: "sam-1", email: "sam@example.com" },
+      decision: { admitted: false, status: "pending", profile: null },
     });
 
     await expect(resolveHouseholdJoinView("secret")).resolves.toEqual({
       ...READY,
-      accessPending: true,
+      joinsAsGuest: true,
     });
 
     db.viewHouseholdInvitation.mockResolvedValue({ state: "address-mismatch" });
     await expect(resolveHouseholdJoinView("secret")).resolves.toEqual({
       state: "address-mismatch",
+    });
+  });
+
+  it("never joins a self-hosted account as a guest, because acceptance admits it", async () => {
+    vi.stubEnv("TENDNOTE_ADMISSION_MODE", "self-hosted");
+    vi.stubEnv("TENDNOTE_SELF_HOSTED_BOOTSTRAP_OWNER_EMAIL", "owner@example.com");
+    getCurrentAccess.mockResolvedValue({
+      state: "pending",
+      user: { id: "sam-1", email: "sam@example.com" },
+      decision: { admitted: false, status: "pending", profile: null },
+    });
+
+    await expect(resolveHouseholdJoinView("secret")).resolves.toEqual({
+      ...READY,
+      joinsAsGuest: false,
+    });
+  });
+
+  it("never tells a Lapsed account it will join as a guest", async () => {
+    getCurrentAccess.mockResolvedValue({
+      state: "pending",
+      user: { id: "sam-1", email: "sam@example.com" },
+      decision: { admitted: false, status: "pending", profile: { source: "paid_access" } },
+    });
+
+    await expect(resolveHouseholdJoinView("secret")).resolves.toEqual({
+      ...READY,
+      joinsAsGuest: false,
     });
   });
 });

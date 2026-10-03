@@ -2,6 +2,9 @@ import type { RecipientProof } from "@tendnote/domain";
 import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "../client";
 import { householdMemberships, user } from "../schema";
+import { checkAccess } from "./access-profiles";
+import { createLocalAdmissionReader } from "./access-profiles/admission";
+import { listAccountDeletionAdmissionBlocks } from "./account-deletion";
 import { privatizeGiftPlansForHouseholdAccessEnded } from "./gift-plans";
 import { createAccountDeletionHouseholdGuard } from "./households/account-deletion";
 import { createHouseholdAuthorizationProver } from "./households/authorization";
@@ -9,6 +12,7 @@ import { createHouseholdContextActorReader } from "./households/context-actors";
 import { createDrizzleHouseholdInvitationStore } from "./households/drizzle-invitation-store";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createHouseholdGovernanceLifecycle } from "./households/governance";
+import { createGuestHouseholdReader } from "./households/guest-household";
 import { createHouseholdInvitationLifecycle } from "./households/invitations";
 import { createHouseholdLifecycle } from "./households/lifecycle";
 import {
@@ -105,10 +109,26 @@ const defaultHouseholdGovernance = createHouseholdGovernanceLifecycle(
     },
   },
 );
+const defaultGuestHouseholdReader = createGuestHouseholdReader(defaultHouseholdStore);
+
+/**
+ * The household an account belongs to, with its active Owners, for the hosted
+ * Household Guest liveness check the admission resolver makes.
+ */
+export function readGuestHousehold(input: { userId: string }) {
+  return defaultGuestHouseholdReader(input);
+}
+
 const defaultHouseholdOverviewReader = createHouseholdOverviewReader(
   defaultHouseholdStore,
   createDrizzleHouseholdIdentityStore(),
   defaultHouseholdInvitations,
+  // Local reads only, so a roster never evaluates Flags or grants anything.
+  createLocalAdmissionReader({
+    accessProfiles: { checkAccess: (input) => checkAccess(input) },
+    listAdmissionBlocks: (input) => listAccountDeletionAdmissionBlocks(input),
+    readGuestHousehold,
+  }),
 );
 const defaultHouseholdPlanningFrameReader = createHouseholdPlanningFrameReader(
   defaultHouseholdStore,

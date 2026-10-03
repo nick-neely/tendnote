@@ -1,5 +1,11 @@
 import type { AccessSource } from "@tendnote/domain";
-import { type AccessRoute, type AccessState, LAPSED_PATH, REACCEPTANCE_PATH } from "./access-state";
+import {
+  type AccessRoute,
+  type AccessState,
+  GUEST_PATH,
+  LAPSED_PATH,
+  REACCEPTANCE_PATH,
+} from "./access-state";
 
 /**
  * Human-readable label for how an admitted user's Private Beta Access was granted,
@@ -58,6 +64,10 @@ export function resolveAccountView(
 
   if (access.state === "reacceptance") {
     return { type: "redirect", to: REACCEPTANCE_PATH };
+  }
+
+  if (access.state === "guest") {
+    return { type: "redirect", to: GUEST_PATH };
   }
 
   if (access.state === "admitted") {

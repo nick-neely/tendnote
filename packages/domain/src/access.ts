@@ -111,4 +111,10 @@ export type AccessDecision = {
   admitted: boolean;
   status: AccessStatus;
   profile: AccessProfile | null;
+  /**
+   * Set only on a hosted account that is not admitted but is a live Household
+   * Guest of this household: read-only, never `admitted`, so every surface that
+   * branches on `admitted` keeps refusing it (ADR 0245).
+   */
+  guest?: { householdId: string };
 };

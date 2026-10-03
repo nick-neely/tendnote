@@ -27,9 +27,9 @@ const READY = {
   householdName: "The Neely house",
   role: "member" as const,
   expiresAt: new Date("2026-08-15T09:00:00Z"),
-  accessPending: false,
+  joinsAsGuest: false,
 };
-const READY_WHILE_PENDING = { ...READY, accessPending: true };
+const READY_AS_GUEST = { ...READY, joinsAsGuest: true };
 
 /**
  * The two presses joining always takes. Named rather than repeated so the tests
@@ -112,34 +112,30 @@ describe("what an unproven visitor is told", () => {
 });
 
 /**
- * Private Beta Access is the global denier for using Tendnote, not a rule about
- * who may belong to a household. An invited person who has not been admitted yet
- * joins for real and goes back to waiting for the site — so the page has to say
- * that before the press, at the press, and after it.
+ * Admission is the global denier for using Tendnote, not a rule about who may
+ * belong to a household. An unpaid hosted invitee joins for real, as a
+ * read-only guest, so the page has to say that before the press, at the press,
+ * and after it.
  */
-describe("joining while Private Beta Access is still pending", () => {
+describe("joining as a read-only guest (#635)", () => {
   it("says what joining does and does not open, before anything is pressed", () => {
-    render(<JoinInvitationSurface secret={SECRET} view={READY_WHILE_PENDING} />);
+    render(<JoinInvitationSurface secret={SECRET} view={READY_AS_GUEST} />);
 
-    expect(screen.getByText(/waiting for Private Beta Access/i).textContent).toMatch(
-      /gives you your place in the household/i,
+    expect(screen.getByText(/join as a guest/i).textContent).toMatch(
+      /read what the household shares with you, but not add or change anything/i,
     );
     expect(screen.getByRole("button", { name: "Join The Neely house" })).toBeTruthy();
   });
 
-  it("repeats it at the moment of commitment, and lands on the waiting page", async () => {
+  it("repeats it at the moment of commitment, and lands in the guest area", async () => {
     const acceptAction = vi.fn().mockResolvedValue({ ok: true });
     render(
-      <JoinInvitationSurface
-        acceptAction={acceptAction}
-        secret={SECRET}
-        view={READY_WHILE_PENDING}
-      />,
+      <JoinInvitationSurface acceptAction={acceptAction} secret={SECRET} view={READY_AS_GUEST} />,
     );
 
     await openJoinConfirm();
     expect(screen.getByText(/You'll become a member of The Neely house/i).textContent).toMatch(
-      /land back on the waiting page/i,
+      /read-only guest/i,
     );
 
     await confirmJoin();
@@ -147,9 +143,9 @@ describe("joining while Private Beta Access is still pending", () => {
     await waitFor(() => {
       expect(acceptAction).toHaveBeenCalledWith({ secret: SECRET });
     });
-    expect(replace).toHaveBeenCalledWith("/pending");
+    expect(replace).toHaveBeenCalledWith("/guest");
     expect(screen.getByRole("status").textContent).toBe(
-      "You've joined The Neely house. Tendnote opens when your access comes through.",
+      "You've joined The Neely house as a read-only guest.",
     );
   });
 });

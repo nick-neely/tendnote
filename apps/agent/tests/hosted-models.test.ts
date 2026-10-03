@@ -21,6 +21,11 @@ vi.mock("ai", async (importOriginal) => ({
 const recordModelUsage = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("@tendnote/db/queries/usage-ledger", () => ({ recordModelUsage }));
 
+const readEveOverFairUseBudget = vi.hoisted(() =>
+  vi.fn<(input: { userId: string }) => Promise<boolean>>(async () => false),
+);
+vi.mock("@tendnote/db/queries/usage-bounds", () => ({ readEveOverFairUseBudget }));
+
 /** Gemini on Vertex only, never the Gemini Developer API, charged to interactive Eve. */
 const INTERACTIVE_VERTEX = {
   gateway: {
@@ -124,6 +129,30 @@ describe("Eve's hosted models", () => {
         outputTokens: 2,
         costMicroUsd: 123,
       });
+    },
+  );
+
+  it.each(Object.entries(eveAgentModules))(
+    "%s runs on the Fallback Model while its account is over the Fair-Use Budget",
+    async (_, loadModule) => {
+      const model = await resolveAsEveRuntime(loadModule);
+      const fake = await fakeGateway;
+      // Eve builds its models at import, so calls are counted per model id.
+      const callsTo = (modelId: string) =>
+        fake.models.filter((m) => m.modelId === modelId).flatMap((m) => m.doGenerateCalls);
+      const earlierLuna = callsTo("openai/gpt-6-luna").length;
+      const earlierGemini = callsTo("google/gemini-3.7-flash").length;
+      readEveOverFairUseBudget.mockResolvedValueOnce(true);
+
+      await inEveSession("owner-1", () => generateText({ model, prompt: "hi" }));
+
+      expect(readEveOverFairUseBudget).toHaveBeenLastCalledWith({ userId: "owner-1" });
+      expect(callsTo("google/gemini-3.7-flash")).toHaveLength(earlierGemini);
+      expect(
+        callsTo("openai/gpt-6-luna")
+          .slice(earlierLuna)
+          .map((c) => c.providerOptions),
+      ).toEqual([{ gateway: { ...INTERACTIVE_VERTEX.gateway, only: ["openai"] } }]);
     },
   );
 

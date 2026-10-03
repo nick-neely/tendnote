@@ -66,6 +66,9 @@ describe("semantic retrieval product-route boundaries", () => {
       // cannot meet one in ranked recall.
       "gift-plans",
       "gift-plans/[giftPlanId]",
+      // The Household Guest landing (#635). It reads only the guest's own
+      // household name, never semantic retrieval.
+      "guest",
       // The shared Household home (#384). A deterministic, capped read over
       // records the caller is separately proved to see, composed from each
       // domain's own listing — never ranked or semantic retrieval, so nothing

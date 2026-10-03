@@ -47,11 +47,33 @@ export type HouseholdOverviewInvitationReader = {
   countLiveInvitations: (input: { householdId: string }) => Promise<number>;
 };
 
+/**
+ * Whether a member is admitted now, fully or as a live Household Guest. Read
+ * live so a lapse shows on the next render, and never surfaced as more than
+ * that one fact.
+ */
+export type HouseholdOverviewAdmissionReader = {
+  isCurrentlyAdmitted: (input: { userId: string }) => Promise<boolean>;
+};
+
 export function createHouseholdOverviewReader(
   store: HouseholdStore,
   identityStore: HouseholdIdentityStore,
   invitationReader?: HouseholdOverviewInvitationReader,
+  admissionReader?: HouseholdOverviewAdmissionReader,
 ) {
+  async function listNotCurrentlyAdmitted(input: {
+    viewerUserId: string;
+    userIds: readonly string[];
+  }): Promise<string[]> {
+    if (!admissionReader) return [];
+    const others = input.userIds.filter((userId) => userId !== input.viewerUserId);
+    const admitted = await Promise.all(
+      others.map((userId) => admissionReader.isCurrentlyAdmitted({ userId })),
+    );
+    return others.filter((_, index) => !admitted[index]);
+  }
+
   return async function getHouseholdOverviewForUser(input: {
     userId: string;
   }): Promise<HouseholdOverview | null> {
@@ -67,10 +89,13 @@ export function createHouseholdOverviewReader(
     // who counts. Only active members get an identity read — a departed member
     // is not a person this surface describes.
     const memberRoster = await store.listHouseholdMemberships({ householdId });
-    const identities = await identityStore.listUserIdentities({
-      userIds: memberRoster
-        .filter((membership) => membership.status === "active")
-        .map((membership) => membership.userId),
+    const activeUserIds = memberRoster
+      .filter((membership) => membership.status === "active")
+      .map((membership) => membership.userId);
+    const identities = await identityStore.listUserIdentities({ userIds: activeUserIds });
+    const notCurrentlyAdmittedUserIds = await listNotCurrentlyAdmitted({
+      viewerUserId: input.userId,
+      userIds: activeUserIds,
     });
     const confirmations = await store.listHouseholdDissolutionConfirmations({ householdId });
 
@@ -92,6 +117,7 @@ export function createHouseholdOverviewReader(
       liveInvitations,
       invitations,
       dissolutionConfirmations: confirmations.map((confirmation) => confirmation.userId),
+      notCurrentlyAdmittedUserIds,
     });
   };
 }

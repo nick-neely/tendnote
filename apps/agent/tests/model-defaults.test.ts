@@ -41,7 +41,7 @@ describe("production model defaults", () => {
     }
   });
 
-  it("asks the default model for thought summaries, and for the effort by name", () => {
+  it("asks both pinned providers for thought summaries, and for the effort by name", () => {
     // The Assistant renders a thinking disclosure from `reasoning` parts, and
     // eve only forwards those when the provider emits any. For Gemini that
     // takes `includeThoughts`; the *amount* of thinking is set by `reasoning`,
@@ -51,8 +51,11 @@ describe("production model defaults", () => {
     // `thinkingLevel`, and an authored `anthropic` block would opt out of that
     // provider's own budget clamp.
     expect(agent.reasoning).toBe("low");
+    // The OpenAI summary switch is what gives the Fallback Model (GPT-6 Luna) a
+    // disclosure too; it must carry no effort, or it would override `reasoning`.
     expect(agent.modelOptions?.providerOptions).toEqual({
       google: { thinkingConfig: { includeThoughts: true } },
+      openai: { reasoningSummary: "auto" },
     });
   });
 

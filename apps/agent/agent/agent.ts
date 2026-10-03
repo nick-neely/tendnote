@@ -1,6 +1,7 @@
 import { hostedModel } from "@tendnote/db/queries/model-calls";
 import { defineAgent } from "eve";
 import { eveSessionAccount } from "./lib/eve-session-account";
+import { interactiveFallbackModelId } from "./lib/fallback-model";
 
 export default defineAgent({
   // Default follows the Vercel AI Gateway model id format. Override with
@@ -9,10 +10,13 @@ export default defineAgent({
   // reaches the Gemini Developer API. Eve 0.47.7 compiles a gateway instance's id
   // as `gateway/<model id>`, which has no catalog context window; the pinned Eve
   // patch keeps the gateway model id, matching how Eve's runtime resolves it.
+  // Over the account's Fair-Use Budget, each call runs on the Fallback Model
+  // instead (TENDNOTE_FALLBACK_MODEL), which the composer and Today announce.
   model: hostedModel({
     modelId: process.env.TENDNOTE_AGENT_MODEL ?? "google/gemini-3.7-flash",
     costCategory: "interactive",
     account: eveSessionAccount,
+    fallbackModelId: interactiveFallbackModelId(),
   }),
   /**
    * Thought summaries, so the Assistant can show a thinking disclosure.
@@ -38,17 +42,22 @@ export default defineAgent({
    *   keys *over* the effort-derived ones (`{...fromEffort, ...authored}`), so a
    *   Gemini 3 request would carry `thinkingLevel` and `thinkingBudget`
    *   together, two mutually exclusive thinking controls in one call.
-   * - An OpenAI reasoning model gets its `reasoningEffort` from it, so an
-   *   authored `openai` block would only duplicate the effort.
+   * - An OpenAI reasoning model gets its `reasoningEffort` from it, so the
+   *   `openai` block below must never carry an effort of its own: the gateway
+   *   lets any authored effort replace the top-level one outright.
    *
-   * `includeThoughts` is the exception: it carries no effort semantics, it is
-   * Google-only, and without it Gemini thinks silently and the disclosure has
-   * nothing to show.
+   * The summary switches are the exception, one per provider: they carry no
+   * effort semantics, and without them the model thinks silently and the
+   * disclosure has nothing to show. Each provider reads only its own block, so
+   * both are always sent. `includeThoughts` covers Gemini; `reasoningSummary`
+   * covers OpenAI, which is how the Fallback Model (GPT-6 Luna) shows its
+   * thinking too. `"auto"` asks for the richest summary the model offers.
    */
   reasoning: "low",
   modelOptions: {
     providerOptions: {
       google: { thinkingConfig: { includeThoughts: true } },
+      openai: { reasoningSummary: "auto" },
     },
   },
   build: {

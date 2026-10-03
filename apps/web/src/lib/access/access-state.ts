@@ -21,6 +21,9 @@ export const REACCEPTANCE_PATH = "/accept-terms";
 /** Where a Lapsed Account lives: resubscribe, export, delete (#609). */
 export const LAPSED_PATH = "/lapsed";
 
+/** Where a live Household Guest lands: read-only, outside the app shell (#635). */
+export const GUEST_PATH = "/guest";
+
 /**
  * Resolved Private Beta Access for the current request. `admitted` carries the
  * owner id used to scope product data; `pending` carries identity only so the
@@ -28,6 +31,10 @@ export const LAPSED_PATH = "/lapsed";
  *
  * `lapsed` is a not-admitted account whose Paid Access ended (#609). It carries
  * the retention deadline set once on entering Lapsed, and no owner id.
+ *
+ * `guest` is a hosted account that is not admitted but is a live Household
+ * Guest (ADR 0245). It carries no owner id either, so every product surface
+ * keyed on admission refuses it; only the guest area reads its household.
  *
  * `reacceptance` is any signed-in account, admitted or not, that owes
  * acceptance of a flagged document version (#614). It carries no owner id, so
@@ -39,6 +46,7 @@ export type AccessState =
   | { state: "pending"; user: SessionUser; decision: AccessDecision }
   | { state: "lapsed"; user: SessionUser; decision: AccessDecision; retentionDeadline: Date }
   | { state: "admitted"; user: SessionUser; ownerUserId: string; decision: AccessDecision }
+  | { state: "guest"; user: SessionUser; householdId: string; decision: AccessDecision }
   | {
       state: "reacceptance";
       user: SessionUser;
@@ -83,9 +91,13 @@ export async function resolveAccessState(
     return { state: "admitted", user, ownerUserId: user.id, decision };
   }
 
+  // Lapsed comes before guest: a Household Guest is an account that never
+  // paid, while a Lapsed member keeps its memberships but its own area, with
+  // exactly resubscribe, export, and delete (#609).
   const retentionDeadline = decision.profile?.retentionDeadline;
-  return retentionDeadline
-    ? { state: "lapsed", user, decision, retentionDeadline }
+  if (retentionDeadline) return { state: "lapsed", user, decision, retentionDeadline };
+  return decision.guest
+    ? { state: "guest", user, householdId: decision.guest.householdId, decision }
     : { state: "pending", user, decision };
 }
 
@@ -112,7 +124,12 @@ export type AccessRoute =
   | { type: "admitted"; ownerUserId: string }
   | {
       type: "redirect";
-      to: "/sign-in" | "/pending" | typeof LAPSED_PATH | typeof REACCEPTANCE_PATH;
+      to:
+        | "/sign-in"
+        | "/pending"
+        | typeof LAPSED_PATH
+        | typeof GUEST_PATH
+        | typeof REACCEPTANCE_PATH;
     };
 
 /**
@@ -132,6 +149,8 @@ export function decideAccessRoute(
       return { type: "redirect", to: "/pending" };
     case "lapsed":
       return { type: "redirect", to: LAPSED_PATH };
+    case "guest":
+      return { type: "redirect", to: GUEST_PATH };
     case "reacceptance":
       return { type: "redirect", to: REACCEPTANCE_PATH };
     default:
@@ -157,6 +176,7 @@ export function accountOwnerUserId(
       return state.ownerUserId;
     case "pending":
     case "lapsed":
+    case "guest":
     case "reacceptance":
       // Refusing new terms never blocks export or deletion (#614).
       return state.user.id;
@@ -182,5 +202,6 @@ const ACTION_REFUSALS: Record<Extract<AccessRoute, { type: "redirect" }>["to"], 
   "/sign-in": "You must be signed in to do that.",
   "/pending": "Private Beta Access is required to do that.",
   [LAPSED_PATH]: "Your subscription has ended. Resubscribe to do that.",
+  [GUEST_PATH]: "A Household Guest can read the household but not change anything.",
   [REACCEPTANCE_PATH]: "Accept the updated terms to do that.",
 };

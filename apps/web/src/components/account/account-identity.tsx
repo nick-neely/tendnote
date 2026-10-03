@@ -1,8 +1,8 @@
 /**
- * Which account is signed in, for the screens outside the app where that is
- * the one thing a visitor needs to confirm: the pending and Lapsed areas.
+ * The signed-in account, shown so the visitor can confirm which account they
+ * are in. Used by the areas outside the app shell, where nothing else names it.
  */
-export function SignedInIdentity({ user }: { user: { email: string; name: string } }) {
+export function AccountIdentity({ user }: { user: { name: string; email: string } }) {
   const initial = (user.name || user.email).trim().charAt(0).toUpperCase() || "?";
 
   return (

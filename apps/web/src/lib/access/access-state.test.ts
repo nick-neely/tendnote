@@ -5,6 +5,7 @@ import {
   type AccessState,
   accountOwnerUserId,
   decideAccessRoute,
+  GUEST_PATH,
   LAPSED_PATH,
   localFallbackOwnerUserId,
   ownerForActionOrThrow,
@@ -118,6 +119,44 @@ describe("resolveAccessState", () => {
     expect(state).toEqual({ state: "unauthenticated" });
     // No session means no access evaluation at all.
     expect(resolveAccess).not.toHaveBeenCalled();
+  });
+});
+
+describe("Household Guest (#635)", () => {
+  const guestDecision: AccessDecision = {
+    ...pendingDecision,
+    guest: { householdId: "household-1" },
+  };
+
+  it("resolves a live guest to its own state carrying the household, never an owner id", async () => {
+    const state = await resolveAccessState(USER, vi.fn().mockResolvedValue(guestDecision));
+
+    expect(state).toMatchObject({ state: "guest", householdId: "household-1" });
+    expect(state).not.toHaveProperty("ownerUserId");
+  });
+
+  it("keeps a guest out of the product, even with a local-dev fallback owner", async () => {
+    const state = await resolveAccessState(USER, vi.fn().mockResolvedValue(guestDecision));
+    const route = decideAccessRoute(state, { localFallbackOwnerUserId: "demo-user" });
+
+    expect(route).toEqual({ type: "redirect", to: GUEST_PATH });
+    expect(() => ownerForActionOrThrow(route)).toThrow(/Household Guest/);
+  });
+
+  it("still speaks for the guest's own account, so it can always leave", async () => {
+    const state = await resolveAccessState(USER, vi.fn().mockResolvedValue(guestDecision));
+
+    expect(accountOwnerUserId(state)).toBe("user-1");
+  });
+
+  it("lets owed re-acceptance outrank guest access", async () => {
+    const state = await resolveAccessState(
+      USER,
+      vi.fn().mockResolvedValue(guestDecision),
+      async () => [{ key: "terms" } as unknown as LegalDocument],
+    );
+
+    expect(state.state).toBe("reacceptance");
   });
 });
 
@@ -365,6 +404,15 @@ describe("Lapsed Account (#609)", () => {
         retentionDeadline,
       }),
     ).toBe(USER.id);
+  });
+
+  it("keeps a Lapsed member in the Lapsed area rather than a paying household's guest library", async () => {
+    const state = await resolveAccessState(USER, async () => ({
+      ...lapsedDecision,
+      guest: { householdId: "household-1" },
+    }));
+
+    expect(state).toMatchObject({ state: "lapsed", retentionDeadline });
   });
 
   it("owes re-acceptance like any other account", async () => {

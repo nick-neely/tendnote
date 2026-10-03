@@ -75,6 +75,7 @@ describe("operator-owned self-hosted admission proof", () => {
     });
     const invitations = createHouseholdInvitationLifecycle(invitationStore, {
       now: () => new Date("2026-08-19T12:00:00Z"),
+      acceptanceGrantsAdmission: () => policy.mode === "self-hosted",
     });
     const evaluateFlag = vi.fn().mockResolvedValue(true);
     const admission: Admission = {
