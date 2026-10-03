@@ -299,6 +299,22 @@ describe("Stripe reconciliation failures", () => {
     await subscriber.expectAdmitted();
   });
 
+  it("keeps the admission when the email fails, and records it", async () => {
+    const subscriber = await signedUp();
+    subscriber.announceAdmission.mockRejectedValueOnce(new Error("email provider unavailable"));
+
+    const result = await subscriber.reconcile();
+
+    expect(result).toMatchObject({ admitted: 1, failed: 1 });
+    expect(subscriber.logger.error).toHaveBeenCalledWith("stripe_reconciliation.failed", {
+      stage: "announce",
+      invoiceId: "in_first",
+      userId: user.id,
+      error: "email provider unavailable",
+    });
+    await subscriber.expectAdmitted();
+  });
+
   it("records an alertable failure when Stripe cannot be read, without throwing", async () => {
     const subscriber = await signedUp({ failAfter: 0 });
 

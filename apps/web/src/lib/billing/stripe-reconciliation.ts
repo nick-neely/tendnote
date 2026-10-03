@@ -28,7 +28,11 @@ export type StripeReconciliationDependencies = {
   grantPaidAccess: (userId: string) => Promise<ProfileStanding>;
   /** Anchor the account's Usage Period to its subscription's start. Must be idempotent. */
   anchorUsagePeriod: (userId: string, startedAt: Date) => Promise<unknown>;
-  /** The "you're in" email (#607), sent only when this pass is what admitted the account. */
+  /**
+   * The "you're in" email (#607), sent only when this pass is what admitted the
+   * account. Keyed on the invoice, as for the webhook, so a pass racing a late
+   * delivery still sends one message.
+   */
   announceAdmission: (input: { userId: string; invoiceId: string }) => Promise<unknown>;
   logger?: {
     warn?: (message: string, context?: Record<string, unknown>) => void;
@@ -58,7 +62,8 @@ function errorMessage(error: unknown): string {
  *
  * A failure never throws into the rest of the cron pass. Each one is logged as
  * `stripe_reconciliation.failed`, the record the operator alert channel reads,
- * and the next pass retries it. Self-hosted deployments run none of this.
+ * and the next pass retries a failed read or grant. Self-hosted deployments run
+ * none of this.
  */
 export function createStripeReconciliation(deps: StripeReconciliationDependencies) {
   async function project(
@@ -85,8 +90,6 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
       const after = await deps.grantPaidAccess(userId);
       await deps.anchorUsagePeriod(userId, paid.startedAt);
       if (before?.status === "granted" && before.source === after.source) return;
-      // The webhook would have sent this; it never got the chance.
-      await deps.announceAdmission({ userId, invoiceId: paid.invoiceId });
       result.admitted += 1;
     } catch (error) {
       result.failed += 1;
@@ -94,6 +97,22 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
         stage: "project",
         invoiceId: paid.invoiceId,
         ...(userId ? { userId } : {}),
+        error: errorMessage(error),
+      });
+      return;
+    }
+
+    // The webhook would have sent this; it never got the chance. A failed send
+    // is not retried, since the next pass finds the account already admitted;
+    // the completed-email fence (#620) is what makes it exact-once.
+    try {
+      await deps.announceAdmission({ userId, invoiceId: paid.invoiceId });
+    } catch (error) {
+      result.failed += 1;
+      deps.logger?.error?.("stripe_reconciliation.failed", {
+        stage: "announce",
+        invoiceId: paid.invoiceId,
+        userId,
         error: errorMessage(error),
       });
     }

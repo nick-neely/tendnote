@@ -72,12 +72,13 @@ export async function GET(request: NextRequest) {
   // First, because it never throws: a failing recovery stage below must not
   // stop a paying customer whose webhook was dropped from being admitted.
   const secretKey = process.env.STRIPE_SECRET_KEY;
-  const stripeReconciliation = await createStripeReconciliation({
+  const reconcileStripe = createStripeReconciliation({
     ...paidAccessProjection,
     policy: parseAdmissionPolicy(),
     stripe: secretKey ? new Stripe(secretKey) : null,
     logger: console,
-  })();
+  });
+  const stripeReconciliation = await reconcileStripe();
 
   const result = await runBackgroundJobRecovery({
     deliveryLimit: DELIVERY_LIMIT,
