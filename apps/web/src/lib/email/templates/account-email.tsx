@@ -17,10 +17,16 @@ import type { TransactionalEmailContent } from "../transactional";
 
 /**
  * The account and sign-in emails: the two Better Auth asks Tendnote to deliver,
- * the "you're in" message sent on admission (#607), and the confirmation of a
- * cancellation scheduled in the portal (#609).
+ * the "you're in" message sent on admission (#607), the confirmation of a
+ * cancellation scheduled in the portal (#609), and the reminder before an
+ * annual renewal (#611).
  */
-export type AccountEmailPurpose = "verify-email" | "reset-password" | "admitted" | "cancellation";
+export type AccountEmailPurpose =
+  | "verify-email"
+  | "reset-password"
+  | "admitted"
+  | "cancellation"
+  | "renewal-reminder";
 
 export type AccountEmailProps = {
   purpose: AccountEmailPurpose;
@@ -73,6 +79,16 @@ const COPY = {
     fallback: "Open your account in your browser",
     reason:
       "The Tendnote subscription for this email address was cancelled. If you didn’t do this, reply to this email and we’ll look into it.",
+  },
+  "renewal-reminder": {
+    subject: "Your Tendnote subscription renews soon",
+    preview: "Nothing to do if you’d like to keep it.",
+    heading: "Your subscription renews soon",
+    body: "Your Tendnote subscription will renew soon, and Stripe will charge the card on file. There’s nothing to do if you’d like to keep it. To see the date and amount, change your card, or cancel, go to Billing on your account page.",
+    action: "Manage billing",
+    fallback: "Open your account in your browser",
+    reason:
+      "This email address has a Tendnote subscription that renews automatically. We send this reminder before it renews, so the charge is never a surprise.",
   },
 } as const satisfies Record<AccountEmailPurpose, Record<string, string>>;
 

@@ -17,6 +17,7 @@ import Stripe from "stripe";
 import { sendAdmittedEmail } from "./admitted-email";
 import { sendCancellationEmail } from "./cancellation-email";
 import { readStripeBillingConfig } from "./checkout";
+import { sendRenewalReminderEmail } from "./renewal-reminder-email";
 import { subscriptionSnapshot } from "./subscription-projection";
 
 function configuredStripe(): Stripe {
@@ -41,6 +42,21 @@ export const paidAccessProjection = {
     // An account deleted since it paid has nobody left to tell.
     const to = await getAuthUserEmail({ userId });
     if (to) await sendAdmittedEmail({ to, invoiceId });
+  },
+  remindOfRenewal: async (input: {
+    userId: string;
+    stripeSubscriptionId: string;
+    renewsAt: Date;
+  }) => {
+    // An account deleted since it subscribed has nobody left to remind.
+    const to = await getAuthUserEmail({ userId: input.userId });
+    if (to) {
+      await sendRenewalReminderEmail({
+        to,
+        stripeSubscriptionId: input.stripeSubscriptionId,
+        renewsAt: input.renewsAt,
+      });
+    }
   },
   retrieveSubscription: async (stripeSubscriptionId: string) =>
     subscriptionSnapshot(
