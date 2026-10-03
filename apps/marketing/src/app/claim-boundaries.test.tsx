@@ -71,3 +71,21 @@ describe("demo boundaries", () => {
     expect(rendered).not.toMatch(/demo-session/);
   });
 });
+
+describe("tracking disclosure", () => {
+  const rendered = text(PrivacyAndAiPage);
+
+  it.each([
+    ["the account funnel", /notes when your account first reaches a few steps/],
+    ["what it never holds", /never records your notes or the people in them/],
+    [
+      "the same no-cookie, no-third-party boundary",
+      /stays inside Tendnote: no cookie, no third party/,
+    ],
+    ["US-only collection", /Only for accounts in the United States/],
+    ["retention from the constant", /Deleted after 90 days, or when you delete your account/],
+    ["the opt-out setting", /Turn it off any time under Account, Analytics and error reports/],
+  ])("states %s", (_name, pattern) => {
+    expect(rendered).toMatch(pattern);
+  });
+});
