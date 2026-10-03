@@ -74,6 +74,9 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
     const profile = await harness.queries.getAccessProfile({ userId: user.id });
     if (profile?.status !== "granted") throw new Error("announced before admission");
   });
+  const remindOfRenewal = vi.fn(
+    async (_input: { userId: string; stripeSubscriptionId: string; renewsAt: Date }) => {},
+  );
   const deps: StripeWebhookDependencies = {
     policy,
     webhookSecret: SECRET,
@@ -82,6 +85,7 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
       harness.queries.grantAccess({ userId, source: "paid_access", stripeSubscriptionId }),
     anchorUsagePeriod: async (userId, startedAt) => anchors.set(userId, startedAt),
     announceAdmission,
+    remindOfRenewal,
     retrieveSubscription,
     subscriptions,
     log,
@@ -114,6 +118,7 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
     log,
     anchors,
     announceAdmission,
+    remindOfRenewal,
     confirmCancellation,
     recorded,
     stripeChanges,
@@ -316,6 +321,7 @@ describe("Paid Access from the first paid invoice", () => {
       },
       anchorUsagePeriod: vi.fn(),
       announceAdmission,
+      remindOfRenewal: vi.fn(),
       retrieveSubscription: async () => ({
         id: "sub_1",
         stripeCustomerId: CUSTOMER,
@@ -379,6 +385,7 @@ describe("Stripe webhook signature", () => {
       grantPaidAccess,
       anchorUsagePeriod: vi.fn(),
       announceAdmission: vi.fn(),
+      remindOfRenewal: vi.fn(),
       retrieveSubscription: vi.fn(),
       subscriptions: inertSubscriptions(),
     });
@@ -609,6 +616,94 @@ describe("renewal failure: Past Due while Stripe retries (#610)", () => {
 
     await subscriber.expectAdmitted();
     expect(subscriber.recorded.get("sub_1")?.pastDue).toBeNull();
+  });
+});
+
+describe("the annual renewal reminder (#611)", () => {
+  /** A year after the fixture subscription started, when an annual one renews. */
+  const RENEWS_AT = new Date("2027-03-15T17:04:05.000Z");
+  const unix = (date: Date) => date.getTime() / 1000;
+  const ANNUAL = { start: unix(RENEWS_AT), end: unix(new Date("2028-03-15T17:04:05.000Z")) };
+  const MONTHLY = { start: unix(RENEWS_AT), end: unix(new Date("2027-04-15T17:04:05.000Z")) };
+
+  /** Stripe's preview of the renewal invoice, which has no id until it is created. */
+  const upcomingRenewal = (period: { start: number; end: number }, subscription = "sub_1") =>
+    stripeEvent("invoice.upcoming", {
+      object: "invoice",
+      customer: CUSTOMER,
+      status: "draft",
+      billing_reason: "upcoming",
+      parent: {
+        type: "subscription_details",
+        subscription_details: { subscription, metadata: {} },
+      },
+      lines: { data: [{ parent: { type: "subscription_item_details" }, period }] },
+    });
+
+  async function subscribed() {
+    const subscriber = await signedUp();
+    await subscriber.deliver(invoicePaid());
+    return subscriber;
+  }
+
+  it("reminds an annual subscriber before the renewal, keyed on it", async () => {
+    const subscriber = await subscribed();
+
+    expect((await subscriber.deliver(upcomingRenewal(ANNUAL))).status).toBe(200);
+
+    expect(subscriber.remindOfRenewal).toHaveBeenCalledExactlyOnceWith({
+      userId: user.id,
+      stripeSubscriptionId: "sub_1",
+      renewsAt: RENEWS_AT,
+    });
+    await subscriber.expectAdmitted();
+  });
+
+  it("does not remind a monthly subscriber", async () => {
+    const subscriber = await subscribed();
+
+    expect((await subscriber.deliver(upcomingRenewal(MONTHLY))).status).toBe(200);
+
+    expect(subscriber.remindOfRenewal).not.toHaveBeenCalled();
+  });
+
+  it("does not remind a subscriber whose subscription ends at the renewal instead", async () => {
+    const subscriber = await subscribed();
+    subscriber.stripeChanges("sub_1", { cancelAt: RENEWS_AT });
+
+    await subscriber.deliver(upcomingRenewal(ANNUAL));
+
+    expect(subscriber.remindOfRenewal).not.toHaveBeenCalled();
+  });
+
+  it("still reminds a subscriber whose cancellation takes effect after this renewal", async () => {
+    const subscriber = await subscribed();
+    subscriber.stripeChanges("sub_1", { cancelAt: new Date("2027-09-15T17:04:05.000Z") });
+
+    await subscriber.deliver(upcomingRenewal(ANNUAL));
+
+    expect(subscriber.remindOfRenewal).toHaveBeenCalledOnce();
+  });
+
+  it("asks Stripe to redeliver when the reminder fails", async () => {
+    const subscriber = await subscribed();
+    subscriber.remindOfRenewal.mockRejectedValueOnce(new Error("email provider down"));
+
+    await expect(subscriber.deliver(upcomingRenewal(ANNUAL))).rejects.toThrow(/provider down/);
+    await subscriber.deliver(upcomingRenewal(ANNUAL));
+
+    expect(subscriber.remindOfRenewal).toHaveBeenCalledTimes(2);
+  });
+
+  it("acknowledges the renewal of a customer Tendnote never created, and says so", async () => {
+    const subscriber = await subscribed();
+    const event = upcomingRenewal(ANNUAL, "sub_other");
+    (event.data.object as Record<string, unknown>).customer = "cus_unknown";
+
+    expect((await subscriber.deliver(event)).status).toBe(200);
+
+    expect(subscriber.remindOfRenewal).not.toHaveBeenCalled();
+    expect(subscriber.log).toHaveBeenCalledWith(expect.stringMatching(/unknown customer/));
   });
 });
 

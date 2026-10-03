@@ -6,6 +6,7 @@ import {
   type PaidAccessAdmissionDependencies,
 } from "./paid-access-admission";
 import { projectSubscription } from "./subscription-projection";
+import { type AnnualRenewal, annualRenewal } from "./upcoming-renewal";
 
 export type StripeWebhookDependencies = PaidAccessAdmissionDependencies & {
   policy: AdmissionPolicy;
@@ -18,6 +19,15 @@ export type StripeWebhookDependencies = PaidAccessAdmissionDependencies & {
    * Called again on a redelivery, so it must key the send on the invoice.
    */
   announceAdmission: (input: { userId: string; invoiceId: string }) => Promise<unknown>;
+  /**
+   * Send the content-free reminder before an annual renewal (#611). Called
+   * again on a redelivery, so it must key the send on the renewal.
+   */
+  remindOfRenewal: (input: {
+    userId: string;
+    stripeSubscriptionId: string;
+    renewsAt: Date;
+  }) => Promise<unknown>;
   log?: (message: string) => void;
 };
 
@@ -46,6 +56,11 @@ function changedSubscriptionId(event: Stripe.Event): string | null {
  * the same way before it admits, so a redelivered first invoice of a
  * subscription that has since ended re-admits nobody.
  *
+ * Stripe announces every renewal some days ahead with `invoice.upcoming`, as
+ * many as the dashboard's Upcoming renewal events setting says (#611). An
+ * annual renewal gets the reminder email, unless Stripe's current copy of the
+ * subscription ends first; a monthly one gets nothing.
+ *
  * A failure after verification surfaces as a 500 so Stripe redelivers;
  * accepting the HTTP delivery is not treated as completion. Self-hosted
  * deployments answer 404 and run none of this.
@@ -64,6 +79,24 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
       log(`[tendnote] Stripe event ${eventId} names an unknown customer; nothing was changed`);
     }
     return userId;
+  }
+
+  /**
+   * Remind the account of an annual renewal, unless Stripe's current copy of
+   * the subscription ends first: a cancellation may postdate the announcement.
+   * A failed send throws, so Stripe's redelivery retries it.
+   */
+  async function remindOfRenewal(renewal: AnnualRenewal, eventId: string) {
+    const userId = await accountFor(renewal.stripeCustomerId, eventId);
+    if (!userId) return;
+    const subscription = await deps.retrieveSubscription(renewal.stripeSubscriptionId);
+    const ends = subscription.endedAt ?? subscription.cancelAt;
+    if (ends && ends <= renewal.renewsAt) return;
+    await deps.remindOfRenewal({
+      userId,
+      stripeSubscriptionId: renewal.stripeSubscriptionId,
+      renewsAt: renewal.renewsAt,
+    });
   }
 
   return async function handleStripeWebhook(request: Request): Promise<Response> {
@@ -88,6 +121,12 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
       );
     } catch {
       return new Response("Invalid Stripe signature.", { status: 400 });
+    }
+
+    const renewal = event.type === "invoice.upcoming" ? annualRenewal(event.data.object) : null;
+    if (renewal) {
+      await remindOfRenewal(renewal, event.id);
+      return new Response(null, { status: 200 });
     }
 
     const changed = changedSubscriptionId(event);

@@ -7,7 +7,8 @@ export type FirstPaidInvoice = {
   startedAt: Date;
 };
 
-function stripeId(value: string | { id: string } | null): string | null {
+/** The id of a Stripe reference, whether or not it was expanded. */
+export function stripeId(value: string | { id: string } | null): string | null {
   if (value === null) return null;
   return typeof value === "string" ? value : value.id;
 }
