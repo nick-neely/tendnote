@@ -43,4 +43,19 @@ describe("Activation Milestones", () => {
 
     expect(await store.listReached({ userId: "u2" })).toEqual([]);
   });
+
+  it("announces each stamp once, so the funnel copy is never a backfill", async () => {
+    const stamped: string[] = [];
+    const { recordActivationMilestone } = createActivationMilestoneQueries(
+      createInMemoryActivationMilestoneStore(),
+      { onStamped: async ({ milestone }) => void stamped.push(milestone) },
+    );
+
+    for (const milestone of FIRST_VALUE_STEPS) {
+      await recordActivationMilestone({ userId: "u1", milestone });
+      await recordActivationMilestone({ userId: "u1", milestone });
+    }
+
+    expect(stamped).toEqual([...FIRST_VALUE_STEPS, "first_value_reached"]);
+  });
 });

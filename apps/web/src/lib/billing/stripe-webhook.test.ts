@@ -87,6 +87,7 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
   const remindOfRenewal = vi.fn(
     async (_input: { userId: string; stripeSubscriptionId: string; renewsAt: Date }) => {},
   );
+  const recordFunnelStage = vi.fn(async (_userId: string, _stage: string) => {});
   const deps: StripeWebhookDependencies = {
     policy,
     webhookSecret: SECRET,
@@ -94,6 +95,7 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
     grantPaidAccess: (userId, stripeSubscriptionId) =>
       harness.queries.grantAccess({ userId, source: "paid_access", stripeSubscriptionId }),
     anchorUsagePeriod: async (userId, startedAt) => anchors.set(userId, startedAt),
+    recordFunnelStage,
     announceAdmission,
     remindOfRenewal,
     retrieveSubscription,
@@ -134,6 +136,7 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
     anchors,
     announceAdmission,
     remindOfRenewal,
+    recordFunnelStage,
     confirmCancellation,
     confirmRefund,
     recorded,
@@ -193,6 +196,27 @@ describe("Paid Access from the first paid invoice", () => {
     await subscriber.expectAdmitted();
   });
 
+  it("copies payment and admission into the account funnel from server state", async () => {
+    const subscriber = await signedUp();
+
+    await subscriber.deliver(invoicePaid());
+
+    expect(subscriber.recordFunnelStage.mock.calls).toEqual([
+      [user.id, "payment_confirmed"],
+      [user.id, "paid_access_granted"],
+    ]);
+  });
+
+  it("confirms the payment but records no admission for a subscription that has ended", async () => {
+    const subscriber = await signedUp();
+    subscriber.stripeChanges("sub_1", { endedAt: PERIOD_END });
+
+    await subscriber.deliver(invoicePaid());
+
+    await subscriber.expectNotAdmitted();
+    expect(subscriber.recordFunnelStage.mock.calls).toEqual([[user.id, "payment_confirmed"]]);
+  });
+
   it("sends the 'you're in' email once admission is recorded, keyed on the invoice", async () => {
     const subscriber = await signedUp();
 
@@ -240,6 +264,7 @@ describe("Paid Access from the first paid invoice", () => {
 
     await subscriber.expectNotAdmitted();
     expect(subscriber.announceAdmission).not.toHaveBeenCalled();
+    expect(subscriber.recordFunnelStage).not.toHaveBeenCalled();
   });
 
   it("sends no email for an abandoned or expired checkout", async () => {
@@ -350,6 +375,7 @@ describe("Paid Access from the first paid invoice", () => {
         throw new Error("database unavailable");
       },
       anchorUsagePeriod: vi.fn(),
+      recordFunnelStage: vi.fn(),
       announceAdmission,
       remindOfRenewal: vi.fn(),
       retrieveSubscription: async () => ({
@@ -415,6 +441,7 @@ describe("Stripe webhook signature", () => {
       findAccountByStripeCustomer: async () => user.id,
       grantPaidAccess,
       anchorUsagePeriod: vi.fn(),
+      recordFunnelStage: vi.fn(),
       announceAdmission: vi.fn(),
       remindOfRenewal: vi.fn(),
       retrieveSubscription: vi.fn(),

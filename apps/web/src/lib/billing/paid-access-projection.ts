@@ -5,6 +5,7 @@ import {
   grantAccess,
   lapsePaidAccess,
 } from "@tendnote/db/queries/access-profiles";
+import { recordServerFunnelStage } from "@tendnote/db/queries/account-telemetry";
 import { getAuthUserEmail } from "@tendnote/db/queries/auth-users";
 import {
   attachStripeRefund,
@@ -23,6 +24,7 @@ import {
   recordStripeSubscription,
 } from "@tendnote/db/queries/stripe-subscriptions";
 import { anchorUsagePeriod } from "@tendnote/db/queries/usage-bounds";
+import type { PaidAccessFunnelStage } from "@tendnote/domain/account-funnel";
 import Stripe from "stripe";
 import { sendAdmittedEmail } from "./admitted-email";
 import { sendCancellationEmail } from "./cancellation-email";
@@ -50,6 +52,8 @@ export const paidAccessProjection = {
   grantPaidAccess: (userId: string, stripeSubscriptionId: string) =>
     grantAccess({ userId, source: "paid_access", stripeSubscriptionId }),
   anchorUsagePeriod: (userId: string, startedAt: Date) => anchorUsagePeriod({ userId, startedAt }),
+  recordFunnelStage: (userId: string, stage: PaidAccessFunnelStage) =>
+    recordServerFunnelStage({ userId, stage }),
   announceAdmission: async ({ userId, invoiceId }: { userId: string; invoiceId: string }) => {
     // An account deleted since it paid has nobody left to tell.
     const to = await getAuthUserEmail({ userId });

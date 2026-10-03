@@ -1,6 +1,6 @@
 {
-  "id": "bf2d4b2e-5f44-4746-b601-faf95bb8eb1d",
-  "prevId": "f759397c-91a2-4c6e-b888-1bd9ce8a975f",
+  "id": "b2ae8f2f-6d57-4bc4-984a-0f3f8bfb4f07",
+  "prevId": "bf2d4b2e-5f44-4746-b601-faf95bb8eb1d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -13871,6 +13871,62 @@
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.spend_breaker_days": {
+      "name": "spend_breaker_days",
+      "schema": "",
+      "columns": {
+        "day": {
+          "name": "day",
+          "type": "date",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "admitted_accounts": {
+          "name": "admitted_accounts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ceiling_micro_usd": {
+          "name": "ceiling_micro_usd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "background_shed_at": {
+          "name": "background_shed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scheduled_shed_at": {
+          "name": "scheduled_shed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "interactive_shed_at": {
+          "name": "interactive_shed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
