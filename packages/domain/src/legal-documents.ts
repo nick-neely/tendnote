@@ -16,6 +16,12 @@ export type LegalDocument = {
   effectiveDate: string;
   /** Repository-relative path of this version's text. */
   path: string;
+  /**
+   * The owner-set re-acceptance flag (#614). When present, every hosted account
+   * without an Acceptance Record for this version is gated until it accepts,
+   * and the gate shows these changes as the summary of what is new.
+   */
+  reacceptance?: { changes: readonly string[] };
 };
 
 export const CURRENT_LEGAL_DOCUMENTS: readonly LegalDocument[] = [
@@ -73,4 +79,24 @@ export function isCurrentClickwrapAcceptance(input: unknown): boolean {
   if (eligible !== true || typeof documents !== "object" || documents === null) return false;
   const accepted = documents as Record<string, unknown>;
   return CURRENT_LEGAL_DOCUMENTS.every((doc) => accepted[doc.key] === doc.version);
+}
+
+/** The part of an Acceptance Record the re-acceptance gate compares. */
+export type AcceptedVersion = { documentKey: LegalDocumentKey; version: string };
+
+/**
+ * The flagged current versions an account still owes acceptance of (#614). An
+ * unflagged version never gates, even for an account that never accepted it,
+ * so publishing a typo fix does not stop anyone; a flagged one gates every
+ * account without a record of that exact version.
+ */
+export function outstandingReacceptance(
+  accepted: readonly AcceptedVersion[],
+  documents: readonly LegalDocument[] = CURRENT_LEGAL_DOCUMENTS,
+): LegalDocument[] {
+  return documents.filter(
+    (doc) =>
+      doc.reacceptance !== undefined &&
+      !accepted.some((record) => record.documentKey === doc.key && record.version === doc.version),
+  );
 }

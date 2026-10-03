@@ -75,6 +75,22 @@ describe("resolveAccountView", () => {
     expect(resolveAccountView(state, "demo-user")).toEqual({ type: "redirect", to: "/pending" });
   });
 
+  it("sends an account that owes re-acceptance to the gate, never the local fallback (#614)", () => {
+    const admitted = admittedState("paid_access");
+    if (admitted.state !== "admitted") throw new Error("unreachable");
+    const state: AccessState = {
+      state: "reacceptance",
+      user: USER,
+      decision: admitted.decision,
+      documents: [],
+    };
+
+    expect(resolveAccountView(state, "demo-user")).toEqual({
+      type: "redirect",
+      to: "/accept-terms",
+    });
+  });
+
   it("redirects an unauthenticated hosted request to sign-in", () => {
     expect(resolveAccountView({ state: "unauthenticated" }, undefined)).toEqual({
       type: "redirect",

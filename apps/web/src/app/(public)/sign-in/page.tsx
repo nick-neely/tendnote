@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { CredentialsForm } from "@/components/auth/credentials-form";
+import { REACCEPTANCE_PATH } from "@/lib/access/access-state";
 import { getCurrentAccess } from "@/lib/access/current-access";
 import { safeReturnTo } from "@/lib/auth/return-to";
 import { githubEnvFromProcess, isGithubConfigured } from "@/lib/auth/social";
@@ -28,6 +29,10 @@ export default async function SignInPage({
   const requestedReturnTo = (await searchParams)?.returnTo;
   const returnTo = safeReturnTo(requestedReturnTo);
   const copy = signInCopy(Boolean(requestedReturnTo));
+
+  if (access.state === "reacceptance") {
+    redirect(REACCEPTANCE_PATH);
+  }
 
   if (access.state === "admitted") {
     redirect(returnTo);

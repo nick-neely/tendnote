@@ -67,6 +67,32 @@ describe("hosted Eve session authentication", () => {
     await expect(auth(request)).rejects.toBeInstanceOf(ForbiddenError);
   });
 
+  it("refuses an admitted user who owes acceptance of updated terms (#614)", async () => {
+    const owesReacceptance = vi.fn().mockResolvedValue(true);
+    const checkIngressBudget = vi.fn();
+    const auth = createTendnoteSessionAuth({
+      getSession: vi.fn().mockResolvedValue({ user: { id: "user-123" } }),
+      checkAccess: vi.fn().mockResolvedValue({ admitted: true }),
+      owesReacceptance,
+      checkIngressBudget,
+    });
+
+    await expect(auth(request)).rejects.toThrow(/updated terms/);
+    expect(owesReacceptance).toHaveBeenCalledWith("user-123");
+    expect(checkIngressBudget).not.toHaveBeenCalled();
+  });
+
+  it("admits a user who owes no acceptance", async () => {
+    const auth = createTendnoteSessionAuth({
+      getSession: vi.fn().mockResolvedValue({ user: { id: "user-123" } }),
+      checkAccess: vi.fn().mockResolvedValue({ admitted: true }),
+      owesReacceptance: vi.fn().mockResolvedValue(false),
+      checkIngressBudget: vi.fn().mockResolvedValue({ allowed: true }),
+    });
+
+    await expect(auth(request)).resolves.toMatchObject({ principalId: "user-123" });
+  });
+
   it("fails closed when the ingress budget is unavailable or exhausted", async () => {
     const auth = createTendnoteSessionAuth({
       getSession: vi.fn().mockResolvedValue({ user: { id: "user-123" } }),

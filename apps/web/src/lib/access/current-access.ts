@@ -1,5 +1,6 @@
 import "server-only";
 
+import { listOutstandingReacceptance } from "@tendnote/db/queries/acceptance-records";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
@@ -57,7 +58,11 @@ export const getCurrentAccess = cache(async function getCurrentAccess(): Promise
       }
     : null;
 
-  return resolveAccessState(sessionUser, (entity) => privateBetaAccess.resolveAccess(entity));
+  return resolveAccessState(
+    sessionUser,
+    (entity) => privateBetaAccess.resolveAccess(entity),
+    (userId) => listOutstandingReacceptance({ userId }),
+  );
 });
 
 /** Resolve the local-dev fallback owner from the live environment, if any. */

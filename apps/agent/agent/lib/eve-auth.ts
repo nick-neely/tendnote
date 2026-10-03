@@ -27,6 +27,8 @@ export type SessionAuthDependencies = {
     emailVerified?: boolean;
   }) => Promise<{ admitted: boolean }>;
   checkAccess?: (userId: string) => Promise<{ admitted: boolean }>;
+  /** Whether the user owes acceptance of a flagged document version (#614). */
+  owesReacceptance?: (userId: string) => Promise<boolean>;
   checkIngressBudget: (userId: string) => Promise<{ allowed: boolean }>;
 };
 
@@ -73,6 +75,14 @@ export function createTendnoteSessionAuth(deps: SessionAuthDependencies): AuthFn
       });
     }
 
+    // The re-acceptance gate blocks the app, and Eve is part of the app.
+    if (await deps.owesReacceptance?.(userId)) {
+      throw new ForbiddenError({
+        code: "reacceptance_required",
+        message: "Accept the updated terms in Tendnote to keep using the assistant.",
+      });
+    }
+
     if (!(await deps.checkIngressBudget(userId)).allowed) {
       throw new ForbiddenError({
         code: "eve_ingress_rate_limited",
@@ -100,6 +110,7 @@ export function createTendnoteAdmissionAuth(
   return createTendnoteSessionAuth({
     getSession: deps.getSession,
     resolveAccess: (entity) => admission.resolveAccess(entity),
+    owesReacceptance: deps.owesReacceptance,
     checkIngressBudget: deps.checkIngressBudget,
   });
 }
