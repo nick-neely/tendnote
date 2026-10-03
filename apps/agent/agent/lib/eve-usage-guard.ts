@@ -5,22 +5,14 @@ import type { AuthFn } from "eve/channels/auth";
 const NEW_MESSAGE_ROUTE = /^\/eve\/v1\/session(?:\/[^/]+)?$/;
 
 /**
- * Whether the request starts a turn: a new conversation, or a message to an
- * existing one. An answer to a parked approval (`inputResponses`) continues a
- * turn that already started, so it is not one; neither is any stream, cancel,
- * compact, clear, reset, or info route.
+ * Whether the request can put the model to work: a new conversation, a message,
+ * or an answer to a parked request. Answers count too, because Eve runs an
+ * answer that matches no pending request as new input, and nothing at this door
+ * can tell a genuine answer from an unmatched one. Streams, cancels, compact,
+ * clear, reset, and info never start one.
  */
-async function startsTurn(request: Request): Promise<boolean> {
-  if (request.method !== "POST" || !NEW_MESSAGE_ROUTE.test(new URL(request.url).pathname)) {
-    return false;
-  }
-  try {
-    const body = (await request.clone().json()) as { inputResponses?: unknown } | null;
-    return body?.inputResponses === undefined;
-  } catch {
-    // Eve refuses a body it cannot parse before any turn starts.
-    return false;
-  }
+function startsModelWork(request: Request): boolean {
+  return request.method === "POST" && NEW_MESSAGE_ROUTE.test(new URL(request.url).pathname);
 }
 
 /**
@@ -55,9 +47,10 @@ export type UsagePauseGuardDependencies = {
 
 /**
  * Interactive Eve's Account Ceiling, at the one door every turn comes through.
- * While the account's notice is paused, a new conversation or message is
- * refused with that notice; a turn already running finishes, its approvals can
- * still be answered, and every other route is untouched.
+ * While the account's notice is paused, a new conversation, message, or answer
+ * is refused with that notice. A turn already streaming finishes; one parked on
+ * an approval stays parked until the reset, since resuming it spends model
+ * calls too. Every other route is untouched.
  *
  * It decides only whether a turn may start. The principal it passes on is the
  * inner policy's, unchanged, so the mode gate, approval gates, and egress rules
@@ -67,7 +60,7 @@ export type UsagePauseGuardDependencies = {
 export function createUsagePauseGuard(deps: UsagePauseGuardDependencies): AuthFn<Request> {
   return async (request) => {
     const principal = await deps.auth(request);
-    if (!principal || !(await startsTurn(request))) return principal;
+    if (!principal || !startsModelWork(request)) return principal;
 
     const notice = await deps.readUsageNotice(principal.principalId);
     if (notice.state === "paused") throw new EveUsagePausedError(notice);

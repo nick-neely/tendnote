@@ -3,11 +3,11 @@ import {
   getAssistantConversation,
   listAssistantConversations,
 } from "@tendnote/db/queries/assistant-conversations";
-import { readEveUsageNotice } from "@tendnote/db/queries/usage-bounds";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { AssistantPage } from "@/components/assistant-page";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { readEveUsageForDisplay } from "@/lib/assistant/eve-usage-display";
 import { assistantReturnTo, assistantSurfaceModel } from "@/lib/assistant/surface-model";
 import { dashboardAssistantHints } from "@/lib/dashboard-context";
 
@@ -44,7 +44,7 @@ export async function AssistantSurfaceContent({ sessionId }: { sessionId: string
     sessionId ? getAssistantConversation({ ownerUserId, sessionId }) : Promise.resolve(null),
     dashboardAssistantHints(ownerUserId),
     getEveApprovalMode({ userId: ownerUserId }),
-    readEveUsageNotice({ userId: ownerUserId }),
+    readEveUsageForDisplay(ownerUserId),
   ]);
 
   const model = assistantSurfaceModel({ conversations, hints, ownerUserId, sessionId, thread });

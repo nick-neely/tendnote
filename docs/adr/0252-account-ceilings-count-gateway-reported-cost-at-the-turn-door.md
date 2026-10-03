@@ -20,10 +20,12 @@ with no usable reported cost is counted as free and logged; bounding a metering
 failure is the Spend Breaker's job, not a guess's.
 
 **The interactive ceiling is enforced where a turn starts.** A guard around
-Eve's route auth refuses a new conversation or message while the account is
-paused, with a 403 carrying the notice. A turn already running finishes, its
-approvals can still be answered, and streams and cancels are untouched, so a
-ceiling never strands a half-finished turn. Overshoot is bounded by one turn.
+Eve's route auth refuses a new conversation, message, or approval answer while
+the account is paused, with a 403 carrying the notice. Answers are included
+because Eve runs an answer that matches no pending request as new input, and
+the door cannot tell the two apart. A turn already streaming finishes, and
+streams and cancels are untouched; a turn parked on an approval stays parked
+until the reset. Overshoot is bounded by one turn.
 A usage read that fails refuses the turn, as a failed admission read does.
 
 **The Usage Period anchor is the subscription's start.** It is written from

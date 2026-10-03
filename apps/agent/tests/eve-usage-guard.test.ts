@@ -57,12 +57,25 @@ describe("the interactive Account Ceiling at Eve's door", () => {
     expect(readUsageNotice).toHaveBeenCalledWith("owner-1");
   });
 
-  it("still answers approvals, streams, and cancels on a turn already running", async () => {
+  it("refuses an answer too, which Eve runs as new input when it matches nothing pending", async () => {
+    const guard = createUsagePauseGuard({ auth, readUsageNotice: async () => paused });
+
+    const response = await refusal(
+      guard(
+        post("/eve/v1/session/s-1", {
+          inputResponses: [{ requestId: "unmatched", optionId: "approve" }],
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("still streams and cancels a turn already running", async () => {
     const readUsageNotice = vi.fn(async () => paused);
     const guard = createUsagePauseGuard({ auth, readUsageNotice });
 
     for (const request of [
-      post("/eve/v1/session/s-1", { inputResponses: [{ requestId: "r", optionId: "approve" }] }),
       post("/eve/v1/session/s-1/cancel", {}),
       new Request("https://agent.tendnote.test/eve/v1/session/s-1/stream"),
       new Request("https://agent.tendnote.test/eve/v1/info"),
