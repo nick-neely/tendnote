@@ -1,6 +1,7 @@
 "use client";
 
 import type { PromptNudge } from "@tendnote/domain";
+import type { UsageNotice, UsageRestriction } from "@tendnote/domain/usage-bounds";
 import type { ChatStatus } from "ai";
 import type { EveMessage } from "eve/react";
 import Link from "next/link";
@@ -34,6 +35,7 @@ import {
   AssistantPageGreeting,
   AssistantPanelHeader,
   AssistantPanelShell,
+  AssistantPausedNotice,
   AssistantResumeSkeleton,
   type AssistantSurface,
   assistantSubtitleFor,
@@ -141,6 +143,12 @@ type AssistantPanelProps = {
    */
   suggestPersonName?: string | null;
   surface?: AssistantSurface;
+  /**
+   * Interactive Eve's usage notice, read server-side by the destination. While
+   * it is paused the composer gives way to the notice; the transcript and its
+   * approval cards stay usable (#625).
+   */
+  usage?: UsageNotice;
 };
 
 /**
@@ -206,14 +214,17 @@ function AssistantConversationPanel({
   resumed,
   suggestPersonName = null,
   surface = "panel",
+  usage: initialUsage,
 }: AssistantPanelProps & { resumed: AssistantResumeSettled }) {
   // One Eve session, and the only honest way to send into it: `deliver` rethrows
-  // the failure eve announces out of band, and `ended` is the one failure the
-  // reader must never be invited to retry (see `useAssistantSession`).
-  const { agent, deliver, ended } = useAssistantSession({
+  // the failure eve announces out of band, and `closed` (an ended session, or Eve
+  // paused at its ceiling) is what the reader must never be invited to retry
+  // (see `useAssistantSession`).
+  const { agent, closed, deliver, paused } = useAssistantSession({
     context,
     onSessionStarted,
     resumed,
+    usage: initialUsage,
   });
 
   // Messages typed while a turn was running. Eve has no queue of its own, so this
@@ -259,14 +270,14 @@ function AssistantConversationPanel({
   // a file dragged over the transcript is aimed at this panel, and a target the
   // size of one input is a target the user has to find. The drop lands in the
   // same evidence capture the "+" menu opens (ADR 0185) — the state lives here
-  // because the target and the composer are two different elements. An ended
-  // thread has no composer at all, and so nowhere to render a capture: it takes
-  // no drops, exactly as it offers no "+" menu.
+  // because the target and the composer are two different elements. An ended or
+  // paused thread has no composer at all, and so nowhere to render a capture: it
+  // takes no drops, exactly as it offers no "+" menu.
   const surfaceRef = useRef<HTMLElement>(null);
   const evidence = useEvidencePick();
   const dragging = useFileDropZone(surfaceRef, {
     accept: EVIDENCE_DROP_ACCEPT,
-    enabled: !ended,
+    enabled: !closed,
     onFiles: evidence.takeDrop,
   });
 
@@ -299,6 +310,7 @@ function AssistantConversationPanel({
                   busy={isTurnInFlight(agent.status)}
                   composerRef={composerRef}
                   events={agent.events}
+                  failureExplained={paused !== null}
                   messages={messages}
                   nudges={nudges}
                   onSend={sendPrompt}
@@ -316,8 +328,9 @@ function AssistantConversationPanel({
           approvals={approvals}
           centered={centeredComposer}
           context={context}
-          ended={ended}
+          closed={closed}
           evidence={evidence}
+          paused={paused}
           nudges={nudges}
           onStop={() => void agent.cancel()}
           onSend={sendPrompt}
@@ -409,14 +422,15 @@ function AssistantSettleSpacer({ grow, surface }: { grow: boolean; surface: Assi
 function AssistantComposerRegion({
   approvals,
   centered,
+  closed,
   context,
-  ended,
   evidence,
   nudges,
   onSend,
   onSendNudge,
   onStop,
   ownerUserId,
+  paused,
   queue,
   status,
   suggestPersonName,
@@ -427,41 +441,38 @@ function AssistantComposerRegion({
   approvals: AssistantPanelApprovals;
   centered: boolean;
   context?: AssistantPersonContext;
-  ended: boolean;
+  /** Ended or paused: no composer, and nothing in the queue can be sent. */
+  closed: boolean;
   evidence: EvidencePick;
   nudges: PromptNudge[];
   onSend: SendPrompt;
   onSendNudge: (prompt: string) => void;
   onStop: () => void;
   ownerUserId: string;
+  /** Interactive Eve's paused notice, or `null` while turns can start. */
+  paused: UsageRestriction | null;
   queue: AssistantSendQueueControls;
   status: ChatStatus;
   suggestPersonName: string | null;
   surface: AssistantSurface;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
 }) {
-  // On an ended thread the strip is a record rather than a queue: nothing can be
-  // sent, so Send now goes and the list says why it is still here.
-  const queueNote = ended ? "These weren't sent." : undefined;
-  const onSendNow = ended ? null : queue.sendNow;
+  const strip = sendQueueStrip(queue, closed);
 
   return (
     <>
-      {centered ? <AssistantPageGreeting /> : null}
+      {/* The greeting invites a message, which a paused composer cannot take. */}
+      {centered && !paused ? <AssistantPageGreeting /> : null}
       <AssistantComposerShell surface={surface}>
-        <PendingApprovalNote ended={ended} request={approvals.pendingApproval} />
+        <PendingApprovalNote closed={closed} request={approvals.pendingApproval} />
         <AssistantSendQueue
           items={queue.items}
-          note={queueNote}
+          note={strip.note}
           onRemove={queue.remove}
-          onSendNow={onSendNow}
+          onSendNow={strip.onSendNow}
         />
-        {ended ? (
-          <AssistantEndedNotice>
-            <Button asChild className="shrink-0" size="sm">
-              <Link href="/assistant">Start a new conversation</Link>
-            </Button>
-          </AssistantEndedNotice>
+        {closed ? (
+          <ClosedComposerNotice paused={paused} />
         ) : (
           <AssistantLiveComposer
             centered={centered}
@@ -480,6 +491,33 @@ function AssistantComposerRegion({
         )}
       </AssistantComposerShell>
     </>
+  );
+}
+
+/**
+ * On an ended or paused thread the queue strip is a record rather than a queue:
+ * nothing can be sent, so Send now goes and the list says why it is still here.
+ */
+function sendQueueStrip(queue: AssistantSendQueueControls, closed: boolean) {
+  return closed
+    ? { note: "These weren't sent.", onSendNow: null }
+    : { note: undefined, onSendNow: queue.sendNow };
+}
+
+/**
+ * What stands where the composer was: a paused thread can be continued once its
+ * restriction clears, an ended one never can, so only the ending offers a new
+ * conversation. Ending wins when both apply, because no reset revives it.
+ */
+function ClosedComposerNotice({ paused }: { paused: UsageRestriction | null }) {
+  if (paused) return <AssistantPausedNotice notice={paused} />;
+
+  return (
+    <AssistantEndedNotice>
+      <Button asChild className="shrink-0" size="sm">
+        <Link href="/assistant">Start a new conversation</Link>
+      </Button>
+    </AssistantEndedNotice>
   );
 }
 
@@ -504,16 +542,16 @@ function AssistantComposerRegion({
  * parks the turn, which is worth hearing once without interrupting.
  */
 function PendingApprovalNote({
-  ended,
+  closed,
   request,
 }: {
-  /** An ended thread has no composer, so nothing here about Enter is true of it. */
-  ended: boolean;
+  /** An ended or paused thread has no composer, so nothing here about Enter is true of it. */
+  closed: boolean;
   request: AssistantInputRequestView | null;
 }) {
   const { textInput } = usePromptInputController();
 
-  if (ended || request === null) {
+  if (closed || request === null) {
     return null;
   }
 
@@ -663,6 +701,7 @@ function AssistantConversation({
   busy,
   composerRef,
   events,
+  failureExplained,
   messages,
   nudges,
   onSend,
@@ -673,6 +712,8 @@ function AssistantConversation({
   busy: boolean;
   composerRef: React.RefObject<HTMLTextAreaElement | null>;
   events: readonly unknown[];
+  /** A notice in place of the composer already says why the last turn failed. */
+  failureExplained: boolean;
   messages: readonly EveMessage[];
   nudges: PromptNudge[];
   onSend: SendPrompt;
@@ -746,7 +787,7 @@ function AssistantConversation({
           userPrompt={precedingUserPrompt(messages, index)}
         />
       ))}
-      <TurnStatus liveTurn={liveTurn} status={status} />
+      <TurnStatus failureExplained={failureExplained} liveTurn={liveTurn} status={status} />
     </>
   );
 }
@@ -1052,11 +1093,22 @@ function useDeferredFlag(active: boolean, { delay = 350, minVisible = 450 } = {}
  * has left. Reading it in the render makes the two impossible to co-exist, since
  * the same commit that first renders the disclosure is the one that drops this.
  */
-function TurnStatus({ liveTurn, status }: { liveTurn: boolean; status: AgentStatus }) {
+function TurnStatus({
+  failureExplained,
+  liveTurn,
+  status,
+}: {
+  failureExplained: boolean;
+  liveTurn: boolean;
+  status: AgentStatus;
+}) {
   const working = useDeferredFlag(isTurnInFlight(status) && !liveTurn, {
     delay: 350,
     minVisible: 0,
   });
+
+  // "Try again in a moment" would be false beside a notice that names when.
+  if (status === "error" && failureExplained) return null;
 
   if (status === "error") {
     return (

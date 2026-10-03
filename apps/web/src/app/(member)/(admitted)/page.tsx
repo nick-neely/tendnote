@@ -1,6 +1,7 @@
 import { getEveApprovalMode } from "@tendnote/db/queries/access-profiles";
 import { getHouseholdCheckin } from "@tendnote/db/queries/household-home";
 import { getOwnerTodayContext } from "@tendnote/db/queries/today";
+import { readEveUsageNotice } from "@tendnote/db/queries/usage-bounds";
 import type { BriefCadence, TodayShortlistResponse } from "@tendnote/domain";
 import { householdCheckinIsWorthShowing } from "@tendnote/domain/household-checkin";
 import { connection } from "next/server";
@@ -145,9 +146,10 @@ async function HomeGreeting() {
 async function HomeAssistant({ searchParams }: HomeProps) {
   if (process.env.NODE_ENV !== "test") await connection();
   const ownerUserId = await admittedHomeOwner(await homeTab(searchParams));
-  const [hints, approvalMode] = await Promise.all([
+  const [hints, approvalMode, usage] = await Promise.all([
     dashboardAssistantHints(ownerUserId),
     getEveApprovalMode({ userId: ownerUserId }),
+    readEveUsageNotice({ userId: ownerUserId }),
   ]);
 
   return (
@@ -156,6 +158,7 @@ async function HomeAssistant({ searchParams }: HomeProps) {
       nudges={hints.nudges}
       ownerUserId={ownerUserId}
       suggestPersonName={hints.suggestPersonName}
+      usage={usage}
     />
   );
 }
@@ -411,12 +414,13 @@ async function HomeMobileDestination({ searchParams }: HomeProps) {
     );
   }
 
-  const [todayContext, approvalMode] = await Promise.all([
+  const [todayContext, approvalMode, usage] = await Promise.all([
     getOwnerTodayContext({ ownerUserId }),
     // The assistant opens inside this destination rather than on a route of its
     // own, so the owner's Approval Mode is read here - the one place on the phone
     // that already has the admitted owner - and handed down as a prop.
     getEveApprovalMode({ userId: ownerUserId }),
+    readEveUsageNotice({ userId: ownerUserId }),
   ]);
 
   return (
@@ -432,6 +436,7 @@ async function HomeMobileDestination({ searchParams }: HomeProps) {
       todayInitial={await getHomeToday(ownerUserId, todayContext)}
       todayLocalDate={todayContext.localDate}
       todayTimeZone={todayContext.timeZone}
+      usage={usage}
     />
   );
 }

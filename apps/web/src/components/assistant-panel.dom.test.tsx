@@ -1026,6 +1026,72 @@ it("closes the composer when a reopened thread's stream is refused", async () =>
   });
 });
 
+/**
+ * At the interactive Account Ceiling, Eve takes no new turns until the Usage
+ * Period resets (#625). The composer gives way to a notice with exactly one
+ * recovery condition; the transcript stays readable.
+ */
+it("replaces the composer with the paused notice the page read", async () => {
+  render(
+    <AssistantPanel
+      ownerUserId="owner-1"
+      surface="page"
+      usage={{ state: "paused", recovery: { kind: "resets_on", date: "2026-11-15" } }}
+    />,
+  );
+
+  expect(screen.getByText("Eve has reached this month's usage limit.")).toBeDefined();
+  expect(screen.getByText(/Resets on November 15\./)).toBeDefined();
+  expect(screen.queryByRole("textbox")).toBeNull();
+});
+
+it("pauses mid-conversation when Eve refuses a turn at the ceiling", async () => {
+  render(<AssistantPanel ownerUserId="owner-1" surface="page" />);
+
+  await sendMessage("Mara adopted a cat");
+  await settleTurn(
+    Object.assign(new Error("Eve is paused until your usage resets."), {
+      code: "eve_usage_paused",
+      status: 403,
+      body: JSON.stringify({
+        ok: false,
+        code: "eve_usage_paused",
+        notice: { state: "paused", recovery: { kind: "resets_on", date: "2026-12-01" } },
+      }),
+    }),
+  );
+
+  await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+  expect(screen.getByText(/Resets on December 1\./)).toBeDefined();
+  expect(screen.queryByText(/This conversation has ended/)).toBeNull();
+  // The notice says when; an outage line saying "in a moment" would contradict it.
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("takes the composer back when a new read of the page finds the restriction cleared", async () => {
+  const { rerender } = render(
+    <AssistantPanel ownerUserId="owner-1" surface="page" usage={{ state: "normal" }} />,
+  );
+
+  await sendMessage("Mara adopted a cat");
+  await settleTurn(
+    Object.assign(new Error("Eve is paused until your usage resets."), {
+      code: "eve_usage_paused",
+      status: 403,
+      body: JSON.stringify({
+        notice: { state: "paused", recovery: { kind: "resets_on", date: "2026-12-01" } },
+      }),
+    }),
+  );
+  await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+
+  // A refresh after the reset: the server recomputed against what still applies.
+  rerender(<AssistantPanel ownerUserId="owner-1" surface="page" usage={{ state: "normal" }} />);
+
+  await waitFor(() => expect(screen.getByRole("textbox")).toBeDefined());
+  expect(screen.queryByText(/usage limit/)).toBeNull();
+});
+
 /** An outage is not an ending: the composer stays, because the next try may work. */
 it("keeps the composer when the failure is an ordinary outage", async () => {
   render(<AssistantPanel ownerUserId="owner-1" surface="page" />);

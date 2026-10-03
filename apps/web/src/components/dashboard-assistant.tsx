@@ -1,6 +1,7 @@
 "use client";
 
 import type { EveApprovalMode, PromptNudge } from "@tendnote/domain";
+import type { UsageNotice } from "@tendnote/domain/usage-bounds";
 import dynamic from "next/dynamic";
 import { recordAssistantConversationAction } from "@/app/actions/assistant-conversations";
 import { DashboardAssistantReserve } from "@/components/dashboard-reserve";
@@ -33,6 +34,7 @@ export function DashboardAssistant({
   nudges,
   ownerUserId,
   suggestPersonName,
+  usage,
 }: {
   /** The owner's Approval Mode, read server-side by the destination (#549). */
   approvalMode?: EveApprovalMode;
@@ -40,6 +42,8 @@ export function DashboardAssistant({
   nudges: PromptNudge[];
   ownerUserId: string;
   suggestPersonName: string | null;
+  /** Interactive Eve's usage notice, read server-side by the destination (#625). */
+  usage?: UsageNotice;
 }) {
   // This column lives under `hidden lg:contents`, which hides it on phones but
   // still mounts it. Mounting the panel there would be worse than wasteful: its
@@ -65,6 +69,7 @@ export function DashboardAssistant({
       }}
       ownerUserId={ownerUserId}
       suggestPersonName={suggestPersonName}
+      usage={usage}
     />
   );
 }

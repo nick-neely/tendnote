@@ -1,6 +1,7 @@
 "use client";
 
 import type { EveApprovalMode } from "@tendnote/domain";
+import type { UsageNotice } from "@tendnote/domain/usage-bounds";
 import { useEffect, useState } from "react";
 import { loadMobileEveContextAction } from "@/app/actions/eve-context";
 import { AssistantPanel } from "@/components/assistant-panel";
@@ -18,6 +19,7 @@ type EveContext =
 export function EveSurface({
   approvalMode = "ask",
   ownerUserId,
+  usage,
 }: {
   /**
    * The owner's Approval Mode, read on the server by the destination that mounts
@@ -27,6 +29,8 @@ export function EveSurface({
    */
   approvalMode?: EveApprovalMode;
   ownerUserId: string;
+  /** Interactive Eve's usage notice, read server-side by the destination (#625). */
+  usage?: UsageNotice;
 }) {
   const [context, setContext] = useState<EveContext | null>(null);
   const [failed, setFailed] = useState(false);
@@ -66,6 +70,7 @@ export function EveSurface({
       nudges={context.nudges}
       ownerUserId={ownerUserId}
       suggestPersonName={context.suggestPersonName}
+      usage={usage}
       // The phone's flow already owns a header and a gutter, so the panel sheds
       // its own card: one title, one border, no nesting (DESIGN.md §5).
       surface="bleed"

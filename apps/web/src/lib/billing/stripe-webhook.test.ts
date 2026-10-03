@@ -10,6 +10,8 @@ const user = { id: "subscriber-1", email: "subscriber@example.com" };
 const CUSTOMER = "cus_subscriber";
 const eveRequest = new Request("https://app.tendnote.test/eve/v1/session");
 const hosted: AdmissionPolicy = { mode: "hosted", valid: true };
+/** 2026-03-15T17:04:05Z, when the fixture subscription started. */
+const SUBSCRIPTION_STARTED = 1773594245;
 
 let eventSequence = 0;
 
@@ -25,6 +27,8 @@ function invoice(status: string, overrides: Record<string, unknown> = {}) {
     customer: CUSTOMER,
     status,
     billing_reason: "subscription_create",
+    period_start: SUBSCRIPTION_STARTED,
+    period_end: SUBSCRIPTION_STARTED,
     parent: {
       type: "subscription_details",
       subscription_details: { subscription: "sub_1", metadata: {} },
@@ -57,12 +61,14 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
     user,
   });
   const customers = new Map([[CUSTOMER, user.id]]);
+  const anchors = new Map<string, Date>();
   const log = vi.fn();
   const receive = createStripeWebhookHandler({
     policy,
     webhookSecret: SECRET,
     findAccountByStripeCustomer: async (id) => customers.get(id) ?? null,
     grantPaidAccess: (userId) => harness.queries.grantAccess({ userId, source: "paid_access" }),
+    anchorUsagePeriod: async (userId, startedAt) => anchors.set(userId, startedAt),
     log,
   });
 
@@ -84,7 +90,7 @@ function subscriberHarness(policy: AdmissionPolicy = hosted) {
     await expect(harness.eve(eveRequest)).rejects.toBeInstanceOf(ForbiddenError);
   }
 
-  return { ...harness, receive, deliver, log, expectAdmitted, expectNotAdmitted };
+  return { ...harness, receive, deliver, log, anchors, expectAdmitted, expectNotAdmitted };
 }
 
 async function signedUp(policy?: AdmissionPolicy) {
@@ -137,6 +143,30 @@ describe("Paid Access from the first paid invoice", () => {
     await subscriber.deliver(invoicePaid({ billing_reason: "subscription_cycle" }));
 
     await subscriber.expectNotAdmitted();
+    expect(subscriber.anchors.size).toBe(0);
+  });
+
+  it("anchors the Usage Period to the day the subscription started", async () => {
+    const subscriber = await signedUp();
+
+    await subscriber.deliver(invoicePaid());
+
+    expect(subscriber.anchors.get(user.id)?.toISOString()).toBe("2026-03-15T17:04:05.000Z");
+  });
+
+  it("keeps the anchor through renewals, monthly or annual, and re-anchors a new subscription", async () => {
+    const subscriber = await signedUp();
+    await subscriber.deliver(invoicePaid());
+
+    const renewal = SUBSCRIPTION_STARTED + 365 * 86_400 + 9 * 86_400;
+    await subscriber.deliver(
+      invoicePaid({ billing_reason: "subscription_cycle", period_start: renewal }),
+    );
+    expect(subscriber.anchors.get(user.id)?.toISOString()).toBe("2026-03-15T17:04:05.000Z");
+
+    const resubscribed = SUBSCRIPTION_STARTED + 200 * 86_400;
+    await subscriber.deliver(invoicePaid({ id: "in_again", period_start: resubscribed }));
+    expect(subscriber.anchors.get(user.id)?.toISOString().slice(0, 10)).toBe("2026-10-01");
   });
 
   it("does not treat a paid invoice outside a subscription as admission", async () => {
@@ -188,6 +218,7 @@ describe("Paid Access from the first paid invoice", () => {
       grantPaidAccess: async () => {
         throw new Error("database unavailable");
       },
+      anchorUsagePeriod: vi.fn(),
     });
 
     await expect(receive(await signedDelivery(invoicePaid()))).rejects.toThrow(/unavailable/);
@@ -240,6 +271,7 @@ describe("Stripe webhook signature", () => {
       webhookSecret: undefined,
       findAccountByStripeCustomer: async () => user.id,
       grantPaidAccess,
+      anchorUsagePeriod: vi.fn(),
     });
 
     expect((await receive(await signedDelivery(invoicePaid()))).status).toBe(503);

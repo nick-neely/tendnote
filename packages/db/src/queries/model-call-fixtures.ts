@@ -5,6 +5,10 @@ const usage = {
   outputTokens: { total: 2, text: 2, reasoning: 0 },
 };
 
+/** What the real gateway reports charging, as `providerMetadata.gateway.cost` in dollars. */
+const providerMetadata = { gateway: { cost: "0.000123" } };
+const embeddingProviderMetadata = { gateway: { cost: "0.000004" } };
+
 type SentPrompt = MockLanguageModelV4["doGenerateCalls"][number]["prompt"];
 
 function promptText(prompt: SentPrompt) {
@@ -35,6 +39,7 @@ export function fakeGatewayProvider(text = "ok") {
         content: [{ type: "text", text: reply }],
         finishReason: { unified: "stop", raw: "stop" },
         usage,
+        providerMetadata,
         warnings: [],
       }),
       doStream: async () => ({
@@ -43,7 +48,12 @@ export function fakeGatewayProvider(text = "ok") {
             { type: "text-start", id: "t" },
             { type: "text-delta", id: "t", delta: reply },
             { type: "text-end", id: "t" },
-            { type: "finish", finishReason: { unified: "stop", raw: "stop" }, usage },
+            {
+              type: "finish",
+              finishReason: { unified: "stop", raw: "stop" },
+              usage,
+              providerMetadata,
+            },
           ],
         }),
       }),
@@ -57,6 +67,7 @@ export function fakeGatewayProvider(text = "ok") {
       doEmbed: async ({ values }) => ({
         embeddings: values.map(() => [0.1, 0.2, 0.3]),
         usage: { tokens: 4 },
+        providerMetadata: embeddingProviderMetadata,
         warnings: [],
       }),
     });

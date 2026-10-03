@@ -2,6 +2,7 @@
 
 import type { EveApprovalMode, PromptNudge } from "@tendnote/domain";
 import { placeholderConversationTitle } from "@tendnote/domain/assistant-conversations";
+import type { UsageNotice } from "@tendnote/domain/usage-bounds";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -93,6 +94,8 @@ export type AssistantPageProps = {
   /** The thread this URL names, or `null` on `/assistant`. */
   sessionId: string | null;
   suggestPersonName: string | null;
+  /** Interactive Eve's usage notice, read server-side by the destination (#625). */
+  usage?: UsageNotice;
 };
 
 /** The transcript's reading measure, centred in whatever the rail leaves. */
@@ -105,6 +108,7 @@ export function AssistantPage({
   ownerUserId,
   sessionId,
   suggestPersonName,
+  usage,
 }: AssistantPageProps) {
   const list = useConversationRailState(serverConversations);
   const [thread, setThread] = useState<Thread>(() => ({
@@ -212,6 +216,7 @@ export function AssistantPage({
             ownerUserId={ownerUserId}
             suggestPersonName={suggestPersonName}
             surface="page"
+            usage={usage}
           />
         </div>
       </div>

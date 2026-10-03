@@ -122,6 +122,7 @@ describe("Eve's hosted models", () => {
         costCategory: "interactive",
         inputTokens: 3,
         outputTokens: 2,
+        costMicroUsd: 123,
       });
     },
   );

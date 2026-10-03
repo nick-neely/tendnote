@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, date, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
 import { accessSource, accessStatus, eveApprovalMode, selfContextOnboardingStatus } from "./enums";
@@ -37,6 +37,11 @@ export const accessProfiles = pgTable(
     // `ask` is the default and the failure answer - the policy reads this column
     // on every gated call and parks when the read fails, never denies.
     eveApprovalMode: eveApprovalMode("eve_approval_mode").notNull().default("ask"),
+    // The UTC day the account's subscription started, written from its first
+    // paid invoice. Its day of the month anchors the Usage Period for monthly
+    // and annual subscribers alike; an account without one has no plan, so no
+    // plan-derived ceiling applies to it.
+    usagePeriodAnchor: date("usage_period_anchor"),
     ...timestamps,
   },
   (table) => [

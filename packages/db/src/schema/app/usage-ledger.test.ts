@@ -7,6 +7,7 @@ describe("usage_ledger", () => {
     expect(Object.keys(getTableColumns(usageLedger)).sort()).toEqual([
       "callCount",
       "costCategory",
+      "costMicroUsd",
       "day",
       "inputTokens",
       "modelId",

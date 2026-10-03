@@ -3,6 +3,7 @@ import {
   getAssistantConversation,
   listAssistantConversations,
 } from "@tendnote/db/queries/assistant-conversations";
+import { readEveUsageNotice } from "@tendnote/db/queries/usage-bounds";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { AssistantPage } from "@/components/assistant-page";
@@ -38,15 +39,16 @@ export async function AssistantSurfaceContent({ sessionId }: { sessionId: string
   // The Approval Mode joins the same fan-out: it is the owner's own account
   // setting, read here so the panel never fetches it from the browser, and it
   // only ever decides whether a card says one extra sentence.
-  const [conversations, thread, hints, approvalMode] = await Promise.all([
+  const [conversations, thread, hints, approvalMode, usage] = await Promise.all([
     listAssistantConversations({ ownerUserId, includeArchived: true }),
     sessionId ? getAssistantConversation({ ownerUserId, sessionId }) : Promise.resolve(null),
     dashboardAssistantHints(ownerUserId),
     getEveApprovalMode({ userId: ownerUserId }),
+    readEveUsageNotice({ userId: ownerUserId }),
   ]);
 
   const model = assistantSurfaceModel({ conversations, hints, ownerUserId, sessionId, thread });
   if (!model.found) notFound();
 
-  return <AssistantPage {...model.props} approvalMode={approvalMode} />;
+  return <AssistantPage {...model.props} approvalMode={approvalMode} usage={usage} />;
 }
