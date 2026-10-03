@@ -6,15 +6,15 @@ import {
 import { describe, expect, it } from "vitest";
 import { nextConfigForPhase } from "./next.config";
 
-describe("dev server memory (#684)", () => {
-  it("validates Cache Components on the dev server's own thread", () => {
+describe("Cache Components dev validation", () => {
+  it("runs on the dev server's own thread, not Next's worker", () => {
     const config = nextConfigForPhase(PHASE_DEVELOPMENT_SERVER);
 
     expect(config.experimental?.devValidationWorker).toBe(false);
   });
 });
 
-describe("React Compiler per phase (#684)", () => {
+describe("React Compiler per phase", () => {
   it("compiles with Turbopack's Rust port under next dev", () => {
     const config = nextConfigForPhase(PHASE_DEVELOPMENT_SERVER);
 

@@ -40,6 +40,10 @@ agent. The browser therefore streams turns with no Eve URL to configure. If
 you run the web package by itself, `withEve()` falls back to managing the Eve
 dev process for that invocation.
 
+Open the app as `http://localhost:3000`, not `127.0.0.1`. Next blocks
+dev-asset requests from origins other than the one it started on
+(`allowedDevOrigins`), which can leave the assistant composer stuck loading.
+
 ### Memory on small machines
 
 The full stack fits an 8 GB machine without swap with about 2.5 GiB to spare at
@@ -48,25 +52,25 @@ its busiest. Measured on a 2-vCPU, 8 GB VM ([ADR 0253](adr/0253-eve-dev-compiles
 
 | Process | Steady | Peak |
 | --- | --- | --- |
-| Eve (`eve dev` plus its per-rebuild compiler) | 0.5-0.9 GiB | ~2.3 GiB during a rebuild |
-| Next (`next dev` plus its PostCSS worker) | 0.9-1.2 GiB after four routes | ~2.2 GiB while first compiling routes |
+| Eve (`eve dev` plus its per-rebuild compiler) | 0.5-0.9 GiB | ~2.5 GiB during a rebuild |
+| Next (`next dev` plus its PostCSS worker) | 0.8-1.15 GiB after four routes | ~2.5 GiB while first compiling routes |
+
+Eve compiles each rebuild in a short-lived process. `next dev` runs Turbopack's
+Rust React Compiler and validates Cache Components in process, because Next's
+validation worker kept more memory with every page request. Production builds
+keep the Babel React Compiler; if a component behaves differently in `next dev`
+than in a build, suspect the compiler first.
 
 Through routes, assistant turns, edits, and 16 minutes of ordinary use, neither
 showed sustained growth. A burst of back-to-back requests still raises Next by
-about 2-3 MiB per request until V8 collects (1.7 GiB after 180). Eve compiles
-each rebuild in a short-lived process.
-`next dev` runs Turbopack's Rust React Compiler and validates Cache Components
-in process, because Next's validation worker kept more memory with every page
-request. Production builds keep the Babel React Compiler; if a component behaves
-differently in `next dev` than in a build, suspect the compiler first. On a
-machine that size:
+several MiB per request until V8 collects; 180 in a row took it to about 2 GiB,
+settling at 1.7 GiB. On a machine that size:
 
 - A headless browser on the VM still left more than 3 GiB available; a browser
   elsewhere (through a forwarded port) leaves more.
 - Use `pnpm dev:agent` alone for agent-only work; it settles near 1 GiB.
-- Open the app as `http://localhost:3000`, not `127.0.0.1`. Next blocks
-  dev-asset requests from other origins (`allowedDevOrigins`), which can leave
-  the assistant composer stuck loading.
+- If available memory runs low, restarting `pnpm dev` releases Next's compiled
+  routes; Eve recompiles in about 20 seconds.
 
 ## Local services
 

@@ -30,10 +30,11 @@ const nextConfig: NextConfig = {
   },
   transpilePackages: ["@tendnote/db", "@tendnote/domain", "@tendnote/ui"],
   experimental: {
-    // Dev-only (#684, ADR 0254). Next's Cache Components validation worker loads
-    // a second copy of the app and retains about 8 MiB more per page request, so
-    // a dev session grew until the 8 GB VM ran out. In process, validation shares
-    // the dev server's modules and stays flat; navigations wait on it instead.
+    // Only `next dev` reads this (#684, ADR 0254). Next's Cache Components
+    // validation worker loads a second copy of the app and retained about 8 MiB
+    // more per page request, so a dev session grew until the 8 GB VM ran out. In
+    // process, validation shares the dev server's modules and stays flat;
+    // navigations wait on it instead.
     devValidationWorker: false,
     // Instant Interaction gate (#310, ADR 0210). `instant()` silently no-ops
     // without this, so a measured build must opt in explicitly; the gate refuses
