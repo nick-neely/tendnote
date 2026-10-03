@@ -10,6 +10,7 @@ import { defineSchedule } from "eve/schedules";
 import { createDiscordProactiveDeliverySender } from "../channels/discord";
 import { createOwnerCalendarReader } from "../lib/calendar";
 import { resolveScheduledOwnerUserIds } from "../lib/schedule-owners";
+import { createScheduledDeliveryPause } from "../lib/scheduled-delivery-pause";
 
 const timezone = process.env.TENDNOTE_BRIEF_TIMEZONE ?? "UTC";
 
@@ -42,11 +43,16 @@ function briefDiscordOptions(sender: DiscordProactiveDeliverySender) {
  *
  * Vercel evaluates cron in UTC; waking every 15 minutes lets the application rows'
  * timezone-derived next-run times fire close to each owner's local schedule.
+ *
+ * An owner whose background work is paused at its Account Ceiling skips the
+ * delivery: a due brief or review rolls forward to its next run, and aftercare
+ * does not run this tick.
  */
 export default defineSchedule({
   cron: "*/15 * * * *",
   run({ waitUntil }) {
     const discordSender = createDiscordProactiveDeliverySender();
+    const deliveryPaused = createScheduledDeliveryPause();
 
     // Per-row generation errors are handled inside the dispatcher; this catch
     // covers a claim or bootstrap failure so the cron task never ends on an
@@ -60,14 +66,26 @@ export default defineSchedule({
             ),
           );
 
+          const deliveringOwnerUserIds = (
+            await Promise.all(
+              ownerUserIds.map(async (ownerUserId) =>
+                (await deliveryPaused(ownerUserId)) ? [] : [ownerUserId],
+              ),
+            )
+          ).flat();
+
           await Promise.all([
             dispatchDueBriefs({
               ...briefDiscordOptions(discordSender),
               calendarReaderFor: createOwnerCalendarReader,
+              skipOwner: deliveryPaused,
             }).catch((error) => {
               console.error("Brief schedule dispatch failed.", error);
             }),
-            ...ownerUserIds.flatMap((ownerUserId) => [
+            // Aftercare is a scheduled workflow the paused owner skips with the
+            // briefs. Gift planning and the action summary make no model call and
+            // stand in for nothing reduced, so they are not shed.
+            ...deliveringOwnerUserIds.map((ownerUserId) =>
               dispatchPostMeetingAftercare({
                 ownerUserId,
                 calendarReaderFor: createOwnerCalendarReader,
@@ -75,6 +93,8 @@ export default defineSchedule({
               }).catch((error) => {
                 console.error("Post-meeting aftercare dispatch failed.", error);
               }),
+            ),
+            ...ownerUserIds.flatMap((ownerUserId) => [
               dispatchBirthdayGiftPlanning({
                 ownerUserId,
                 timezone,

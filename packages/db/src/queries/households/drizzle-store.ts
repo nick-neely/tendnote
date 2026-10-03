@@ -114,6 +114,12 @@ export function createDrizzleHouseholdStore(
           ),
         );
     },
+    async listHouseholdMembershipsForUser(input) {
+      return resolveDb()
+        .select()
+        .from(householdMemberships)
+        .where(eq(householdMemberships.userId, input.userId));
+    },
     async listActiveHouseholdMembershipsForUser(input) {
       return resolveDb()
         .select()

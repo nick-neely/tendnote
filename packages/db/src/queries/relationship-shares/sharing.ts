@@ -340,5 +340,70 @@ export function createRelationshipSharing(store: RelationshipShareStore) {
         viewerIsOwner: proof.via === "owner",
       });
     },
+
+    /**
+     * Every record of one kind other members have shared with the caller, as
+     * its audience may see it. The bulk form of
+     * {@link readSharedRelationshipRecord}: the same proof on the same stored
+     * facts, the same recipient envelope, and the same silence for a refusal,
+     * so a record the proof drops is not merely hidden but never read.
+     */
+    async listSharedRelationshipRecords(input: {
+      callerUserId: string;
+      recordKind: Exclude<RelationshipRecordKind, "source_record">;
+      purpose?: HouseholdRequestPurpose;
+    }): Promise<SharedRelationshipRecordView[]> {
+      const candidates = await store.listSharedRelationshipRecordCandidates(input);
+      const grants = await prover.proveVisibleRecords({
+        callerUserId: input.callerUserId,
+        operation: "view",
+        purpose: input.purpose ?? "direct",
+        records: candidates.map(subjectFacts),
+      });
+      // The owner's own record is theirs, not a share; the candidate read
+      // already excludes it and this keeps that true whatever a store returns.
+      const shared = new Set(
+        grants.filter((grant) => grant.via !== "owner").map((grant) => grant.subjectId),
+      );
+      // One read per member name and per person label, however many records
+      // carry them.
+      const reads = new Map<string, Promise<string | null>>();
+      const once = (key: string, read: () => Promise<string | null>) => {
+        const known = reads.get(key);
+        if (known) return known;
+        const started = read();
+        reads.set(key, started);
+        return started;
+      };
+      const nameOf = (userId: string) =>
+        once(`member:${userId}`, () => store.getMemberDisplayName({ userId }));
+      const labelOf = (ownerUserId: string, personId: string) =>
+        once(`person:${ownerUserId}:${personId}`, () =>
+          store.getPersonDisplayLabel({ ownerUserId, personId }),
+        );
+
+      return Promise.all(
+        candidates
+          .filter((record) => shared.has(record.recordId))
+          .map(async (record) => {
+            const [personLabel, sharedByName] = await Promise.all([
+              record.personId ? labelOf(record.ownerUserId, record.personId) : null,
+              nameOf(record.ownerUserId),
+            ]);
+            return toSharedRelationshipRecordView({
+              recordKind: record.recordKind,
+              recordId: record.recordId,
+              body: record.body,
+              personLabel,
+              recordedAt: record.recordedAt,
+              dueAt: record.dueAt,
+              trust: record.trust,
+              sharedByName: sharedByName ?? "a household member",
+              audience: record.scope === "household" ? "whole_household" : "selected_members",
+              viewerIsOwner: false,
+            });
+          }),
+      );
+    },
   };
 }

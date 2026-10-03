@@ -209,6 +209,9 @@ export function createInMemoryHouseholdStore(): HouseholdStore & {
           (input.status === undefined || membership.status === input.status),
       );
     },
+    async listHouseholdMembershipsForUser(input) {
+      return [...memberships.values()].filter((membership) => membership.userId === input.userId);
+    },
     async listActiveHouseholdMembershipsForUser(input) {
       return [...memberships.values()].filter(
         (membership) => membership.userId === input.userId && membership.status === "active",

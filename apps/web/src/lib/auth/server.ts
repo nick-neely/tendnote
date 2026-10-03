@@ -10,6 +10,7 @@ import { ensureAccessProfile } from "@tendnote/db/queries/access-profiles";
 import * as schema from "@tendnote/db/schema";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getRedis } from "@/lib/cache/redis";
+import { captureRequestFunnelStage } from "@/lib/telemetry/account-funnel";
 import { accountDeletionDependencies, createAccountDeletionHook } from "./account-deletion";
 import { accountEmailHooks } from "./account-email";
 import { createClickwrapHooks } from "./clickwrap";
@@ -58,12 +59,22 @@ function createDatabaseHooks() {
           // Hosted account creation requires clickwrap acceptance (#613).
           await clickwrap.requireAcceptance(context);
         },
-        after: async (user: { id: string }, context: { body?: unknown } | null) => {
+        after: async (
+          user: { id: string },
+          context: { body?: unknown; headers?: Headers; request?: Request } | null,
+        ) => {
           // Every new signup gets a durable pending profile. Production admission
           // is resolved by the explicit hosted/self-hosted policy; local demo
           // access uses its separate loopback-only owner path.
           await ensureAccessProfile({ userId: user.id });
           await clickwrap.recordAcceptance(user, context);
+          // After the profile, which holds the opt-out the funnel write reads. A
+          // user created without an endpoint context is provisioning, not a signup.
+          await captureRequestFunnelStage({
+            userId: user.id,
+            stage: "signup_completed",
+            headers: context?.headers ?? context?.request?.headers,
+          });
         },
       },
     },

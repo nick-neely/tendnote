@@ -1,5 +1,6 @@
 import type { UsageRestriction } from "@tendnote/domain/usage-bounds";
 import type { ReactNode } from "react";
+import { UsageNoticeCard } from "@/components/usage-notice-card";
 import { eveUsageNoticeText } from "@/lib/assistant/usage-notice";
 import { cn } from "@/lib/utils";
 
@@ -233,15 +234,5 @@ export function AssistantEndedNotice({ children }: { children: ReactNode }) {
  * one recovery condition, the one the notice carries.
  */
 export function AssistantUsageNotice({ notice }: { notice: UsageRestriction }) {
-  const { headline, detail } = eveUsageNoticeText(notice);
-
-  return (
-    <div
-      className="rounded-xl border border-border border-dashed p-4 text-[length:var(--text-small)] leading-[var(--text-small-line)]"
-      role="status"
-    >
-      <p className="font-medium text-foreground">{headline}</p>
-      <p className="text-muted-foreground">{detail}</p>
-    </div>
-  );
+  return <UsageNoticeCard {...eveUsageNoticeText(notice)} />;
 }

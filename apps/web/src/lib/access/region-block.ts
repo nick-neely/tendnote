@@ -6,6 +6,11 @@ export const REGION_PAGE_PATH = "/region";
 /** Vercel's request-country header: an ISO 3166-1 alpha-2 code, absent off Vercel. */
 const REQUEST_COUNTRY_HEADER = "x-vercel-ip-country";
 
+/** The country Vercel's edge says a request came from, or `null` when it does not say. */
+export function requestCountry(headers: Pick<Headers, "get">): string | null {
+  return headers.get(REQUEST_COUNTRY_HEADER);
+}
+
 /**
  * Routes the Region Block never covers. Everything else this app serves is
  * sign-up, sign-in, checkout entry, or an authenticated app route, so the block
@@ -44,7 +49,7 @@ export function regionBlockResponse(
     return null;
   }
 
-  if (!isRegionBlockedCountry(request.headers.get(REQUEST_COUNTRY_HEADER))) {
+  if (!isRegionBlockedCountry(requestCountry(request.headers))) {
     return null;
   }
 

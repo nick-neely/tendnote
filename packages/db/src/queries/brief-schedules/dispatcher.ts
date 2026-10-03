@@ -29,11 +29,16 @@ export type RunDueBriefSchedulesInput = {
   maxAttempts?: number;
   // Max rows to claim in one dispatcher tick.
   limit?: number;
+  // Whether an owner's scheduled delivery is skipped this time, because their
+  // background work is paused at its Account Ceiling. A skipped occurrence rolls
+  // forward to the next run; it is never generated late.
+  skipOwner?: (ownerUserId: string) => Promise<boolean>;
 };
 
 export type RunDueBriefSchedulesResult = {
   claimed: number;
   generated: number;
+  skipped: number;
   failed: number;
 };
 
@@ -64,9 +69,20 @@ export function createBriefScheduleDispatcher(
       const claimed = await store.claimDueBriefSchedules({ now, leaseMs, limit: input.limit });
 
       let generated = 0;
+      let skipped = 0;
       let failed = 0;
 
       for (const schedule of claimed) {
+        if (await input.skipOwner?.(schedule.ownerUserId)) {
+          await store.releaseBriefSchedule({
+            id: schedule.id,
+            lastError: "Skipped: background work is paused until the Usage Period resets.",
+            nextRunAt: computeNextBriefRun(schedule, now),
+          });
+          skipped += 1;
+          continue;
+        }
+
         // The brief covers the local date of its scheduled run, not the (possibly
         // later) dispatch instant, so a late tick still produces the right day.
         const localDate = formatLocalDate(schedule.timezone, schedule.nextRunAt);
@@ -101,7 +117,7 @@ export function createBriefScheduleDispatcher(
         }
       }
 
-      return { claimed: claimed.length, generated, failed };
+      return { claimed: claimed.length, generated, skipped, failed };
     },
   };
 }

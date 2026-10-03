@@ -1,3 +1,4 @@
+import { type UsageNotice, UsagePausedError } from "@tendnote/domain/usage-bounds";
 import type { CostCategory } from "@tendnote/domain/usage-ledger";
 import {
   gateway,
@@ -6,7 +7,7 @@ import {
   wrapEmbeddingModel,
   wrapLanguageModel,
 } from "ai";
-import { readEveOverFairUseBudget } from "./usage-bounds";
+import { readEveOverFairUseBudget, readUsageNotices } from "./usage-bounds";
 import { type ModelUsage, recordModelUsage } from "./usage-ledger";
 
 export type { CostCategory };
@@ -46,7 +47,31 @@ type UsageLedgerWriter = (usage: ModelUsage) => Promise<void>;
 type EntryPointDependencies<Provider> = {
   provider?: Provider;
   recordUsage?: UsageLedgerWriter;
+  /** What background work shows an account, which refuses its calls while paused. */
+  backgroundNotice?: (accountId: string) => Promise<UsageNotice>;
 };
+
+const readBackgroundNotice = async (accountId: string) =>
+  (await readUsageNotices({ userId: accountId })).background;
+
+/**
+ * Eve's `web_search` runs on the gateway's Exa search, which bills each request
+ * at $7 per thousand for up to ten results, the most Eve asks for. The
+ * gateway's reported `cost` is the inference cost alone, so a search is charged
+ * at that list price under its own ledger id.
+ */
+const WEB_SEARCH_TOOL_NAME = "web_search";
+const WEB_SEARCH_LEDGER_MODEL_ID = "gateway.exa_search";
+const WEB_SEARCH_COST_MICRO_USD = 7_000;
+
+/** Whether a model's output part is a web search the provider actually ran. */
+function isWebSearch(part: { type: string; toolName?: string; providerExecuted?: boolean }) {
+  return (
+    part.type === "tool-call" &&
+    part.toolName === WEB_SEARCH_TOOL_NAME &&
+    part.providerExecuted === true
+  );
+}
 
 type LanguageEntryPointDependencies = EntryPointDependencies<HostedModelProvider> & {
   /** Whether an account is over its interactive Fair-Use Budget, which picks the Fallback Model. */
@@ -139,7 +164,7 @@ function startMeter(input: HostedModelInput, recordUsage: UsageLedgerWriter) {
     return null;
   }
 
-  return (charge: Charge) => {
+  const call = (charge: Charge) => {
     const costMicroUsd = gatewayCostMicroUsd(charge.providerMetadata);
     if (costMicroUsd === null) {
       // Counted as free, so it cannot move the account toward its ceiling; the
@@ -158,6 +183,46 @@ function startMeter(input: HostedModelInput, recordUsage: UsageLedgerWriter) {
       costMicroUsd: costMicroUsd ?? 0,
     });
   };
+  const webSearch = () =>
+    recordUsage({
+      accountId,
+      modelId: WEB_SEARCH_LEDGER_MODEL_ID,
+      costCategory: "web_search",
+      inputTokens: 0,
+      outputTokens: 0,
+      costMicroUsd: WEB_SEARCH_COST_MICRO_USD,
+    });
+  return { call, webSearch };
+}
+
+/**
+ * Refuses a background call while the account's background work is paused at
+ * its Account Ceiling, before the call reaches the model, so the overshoot is
+ * at most the call already running. A job that meets the refusal waits in its
+ * pending state until the period resets; a caller with a deterministic
+ * fallback uses that instead. When the read fails the call goes ahead: the
+ * Spend Breaker, not a guess, bounds a usage read that cannot be made.
+ */
+async function refuseWhenPaused(
+  input: HostedModelInput,
+  backgroundNotice: (accountId: string) => Promise<UsageNotice>,
+) {
+  if (input.costCategory !== "background") return;
+  const accountId = resolveAccount(input.account);
+  if (!accountId) return;
+
+  let notice: UsageNotice;
+  try {
+    notice = await backgroundNotice(accountId);
+  } catch {
+    console.warn("usage: could not read the background allowance, so the call goes ahead", {
+      modelId: input.modelId,
+    });
+    return;
+  }
+  if (notice.state === "paused" && notice.recovery.kind === "resets_on") {
+    throw new UsagePausedError(notice.recovery.date);
+  }
 }
 
 /**
@@ -175,18 +240,16 @@ export function hostedModel(
   {
     provider = gateway,
     recordUsage = recordModelUsage,
+    backgroundNotice = readBackgroundNotice,
     overFairUseBudget = (accountId) => readEveOverFairUseBudget({ userId: accountId }),
   }: LanguageEntryPointDependencies = {},
 ) {
-  const production = meteredModel(input, { provider, recordUsage });
+  const production = meteredModel(input, { provider, recordUsage, backgroundNotice });
   if (input.costCategory !== "interactive" || !input.fallbackModelId) return production;
 
   const fallback = meteredModel(
     { ...input, modelId: input.fallbackModelId },
-    {
-      provider,
-      recordUsage,
-    },
+    { provider, recordUsage, backgroundNotice },
   );
   const modelForCall = async () =>
     (await runsOnFallback(input, overFairUseBudget)) ? fallback : production;
@@ -226,10 +289,17 @@ async function runsOnFallback(
   }
 }
 
-/** One pinned, metered model: the production model or the Fallback Model. */
+/**
+ * One pinned, metered model: the production model or the Fallback Model. Web
+ * searches the provider runs inside a call are metered as they appear.
+ */
 function meteredModel(
   input: HostedModelInput,
-  { provider, recordUsage }: Required<EntryPointDependencies<HostedModelProvider>>,
+  {
+    provider,
+    recordUsage,
+    backgroundNotice,
+  }: Required<EntryPointDependencies<HostedModelProvider>>,
 ) {
   const pinned = pinGatewayOptions(input);
   return wrapLanguageModel({
@@ -237,32 +307,39 @@ function meteredModel(
     middleware: {
       ...pinned,
       wrapGenerate: async ({ doGenerate }) => {
+        await refuseWhenPaused(input, backgroundNotice);
         const meter = startMeter(input, recordUsage);
         const result = await doGenerate();
-        await meter?.({
+        await meter?.call({
           input: result.usage.inputTokens.total,
           output: result.usage.outputTokens.total,
           providerMetadata: result.providerMetadata,
         });
+        for (const part of result.content) {
+          if (isWebSearch(part)) await meter?.webSearch();
+        }
         return result;
       },
       wrapStream: async ({ doStream }) => {
+        await refuseWhenPaused(input, backgroundNotice);
         const meter = startMeter(input, recordUsage);
         const result = await doStream();
         if (!meter) return result;
 
         // A stream that is abandoned before it finishes reports no usage and
-        // is not metered.
+        // its tokens are not metered; a search it already ran was billed, so
+        // each is metered when it appears.
         let finished: Extract<StreamPart, { type: "finish" }> | undefined;
         const stream = result.stream.pipeThrough(
           new TransformStream<StreamPart, StreamPart>({
-            transform(part, controller) {
+            async transform(part, controller) {
               if (part.type === "finish") finished = part;
+              if (isWebSearch(part)) await meter.webSearch();
               controller.enqueue(part);
             },
             async flush() {
               if (!finished) return;
-              await meter({
+              await meter.call({
                 input: finished.usage.inputTokens.total,
                 output: finished.usage.outputTokens.total,
                 providerMetadata: finished.providerMetadata,
@@ -276,12 +353,16 @@ function meteredModel(
   });
 }
 
-/** The entry point for embedding calls, with the same flags, pinning, tag, and metering. */
+/**
+ * The entry point for embedding calls, with the same flags, pinning, tag,
+ * metering, and background Account Ceiling.
+ */
 export function hostedEmbeddingModel(
   input: HostedModelInput,
   {
     provider = (modelId) => gateway.embeddingModel(modelId),
     recordUsage = recordModelUsage,
+    backgroundNotice = readBackgroundNotice,
   }: EntryPointDependencies<HostedEmbeddingModelProvider> = {},
 ) {
   const pinned = pinGatewayOptions(input);
@@ -290,9 +371,10 @@ export function hostedEmbeddingModel(
     middleware: {
       ...pinned,
       wrapEmbed: async ({ doEmbed }) => {
+        await refuseWhenPaused(input, backgroundNotice);
         const meter = startMeter(input, recordUsage);
         const result = await doEmbed();
-        await meter?.({
+        await meter?.call({
           input: result.usage?.tokens,
           output: 0,
           providerMetadata: result.providerMetadata,

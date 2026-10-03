@@ -1,25 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { eveUsageNoticeText, pausedNoticeFromError, recoveryText } from "./usage-notice";
+import {
+  backgroundUsageNoticeText,
+  eveUsageNoticeText,
+  pausedNoticeFromError,
+} from "./usage-notice";
 
 const paused = { state: "paused", recovery: { kind: "resets_on", date: "2026-11-15" } } as const;
-
-describe("recoveryText", () => {
-  it("states the reset day for the Usage Period", () => {
-    expect(recoveryText({ kind: "resets_on", date: "2026-11-15" })).toBe("Resets on November 15.");
-  });
-
-  it("reads the reset day as a calendar day, whatever the viewer's time zone", () => {
-    expect(recoveryText({ kind: "resets_on", date: "2026-12-01" })).toBe("Resets on December 1.");
-  });
-
-  it("gives no date while service is being restored", () => {
-    expect(recoveryText({ kind: "service_restored" })).toBe("Resumes when service is restored.");
-  });
-
-  it("says retrying for a queued retry", () => {
-    expect(recoveryText({ kind: "retrying" })).toBe("Retrying.");
-  });
-});
 
 describe("eveUsageNoticeText", () => {
   it("says Eve is on a lighter model over the Fair-Use Budget, until the reset", () => {
@@ -73,5 +59,25 @@ describe("pausedNoticeFromError", () => {
         body: JSON.stringify({ notice: { state: "paused", recovery: { kind: "someday" } } }),
       }),
     ).toBeNull();
+  });
+});
+
+describe("backgroundUsageNoticeText", () => {
+  it("says captures wait and scheduled briefs skip until the reset, and that the rest works", () => {
+    expect(backgroundUsageNoticeText(paused)).toEqual({
+      headline: "Background work is paused for this month.",
+      detail:
+        "New captures wait to be processed, and scheduled briefs and reviews skip their next delivery. Everything else in Tendnote still works. Resets on November 15.",
+    });
+  });
+
+  it("states only the recovery condition it carries", () => {
+    expect(
+      backgroundUsageNoticeText({ state: "paused", recovery: { kind: "service_restored" } }),
+    ).toEqual({
+      headline: "Background work is paused.",
+      detail:
+        "New captures wait to be processed, and scheduled briefs and reviews skip their next delivery. Everything else in Tendnote still works. Resumes when service is restored.",
+    });
   });
 });

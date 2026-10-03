@@ -1,4 +1,5 @@
 import { HOUSEHOLD_RECORD_OWNERSHIP_VALUES } from "@tendnote/domain";
+import { ACCOUNT_FUNNEL_STAGES } from "@tendnote/domain/account-funnel";
 import { ACTIVATION_MILESTONES } from "@tendnote/domain/activation-milestones";
 import { LEGAL_DOCUMENT_KEYS } from "@tendnote/domain/legal-documents";
 import { COST_CATEGORIES } from "@tendnote/domain/usage-ledger";
@@ -34,6 +35,9 @@ export const legalDocumentKey = pgEnum("legal_document_key", LEGAL_DOCUMENT_KEYS
 // The closed Activation Milestone set (ADR 0242). Extending it is a product
 // decision that changes a disclosed boundary, so it is an enum, not free text.
 export const activationMilestone = pgEnum("activation_milestone", ACTIVATION_MILESTONES);
+
+// The closed account funnel stage set, a disclosed boundary like the milestones.
+export const accountFunnelStage = pgEnum("account_funnel_stage", ACCOUNT_FUNNEL_STAGES);
 
 export const costCategory = pgEnum("cost_category", COST_CATEGORIES);
 

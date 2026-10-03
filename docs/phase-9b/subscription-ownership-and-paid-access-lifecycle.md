@@ -90,7 +90,13 @@ is an explicit later addition rather than something inherited by accident.
 in-app notice. Stripe's retry schedule does the mechanical work; the seven days
 are Tendnote's policy for how long an admitted account stays admitted while a
 card is being fixed. When the window ends, Paid Access lapses. This is not a
-trial: the account already paid at least once.
+trial: the account already paid at least once. The window belongs to the failed
+invoice, and Tendnote closes it by cancelling the subscription in Stripe, which
+stops the retries: a Lapsed account is never charged for that invoice, and its
+resubscription is a new subscription. Stripe's own retry schedule must
+therefore outlast the seven days, or Stripe would end access first. A dunning
+extension names the invoice and is checked when its window would close, so it
+must be granted before then (#610).
 
 **Cancellation.** Self-service through the Stripe customer portal, effective at
 period end. No proration and no refund of the remainder. The customer keeps
@@ -104,14 +110,21 @@ returned for denied service, not the unwinding of a sale, so it is not a
 refund for admission purposes, and a refund matching no record alerts rather
 than changing access
 ([ADR 0249](../adr/0249-refund-revocation-is-matched-to-its-operator-action-record.md)).
-The guarantee is the answer to "no free trial" - someone can buy, try the real
+A matched refund also ends the refunded subscription in Stripe at once, so the
+customer is never charged again, and sends a content-free refund confirmation
+(#617). The guarantee is the answer to "no free trial" - someone can buy, try the real
 product, and get their money back, without Tendnote operating a trial state.
 
 **Disputes and chargebacks.** Treated like a refund: Paid Access is revoked
 immediately. Winning the dispute later does not re-admit the account
 automatically; the author re-admits manually. Automatic re-admission on a
 provider signal that can itself be reversed is the wrong default at this scale,
-and one account is cheap to handle by hand.
+and one account is cheap to handle by hand. A dispute does not end the
+subscription: Tendnote stops its renewal, so the Lapsed account is never
+charged again, and a re-admission grant naming the won dispute resumes that
+renewal and restores Paid Access on the same subscription. A grant never
+resumes a renewal the customer cancelled, and a subscription that reached its
+period end first restores nothing; the customer resubscribes (#617).
 
 ## The Lapsed account
 

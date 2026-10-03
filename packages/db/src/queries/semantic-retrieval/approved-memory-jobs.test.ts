@@ -1,3 +1,4 @@
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import { describe, expect, it } from "vitest";
 import type { MemoryUpdatePatch } from "../memories/types";
 import { createCountingAdapter, createHarness, EMBEDDING_CONFIG, OWNER } from "./harness";
@@ -233,6 +234,50 @@ describe("semantic embedding jobs - approved memories", () => {
     expect(retried.job.status).toBe("pending");
     expect(reprocessed.outcome).toBe("completed");
     await expect(store.listEmbeddingJobs()).resolves.toHaveLength(1);
+  });
+
+  it("waits in its pending state while background work is paused, then resumes after the reset", async () => {
+    let paused = true;
+    const { store, processor, createApprovedMemory } = createHarness({
+      adapter: {
+        async embedText(request) {
+          if (paused) throw new UsagePausedError("2026-11-15");
+          return { vector: [0, 1, 0, 0], model: request.model, version: request.version };
+        },
+      },
+    });
+    const memory = await createApprovedMemory();
+    const { job } = await processor.enqueueEmbeddingJob({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: memory.id,
+      runAfter: new Date("2026-10-20T00:00:00Z"),
+    });
+
+    const deferred = await processor.processEmbeddingJob({
+      jobId: job.id,
+      now: new Date("2026-10-20T12:00:00Z"),
+    });
+
+    expect(deferred.outcome).toBe("deferred");
+    expect(deferred.job).toMatchObject({
+      status: "pending",
+      runAfter: new Date("2026-11-15T00:00:00Z"),
+      claimedAt: null,
+      lastError: null,
+    });
+    await expect(
+      processor.claimNextEmbeddingJob({ now: new Date("2026-11-14T23:59:59Z") }),
+    ).resolves.toBeNull();
+
+    paused = false;
+    const resumed = await processor.processEmbeddingJob({
+      jobId: job.id,
+      now: new Date("2026-11-15T00:00:00Z"),
+    });
+
+    expect(resumed.outcome).toBe("completed");
+    await expect(store.listRelationshipContextEmbeddings()).resolves.toHaveLength(1);
   });
 
   it("retries after adapter failure without duplicating completed work", async () => {

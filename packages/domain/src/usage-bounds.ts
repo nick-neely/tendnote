@@ -1,4 +1,4 @@
-import { usageLedgerDay } from "./usage-ledger";
+import { type CostCategory, usageLedgerDay } from "./usage-ledger";
 
 /**
  * Usage bounds for hosted accounts (spec #591, ADR 0246): the plan's
@@ -18,6 +18,15 @@ export type Plan = {
      * Model; at the Account Ceiling, new turns pause.
      */
     interactive: { fairUseBudgetUsd: number; accountCeilingUsd: number };
+    /**
+     * Background work: extraction, embeddings, snapshots, and scheduled
+     * workflows. It has no cheaper substitute to reduce to, so at the Account
+     * Ceiling it pauses: captures wait in their pending state and scheduled
+     * workflows skip their next delivery.
+     */
+    background: { accountCeilingUsd: number };
+    /** Eve's web search. No cheaper substitute either, so at the ceiling it pauses. */
+    webSearch: { accountCeilingUsd: number };
   };
 };
 
@@ -27,7 +36,12 @@ export type Plan = {
  * promise, so the decision changes first.
  */
 export const HOSTED_PLAN = {
-  allowance: { interactive: { fairUseBudgetUsd: 10.5, accountCeilingUsd: 12 } },
+  allowance: {
+    interactive: { fairUseBudgetUsd: 10.5, accountCeilingUsd: 12 },
+    background: { accountCeilingUsd: 1.3 },
+    // One hundred searches at the gateway's $0.007 each.
+    webSearch: { accountCeilingUsd: 0.7 },
+  },
 } as const satisfies Plan;
 
 const MICRO_USD_PER_USD = 1_000_000;
@@ -55,6 +69,51 @@ export type UsageNotice = { state: "normal" } | UsageRestriction;
 /** The code Eve's door refuses a new turn with while interactive Eve is paused (ADR 0252). */
 export const EVE_USAGE_PAUSED_CODE = "eve_usage_paused";
 
+/**
+ * What an account has spent this Usage Period, per cost category, in millionths
+ * of a dollar.
+ */
+export type PeriodSpend = {
+  period: UsagePeriod;
+  spentMicroUsd: Record<CostCategory, number>;
+};
+
+/**
+ * What each metered function shows an account. `background` covers capture
+ * processing and scheduled workflows, which pause together at the background
+ * ceiling; `search` is the semantic half of search, which shares that allowance.
+ */
+export type UsageNotices = {
+  eve: UsageNotice;
+  search: UsageNotice;
+  background: UsageNotice;
+  webSearch: UsageNotice;
+};
+
+/**
+ * Refuses a model call whose function is paused at its Account Ceiling until
+ * the Usage Period resets. The model-call entry point throws it; a background
+ * job that meets it waits in its pending state until `resumesAt`. Its message
+ * is safe to show the account's owner.
+ */
+export class UsagePausedError extends Error {
+  readonly resetsOn: string;
+
+  constructor(resetsOn: string) {
+    super(
+      `This month's limit for background work is reached, so it is paused. ${recoveryText({ kind: "resets_on", date: resetsOn })} ` +
+        "Records, reminders, and exact search still work.",
+    );
+    this.name = "UsagePausedError";
+    this.resetsOn = resetsOn;
+  }
+
+  /** The start of the reset day, in UTC, which is when the Usage Ledger's new period begins. */
+  get resumesAt(): Date {
+    return new Date(`${this.resetsOn}T00:00:00Z`);
+  }
+}
+
 function utcDay(year: number, monthIndex: number, anchorDay: number): Date {
   const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
   return new Date(Date.UTC(year, monthIndex, Math.min(anchorDay, lastDay)));
@@ -77,6 +136,26 @@ export function usagePeriod(anchor: string, now: Date): UsagePeriod {
     start: usageLedgerDay(utcDay(year, startMonth, anchorDay)),
     resetsOn: usageLedgerDay(utcDay(year, startMonth + 1, anchorDay)),
   };
+}
+
+const RESET_DAY = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+/** The one recovery condition a reduced or paused notice states, as a sentence. */
+export function recoveryText(recovery: RecoveryCondition): string {
+  switch (recovery.kind) {
+    case "resets_on":
+      // A calendar day, so it is formatted in UTC rather than shifted into the
+      // viewer's zone.
+      return `Resets on ${RESET_DAY.format(new Date(`${recovery.date}T00:00:00Z`))}.`;
+    case "service_restored":
+      return "Resumes when service is restored.";
+    case "retrying":
+      return "Retrying.";
+  }
 }
 
 const RECOVERY_PRECEDENCE: Record<RecoveryCondition["kind"], number> = {
@@ -123,6 +202,57 @@ export function overFairUseBudget(input: { plan: Plan; spentMicroUsd: number }):
   );
 }
 
+function atCeiling(spentMicroUsd: number, accountCeilingUsd: number): boolean {
+  return spentMicroUsd >= accountCeilingUsd * MICRO_USD_PER_USD;
+}
+
+/** Paused at the ceiling until the period resets: the whole story for a function with no substitute. */
+function ceilingNotice(input: {
+  period: UsagePeriod;
+  spentMicroUsd: number;
+  accountCeilingUsd: number;
+}): UsageNotice {
+  return atCeiling(input.spentMicroUsd, input.accountCeilingUsd)
+    ? { state: "paused", recovery: { kind: "resets_on", date: input.period.resetsOn } }
+    : { state: "normal" };
+}
+
+/**
+ * Every metered function's notice from what the account has spent this Usage
+ * Period, or all normal for an account with no plan. Interactive Eve follows
+ * {@link interactiveUsageNotice}. Background work and web search pause at their
+ * own ceilings. Search is reduced to exact results while background work is
+ * paused, because its query embeddings are charged to the background allowance.
+ */
+export function usageNotices(input: { plan: Plan; spend: PeriodSpend | null }): UsageNotices {
+  if (!input.spend) {
+    const normal = { state: "normal" } as const;
+    return { eve: normal, search: normal, background: normal, webSearch: normal };
+  }
+
+  const { period, spentMicroUsd } = input.spend;
+  const { allowance } = input.plan;
+  const background = ceilingNotice({
+    period,
+    spentMicroUsd: spentMicroUsd.background,
+    accountCeilingUsd: allowance.background.accountCeilingUsd,
+  });
+  return {
+    eve: interactiveUsageNotice({
+      plan: input.plan,
+      period,
+      spentMicroUsd: spentMicroUsd.interactive,
+    }),
+    search: background.state === "paused" ? { ...background, state: "reduced" } : background,
+    background,
+    webSearch: ceilingNotice({
+      period,
+      spentMicroUsd: spentMicroUsd.web_search,
+      accountCeilingUsd: allowance.webSearch.accountCeilingUsd,
+    }),
+  };
+}
+
 /**
  * Interactive Eve's notice from what the account has spent this Usage Period.
  * From the plan's Fair-Use Budget, turns are reduced to the Fallback Model; at
@@ -139,7 +269,7 @@ export function interactiveUsageNotice(input: {
   if (overFairUseBudget(input)) {
     restrictions.push({ state: "reduced", recovery });
   }
-  if (input.spentMicroUsd >= accountCeilingUsd * MICRO_USD_PER_USD) {
+  if (atCeiling(input.spentMicroUsd, accountCeilingUsd)) {
     restrictions.push({ state: "paused", recovery });
   }
   return usageNotice(restrictions);

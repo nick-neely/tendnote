@@ -3,7 +3,9 @@ import {
   createEmbeddingJobSchema,
   type SemanticRecordKind,
 } from "@tendnote/domain";
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import {
+  deferJob,
   type EmbeddingContext,
   failJob,
   processApprovedMemory,
@@ -226,15 +228,30 @@ async function processEmbeddingJob(
       sourceSavedItem: result.sourceSavedItem,
     };
   } catch (error) {
-    if (error instanceof SupersededEmbeddingClaimError) {
-      const current = await store.getEmbeddingJob(job.id);
-      if (!current) throw new Error("Embedding job not found.");
-      return { job: current, outcome: "not_claimable", embedding: null };
-    }
-
-    const message = error instanceof Error ? error.message : String(error);
-    return failJob(ctx, job, message, now, retryDelayMs);
+    return settleProcessingError(ctx, job, error, now, retryDelayMs);
   }
+}
+
+/**
+ * What a pass that threw comes to: deferred when background work is paused, a
+ * no-op when a newer claim superseded it, and otherwise a retryable failure.
+ */
+async function settleProcessingError(
+  ctx: EmbeddingContext,
+  job: ProcessEmbeddingJobResult["job"],
+  error: unknown,
+  now: Date,
+  retryDelayMs: number,
+): Promise<ProcessEmbeddingJobResult> {
+  if (error instanceof UsagePausedError) return deferJob(ctx, job, error, now);
+  if (error instanceof SupersededEmbeddingClaimError) {
+    const current = await ctx.store.getEmbeddingJob(job.id);
+    if (!current) throw new Error("Embedding job not found.");
+    return { job: current, outcome: "not_claimable", embedding: null };
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return failJob(ctx, job, message, now, retryDelayMs);
 }
 
 /** Dispatches a job to the embedding step for its record kind. */

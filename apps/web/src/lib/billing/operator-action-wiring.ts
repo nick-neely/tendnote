@@ -1,0 +1,43 @@
+import "server-only";
+
+import { blobRecoveryJournal } from "@tendnote/db/queries/account-deletion";
+import {
+  findRefundRecordForInvoice,
+  grantAdmissionException,
+  recordRefund,
+} from "@tendnote/db/queries/paid-access-revocations";
+import { type OperatorActionDependencies, refundableInvoice } from "./operator-actions";
+import { configuredStripe, paidAccessProjection } from "./paid-access-projection";
+import { refundSnapshot } from "./paid-access-revocation";
+import { subscriptionSnapshot } from "./subscription-projection";
+
+/**
+ * The production dependencies of the Operator Actions (#617): the same
+ * projection the webhook and reconciliation write through, plus the records,
+ * the Recovery Journal, and the Stripe calls only an operator makes.
+ */
+export const operatorActionDependencies: OperatorActionDependencies = {
+  ...paidAccessProjection,
+  journal: blobRecoveryJournal,
+  records: { findRefundRecordForInvoice, recordRefund, grantAdmissionException },
+  retrieveRefundableInvoice: async (invoiceId) =>
+    refundableInvoice(
+      await configuredStripe().invoices.retrieve(invoiceId, { expand: ["payments"] }),
+    ),
+  createRefund: async ({ paymentIntentId, amount, idempotencyKey }) =>
+    refundSnapshot(
+      await configuredStripe().refunds.create(
+        { payment_intent: paymentIntentId, amount, reason: "requested_by_customer" },
+        { idempotencyKey },
+      ),
+    ),
+  retrieveDisputeStatus: async (stripeDisputeId) =>
+    (await configuredStripe().disputes.retrieve(stripeDisputeId)).status,
+  resumeRenewal: async (stripeSubscriptionId) =>
+    subscriptionSnapshot(
+      await configuredStripe().subscriptions.update(stripeSubscriptionId, {
+        cancel_at_period_end: false,
+        expand: ["latest_invoice"],
+      }),
+    ),
+};

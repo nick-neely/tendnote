@@ -1,4 +1,4 @@
-# ADR 0254: Next dev validates in process and compiles React natively
+# ADR 0255: Next dev validates in process and compiles React natively
 
 Status: Accepted by the owner in the October 3, 2026 implementation request for
 issue #684.

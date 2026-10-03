@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   getStripeCustomerId: vi.fn(),
   ownerHasExportableData: vi.fn(),
   getLatestOwnerDataExportJob: vi.fn(),
+  readGuestStanding: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
@@ -21,6 +22,9 @@ vi.mock("@tendnote/db/queries/stripe-customers", () => ({
 vi.mock("@tendnote/db/queries/owner-data-export", () => ({
   ownerHasExportableData: mocks.ownerHasExportableData,
   getLatestOwnerDataExportJob: mocks.getLatestOwnerDataExportJob,
+}));
+vi.mock("@tendnote/db/queries/households", () => ({
+  readGuestStanding: mocks.readGuestStanding,
 }));
 vi.mock("@/components/auth/auth-scaffold", () => ({
   AuthScaffold: ({ title, subtitle, children }: Record<string, React.ReactNode>) => (
@@ -55,6 +59,7 @@ beforeEach(() => {
   mocks.getStripeCustomerId.mockResolvedValue(null);
   mocks.ownerHasExportableData.mockResolvedValue(false);
   mocks.getLatestOwnerDataExportJob.mockResolvedValue(null);
+  mocks.readGuestStanding.mockResolvedValue(null);
 });
 
 describe("the pending area (#607)", () => {
@@ -126,5 +131,34 @@ describe("the pending area (#607)", () => {
     });
 
     await expect(PendingPage()).rejects.toThrow("REDIRECT:/lapsed");
+  });
+});
+
+describe("the pending area for a guest that is not one now (#637)", () => {
+  it("tells a guest whose household lost its last paying Owner, with Subscribe, Delete, and Sign out", async () => {
+    mocks.readGuestStanding.mockResolvedValue("household_inactive");
+
+    const html = await renderPending();
+
+    expect(mocks.readGuestStanding).toHaveBeenCalledWith({ userId: user.id });
+    expect(html).toContain('data-pending-state="household_inactive"');
+    expect(html).toContain("This household is not currently active on Tendnote");
+    expect(html).toContain("<b>Subscribe</b>");
+    expect(html).toContain("<b>Delete</b>");
+    expect(html).toContain("<b>Sign out</b>");
+    expect(html).not.toContain("<b>Export</b>");
+    expect(html).not.toContain("Pending review");
+  });
+
+  it("tells a removed guest its membership ended, with Subscribe, Delete, and Sign out", async () => {
+    mocks.readGuestStanding.mockResolvedValue("membership_ended");
+
+    const html = await renderPending();
+
+    expect(html).toContain('data-pending-state="membership_ended"');
+    expect(html).toContain("Your household membership ended");
+    expect(html).toContain("<b>Subscribe</b>");
+    expect(html).toContain("<b>Delete</b>");
+    expect(html).toContain("<b>Sign out</b>");
   });
 });

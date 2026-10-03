@@ -114,6 +114,30 @@ describe("AssistantApprovalSettings", () => {
     expect(checked(/Trusted/)).toBe("false");
   });
 
+  /**
+   * Two choices inside one round trip that both fail leave the stored mode
+   * untouched, so the selection returns to it, not to the first choice's
+   * unconfirmed optimism.
+   */
+  it("rolls back to the stored mode when two quick writes both fail", async () => {
+    const settle: ((outcome: unknown) => void)[] = [];
+    setEveApprovalModeAction.mockImplementation(
+      () => new Promise((resolve) => settle.push(resolve)),
+    );
+    render(<AssistantApprovalSettings mode="ask" />);
+
+    await userEvent.click(radio(/Trusted/));
+    await userEvent.click(radio(/Ask every time/));
+    await userEvent.click(radio(/Trusted/));
+
+    settle[0]?.({ ok: false, error: "That didn't go through." });
+    settle[1]?.({ ok: false, error: "That didn't go through." });
+    settle[2]?.({ ok: false, error: "That didn't go through." });
+
+    await waitFor(() => expect(checked(/Ask every time/)).toBe("true"));
+    expect(screen.getByRole("alert").textContent).toBe("That didn't go through.");
+  });
+
   /** A superseded failure is not this page's answer either, and says nothing. */
   it("neither rolls back nor complains when an older write fails last", async () => {
     const settle: ((outcome: unknown) => void)[] = [];

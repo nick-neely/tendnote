@@ -281,6 +281,8 @@ describe("Household Guest", () => {
           ? [{ kind: "suspension", event: `suspension:${userId}`, exceptions: [] }]
           : [],
       readGuestHousehold,
+      readGuestStanding: async ({ userId }: { userId: string }) =>
+        userId === GUEST.userId ? ("household_inactive" as const) : null,
       policy: input.policy ?? { mode: "hosted" as const, valid: true as const },
     };
     return {
@@ -402,6 +404,78 @@ describe("Household Guest", () => {
 
     expect(decision).toMatchObject({ admitted: true });
     expect(decision.guest).toBeUndefined();
+  });
+
+  describe("guest standing (#637)", () => {
+    it("reads a member whose household has no paying Owner as an inactive household", async () => {
+      const { reader } = setup();
+
+      await expect(reader.guestStanding(GUEST.userId)).resolves.toBe("household_inactive");
+    });
+
+    it("has no standing while the guest is live", async () => {
+      const { queries, reader } = setup();
+      await queries.grantAccess({ userId: "owner-a", source: "paid_access" });
+
+      await expect(reader.guestStanding(GUEST.userId)).resolves.toBeNull();
+    });
+
+    it("never blames the household for the guest's own block", async () => {
+      const { queries, reader } = setup({ blocked: [GUEST.userId] });
+
+      await expect(reader.guestStanding(GUEST.userId)).resolves.toBeNull();
+      await queries.grantAccess({ userId: "owner-a", source: "paid_access" });
+      await expect(reader.guestStanding(GUEST.userId)).resolves.toBeNull();
+    });
+
+    it("has no standing for an account that held Paid Access", async () => {
+      const store = createInMemoryAccessProfileStore();
+      await store.insertIfAbsent({
+        userId: GUEST.userId,
+        status: "pending",
+        source: "paid_access",
+        grantedAt: null,
+      });
+      const reader = createLocalAdmissionReader({
+        accessProfiles: createAccessProfileQueries(store),
+        readGuestHousehold: async () => HOUSEHOLD,
+        readGuestStanding: async () => "household_inactive",
+        policy: { mode: "hosted", valid: true },
+      });
+
+      await expect(reader.guestStanding(GUEST.userId)).resolves.toBeNull();
+    });
+
+    it("has no standing for an account that lapsed, whose source was cleared", async () => {
+      const store = createInMemoryAccessProfileStore();
+      const queries = createAccessProfileQueries(store);
+      await queries.grantAccess({
+        userId: GUEST.userId,
+        source: "paid_access",
+        stripeSubscriptionId: "sub_guest",
+      });
+      await queries.lapsePaidAccess({
+        userId: GUEST.userId,
+        stripeSubscriptionId: "sub_guest",
+        lapsedAt: new Date("2026-09-01T00:00:00Z"),
+      });
+      const reader = createLocalAdmissionReader({
+        accessProfiles: queries,
+        readGuestHousehold: async () => HOUSEHOLD,
+        readGuestStanding: async () => "household_inactive",
+        policy: { mode: "hosted", valid: true },
+      });
+
+      await expect(reader.guestStanding(GUEST.userId)).resolves.toBeNull();
+    });
+
+    it("has no standing in self-hosted mode", async () => {
+      const { reader } = setup({
+        policy: { mode: "self-hosted", valid: true, bootstrapOwnerEmail: "owner@example.com" },
+      });
+
+      await expect(reader.guestStanding(GUEST.userId)).resolves.toBeNull();
+    });
   });
 
   it("never reads guest households in self-hosted mode", async () => {

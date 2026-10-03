@@ -30,7 +30,7 @@ const nextConfig: NextConfig = {
   },
   transpilePackages: ["@tendnote/db", "@tendnote/domain", "@tendnote/ui"],
   experimental: {
-    // Only `next dev` reads this (#684, ADR 0254). Next's Cache Components
+    // Only `next dev` reads this (#684, ADR 0255). Next's Cache Components
     // validation worker loads a second copy of the app and retained about 8 MiB
     // more per page request, so a dev session grew until the 8 GB VM ran out. In
     // process, validation shares the dev server's modules and stays flat;
@@ -49,7 +49,7 @@ const nextConfig: NextConfig = {
 };
 
 /**
- * `next dev` runs the React Compiler as Turbopack's native Rust port (ADR 0254).
+ * `next dev` runs the React Compiler as Turbopack's native Rust port (ADR 0255).
  * The Babel version runs in Node loader workers that held about 0.9 GiB on the
  * 8 GB development VM (#684). Builds keep the Babel compiler, so what ships and
  * what the Instant matrix measures do not ride on the experimental port.

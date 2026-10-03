@@ -41,6 +41,13 @@ describe("the confirming page", () => {
     expect(redirect).not.toHaveBeenCalled();
   });
 
+  it("waits on a Household Guest that subscribed instead of returning it to the library (#637)", async () => {
+    getCurrentAccess.mockResolvedValueOnce({ state: "guest", user, householdId: "household-1" });
+
+    await expect(ConfirmingPage()).resolves.toBeTruthy();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
   it("lets the account in once Paid Access has landed", async () => {
     getCurrentAccess.mockResolvedValueOnce({ state: "admitted", user, ownerUserId: user.id });
 

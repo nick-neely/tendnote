@@ -104,6 +104,32 @@ export function lapsedRetentionDeadline(lapsedAt: Date): Date {
 }
 
 /**
+ * How long an account stays admitted, as Past Due, after a renewal payment
+ * fails: seven days (ADR 0245). Stripe's retries do the mechanical work; this is
+ * Tendnote's policy, closed by the reconciliation job. Stripe's own retry
+ * schedule must outlast it, or a cancellation by Stripe would end access first.
+ */
+const DUNNING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * When the dunning window of a renewal that failed at `pastDueSince` closes
+ * and the account becomes Lapsed. The notice's days remaining and the sweep
+ * that closes the window both read this one instant.
+ */
+export function dunningWindowEnd(pastDueSince: Date): Date {
+  return new Date(pastDueSince.getTime() + DUNNING_WINDOW_MS);
+}
+
+/**
+ * The latest instant a renewal can have failed at and still have its dunning
+ * window closed by `now`: the inverse of {@link dunningWindowEnd}, for the
+ * sweep that finds every closed window.
+ */
+export function dunningWindowsClosedBy(now: Date): Date {
+  return new Date(now.getTime() - DUNNING_WINDOW_MS);
+}
+
+/**
  * Result of the shared access-check seam. `admitted` is the single signal pages,
  * server actions, and Eve ingress should branch on; it never loads relationship data.
  */

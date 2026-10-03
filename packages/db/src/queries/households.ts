@@ -12,7 +12,10 @@ import { createHouseholdContextActorReader } from "./households/context-actors";
 import { createDrizzleHouseholdInvitationStore } from "./households/drizzle-invitation-store";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createHouseholdGovernanceLifecycle } from "./households/governance";
-import { createGuestHouseholdReader } from "./households/guest-household";
+import {
+  createGuestHouseholdReader,
+  createGuestStandingReader,
+} from "./households/guest-household";
 import { createHouseholdInvitationLifecycle } from "./households/invitations";
 import { createHouseholdLifecycle } from "./households/lifecycle";
 import {
@@ -119,16 +122,28 @@ export function readGuestHousehold(input: { userId: string }) {
   return defaultGuestHouseholdReader(input);
 }
 
+// Local reads only, so a roster or the pending area never evaluates Flags or grants anything.
+const defaultLocalAdmission = createLocalAdmissionReader({
+  accessProfiles: { checkAccess: (input) => checkAccess(input) },
+  listAdmissionBlocks: (input) => listAccountDeletionAdmissionBlocks(input),
+  readGuestHousehold,
+  readGuestStanding: createGuestStandingReader(defaultHouseholdStore),
+});
+
+/**
+ * Why a not-admitted hosted account lost a guest view it had, if it did
+ * (#637): its household lost its last paying Owner, or its membership ended.
+ * The pending area's one line, never who or when.
+ */
+export function readGuestStanding(input: { userId: string }) {
+  return defaultLocalAdmission.guestStanding(input.userId);
+}
+
 const defaultHouseholdOverviewReader = createHouseholdOverviewReader(
   defaultHouseholdStore,
   createDrizzleHouseholdIdentityStore(),
   defaultHouseholdInvitations,
-  // Local reads only, so a roster never evaluates Flags or grants anything.
-  createLocalAdmissionReader({
-    accessProfiles: { checkAccess: (input) => checkAccess(input) },
-    listAdmissionBlocks: (input) => listAccountDeletionAdmissionBlocks(input),
-    readGuestHousehold,
-  }),
+  defaultLocalAdmission,
 );
 const defaultHouseholdPlanningFrameReader = createHouseholdPlanningFrameReader(
   defaultHouseholdStore,

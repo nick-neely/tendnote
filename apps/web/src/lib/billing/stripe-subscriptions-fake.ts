@@ -1,9 +1,11 @@
+import type { AccessProfile } from "@tendnote/domain";
 import { vi } from "vitest";
 import type { PaidAccessAdmissionDependencies } from "./paid-access-admission";
-import type { SubscriptionSnapshot } from "./subscription-projection";
+import { type PastDue, paysForAccount, type SubscriptionSnapshot } from "./subscription-projection";
 
 type AccessProfileWrites = {
   lapsePaidAccess: PaidAccessAdmissionDependencies["subscriptions"]["lapsePaidAccess"];
+  getAccessProfile: (input: { userId: string }) => Promise<AccessProfile | null>;
 };
 
 /**
@@ -14,17 +16,20 @@ type AccessProfileWrites = {
  */
 export function createStripeSubscriptionsFake(
   profiles: AccessProfileWrites,
-  input: { stripeCustomerId: string },
+  input: { stripeCustomerId: string; now?: () => Date; periodEnd?: Date },
 ) {
-  const stripe = new Map<string, SubscriptionSnapshot>([
-    [
-      "sub_1",
-      { id: "sub_1", stripeCustomerId: input.stripeCustomerId, cancelAt: null, endedAt: null },
-    ],
-  ]);
+  const now = input.now ?? (() => new Date());
+  const live = (id: string): SubscriptionSnapshot => ({
+    id,
+    stripeCustomerId: input.stripeCustomerId,
+    cancelAt: null,
+    endedAt: null,
+    pastDue: null,
+  });
+  const stripe = new Map<string, SubscriptionSnapshot>([["sub_1", live("sub_1")]]);
   const recorded = new Map<
     string,
-    { userId: string; cancelAt: Date | null; endedAt: Date | null }
+    { userId: string; cancelAt: Date | null; endedAt: Date | null; pastDue: PastDue | null }
   >();
   const confirmCancellation = vi.fn(
     async (_input: { userId: string; stripeSubscriptionId: string; endsAt: Date }) => {},
@@ -32,15 +37,19 @@ export function createStripeSubscriptionsFake(
 
   const subscriptions: PaidAccessAdmissionDependencies["subscriptions"] = {
     getSubscription: async ({ stripeSubscriptionId }) => recorded.get(stripeSubscriptionId) ?? null,
-    recordSubscription: async ({ stripeSubscriptionId, userId, cancelAt, endedAt }) => {
+    recordSubscription: async ({ stripeSubscriptionId, userId, cancelAt, endedAt, pastDue }) => {
       const previous = recorded.get(stripeSubscriptionId);
       recorded.set(stripeSubscriptionId, {
         userId,
         cancelAt,
         endedAt: previous?.endedAt ?? endedAt,
+        pastDue,
       });
     },
     lapsePaidAccess: (lapse) => profiles.lapsePaidAccess(lapse),
+    // The production rule over the same Access Profile store.
+    paysForAccount: async ({ userId, stripeSubscriptionId }) =>
+      paysForAccount(await profiles.getAccessProfile({ userId }), stripeSubscriptionId),
     confirmCancellation,
   };
 
@@ -50,16 +59,50 @@ export function createStripeSubscriptionsFake(
     return subscription;
   });
 
-  /** Change Stripe's copy of a subscription, as the portal or a period end does. */
+  /** Stripe's immediate cancellation: the subscription ends now and its retries stop. */
+  const cancelSubscription = vi.fn(async (id: string) => {
+    const subscription = await retrieveSubscription(id);
+    if (subscription.endedAt) throw new Error(`Subscription ${id} is already canceled`);
+    const ended = { ...subscription, endedAt: now(), pastDue: null };
+    stripe.set(id, ended);
+    return ended;
+  });
+
+  /** Stop or resume renewal: Stripe schedules, or clears, cancellation at the period end. */
+  const periodEnd = input.periodEnd ?? new Date("2026-11-01T09:30:00.000Z");
+  const stopRenewal = vi.fn(async (id: string) => {
+    const subscription = { ...(await retrieveSubscription(id)), cancelAt: periodEnd };
+    stripe.set(id, subscription);
+    return subscription;
+  });
+  const resumeRenewal = vi.fn(async (id: string) => {
+    const subscription = { ...(await retrieveSubscription(id)), cancelAt: null };
+    stripe.set(id, subscription);
+    return subscription;
+  });
+
+  /** The Drizzle query's filter over the recorded projection. */
+  const listClosedDunningWindows = async ({ pastDueAtOrBefore }: { pastDueAtOrBefore: Date }) =>
+    [...recorded].flatMap(([stripeSubscriptionId, record]) =>
+      !record.endedAt && record.pastDue && record.pastDue.since <= pastDueAtOrBefore
+        ? [{ userId: record.userId, stripeSubscriptionId, invoiceId: record.pastDue.invoiceId }]
+        : [],
+    );
+
+  /** Change Stripe's copy of a subscription, as the portal, a period end, or a failed renewal does. */
   function stripeChanges(id: string, change: Partial<SubscriptionSnapshot>) {
-    const current = stripe.get(id) ?? {
-      id,
-      stripeCustomerId: input.stripeCustomerId,
-      cancelAt: null,
-      endedAt: null,
-    };
-    stripe.set(id, { ...current, ...change });
+    stripe.set(id, { ...(stripe.get(id) ?? live(id)), ...change });
   }
 
-  return { subscriptions, retrieveSubscription, recorded, confirmCancellation, stripeChanges };
+  return {
+    subscriptions,
+    retrieveSubscription,
+    cancelSubscription,
+    stopRenewal,
+    resumeRenewal,
+    listClosedDunningWindows,
+    recorded,
+    confirmCancellation,
+    stripeChanges,
+  };
 }

@@ -3,18 +3,29 @@ import { type AccessState, GUEST_PATH, LAPSED_PATH, REACCEPTANCE_PATH } from "./
 import { getCurrentAccess } from "./current-access";
 
 type UnadmittedAccess = Extract<AccessState, { state: "pending" | "lapsed" }>;
+type SubscribingAccess = Extract<AccessState, { state: "pending" | "lapsed" | "guest" }>;
 
 /**
- * The signed-in, not-admitted account a page renders for, whether it never
- * paid or Lapsed. Anyone else goes where they belong: a signed-out visitor to
- * sign-in, an account that owes re-acceptance to the gate (#614), a live
- * Household Guest to the guest area (#635), and an admitted one into the app.
+ * The signed-in account that may be waiting on its own subscription: never
+ * paid, Lapsed, or a live Household Guest, who keeps its membership on paying
+ * (#637). Anyone else goes where they belong: a signed-out visitor to sign-in,
+ * an account that owes re-acceptance to the gate (#614), and an admitted one
+ * into the app.
  */
-export async function requireUnadmittedAccess(): Promise<UnadmittedAccess> {
+export async function requireSubscribingAccess(): Promise<SubscribingAccess> {
   const access = await getCurrentAccess();
   if (access.state === "unauthenticated") redirect("/sign-in");
   if (access.state === "reacceptance") redirect(REACCEPTANCE_PATH);
   if (access.state === "admitted") redirect("/");
+  return access;
+}
+
+/**
+ * {@link requireSubscribingAccess} for a page a live Household Guest does not
+ * belong on: it goes to the guest area (#635).
+ */
+async function requireUnadmittedAccess(): Promise<UnadmittedAccess> {
+  const access = await requireSubscribingAccess();
   if (access.state === "guest") redirect(GUEST_PATH);
   return access;
 }

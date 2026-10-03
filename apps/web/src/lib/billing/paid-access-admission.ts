@@ -1,5 +1,7 @@
 import type { AccessProfile } from "@tendnote/domain";
+import type { PaidAccessFunnelStage } from "@tendnote/domain/account-funnel";
 import type { FirstPaidInvoice } from "./first-paid-invoice";
+import { isSubscriptionRevoked, type RevocationRecords } from "./paid-access-revocation";
 import {
   projectSubscription,
   type SubscriptionProjectionDependencies,
@@ -16,10 +18,18 @@ export type PaidAccessAdmissionDependencies = {
   retrieveSubscription: (stripeSubscriptionId: string) => Promise<SubscriptionSnapshot>;
   /** Where subscription state lands on the account (#609). */
   subscriptions: SubscriptionProjectionDependencies;
+  /** The refunds and disputes that revoke a subscription's Paid Access (#617). */
+  revocations: Pick<RevocationRecords, "listSubscriptionRevocationBlocks">;
   /** Grant the account Paid Access from this subscription. Must be idempotent. */
   grantPaidAccess: (userId: string, stripeSubscriptionId: string) => Promise<ProfileStanding>;
   /** Anchor the account's Usage Period to its subscription's start. Must be idempotent. */
   anchorUsagePeriod: (userId: string, startedAt: Date) => Promise<unknown>;
+  /**
+   * Copy a confirmed stage into the optional account funnel. Records each stage
+   * once and never throws, so a redelivery or a telemetry failure changes
+   * nothing about admission.
+   */
+  recordFunnelStage: (userId: string, stage: PaidAccessFunnelStage) => Promise<unknown>;
 };
 
 /**
@@ -27,17 +37,25 @@ export type PaidAccessAdmissionDependencies = {
  * Access is granted, for the webhook and the reconciliation job (#608) alike.
  * The subscription is projected from Stripe's current copy first, and one that
  * has ended admits nobody, so re-projecting a first invoice that is still paid
- * in Stripe never brings back an account its end made Lapsed (#609). An end
- * already on record is terminal, so it is refused without asking Stripe.
+ * in Stripe never brings back an account its end made Lapsed (#609). Nor does
+ * one whose Paid Access a refund or an unexcepted dispute revoked (#617). An
+ * end already on record is terminal, so it is refused without asking Stripe.
+ *
+ * The paid first invoice is the account funnel's payment confirmation, and a
+ * grant that leaves the account admitted is its Paid Access stage: both come
+ * from this server state, never from the browser's return from Checkout.
  *
  * Returns the account's standing after the grant, or `null` when the
- * subscription has ended. Every write is idempotent.
+ * subscription has ended or is revoked. Every write is idempotent.
  */
 export async function admitFromFirstPaidInvoice(
   deps: PaidAccessAdmissionDependencies,
   userId: string,
   paid: FirstPaidInvoice,
 ): Promise<ProfileStanding | null> {
+  // Before the ended and revoked checks: the paid first invoice is the payment,
+  // whether or not it still admits anyone.
+  await deps.recordFunnelStage(userId, "payment_confirmed");
   const recorded = await deps.subscriptions.getSubscription({
     stripeSubscriptionId: paid.stripeSubscriptionId,
   });
@@ -46,9 +64,11 @@ export async function admitFromFirstPaidInvoice(
   const subscription = await deps.retrieveSubscription(paid.stripeSubscriptionId);
   await projectSubscription(deps.subscriptions, userId, subscription);
   if (subscription.endedAt) return null;
+  if (await isSubscriptionRevoked(deps.revocations, paid.stripeSubscriptionId)) return null;
 
   const standing = await deps.grantPaidAccess(userId, paid.stripeSubscriptionId);
   // After the grant, which is what guarantees the Access Profile exists.
   await deps.anchorUsagePeriod(userId, paid.startedAt);
+  if (standing.status === "granted") await deps.recordFunnelStage(userId, "paid_access_granted");
   return standing;
 }

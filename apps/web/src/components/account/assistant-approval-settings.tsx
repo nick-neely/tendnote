@@ -83,10 +83,11 @@ export function AssistantApprovalSettings({ mode: initialMode }: { mode: EveAppr
   const [pending, startTransition] = useTransition();
   /** The newest choice. A response from any older one is not this page's answer. */
   const latestChoice = useRef(0);
+  /** What the server last stored. A failed newest write rolls back to this. */
+  const confirmed = useRef<EveApprovalMode>(initialMode);
 
   function choose(next: EveApprovalMode) {
     if (next === mode) return;
-    const previous = mode;
     latestChoice.current += 1;
     const choice = latestChoice.current;
     setMode(next);
@@ -94,16 +95,19 @@ export function AssistantApprovalSettings({ mode: initialMode }: { mode: EveAppr
     startTransition(async () => {
       try {
         const outcome = await setEveApprovalModeAction({ mode: next });
+        // Every stored answer moves the confirmed mode, even a superseded one,
+        // so a later failure rolls back to what is actually stored.
+        if (outcome.ok) confirmed.current = outcome.view.mode;
         if (choice !== latestChoice.current) return;
         if (!outcome.ok) {
-          setMode(previous);
+          setMode(confirmed.current);
           setError(outcome.error || GENERIC_FAILURE);
           return;
         }
-        setMode(outcome.view.mode);
+        setMode(confirmed.current);
       } catch {
         if (choice !== latestChoice.current) return;
-        setMode(previous);
+        setMode(confirmed.current);
         setError(GENERIC_FAILURE);
       }
     });
