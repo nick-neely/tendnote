@@ -617,6 +617,13 @@
       "when": 1790994663716,
       "tag": "0087_usage_period_anchor_and_ledger_cost",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1791005821139,
+      "tag": "0088_lapsed_accounts_and_stripe_subscriptions",
+      "breakpoints": true
     }
   ]
 }

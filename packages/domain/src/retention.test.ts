@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { lapsedRetentionDeadline } from "./access";
 import { AUDIT_LOG_DEFAULT_RETENTION_YEARS } from "./audit-retention";
 import { householdPurgeCutoff, householdRecoveryDeadline } from "./household-governance";
 import { publishedRetentionKeys, RETENTION, renderRetentionTable } from "./retention";
@@ -28,6 +29,14 @@ describe("retention constants", () => {
 
     expect(householdRecoveryDeadline(dissolvedAt).getTime() - dissolvedAt.getTime()).toBe(windowMs);
     expect(dissolvedAt.getTime() - householdPurgeCutoff(dissolvedAt).getTime()).toBe(windowMs);
+  });
+
+  it("sets the Lapsed retention deadline", () => {
+    const lapsedAt = new Date("2026-10-31T17:04:05.000Z");
+
+    expect(lapsedRetentionDeadline(lapsedAt).getTime() - lapsedAt.getTime()).toBe(
+      RETENTION.lapsedAccount.days * DAY_MS,
+    );
   });
 
   it("drives the audit retention sweep", () => {

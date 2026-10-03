@@ -1,5 +1,10 @@
 import type { AdmissionPolicy } from "@tendnote/domain";
 import Stripe from "stripe";
+import {
+  projectSubscription,
+  type SubscriptionProjectionDependencies,
+  type SubscriptionSnapshot,
+} from "./subscription-projection";
 
 export type StripeWebhookDependencies = {
   policy: AdmissionPolicy;
@@ -16,6 +21,13 @@ export type StripeWebhookDependencies = {
    * Called again on a redelivery, so it must key the send on the invoice.
    */
   announceAdmission: (input: { userId: string; invoiceId: string }) => Promise<unknown>;
+  /**
+   * Stripe's current copy of a subscription. The receiver projects that rather
+   * than the event's own copy, so the order events arrive in cannot matter.
+   */
+  retrieveSubscription: (stripeSubscriptionId: string) => Promise<SubscriptionSnapshot>;
+  /** Where subscription state lands on the account (#609). */
+  subscriptions: SubscriptionProjectionDependencies;
   log?: (message: string) => void;
 };
 
@@ -34,20 +46,34 @@ function stripeId(value: string | { id: string } | null): string | null {
  * A subscription's first invoice covers a single instant, its creation, so its
  * `period_start` is the moment the subscription started.
  */
-function firstPaidInvoice(
-  event: Stripe.Event,
-): { invoiceId: string; stripeCustomerId: string; startedAt: Date } | null {
+function firstPaidInvoice(event: Stripe.Event): {
+  invoiceId: string;
+  stripeCustomerId: string;
+  stripeSubscriptionId: string;
+  startedAt: Date;
+} | null {
   if (event.type !== "invoice.paid") return null;
   const invoice = event.data.object;
   if (invoice.status !== "paid" || invoice.billing_reason !== "subscription_create") return null;
-  if (!invoice.parent?.subscription_details || !invoice.id) return null;
+  const subscription = invoice.parent?.subscription_details?.subscription ?? null;
+  const stripeSubscriptionId = stripeId(subscription);
+  if (!stripeSubscriptionId || !invoice.id) return null;
   const stripeCustomerId = stripeId(invoice.customer);
   if (!stripeCustomerId) return null;
   return {
     invoiceId: invoice.id,
     stripeCustomerId,
+    stripeSubscriptionId,
     startedAt: new Date(invoice.period_start * 1000),
   };
+}
+
+/** The subscription a portal change or a period end touched, if this event is one. */
+function changedSubscriptionId(event: Stripe.Event): string | null {
+  return event.type === "customer.subscription.updated" ||
+    event.type === "customer.subscription.deleted"
+    ? event.data.object.id
+    : null;
 }
 
 /**
@@ -57,9 +83,14 @@ function firstPaidInvoice(
  * idempotent, so a duplicate delivery is a no-op, and the customer was
  * recorded before Checkout opened, so an invoice can always be matched to its
  * account without any earlier event having arrived. Once admission is recorded
- * the "you're in" email follows, never before it (#607). Nothing revokes Paid
- * Access yet; whatever first
- * does must also stop a redelivered first invoice from re-admitting.
+ * the "you're in" email follows, never before it (#607).
+ *
+ * Subscription changes from the portal and period ends are projected from
+ * Stripe's current copy of the subscription (#609): a scheduled cancellation is
+ * recorded for the Ending notice and confirmed by email, and an ended
+ * subscription makes the account Lapsed. The first paid invoice is projected
+ * the same way before it admits, so a redelivered first invoice of a
+ * subscription that has since ended re-admits nobody.
  *
  * A failure after verification surfaces as a 500 so Stripe redelivers;
  * accepting the HTTP delivery is not treated as completion. Self-hosted
@@ -67,6 +98,19 @@ function firstPaidInvoice(
  */
 export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
   const log = deps.log ?? ((message: string) => console.warn(message));
+
+  /**
+   * The account a Stripe customer belongs to. A customer Tendnote never created
+   * has no account to change, so the event is acknowledged rather than left for
+   * Stripe to retry for days.
+   */
+  async function accountFor(stripeCustomerId: string, eventId: string) {
+    const userId = await deps.findAccountByStripeCustomer(stripeCustomerId);
+    if (!userId) {
+      log(`[tendnote] Stripe event ${eventId} names an unknown customer; nothing was changed`);
+    }
+    return userId;
+  }
 
   return async function handleStripeWebhook(request: Request): Promise<Response> {
     if (deps.policy.mode !== "hosted") {
@@ -92,16 +136,30 @@ export function createStripeWebhookHandler(deps: StripeWebhookDependencies) {
       return new Response("Invalid Stripe signature.", { status: 400 });
     }
 
+    const changed = changedSubscriptionId(event);
+    if (changed) {
+      const subscription = await deps.retrieveSubscription(changed);
+      const userId = await accountFor(subscription.stripeCustomerId, event.id);
+      if (userId) await projectSubscription(deps.subscriptions, userId, subscription);
+      return new Response(null, { status: 200 });
+    }
+
     const paid = firstPaidInvoice(event);
     if (!paid) {
       return new Response(null, { status: 200 });
     }
 
-    const userId = await deps.findAccountByStripeCustomer(paid.stripeCustomerId);
+    const userId = await accountFor(paid.stripeCustomerId, event.id);
     if (!userId) {
-      // Not a customer Tendnote created for an account, so there is no one to
-      // admit. Acknowledge it rather than have Stripe retry for days.
-      log(`[tendnote] Stripe event ${event.id} names an unknown customer; nothing was admitted`);
+      return new Response(null, { status: 200 });
+    }
+
+    const subscription = await deps.retrieveSubscription(paid.stripeSubscriptionId);
+    await projectSubscription(deps.subscriptions, userId, subscription);
+    if (subscription.endedAt) {
+      log(
+        `[tendnote] Stripe event ${event.id} pays a subscription that has ended; nothing was admitted`,
+      );
       return new Response(null, { status: 200 });
     }
 

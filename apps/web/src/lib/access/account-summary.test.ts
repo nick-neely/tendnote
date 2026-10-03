@@ -24,6 +24,7 @@ function admittedState(sourceLabelSource: "bootstrap" | "beta_flag" | "paid_acce
       selfContextOnboardingReminderAt: null,
       householdCheckinEnabled: false,
       eveApprovalMode: "ask",
+      retentionDeadline: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     },

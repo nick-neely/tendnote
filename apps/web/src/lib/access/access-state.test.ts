@@ -5,6 +5,7 @@ import {
   type AccessState,
   accountOwnerUserId,
   decideAccessRoute,
+  LAPSED_PATH,
   localFallbackOwnerUserId,
   ownerForActionOrThrow,
   REACCEPTANCE_PATH,
@@ -32,6 +33,7 @@ const admittedDecision: AccessDecision = {
     selfContextOnboardingReminderAt: null,
     householdCheckinEnabled: false,
     eveApprovalMode: "ask",
+    retentionDeadline: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -307,4 +309,70 @@ describe("re-acceptance gate (#614)", () => {
       ).toBe("user-1");
     },
   );
+});
+
+describe("Lapsed Account (#609)", () => {
+  const retentionDeadline = new Date("2027-01-29T17:04:05.000Z");
+  const lapsedDecision: AccessDecision = {
+    admitted: false,
+    status: "pending",
+    profile: {
+      ...(admittedDecision.profile as NonNullable<AccessDecision["profile"]>),
+      status: "pending",
+      source: null,
+      grantedAt: null,
+      retentionDeadline,
+    },
+  };
+
+  it("is a not-admitted account whose profile carries a retention deadline", async () => {
+    const state = await resolveAccessState(USER, async () => lapsedDecision);
+
+    expect(state).toEqual({
+      state: "lapsed",
+      user: USER,
+      decision: lapsedDecision,
+      retentionDeadline,
+    });
+  });
+
+  it("is never pending, and a never-paid account is never lapsed", async () => {
+    await expect(resolveAccessState(USER, async () => pendingDecision)).resolves.toMatchObject({
+      state: "pending",
+    });
+  });
+
+  it("routes to the Lapsed area and refuses product actions, never a local fallback owner", () => {
+    const state: AccessState = {
+      state: "lapsed",
+      user: USER,
+      decision: lapsedDecision,
+      retentionDeadline,
+    };
+    const route = decideAccessRoute(state, { localFallbackOwnerUserId: "demo-user" });
+
+    expect(route).toEqual({ type: "redirect", to: LAPSED_PATH });
+    expect(() => ownerForActionOrThrow(route)).toThrow(/Resubscribe/);
+  });
+
+  it("keeps export and deletion open to the account itself", () => {
+    expect(
+      accountOwnerUserId({
+        state: "lapsed",
+        user: USER,
+        decision: lapsedDecision,
+        retentionDeadline,
+      }),
+    ).toBe(USER.id);
+  });
+
+  it("owes re-acceptance like any other account", async () => {
+    const state = await resolveAccessState(
+      USER,
+      async () => lapsedDecision,
+      async () => [{ key: "terms" } as unknown as LegalDocument],
+    );
+
+    expect(state.state).toBe("reacceptance");
+  });
 });

@@ -20,6 +20,7 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       selfContextOnboardingReminderAt: input.selfContextOnboardingReminderAt ?? null,
       householdCheckinEnabled: false,
       eveApprovalMode: "ask",
+      retentionDeadline: null,
       createdAt: now,
       updatedAt: now,
     };

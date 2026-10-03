@@ -30,6 +30,7 @@ export type AccessProfilePatch = Partial<
     | "selfContextOnboardingReminderAt"
     | "householdCheckinEnabled"
     | "eveApprovalMode"
+    | "retentionDeadline"
   >
 >;
 

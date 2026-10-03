@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { AdmissionPoller } from "@/components/billing/admission-poller";
 import { ConfirmingStatus } from "@/components/billing/confirming-status";
-import { requirePendingAccess } from "@/lib/access/pending-access";
+import { requireUnadmittedAccess } from "@/lib/access/pending-access";
 
 /**
  * Where Stripe Checkout returns (#606). Returning admits nobody: this page only
@@ -14,7 +14,8 @@ import { requirePendingAccess } from "@/lib/access/pending-access";
  */
 export default async function ConfirmingPage() {
   if (process.env.NODE_ENV !== "test") await connection();
-  const access = await requirePendingAccess();
+  // A Lapsed account resubscribing waits here too (#609).
+  const access = await requireUnadmittedAccess();
 
   // Only hosted deployments take payment, so there is nothing to wait for here.
   if (parseAdmissionPolicy().mode !== "hosted") {

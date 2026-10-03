@@ -30,6 +30,17 @@ describe("the confirming page", () => {
     expect(redirect).not.toHaveBeenCalled();
   });
 
+  it("waits on a Lapsed account that resubscribed (#609)", async () => {
+    getCurrentAccess.mockResolvedValueOnce({
+      state: "lapsed",
+      user,
+      retentionDeadline: new Date("2027-01-29T17:04:05.000Z"),
+    });
+
+    await expect(ConfirmingPage()).resolves.toBeTruthy();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
   it("lets the account in once Paid Access has landed", async () => {
     getCurrentAccess.mockResolvedValueOnce({ state: "admitted", user, ownerUserId: user.id });
 

@@ -1,5 +1,5 @@
 import type { AccessSource } from "@tendnote/domain";
-import { type AccessState, REACCEPTANCE_PATH } from "./access-state";
+import { type AccessState, LAPSED_PATH, REACCEPTANCE_PATH } from "./access-state";
 
 /**
  * Human-readable label for how an admitted user's Private Beta Access was granted,
@@ -35,7 +35,10 @@ export type AccountView =
       /** The account's standing beside its name: a paying account is not a beta tester. */
       accessBadge: "Paid Access" | "Private beta";
     }
-  | { type: "redirect"; to: "/sign-in" | "/pending" | typeof REACCEPTANCE_PATH };
+  | {
+      type: "redirect";
+      to: "/sign-in" | "/pending" | typeof LAPSED_PATH | typeof REACCEPTANCE_PATH;
+    };
 
 /**
  * Decide whether the account page renders (and with what identity) or redirects.
@@ -50,6 +53,10 @@ export function resolveAccountView(
 ): AccountView {
   if (access.state === "pending") {
     return { type: "redirect", to: "/pending" };
+  }
+
+  if (access.state === "lapsed") {
+    return { type: "redirect", to: LAPSED_PATH };
   }
 
   if (access.state === "reacceptance") {

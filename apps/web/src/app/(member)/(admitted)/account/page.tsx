@@ -1,11 +1,15 @@
 import { getEveApprovalMode } from "@tendnote/db/queries/access-profiles";
 import { getLatestOwnerDataExportJob } from "@tendnote/db/queries/owner-data-export";
 import { listReminderInstallations } from "@tendnote/db/queries/reminders";
+import { getStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
+import { getScheduledCancellation } from "@tendnote/db/queries/stripe-subscriptions";
+import { parseAdmissionPolicy } from "@tendnote/domain";
 import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { AssistantApprovalSettings } from "@/components/account/assistant-approval-settings";
+import { BillingSection } from "@/components/account/billing-section";
 import { CalendarPreviewSection } from "@/components/account/calendar-preview-section";
 import { OwnerDataExportSection } from "@/components/account/owner-data-export-section";
 import { ProviderConnectionsSection } from "@/components/account/provider-connections-section";
@@ -25,6 +29,7 @@ import {
   isDiscordConfigured,
   isGoogleConfigured,
 } from "@/lib/auth/social";
+import { readStripeBillingConfig } from "@/lib/billing/checkout";
 import { parseCalendarPreviewTarget } from "@/lib/integrations/calendar-preview";
 import { getOwnerCalendarPreview } from "@/lib/integrations/calendar-preview-data";
 import { buildProviderConnectionView } from "@/lib/integrations/provider-connection-view";
@@ -153,6 +158,12 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
         <OwnerDataExportStream ownerUserId={ownerUserId} />
       </Suspense>
 
+      {/* Billing (#609) renders only for an account with a subscription to
+            manage, so every self-hosted and never-billed account skips it. */}
+      <Suspense fallback={null}>
+        <BillingStream ownerUserId={ownerUserId} />
+      </Suspense>
+
       {/* Sign out */}
       <section className="flex flex-col gap-3 border-t pt-6">
         <SignOutButton className="w-full sm:w-auto sm:self-start" />
@@ -167,6 +178,24 @@ async function OwnerDataExportStream({ ownerUserId }: { ownerUserId: string }) {
     return <OwnerDataExportSection initialJob={job} />;
   } catch {
     return <AccountRegionUnavailable label="Data export" />;
+  }
+}
+
+/**
+ * Billing for a hosted account Tendnote created a Stripe customer for. A failed
+ * read is the unavailable region, never a section claiming the subscription
+ * renews when the read that would say it ends never landed.
+ */
+async function BillingStream({ ownerUserId }: { ownerUserId: string }) {
+  if (parseAdmissionPolicy().mode !== "hosted" || !readStripeBillingConfig()) return null;
+  try {
+    const [customer, endsAt] = await Promise.all([
+      getStripeCustomerId({ userId: ownerUserId }),
+      getScheduledCancellation({ userId: ownerUserId }),
+    ]);
+    return customer ? <BillingSection endsAt={endsAt} /> : null;
+  } catch {
+    return <AccountRegionUnavailable label="Billing details" />;
   }
 }
 

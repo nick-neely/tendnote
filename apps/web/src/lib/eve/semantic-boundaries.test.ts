@@ -75,6 +75,9 @@ describe("semantic retrieval product-route boundaries", () => {
       // from an emailed link, never from navigation, and it carries no
       // relationship or semantic-search surface.
       "join/[token]",
+      // The Lapsed area (#609): resubscribe, export, and delete for an account
+      // that is not admitted, with no records, Today, or Eve.
+      "lapsed",
       "onboarding/self-context",
       "pending",
       "people",

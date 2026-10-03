@@ -3,6 +3,7 @@ import {
   type AccessProfile,
   type AccessSource,
   type EveApprovalMode,
+  lapsedRetentionDeadline,
   type SelfContextOnboardingState,
   selfContextOnboardingStateSchema,
 } from "@tendnote/domain";
@@ -295,6 +296,31 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
 
     /** Durably grant access, preserving its admission source. */
     grantAccess,
+
+    /**
+     * End Paid Access because the subscription that paid for it ended (#609):
+     * the account becomes Lapsed, signed in and not admitted, with its
+     * retention deadline computed from `lapsedAt` once, on entry. Any other
+     * source is left alone, and so is an account already Lapsed, so a
+     * redelivered or late end never moves the deadline it was promised.
+     */
+    async lapsePaidAccess(input: {
+      userId: string;
+      lapsedAt: Date;
+    }): Promise<AccessProfile | null> {
+      const existing = await store.getByUserId(input.userId);
+      if (existing?.status !== "granted" || existing.source !== "paid_access") return existing;
+
+      return store.update({
+        userId: input.userId,
+        patch: {
+          status: "pending",
+          source: null,
+          grantedAt: null,
+          retentionDeadline: lapsedRetentionDeadline(input.lapsedAt),
+        },
+      });
+    },
   };
 
   async function grantExisting(
@@ -305,7 +331,8 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
     try {
       updated = await store.update({
         userId: existing.userId,
-        patch: { status: "granted", source, grantedAt: new Date() },
+        // Admission clears a Lapsed account's retention deadline (#609).
+        patch: { status: "granted", source, grantedAt: new Date(), retentionDeadline: null },
       });
     } catch (error) {
       if (!isUniqueConstraintError(error)) throw error;

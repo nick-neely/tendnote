@@ -82,3 +82,8 @@ export async function listAdmittedOwnerUserIds() {
 export async function grantAccess(input: { userId: string; source: AccessSource }) {
   return defaultAccessProfileQueries.grantAccess(input);
 }
+
+/** End Paid Access when its subscription ends, making the account Lapsed (#609). */
+export async function lapsePaidAccess(input: { userId: string; lapsedAt: Date }) {
+  return defaultAccessProfileQueries.lapsePaidAccess(input);
+}

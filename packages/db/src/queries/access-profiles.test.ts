@@ -19,6 +19,7 @@ function grantedProfileFixture(userId: string): AccessProfile {
     selfContextOnboardingReminderAt: null,
     householdCheckinEnabled: false,
     eveApprovalMode: "ask",
+    retentionDeadline: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -160,6 +161,56 @@ describe("access profile queries", () => {
     await expect(
       queries.grantAccess({ userId: SECOND_USER, source: "paid_access" }),
     ).resolves.toMatchObject({ status: "granted", source: "manual_grant" });
+  });
+
+  it("lapses Paid Access with a retention deadline set once on entry", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    await queries.grantAccess({ userId: FIRST_USER, source: "paid_access" });
+    const lapsedAt = new Date("2026-10-31T17:04:05.000Z");
+
+    await expect(queries.lapsePaidAccess({ userId: FIRST_USER, lapsedAt })).resolves.toMatchObject({
+      status: "pending",
+      retentionDeadline: new Date("2027-01-29T17:04:05.000Z"),
+    });
+    await expect(queries.checkAccess({ userId: FIRST_USER })).resolves.toMatchObject({
+      admitted: false,
+    });
+
+    // A second lapse, however late, never moves the deadline already promised.
+    await queries.lapsePaidAccess({ userId: FIRST_USER, lapsedAt: new Date("2026-12-01") });
+    await expect(queries.getAccessProfile({ userId: FIRST_USER })).resolves.toMatchObject({
+      retentionDeadline: new Date("2027-01-29T17:04:05.000Z"),
+    });
+  });
+
+  it("lapses only Paid Access, never another source", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    await queries.grantAccess({ userId: FIRST_USER, source: "manual_grant" });
+    await queries.ensureAccessProfile({ userId: SECOND_USER });
+
+    for (const userId of [FIRST_USER, SECOND_USER, "user-unknown"]) {
+      await queries.lapsePaidAccess({ userId, lapsedAt: new Date("2026-10-31") });
+    }
+
+    await expect(queries.getAccessProfile({ userId: FIRST_USER })).resolves.toMatchObject({
+      status: "granted",
+      source: "manual_grant",
+      retentionDeadline: null,
+    });
+    await expect(queries.getAccessProfile({ userId: SECOND_USER })).resolves.toMatchObject({
+      status: "pending",
+      retentionDeadline: null,
+    });
+  });
+
+  it("clears the retention deadline when a Lapsed account is admitted again", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    await queries.grantAccess({ userId: FIRST_USER, source: "paid_access" });
+    await queries.lapsePaidAccess({ userId: FIRST_USER, lapsedAt: new Date("2026-10-31") });
+
+    await expect(
+      queries.grantAccess({ userId: FIRST_USER, source: "paid_access" }),
+    ).resolves.toMatchObject({ status: "granted", source: "paid_access", retentionDeadline: null });
   });
 
   it("durably upgrades a pending user when access is granted", async () => {

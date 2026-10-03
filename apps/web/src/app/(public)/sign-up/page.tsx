@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { CredentialsForm } from "@/components/auth/credentials-form";
-import { REACCEPTANCE_PATH } from "@/lib/access/access-state";
+import { LAPSED_PATH, REACCEPTANCE_PATH } from "@/lib/access/access-state";
 import { getCurrentAccess } from "@/lib/access/current-access";
 import { githubEnvFromProcess, isGithubConfigured } from "@/lib/auth/social";
 import { legalDocumentUrl } from "@/lib/public-links";
@@ -37,6 +37,10 @@ export default async function SignUpPage() {
 
   if (access.state === "pending") {
     redirect("/pending");
+  }
+
+  if (access.state === "lapsed") {
+    redirect(LAPSED_PATH);
   }
 
   return (

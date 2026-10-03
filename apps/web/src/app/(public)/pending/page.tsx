@@ -6,6 +6,7 @@ import { getStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
 import { connection } from "next/server";
 import { DeleteAccountButton } from "@/components/account/delete-account-button";
 import { OwnerDataExportSection } from "@/components/account/owner-data-export-section";
+import { SignedInIdentity } from "@/components/account/signed-in-identity";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { SubscribeForm } from "@/components/billing/subscribe-form";
@@ -37,32 +38,13 @@ export default async function PendingPage() {
   const access = await requirePendingAccess();
 
   const { user } = access;
-  const initial = (user.name || user.email).trim().charAt(0).toUpperCase() || "?";
   const { facts, exportJob } = await readPendingAreaFacts(user);
   const view = pendingAreaView(facts);
 
   return (
     <AuthScaffold title={view.title} subtitle={view.line}>
       <div className="flex flex-col gap-5" data-pending-state={view.state}>
-        {/* Identity, so the visitor can confirm which account is signed in. */}
-        <div className="flex items-center gap-3">
-          <span
-            aria-hidden
-            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-[length:var(--text-small)] font-medium text-secondary-foreground"
-          >
-            {initial}
-          </span>
-          <div className="flex min-w-0 flex-col">
-            <span className="truncate text-[length:var(--text-title)] leading-[var(--text-title-line)] font-medium">
-              {user.name || user.email}
-            </span>
-            {user.name ? (
-              <span className="truncate text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-                {user.email}
-              </span>
-            ) : null}
-          </div>
-        </div>
+        <SignedInIdentity user={user} />
 
         {view.subscribe ? <SubscribeForm /> : null}
 
