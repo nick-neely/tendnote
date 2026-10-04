@@ -10,8 +10,8 @@
  * time order and a restore can drain to a known point.
  */
 
-/** What a Deletion Record's subject is. The household purge adds its own kind. */
-export type DeletionSubjectKind = "account";
+/** What a Deletion Record's subject is: a deleted account or a purged Household Workspace. */
+export type DeletionSubjectKind = "account" | "household";
 
 /** The fact that a subject's rows are about to be irreversibly purged. */
 export type DeletionRecord = {
