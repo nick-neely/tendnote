@@ -19,21 +19,21 @@ runbook has not been created; this file records rollback information instead.
 - Product Vercel project: `nick-neely/tendnote-web`.
 - `tendnote.com`: connected to Production, with no app-subdomain redirect.
 - `www.tendnote.com`: 308 redirect to `tendnote.com`.
-- Incoming aliases: `www.tendnote.stacklet.app` (308),
-  `tendnote.stacklet.app` (301), and `tendnote-web.vercel.app` (308),
+- Incoming aliases: the former hosted origin and its `www` host (301 and 308),
+  and `tendnote-web.vercel.app` (308),
   all previously redirected to `tendnote.com`.
 - GitHub OAuth callback: `https://tendnote.com/api/auth/callback/github`.
 - Cloudflare manages DNS. There was no `app.tendnote.com` DNS record.
 - Apex `/join/check?x=1` returned HTTP 200 on 2026-10-04.
 - Production `BETTER_AUTH_URL`: `https://tendnote.com`.
 - `TENDNOTE_WEB_URL` and `NEXT_PUBLIC_APP_URL`: absent from the product project.
-- Prior Production deployment: `https://tendnote-14elx9ekw-nick-neely.vercel.app`,
-  Ready, `main` commit `6ccb859`.
+- Prior Production deployment: Ready, `main` commit `6ccb859`; its URL is under
+  **Domains** in the operations sheet.
 - Discord interactions endpoint:
-  `https://tendnote.stacklet.app/eve/v1/discord`.
+  `/eve/v1/discord` on the former hosted origin.
 - Discord OAuth redirects before preparation:
-  `https://tendnote.stacklet.app/api/auth/callback/discord` and
-  `https://tendnote.stacklet.app/api/integrations/discord/install/callback`.
+  `/api/auth/callback/discord` and
+  `/api/integrations/discord/install/callback`, both on the former hosted origin.
 
 ## Preparation observed
 
@@ -74,8 +74,8 @@ Production hostname with rollback ready before enabling the apex redirect.
 ## Production changes
 
 - Production `BETTER_AUTH_URL` saved as `https://app.tendnote.com`.
-- Same-source redeploy started for `main` commit `6ccb859`:
-  `https://tendnote-4petl8p4k-nick-neely.vercel.app`.
+- Same-source redeploy started for `main` commit `6ccb859`; its URL is under
+  **Domains** in the operations sheet.
   Deployment ID: `9u1WBrJV8tcTA7Jq7cUHRvW6RrSt`. Ready after 2m17s.
   New release `/sign-in` passed TLS and HTTP 200 using current public DNS IP.
 - GitHub callback saved as

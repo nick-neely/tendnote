@@ -71,6 +71,7 @@ describe("operatorAlertReadings", () => {
             { surface: "history_window", configuredSeconds: 21_600, expectedSeconds: 604_800 },
           ],
         },
+        ...unread,
       }),
     ).toEqual([{ condition: "backup_surface", firing: true }]);
   });
