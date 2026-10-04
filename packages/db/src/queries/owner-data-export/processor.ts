@@ -1,3 +1,5 @@
+import type { EffectFences } from "@tendnote/domain";
+import { blobEffectFences } from "../effect-fences/blob";
 import {
   createDrizzleOwnerDataExportArtifactStore,
   createDrizzleOwnerDataExportJobStore,
@@ -44,6 +46,7 @@ type ProcessorDependencies = {
   jobs: OwnerDataExportJobStore;
   artifacts: OwnerDataExportArtifactStore;
   generate: typeof generateOwnerDataExportArchive;
+  fences: EffectFences;
   now?: () => Date;
 };
 
@@ -52,6 +55,7 @@ function defaultDependencies(): ProcessorDependencies {
     jobs: createDrizzleOwnerDataExportJobStore(),
     artifacts: createDrizzleOwnerDataExportArtifactStore(),
     generate: generateOwnerDataExportArchive,
+    fences: blobEffectFences,
   };
 }
 
@@ -95,6 +99,7 @@ export async function processOwnerDataExportJob(input: {
   jobs?: OwnerDataExportJobStore;
   artifacts?: OwnerDataExportArtifactStore;
   generate?: typeof generateOwnerDataExportArchive;
+  fences?: EffectFences;
   now?: Date;
 }): Promise<OwnerDataExportProcessResult> {
   const deps = processorDependencies(input);
@@ -117,6 +122,7 @@ function processorDependencies(input: {
   jobs?: OwnerDataExportJobStore;
   artifacts?: OwnerDataExportArtifactStore;
   generate?: typeof generateOwnerDataExportArchive;
+  fences?: EffectFences;
   now?: Date;
 }): ProcessorDependencies {
   const defaults = defaultDependencies();
@@ -124,6 +130,7 @@ function processorDependencies(input: {
     jobs: input.jobs ?? defaults.jobs,
     artifacts: input.artifacts ?? defaults.artifacts,
     generate: input.generate ?? generateOwnerDataExportArchive,
+    fences: input.fences ?? defaults.fences,
     now: () => input.now ?? new Date(),
   };
 }
@@ -195,6 +202,7 @@ async function writeArchive(
   now: Date,
 ): Promise<OwnerDataExportProcessResult> {
   const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  let completed: OwnerDataExportJob | null;
   try {
     const archive = await deps.generate({ ownerUserId: claimed.ownerUserId, now, expiresAt });
     const artifact = await deps.artifacts.put({
@@ -205,16 +213,36 @@ async function writeArchive(
       expiresAt,
     });
     if (!artifact) return notClaimableResult(deps.jobs, claimed.id, claimed);
-    const completed = await deps.jobs.markCompleted({
+    completed = await deps.jobs.markCompleted({
       jobId: claimed.id,
       expectedClaimToken: claimToken,
       artifactExpiresAt: expiresAt,
       completedAt: now,
     });
     if (!completed) return notClaimableResult(deps.jobs, claimed.id, claimed);
-    return { outcome: "completed", job: completed };
   } catch (error) {
     return recordFailure(deps, claimed, claimToken, now, error);
+  }
+  await fenceDelivery(deps.fences, completed, now);
+  return { outcome: "completed", job: completed };
+}
+
+/**
+ * Fences the delivered export so a restore marks its job complete instead of
+ * running it again (ADR 0250). The job's idempotency key is unique per owner,
+ * so the fence is keyed by both. The archive is already delivered, so a failed
+ * fence is logged and never turns the export into a failure; the cost is one
+ * repeated export after a restore.
+ */
+async function fenceDelivery(fences: EffectFences, job: OwnerDataExportJob, now: Date) {
+  try {
+    await fences.write({
+      effect: "export",
+      key: `${job.ownerUserId}:${job.idempotencyKey}`,
+      at: now,
+    });
+  } catch {
+    console.warn("owner-data-export: could not fence a delivered export", { jobId: job.id });
   }
 }
 
@@ -257,6 +285,7 @@ export async function enqueueAndTriggerOwnerDataExportJob(
     jobs: deps.jobs,
     artifacts: deps.artifacts,
     generate: deps.generate,
+    fences: deps.fences,
     claim: true,
   });
   return { ...result, processResult };

@@ -45,6 +45,7 @@
     "./queries/eve-approval-decisions": "./src/queries/eve-approval-decisions.ts",
     "./queries/eve-session-owners": "./src/queries/eve-session-owners.ts",
     "./queries/eve-session-tool-trusts": "./src/queries/eve-session-tool-trusts.ts",
+    "./queries/effect-fences": "./src/queries/effect-fences.ts",
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",
     "./queries/first-run": "./src/queries/first-run.ts",
     "./queries/followups": "./src/queries/followups.ts",
