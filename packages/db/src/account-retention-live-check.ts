@@ -4,9 +4,12 @@
  * The in-memory store cannot prove the parts that live in SQL: which accounts
  * the due query selects (a notice keyed to an older deadline does not count, a
  * terminated account is read by its termination's deadline, an account already
- * being deleted is skipped), and that the purge claim commits nothing once the
- * account resubscribed. The last check runs a purge end to end through the real
- * account-deletion store and confirms the account is gone and confirmed.
+ * being deleted is skipped, an account under a Legal Hold is skipped until the
+ * hold ends), and that the purge claim commits nothing once the account
+ * resubscribed or was held. The deletion store's own reading of a hold, which
+ * keeps a held intent out of the recovery sweep, is checked here too. The
+ * last check runs a purge end to end through the real account-deletion store
+ * and confirms the account is gone and confirmed.
  *
  *   pnpm --filter @tendnote/db db:account-retention:check
  */
@@ -24,6 +27,7 @@ import {
   accessProfiles,
   accountDeletionIntents,
   deletionNotices,
+  legalHolds,
   terminations,
   user,
 } from "./schema";
@@ -42,6 +46,9 @@ const ids = {
   admitted: `retention-admitted-${run}`,
   terminated: `retention-terminated-${run}`,
   deleting: `retention-deleting-${run}`,
+  held: `retention-held-${run}`,
+  heldTerminated: `retention-held-terminated-${run}`,
+  heldDeleting: `retention-held-deleting-${run}`,
 };
 const fixtureIds = Object.values(ids);
 
@@ -65,13 +72,29 @@ async function seed() {
       // projection wrote a later deadline that must never be acted on.
       lapsed(ids.terminated, new Date(deadline.getTime() + 30 * DAY)),
       lapsed(ids.deleting, deadline),
+      lapsed(ids.held, deadline),
+      lapsed(ids.heldDeleting, deadline),
     ]);
-  await getDb().insert(terminations).values({
-    userId: ids.terminated,
-    reason: "live check",
-    terminatedAt: lapsedAt,
-    retentionDeadline: deadline,
-  });
+  await getDb()
+    .insert(terminations)
+    .values(
+      [ids.terminated, ids.heldTerminated].map((userId) => ({
+        userId,
+        reason: "live check",
+        terminatedAt: lapsedAt,
+        retentionDeadline: deadline,
+      })),
+    );
+  // Held past the deadline, until day 120.
+  await getDb()
+    .insert(legalHolds)
+    .values(
+      [ids.held, ids.heldTerminated, ids.heldDeleting].map((userId) => ({
+        userId,
+        expiresAt: day(120),
+        placedAt: day(0),
+      })),
+    );
   await getDb()
     .insert(deletionNotices)
     .values([
@@ -85,7 +108,54 @@ async function seed() {
     ]);
   await getDb()
     .insert(accountDeletionIntents)
-    .values({ userId: ids.deleting, requestedAt: day(0) });
+    .values([
+      { userId: ids.deleting, requestedAt: day(0) },
+      { userId: ids.heldDeleting, requestedAt: day(0) },
+    ]);
+}
+
+/** A Legal Hold pauses the notices and the purge until it ends, and keeps a held intent waiting (#632). */
+async function legalHoldsPause() {
+  const held = [ids.held, ids.heldTerminated];
+  for (const n of [1, 60, 90, 119]) {
+    const listed = (await dueAt(day(n))).map((account) => account.userId);
+    check(
+      `day ${n}: a held account is owed no notice and no purge`,
+      !held.some((id) => listed.includes(id)),
+      listed,
+    );
+  }
+  check(
+    "no purge is claimed for a held account past its deadline",
+    !(await store.claimPurge({ userId: ids.held, retentionDeadline: deadline, now: day(90) })) &&
+      !(await store.claimPurge({
+        userId: ids.heldTerminated,
+        retentionDeadline: deadline,
+        now: day(90),
+      })),
+  );
+  const afterHold = (await dueAt(day(120))).map((account) => account.userId);
+  check(
+    "day 120: once the hold ends, both are due again",
+    held.every((id) => afterHold.includes(id)),
+    afterHold,
+  );
+
+  const deletionStore = createDrizzleAccountDeletionStore();
+  const listedIntents = async (now: Date) =>
+    (await deletionStore.listIntents({ limit: 1000, now })).map((intent) => intent.userId);
+  check(
+    "a held intent waits out of the recovery sweep, beside one that is not held",
+    (await deletionStore.isHeld({ userId: ids.heldDeleting, now: day(1) })) &&
+      !(await deletionStore.isHeld({ userId: ids.deleting, now: day(1) })) &&
+      !(await listedIntents(day(1))).includes(ids.heldDeleting) &&
+      (await listedIntents(day(1))).includes(ids.deleting),
+  );
+  check(
+    "a held intent is listed again once the hold ends",
+    !(await deletionStore.isHeld({ userId: ids.heldDeleting, now: day(120) })) &&
+      (await listedIntents(day(120))).includes(ids.heldDeleting),
+  );
 }
 
 async function cleanup() {
@@ -102,6 +172,7 @@ async function dueAt(now: Date) {
 // fallow-ignore-next-line complexity -- This disposable Postgres contract keeps seeding, the ordered sweep steps, and their assertions together so the real store behavior stays auditable in one place.
 async function main() {
   await seed();
+  await legalHoldsPause();
 
   const onEntry = await dueAt(day(1));
   check(
@@ -241,10 +312,19 @@ async function main() {
   const survivors = await getDb()
     .select({ id: user.id })
     .from(user)
-    .where(inArray(user.id, [ids.staleNotice, ids.admitted, ids.deleting]));
+    .where(
+      inArray(user.id, [
+        ids.staleNotice,
+        ids.admitted,
+        ids.deleting,
+        ids.held,
+        ids.heldTerminated,
+        ids.heldDeleting,
+      ]),
+    );
   check(
-    "resubscribed, admitted, and already-deleting accounts are untouched",
-    survivors.length === 3,
+    "resubscribed, admitted, already-deleting, and held accounts are untouched",
+    survivors.length === 6,
   );
 }
 

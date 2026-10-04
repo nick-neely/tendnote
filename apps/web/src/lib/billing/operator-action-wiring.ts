@@ -6,6 +6,7 @@ import {
 } from "@tendnote/db/queries/account-ceiling-overrides";
 import { blobRecoveryJournal } from "@tendnote/db/queries/account-deletion";
 import { grantDunningExtension } from "@tendnote/db/queries/dunning-extensions";
+import { recordLegalHold } from "@tendnote/db/queries/legal-holds";
 import {
   findRefundRecordForInvoice,
   grantAdmissionException,
@@ -50,7 +51,8 @@ import { suspensionCreditStripeCalls } from "./suspension-credit";
  * session revocation; Termination (#630) adds stopping the renewal. The
  * Suspension Credit (#631) issued at a lift or a termination adds its records
  * and the credit note calls. The dunning extension and the Account Ceiling
- * override (#633) use only their records and the journal.
+ * override (#633), and the Legal Hold (#632), use only their records and the
+ * journal.
  */
 export const operatorActionDependencies: OperatorActionDependencies = {
   ...paidAccessProjection,
@@ -67,6 +69,7 @@ export const operatorActionDependencies: OperatorActionDependencies = {
   getSuspension,
   dunning: { findPastDueSubscription, grantDunningExtension },
   ceilings: { readUsagePeriod, readCeilingOverrides, recordCeilingOverride },
+  legalHolds: { recordLegalHold },
   credits: {
     listSuspensionCreditsForExit,
     recordSuspensionCredit,

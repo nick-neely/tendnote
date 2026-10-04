@@ -22,9 +22,12 @@ export type AccountDeletionStore = {
   /**
    * Incomplete intents, never-retried first and then least recently retried,
    * oldest request breaking ties. An intent that keeps failing therefore moves
-   * behind the others instead of holding the sweep's budget every pass.
+   * behind the others instead of holding the sweep's budget every pass. One
+   * whose account is under a Legal Hold at `now` waits out of the list.
    */
-  listIntents: (input: { limit: number }) => Promise<AccountDeletionIntent[]>;
+  listIntents: (input: { limit: number; now: Date }) => Promise<AccountDeletionIntent[]>;
+  /** Whether a Legal Hold blocks purging the account's data at `now` (#632). */
+  isHeld: (input: { userId: string; now: Date }) => Promise<boolean>;
   /** Records a recovery attempt, for the order above. */
   markAttempted: (input: { userId: string; at: Date }) => Promise<void>;
   markJournaled: (input: { userId: string; at: Date }) => Promise<void>;

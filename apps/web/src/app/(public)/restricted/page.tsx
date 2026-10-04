@@ -1,3 +1,4 @@
+import { isAccountHeld } from "@tendnote/db/queries/legal-holds";
 import {
   getLatestOwnerDataExportJob,
   ownerHasExportableData,
@@ -24,16 +25,19 @@ const smallMuted =
  * deadline stored on its termination; its renewal is already stopped, so there
  * is nothing to cancel and no resubscribe. Neither shows records, Today, or
  * Eve. Delete and Sign out are always here, so the exit is never blocked.
- * Everything is read from Tendnote's own records.
+ * While a Legal Hold covers a terminated account (#632) its deletion is
+ * paused, so no date is promised; the hold itself is not named. Everything is
+ * read from Tendnote's own records.
  */
 export default async function RestrictedPage() {
   if (process.env.NODE_ENV !== "test") await connection();
   const { user, restriction } = await requireRestrictedAccess();
   const suspended = restriction.kind === "suspension";
 
-  const [ownsExportableData, subscription] = await Promise.all([
+  const [ownsExportableData, subscription, held] = await Promise.all([
     ownerHasExportableData(user.id),
     suspended ? getLiveSubscription({ userId: user.id }) : null,
+    suspended ? false : isAccountHeld({ userId: user.id }),
   ]);
   const exportJob = ownsExportableData ? await getLatestOwnerDataExportJob(user.id) : null;
 
@@ -43,7 +47,9 @@ export default async function RestrictedPage() {
       subtitle={
         suspended
           ? "Access to Tendnote is paused while we review your account. Your data is kept as it is, and nothing has been deleted."
-          : `Your subscription won't renew. Your data is kept until ${formatBillingDate(restriction.retentionDeadline)}, then deleted. Until then you can export it or delete your account.`
+          : held
+            ? "Your subscription won't renew. Your data is kept as it is, and nothing has been deleted. You can export it or delete your account."
+            : `Your subscription won't renew. Your data is kept until ${formatBillingDate(restriction.retentionDeadline)}, then deleted. Until then you can export it or delete your account.`
       }
     >
       <div className="flex flex-col gap-5" data-restricted-area={restriction.kind}>

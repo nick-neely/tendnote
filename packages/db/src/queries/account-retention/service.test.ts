@@ -103,6 +103,68 @@ describe("runAccountRetentionSweep", () => {
     expect(store.hasIntent("user_1")).toBe(false);
   });
 
+  it("pauses the notices under a Legal Hold, then resumes from the stage reached (#632)", async () => {
+    const { store, sendNotice, purge, sweep } = harness();
+    await sweep(day(0));
+    store.placeLegalHold("user_1", day(70));
+
+    for (const n of [60, 65, 69]) await sweep(day(n));
+    expect(stagesSent(sendNotice)).toEqual(["day_0"]);
+
+    for (const n of [70, 83, 90]) await sweep(day(n));
+    expect(stagesSent(sendNotice)).toEqual(["day_0", "day_60", "day_83"]);
+    expect(purge).toHaveBeenCalledWith({ userId: "user_1", now: day(90) });
+  });
+
+  it("never purges a held account past its deadline, and purges it once the hold ends (#632)", async () => {
+    const { store, purge, sweep } = harness();
+    for (const n of [0, 60, 83]) await sweep(day(n));
+    store.placeLegalHold("user_1", day(120));
+
+    for (const n of [90, 100, 119]) {
+      expect(await sweep(day(n))).toMatchObject({ scanned: 0 });
+    }
+    expect(purge).not.toHaveBeenCalled();
+    expect(store.hasIntent("user_1")).toBe(false);
+
+    expect(await sweep(day(120))).toMatchObject({ scanned: 1, purged: 1 });
+  });
+
+  it("carries on for an account the hold does not name (#632)", async () => {
+    const { store, sendNotice, purge, sweep } = harness();
+    store.hold({
+      userId: "user_2",
+      email: "user_2@example.test",
+      kind: "lapsed",
+      retentionDeadline: deadline,
+    });
+    store.placeLegalHold("user_1", day(365));
+
+    for (const n of [0, 60, 83, 90]) await sweep(day(n));
+
+    expect(sendNotice.mock.calls.map(([notice]) => notice.userId)).toEqual([
+      "user_2",
+      "user_2",
+      "user_2",
+    ]);
+    expect(purge.mock.calls).toEqual([[{ userId: "user_2", now: day(90) }]]);
+  });
+
+  it("never purges an account held after it was listed (#632)", async () => {
+    const { store, purge, sweep } = harness();
+    const listDue = store.listDue;
+    store.listDue = async (input) => {
+      const due = await listDue(input);
+      store.placeLegalHold("user_1", day(120));
+      return due;
+    };
+
+    await sweep(day(90));
+
+    expect(purge).not.toHaveBeenCalled();
+    expect(store.hasIntent("user_1")).toBe(false);
+  });
+
   it("resends a notice whose record failed, so the next pass collapses it by key", async () => {
     const { store, sendNotice, sweep } = harness();
     const recordNotice = store.recordNotice;

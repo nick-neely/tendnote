@@ -56,6 +56,7 @@ function createRestore(
     redisSessions?: number;
     stripe?: StripeReconciliationResult;
     intents?: DeletionRecord[];
+    heldIntents?: string[];
   } = {},
 ) {
   const blobs = new Map<string, string>();
@@ -103,7 +104,10 @@ function createRestore(
       },
       areWritesStopped: async () => writesStopped,
       endOtherConnections: async () => 3,
-      listAccountDeletionIntentRecords: async () => intents,
+      listAccountDeletionIntentRecords: async () => ({
+        records: intents,
+        heldAccountIds: options.heldIntents ?? [],
+      }),
       async reapplyDeletionRecord(record) {
         applied.push(`${record.subjectKind}:${record.subjectId}`);
         const subjects = record.subjectKind === "account" ? accounts : households;
@@ -113,7 +117,6 @@ function createRestore(
       isDeletionSubjectPresent: async (record) =>
         (record.subjectKind === "account" ? accounts : households).has(record.subjectId),
       async findRecordedOperatorActions({ kind, actionIds }) {
-        if (kind === "legal-hold") return null;
         const recorded = new Set(options.recorded?.[kind] ?? []);
         return new Set(actionIds.filter((id) => recorded.has(id)));
       },
@@ -200,6 +203,7 @@ describe("holding outbound and stopping writes", () => {
       ok: true,
       endedConnections: 3,
       journaledIntents: 0,
+      heldIntents: [],
     });
     await expect(restore.deps.database.isOutboundPaused()).resolves.toBe(true);
     await expect(restore.deps.database.areWritesStopped()).resolves.toBe(true);
@@ -217,6 +221,16 @@ describe("holding outbound and stopping writes", () => {
 
     expect([...restore.blobs.keys()]).toEqual([recoveryJournalEntry(unjournaled).pathname]);
     await expect(applyDeletionRecords(restore.deps)).resolves.toMatchObject({ purged: 1 });
+  });
+
+  it("journals no deletion under a Legal Hold, and lists its account for the operator (#632)", async () => {
+    const restore = createRestore({ accounts: ["held"], heldIntents: ["held"] });
+
+    await expect(stopWrites(restore.deps)).resolves.toMatchObject({
+      journaledIntents: 0,
+      heldIntents: ["held"],
+    });
+    expect([...restore.blobs.keys()]).toEqual([]);
   });
 });
 
@@ -315,7 +329,6 @@ describe("reconciling admission", () => {
         { kind: "suspension-lift", accountId: "u1", actionId: "s-1", at: at(3).toISOString() },
         { kind: "termination", accountId: "u2", actionId: "t-1", at: at(5).toISOString() },
       ],
-      unchecked: [],
     });
   });
 
@@ -329,12 +342,12 @@ describe("reconciling admission", () => {
     });
   });
 
-  it("lists a record with nothing to check it against as unchecked", async () => {
+  it("lists a Legal Hold the restored data has no record of as missing", async () => {
     const hold = createRestore();
     hold.journal({ kind: "legal-hold", accountId: "u1", actionId: "l-1", at: at(1) });
 
     await expect(reconcileAdmission(hold.deps)).resolves.toMatchObject({
-      unchecked: [{ kind: "legal-hold", actionId: "l-1" }],
+      missing: [{ kind: "legal-hold", actionId: "l-1" }],
     });
   });
 

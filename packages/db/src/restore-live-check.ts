@@ -24,6 +24,7 @@ import {
   countFencedUnfinishedExportJobs,
   findRecordedOperatorActions,
   isDeletionSubjectPresent,
+  listAccountDeletionIntentRecords,
   markFencedExportJobs,
   reapplyDeletionRecord,
 } from "./queries/restore";
@@ -33,10 +34,22 @@ import {
   recordRestoredEmailFences,
   sweepRestoredEmailFences,
 } from "./queries/restored-email-fences";
-import { ownerDataExportJobs, restoredEmailFences, temporarySuspensions, user } from "./schema";
+import {
+  accountDeletionIntents,
+  legalHolds,
+  ownerDataExportJobs,
+  restoredEmailFences,
+  temporarySuspensions,
+  user,
+} from "./schema";
 
 const run = randomUUID().slice(0, 8);
-const ids = { deleted: `restore-deleted-${run}`, owner: `restore-owner-${run}` };
+const ids = {
+  deleted: `restore-deleted-${run}`,
+  owner: `restore-owner-${run}`,
+  deleting: `restore-deleting-${run}`,
+  heldDeleting: `restore-held-deleting-${run}`,
+};
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date();
 
@@ -75,6 +88,29 @@ async function deletionRecords() {
   check("re-applying it again finds it absent", again.status === "absent", again);
 }
 
+/** A committed deletion is journaled at stop-writes, unless a Legal Hold covers it (#632). */
+async function deletionIntents() {
+  await getDb()
+    .insert(accountDeletionIntents)
+    .values([
+      { userId: ids.deleting, requestedAt: NOW },
+      { userId: ids.heldDeleting, requestedAt: NOW },
+    ]);
+  await getDb()
+    .insert(legalHolds)
+    .values({ userId: ids.heldDeleting, expiresAt: new Date(NOW.getTime() + DAY) });
+  const { records, heldAccountIds } = await listAccountDeletionIntentRecords({ now: NOW });
+  const journaled = records.map((record) => record.subjectId);
+  check(
+    "an unheld intent gets its Deletion Record, and a held one is listed instead",
+    journaled.includes(ids.deleting) &&
+      !journaled.includes(ids.heldDeleting) &&
+      heldAccountIds.includes(ids.heldDeleting) &&
+      !heldAccountIds.includes(ids.deleting),
+    { journaled, heldAccountIds },
+  );
+}
+
 async function operatorActions() {
   const [open] = await getDb()
     .insert(temporarySuspensions)
@@ -93,26 +129,37 @@ async function operatorActions() {
   });
   check(
     "a suspension is found by its action id, and only it",
-    suspensions?.size === 1 && suspensions.has(id),
+    suspensions.size === 1 && suspensions.has(id),
     suspensions,
   );
   await suspensionLifts(id);
 }
 
-/** A lift is on record only once the suspension carries it; a Legal Hold never is. */
+/** A lift is on record only once the suspension carries it; a Legal Hold is its own row. */
 async function suspensionLifts(id: string) {
   const unlifted = await findRecordedOperatorActions({ kind: "suspension-lift", actionIds: [id] });
-  check("an unlifted suspension is no lift on record", unlifted?.size === 0, unlifted);
+  check("an unlifted suspension is no lift on record", unlifted.size === 0, unlifted);
 
   await getDb()
     .update(temporarySuspensions)
     .set({ liftedAt: NOW })
     .where(eq(temporarySuspensions.id, id));
   const lifted = await findRecordedOperatorActions({ kind: "suspension-lift", actionIds: [id] });
-  check("once lifted, the lift is on record", lifted?.has(id) === true, lifted);
+  check("once lifted, the lift is on record", lifted.has(id), lifted);
 
-  const hold = await findRecordedOperatorActions({ kind: "legal-hold", actionIds: [id] });
-  check("a Legal Hold has no record to check", hold === null);
+  const [held] = await getDb()
+    .insert(legalHolds)
+    .values({ userId: ids.owner, expiresAt: new Date(NOW.getTime() + DAY) })
+    .returning({ id: legalHolds.id });
+  const holds = await findRecordedOperatorActions({
+    kind: "legal-hold",
+    actionIds: [held?.id as string, id],
+  });
+  check(
+    "a Legal Hold is found by its action id, and a suspension's id is not one",
+    holds.size === 1 && holds.has(held?.id as string),
+    holds,
+  );
 }
 
 async function exportJobs() {
@@ -191,6 +238,7 @@ async function emailFences() {
 try {
   await seed();
   await deletionRecords();
+  await deletionIntents();
   await operatorActions();
   await exportJobs();
   await emailFences();

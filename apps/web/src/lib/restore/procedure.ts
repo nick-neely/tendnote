@@ -35,13 +35,15 @@ export type RestoreDependencies = {
     setWritesStopped: (stopped: boolean) => Promise<void>;
     areWritesStopped: () => Promise<boolean>;
     endOtherConnections: () => Promise<number>;
-    listAccountDeletionIntentRecords: () => Promise<DeletionRecord[]>;
+    listAccountDeletionIntentRecords: (input: {
+      now: Date;
+    }) => Promise<{ records: DeletionRecord[]; heldAccountIds: string[] }>;
     reapplyDeletionRecord: (record: DeletionRecord) => Promise<{ status: "purged" | "absent" }>;
     isDeletionSubjectPresent: (record: DeletionRecord) => Promise<boolean>;
     findRecordedOperatorActions: (input: {
       kind: OperatorRecordKind;
       actionIds: string[];
-    }) => Promise<Set<string> | null>;
+    }) => Promise<Set<string>>;
     recordRestoredEmailFences: (fences: RestoredFence[]) => Promise<void>;
     countRestoredEmailFences: (digests: string[]) => Promise<number>;
     markFencedExportJobs: (fences: RestoredFence[]) => Promise<number>;
@@ -87,18 +89,21 @@ export async function pauseOutbound(deps: RestoreDependencies): Promise<Report> 
  * Then it journals every account deletion intent still committed. One whose
  * journal write had failed would otherwise be lost with production's rows at
  * the swap, and the account would come back. A record already written is
- * written again as a no-op, since it is timed at the request.
+ * written again as a no-op, since it is timed at the request. An intent under
+ * a Legal Hold is not journaled, since that would purge held data; its account
+ * is listed in `heldIntents` for the operator (#632).
  */
 export async function stopWrites(deps: RestoreDependencies): Promise<Report> {
   await deps.database.pauseOutbound({ at: clock(deps)() });
   await deps.database.setWritesStopped(true);
   const endedConnections = await deps.database.endOtherConnections();
-  const intents = await deps.database.listAccountDeletionIntentRecords();
-  for (const record of intents) await deps.journal.write(recoveryJournalEntry(record));
+  const intents = await deps.database.listAccountDeletionIntentRecords({ now: clock(deps)() });
+  for (const record of intents.records) await deps.journal.write(recoveryJournalEntry(record));
   return {
     ok: await deps.database.areWritesStopped(),
     endedConnections,
-    journaledIntents: intents.length,
+    journaledIntents: intents.records.length,
+    heldIntents: intents.heldAccountIds,
   };
 }
 
@@ -229,7 +234,7 @@ async function readOperatorRecords(deps: RestoreDependencies) {
  * content-free, so the operator handles each one from the runbook; nothing
  * here guesses a reason or moves money. A re-performed action is a new record
  * under a new id, so the list never empties: `ok` says the step itself ran
- * cleanly, and every entry in `missing` and `unchecked` is the operator's.
+ * cleanly, and every entry in `missing` is the operator's.
  */
 export async function reconcileAdmission(deps: RestoreDependencies): Promise<Report> {
   // The replay may try an email that already went before the restore; with
@@ -241,7 +246,6 @@ export async function reconcileAdmission(deps: RestoreDependencies): Promise<Rep
   const { byKind, unreadable } = await readOperatorRecords(deps);
 
   const missing: OperatorRecord[] = [];
-  const unchecked: OperatorRecord[] = [];
   for (const [kind, records] of byKind) {
     if (records.length === 0) continue;
     const recorded = await deps.database.findRecordedOperatorActions({
@@ -249,8 +253,7 @@ export async function reconcileAdmission(deps: RestoreDependencies): Promise<Rep
       actionIds: records.map((record) => record.actionId),
     });
     for (const record of records) {
-      if (!recorded) unchecked.push(record);
-      else if (!recorded.has(record.actionId)) missing.push(record);
+      if (!recorded.has(record.actionId)) missing.push(record);
     }
   }
   const byTime = (a: OperatorRecord, b: OperatorRecord) => a.at.getTime() - b.at.getTime();
@@ -260,7 +263,6 @@ export async function reconcileAdmission(deps: RestoreDependencies): Promise<Rep
     ok: stripe.status === "ran" && stripe.failed === 0 && unreadable.length === 0,
     stripe,
     missing: missing.sort(byTime).map(show),
-    unchecked: unchecked.sort(byTime).map(show),
     unreadable,
   };
 }

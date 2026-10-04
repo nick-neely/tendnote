@@ -42,6 +42,7 @@ export * from "./app/household-calendar";
 export * from "./app/household-event-plans";
 export * from "./app/household-invitations";
 export * from "./app/households";
+export * from "./app/legal-holds";
 export * from "./app/memories";
 export * from "./app/operator-alerts";
 export * from "./app/owner-data-exports";

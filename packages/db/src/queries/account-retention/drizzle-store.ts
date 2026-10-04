@@ -8,6 +8,7 @@ import {
   isNull,
   lte,
   ne,
+  not,
   or,
   type SQL,
   sql,
@@ -20,6 +21,7 @@ import {
   terminations,
   user,
 } from "../../schema";
+import { heldBeyond } from "../legal-holds";
 import type { AccountRetentionStore, RetentionAccount } from "./types";
 
 type DueRow = RetentionAccount & { attemptedAt: Date | null };
@@ -89,6 +91,7 @@ export function createDrizzleAccountRetentionStore(
           // subscription's end writes here is never acted on.
           isNull(terminations.id),
           isNull(accountDeletionIntents.userId),
+          not(heldBeyond(accessProfiles.userId, now)),
           somethingDue(accessProfiles.retentionDeadline, now),
         ),
       )
@@ -123,6 +126,7 @@ export function createDrizzleAccountRetentionStore(
       .where(
         and(
           isNull(accountDeletionIntents.userId),
+          not(heldBeyond(terminations.userId, now)),
           somethingDue(terminations.retentionDeadline, now),
         ),
       )
@@ -174,14 +178,16 @@ export function createDrizzleAccountRetentionStore(
     },
 
     async claimPurge({ userId, retentionDeadline, now }) {
-      // One statement, so a grant that clears the deadline after the sweep
-      // listed the account leaves this insert matching nothing.
+      // One statement, so a grant that clears the deadline, or a Legal Hold
+      // placed, after the sweep listed the account leaves this insert matching
+      // nothing.
       const deadline = sql`${retentionDeadline.toISOString()}::timestamptz`;
       const at = sql`${now.toISOString()}::timestamptz`;
       const rows = await resolveDb().execute<{ user_id: string }>(sql`
         insert into ${accountDeletionIntents} (user_id, requested_at, reason)
         select ${userId}, ${at}, 'retention_deadline'
         where ${deadline} <= ${at}
+          and not ${heldBeyond(sql`${userId}`, now)}
           and (
             exists (
               select 1 from ${terminations}
