@@ -1,3 +1,4 @@
+import { RETENTION } from "./retention";
 import { type SpendBreakerStage, sheds } from "./usage-bounds";
 
 type ShedStage = Exclude<SpendBreakerStage, "closed">;
@@ -41,6 +42,11 @@ export const OPERATOR_ALERT_CONDITIONS = {
     recovery: "Stuck account deletions completed",
     detail:
       "A deletion intent is still incomplete twenty-four hours after it was committed. See account_deletion.intent_stuck in the logs.",
+  },
+  backup_surface: {
+    alert: "Backup surface outlives the Backup Window",
+    recovery: "Backup surfaces back inside the Backup Window",
+    detail: `The Neon history setting differs from the ${RETENTION.backupWindow.days}-day Backup Window, or a snapshot or branch would outlive it (ADR 0250). Treat it as a Suspected Incident. See backup_surface.finding in the logs, or run the backup-surfaces check.`,
   },
   background_backlog: {
     alert: "Background delivery backlog over thirty minutes",

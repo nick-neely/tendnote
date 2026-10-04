@@ -7,6 +7,7 @@ import {
 import { readSpendBreakerStage } from "@tendnote/db/queries/spend-breaker";
 import { type OperatorAlertReading, operatorAlertMessage } from "@tendnote/domain/operator-alerts";
 import type { SpendBreakerStage } from "@tendnote/domain/usage-bounds";
+import { type BackupSurfaceCheck, backupSurfaceReading } from "@/lib/backup-surfaces";
 import type { StripeReconciliationResult } from "@/lib/billing/stripe-reconciliation";
 import {
   createOperatorAlertSender,
@@ -24,6 +25,7 @@ export function operatorAlertReadings(input: {
   stripeReconciliation: StripeReconciliationResult;
   deletionStuck: boolean | null;
   breaker: SpendBreakerStage | null;
+  backupSurfaces: BackupSurfaceCheck | null;
 }): OperatorAlertReading[] {
   const readings: OperatorAlertReading[] = [];
   if (input.deletionStuck !== null) {
@@ -35,6 +37,12 @@ export function operatorAlertReadings(input: {
   }
   if (input.breaker) {
     readings.push({ condition: "spend_breaker", firing: input.breaker !== "closed" });
+  }
+  if (input.backupSurfaces?.status === "ran") {
+    readings.push({
+      condition: "backup_surface",
+      firing: input.backupSurfaces.findings.length > 0,
+    });
   }
   return readings;
 }
@@ -60,14 +68,15 @@ export async function runOperatorAlerts(input: {
 
   try {
     const now = new Date();
-    const [breaker, deletionStuck] = await Promise.all([
+    const [breaker, deletionStuck, backupSurfaces] = await Promise.all([
       readSpendBreakerStage({ now }).catch(() => null),
       hasStuckAccountDeletionIntent({ now }).catch(() => null),
+      backupSurfaceReading({ now }),
     ]);
     const send = createOperatorAlertSender({ destinations });
     const result = await runOperatorAlertPass({
       store: createDrizzleOperatorAlertStore(),
-      readings: operatorAlertReadings({ ...input, deletionStuck, breaker }),
+      readings: operatorAlertReadings({ ...input, deletionStuck, breaker, backupSurfaces }),
       breaker,
       notify: (notice) => send(noticeMessage(notice)),
       now,

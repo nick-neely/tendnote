@@ -20,6 +20,7 @@
     "./usage-ledger": "./src/usage-ledger.ts",
     "./usage-bounds": "./src/usage-bounds.ts",
     "./operator-alerts": "./src/operator-alerts.ts",
+    "./backup-surfaces": "./src/backup-surfaces.ts",
     "./brief-schedules": "./src/brief-schedules.ts",
     "./brief-summary": "./src/brief-summary.ts",
     "./briefs": "./src/briefs.ts",
