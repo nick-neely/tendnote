@@ -7,6 +7,7 @@ import { ForbiddenError } from "eve/channels/auth";
 import { describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness } from "../access/admission-harness";
 import { createTemporarySuspensionsFake } from "../access/temporary-suspensions-fake";
+import { createTerminationsFake } from "../access/terminations-fake";
 import {
   OPERATOR_USAGE,
   type OperatorActionDependencies,
@@ -39,16 +40,24 @@ const DISPUTED_AT = new Date("2026-10-02T08:00:00.000Z");
  */
 async function operator() {
   const steps: string[] = [];
-  const suspensions = createTemporarySuspensionsFake({ steps });
+  const terminations = createTerminationsFake({ steps });
+  const suspensions = createTemporarySuspensionsFake({
+    steps,
+    isConverted: (id) => terminations.terminations.some((each) => each.suspensionId === id),
+  });
   const harness = createAdmissionHarness({
     policy: hosted,
     evaluateFlag: vi.fn().mockResolvedValue(false),
     user,
-    listAdmissionBlocks: suspensions.listAdmissionBlocks,
+    listAdmissionBlocks: async (input) => [
+      ...(await suspensions.listAdmissionBlocks(input)),
+      ...(await terminations.listAdmissionBlocks(input)),
+    ],
   });
   const stripeSubscriptions = createStripeSubscriptionsFake(harness.queries, {
     stripeCustomerId: CUSTOMER,
     now: () => NOW,
+    isTerminated: terminations.isTerminated,
   });
   const revocations = createPaidAccessRevocationsFake({ steps });
   const journaled: RecoveryJournalRecord[] = [];
@@ -102,6 +111,9 @@ async function operator() {
     }),
     retrieveDisputeStatus: async (id) => disputeStatuses.get(id) ?? "needs_response",
     suspensions: suspensions.records,
+    terminations: terminations.records,
+    findLiveSubscription: async ({ userId }) =>
+      userId === user.id ? { stripeSubscriptionId: "sub_1" } : null,
     revokeSessions: vi.fn(async () => {
       steps.push("sessions:revoked");
     }),
@@ -144,6 +156,7 @@ async function operator() {
     journal,
     revocations,
     suspensions,
+    terminations,
     stripeSubscriptions,
     disputeStatuses,
     disputed,
@@ -356,6 +369,20 @@ describe("re-admission after a won dispute (#617, ADR 0248)", () => {
 
     await op.expectNotAdmitted();
     expect(op.deps.resumeRenewal).not.toHaveBeenCalled();
+  });
+
+  it("refuses a terminated account before writing a grant, leaving its renewal stopped (#630)", async () => {
+    const op = await operator();
+    await op.disputed("du_1", "won");
+    await runOperatorCommand(op.deps, ["terminate", user.id, "Abuse"]);
+
+    await expect(readmitAfterWonDispute(op.deps, { stripeDisputeId: "du_1" })).rejects.toThrow(
+      `Account ${user.id} is terminated; a termination is permanent.`,
+    );
+
+    expect(op.revocations.exceptions).toEqual([]);
+    expect(op.deps.resumeRenewal).not.toHaveBeenCalled();
+    await op.expectNotAdmitted();
   });
 });
 

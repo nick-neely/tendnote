@@ -10,6 +10,7 @@ describe("retention constants", () => {
   it("holds every published retention value once", () => {
     expect(RETENTION).toEqual({
       lapsedAccount: { days: 90 },
+      terminatedAccount: { days: 90 },
       backupWindow: { days: 7 },
       deletionRecord: { days: 30 },
       deletionFence: { days: 14 },

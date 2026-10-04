@@ -17,28 +17,36 @@ const smallMuted =
   "text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground";
 
 /**
- * The restricted area (#629): a suspended account keeps exactly export,
- * deletion, and cancelling its subscription. It shows no records, Today, or
- * Eve, and no running credit figure: the rule is stated once here, and the
- * amount arrives when the review ends. Delete and Sign out are always here, so
- * the exit is never blocked. Everything is read from Tendnote's own records.
+ * The restricted area. A suspended account (#629) keeps exactly export,
+ * deletion, and cancelling its subscription; it sees no running credit figure:
+ * the rule is stated once here, and the amount arrives when the review ends. A
+ * terminated account (#630) keeps export and deletion only, with the retention
+ * deadline stored on its termination; its renewal is already stopped, so there
+ * is nothing to cancel and no resubscribe. Neither shows records, Today, or
+ * Eve. Delete and Sign out are always here, so the exit is never blocked.
+ * Everything is read from Tendnote's own records.
  */
 export default async function RestrictedPage() {
   if (process.env.NODE_ENV !== "test") await connection();
-  const { user } = await requireRestrictedAccess();
+  const { user, restriction } = await requireRestrictedAccess();
+  const suspended = restriction.kind === "suspension";
 
   const [ownsExportableData, subscription] = await Promise.all([
     ownerHasExportableData(user.id),
-    getLiveSubscription({ userId: user.id }),
+    suspended ? getLiveSubscription({ userId: user.id }) : null,
   ]);
   const exportJob = ownsExportableData ? await getLatestOwnerDataExportJob(user.id) : null;
 
   return (
     <AuthScaffold
-      title="Your account is under review"
-      subtitle="Access to Tendnote is paused while we review your account. Your data is kept as it is, and nothing has been deleted."
+      title={suspended ? "Your account is under review" : "Your access to Tendnote has ended"}
+      subtitle={
+        suspended
+          ? "Access to Tendnote is paused while we review your account. Your data is kept as it is, and nothing has been deleted."
+          : `Your subscription won't renew. Your data is kept until ${formatBillingDate(restriction.retentionDeadline)}, then deleted. Until then you can export it or delete your account.`
+      }
     >
-      <div className="flex flex-col gap-5" data-restricted-area>
+      <div className="flex flex-col gap-5" data-restricted-area={restriction.kind}>
         <AccountIdentity user={user} />
 
         {subscription ? (

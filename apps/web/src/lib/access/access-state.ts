@@ -24,8 +24,19 @@ export const LAPSED_PATH = "/lapsed";
 /** Where a live Household Guest lands: read-only, outside the app shell (#635). */
 export const GUEST_PATH = "/guest";
 
-/** Where a suspended account lands: export, deletion, and billing cancel only (#629). */
+/**
+ * Where a suspended or terminated account lands: export and deletion, plus
+ * billing cancel while suspended (#629, #630).
+ */
 export const RESTRICTED_PATH = "/restricted";
+
+/**
+ * Why an account is in the restricted area. A Temporary Suspension (#629) may
+ * still cancel its subscription and ends by a lift; a Termination (#630) is
+ * permanent, its renewal already stopped, and carries the retention deadline
+ * stored on it.
+ */
+export type Restriction = { kind: "suspension" } | { kind: "termination"; retentionDeadline: Date };
 
 /**
  * Resolved Private Beta Access for the current request. `admitted` carries the
@@ -44,9 +55,10 @@ export const RESTRICTED_PATH = "/restricted";
  * everything keyed on admission fails closed; its `decision` is kept only so
  * export can still serve the account admission would otherwise admit.
  *
- * `restricted` is an account under an open Temporary Suspension (#629),
- * whatever else is true of it. Admission already denies it through the
- * suspension's block; this state only decides where it lands.
+ * `restricted` is an account under an open Temporary Suspension (#629) or
+ * terminated (#630), whatever else is true of it. Admission already denies it
+ * through the block; this state only decides where it lands and what the
+ * restricted area offers.
  */
 export type AccessState =
   | { state: "unauthenticated" }
@@ -54,7 +66,7 @@ export type AccessState =
   | { state: "lapsed"; user: SessionUser; decision: AccessDecision; retentionDeadline: Date }
   | { state: "admitted"; user: SessionUser; ownerUserId: string; decision: AccessDecision }
   | { state: "guest"; user: SessionUser; householdId: string; decision: AccessDecision }
-  | { state: "restricted"; user: SessionUser; decision: AccessDecision }
+  | { state: "restricted"; user: SessionUser; decision: AccessDecision; restriction: Restriction }
   | {
       state: "reacceptance";
       user: SessionUser;
@@ -77,27 +89,28 @@ export async function resolveAccessState(
   readOutstandingReacceptance: (
     userId: string,
   ) => Promise<readonly LegalDocument[]> = async () => [],
-  isSuspended: (userId: string) => Promise<boolean> = async () => false,
+  readRestriction: (userId: string) => Promise<Restriction | null> = async () => null,
 ): Promise<AccessState> {
   if (!user) {
     return { state: "unauthenticated" };
   }
 
-  const [decision, documents, suspended] = await Promise.all([
+  const [decision, documents, restriction] = await Promise.all([
     resolveAccess({
       userId: user.id,
       email: user.email,
       emailVerified: user.emailVerified,
     }),
     readOutstandingReacceptance(user.id),
-    isSuspended(user.id),
+    readRestriction(user.id),
   ]);
 
-  // A suspension outranks every other landing: a suspended account that is
-  // also Lapsed, or owes new terms, still has exactly the restricted area's
-  // exits, and must not reach resubscribe or the app through either.
-  if (suspended) {
-    return { state: "restricted", user, decision };
+  // A restriction outranks every other landing: a suspended or terminated
+  // account that is also Lapsed, or owes new terms, still has exactly the
+  // restricted area's exits, and must not reach resubscribe or the app
+  // through either.
+  if (restriction) {
+    return { state: "restricted", user, decision, restriction };
   }
 
   if (documents.length > 0) {
@@ -206,7 +219,7 @@ export function accountOwnerUserId(
     case "reacceptance":
     case "restricted":
       // Refusing new terms never blocks export or deletion (#614), and nor
-      // does a suspension (#629).
+      // does a suspension (#629) or a termination (#630).
       return state.user.id;
     default:
       return options.localFallbackOwnerUserId ?? null;
@@ -233,5 +246,5 @@ const ACTION_REFUSALS: Record<Extract<AccessRoute, { type: "redirect" }>["to"], 
   [GUEST_PATH]: "A Household Guest can read the household but not change anything.",
   [REACCEPTANCE_PATH]: "Accept the updated terms to do that.",
   [RESTRICTED_PATH]:
-    "Your account is under review. Until the review ends you can only export your data, delete your account, or cancel your subscription.",
+    "Your account's access is restricted. You can still export your data or delete your account.",
 };

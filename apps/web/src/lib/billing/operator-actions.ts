@@ -7,6 +7,11 @@ import {
   suspendAccount,
   type TemporarySuspensionDependencies,
 } from "../access/temporary-suspension";
+import {
+  refuseTerminated,
+  type TerminationDependencies,
+  terminateAccount,
+} from "../access/termination";
 import { invoiceSubscription, stripeId } from "./first-paid-invoice";
 import {
   applyStripeRefund,
@@ -37,7 +42,8 @@ export function refundableInvoice(invoice: Stripe.Invoice): RefundableInvoice {
 }
 
 export type OperatorActionDependencies = PaidAccessRevocationDependencies &
-  TemporarySuspensionDependencies & {
+  TemporarySuspensionDependencies &
+  TerminationDependencies & {
     journal: RecoveryJournal;
     /** The Operator Action records (ADR 0248), written before any Stripe call. */
     records: {
@@ -172,6 +178,9 @@ type ReadmissionResult =
  * subscription that has since ended, or carries another standing revocation,
  * is recorded as excepted and restores nothing: the customer resubscribes.
  *
+ * A terminated account is refused before anything is written: its
+ * Termination stopped the renewal, and nothing re-admits it.
+ *
  * Safe to run again: the grant naming a dispute is written once.
  */
 export async function readmitAfterWonDispute(
@@ -190,6 +199,7 @@ export async function readmitAfterWonDispute(
   }
 
   const { userId, stripeSubscriptionId } = dispute;
+  await refuseTerminated(deps.terminations, userId);
   const grant = await deps.records.grantAdmissionException({
     userId,
     blockKind: "dispute",
@@ -227,7 +237,8 @@ export const OPERATOR_USAGE = `Usage:
   operator readmit-dispute <dispute id>
   operator suspend <user id> <reason>
   operator renew-suspension <user id>
-  operator lift-suspension <user id>`;
+  operator lift-suspension <user id>
+  operator terminate <user id> <reason>`;
 
 type OperatorCommand = {
   /** Whether the arguments after the id are acceptable. */
@@ -256,6 +267,10 @@ const OPERATOR_COMMANDS: Record<string, OperatorCommand> = {
   "lift-suspension": {
     accepts: (rest) => rest.length === 0,
     run: (deps, userId) => liftSuspension(deps, { userId }),
+  },
+  terminate: {
+    accepts: (rest) => rest.length > 0,
+    run: (deps, userId, reason) => terminateAccount(deps, { userId, reason: reason.join(" ") }),
   },
 };
 

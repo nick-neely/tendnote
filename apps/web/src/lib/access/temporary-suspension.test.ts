@@ -10,6 +10,7 @@ import {
   type TemporarySuspensionDependencies,
 } from "./temporary-suspension";
 import { createTemporarySuspensionsFake } from "./temporary-suspensions-fake";
+import { createTerminationsFake } from "./terminations-fake";
 
 const user = { id: "subscriber-1", email: "subscriber@example.com" };
 const sessionUser = { ...user, emailVerified: true, name: "Sam" };
@@ -46,6 +47,7 @@ async function suspensionScenario() {
   const deps: TemporarySuspensionDependencies = {
     journal,
     suspensions: suspensions.records,
+    terminations: createTerminationsFake().records,
     revokeSessions,
   };
 
@@ -72,7 +74,10 @@ async function suspensionScenario() {
       sessionUser,
       (entity) => harness.web.resolveAccess(entity),
       async () => [],
-      async (userId) => (await suspensions.records.findOpenSuspension({ userId })) !== null,
+      async (userId) =>
+        (await suspensions.records.findOpenSuspension({ userId }))
+          ? { kind: "suspension" as const }
+          : null,
     );
     return state.state;
   }
