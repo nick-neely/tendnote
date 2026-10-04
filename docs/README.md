@@ -12,7 +12,7 @@ integration/publication commit is reserved for #488 after qualification.
 - [Architecture](architecture.md) — system seams, ownership, and runtime boundaries.
 - [Local development](local-development.md) — setup, environment variables, evals, and verification.
 - [Self-hosting](self-hosting/vercel-operator-runbook.md) — the operator-owned Vercel path.
-- [Hosted operations](operations/app-subdomain-move.md) - runbooks for the author-operated service: the app-subdomain move, the [whole-service restore](operations/restore.md), and the [Service-Wide Hold](operations/service-wide-hold.md).
+- [Hosted operations](operations/app-subdomain-move.md) - runbooks for the author-operated service: the app-subdomain move, the [whole-service restore](operations/restore.md), the [Service-Wide Hold](operations/service-wide-hold.md), and the [synthetic First Value check](operations/synthetic-first-value-check.md).
 - [Background jobs](background-job-delivery.md) — queue and outbox mechanics.
 - [Email setup](email-setup.md), [Google setup](google-setup.md), and [Discord setup](discord-setup.md) — opt-in provider configuration.
 

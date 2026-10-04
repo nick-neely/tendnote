@@ -3,6 +3,14 @@ import { type SpendBreakerStage, sheds } from "./usage-bounds";
 
 type ShedStage = Exclude<SpendBreakerStage, "closed">;
 
+/**
+ * The Reliability Indicators' targets (#649, cost and reliability evidence): a
+ * reminder delivered within five minutes of its alert time, and no background
+ * job left waiting more than thirty minutes past when it was due.
+ */
+export const REMINDER_LATENESS_LIMIT_MS = 5 * 60 * 1000;
+export const BACKGROUND_BACKLOG_LIMIT_MS = 30 * 60 * 1000;
+
 type OperatorAlertConditionDefinition = {
   /** The alert's title, sent when the condition starts firing. */
   alert: string;
@@ -51,8 +59,28 @@ export const OPERATOR_ALERT_CONDITIONS = {
   background_backlog: {
     alert: "Background delivery backlog over thirty minutes",
     recovery: "Background delivery backlog cleared",
-    detail: "The oldest pending background delivery is older than thirty minutes.",
+    detail:
+      "A background job (extraction, embedding, or export) has waited more than thirty minutes past when it was due. Inspect the job tables by status and run_after (docs/background-job-delivery.md).",
     quietWhileShedding: "background",
+  },
+  reminder_lateness: {
+    alert: "Reminders delivering late",
+    recovery: "Reminder delivery back on time",
+    detail:
+      "A reminder was delivered, or is still waiting, more than five minutes after its alert time. Inspect reminder_delivery_jobs by status and intended_at.",
+  },
+  first_value_path: {
+    alert: "First Value path check failing",
+    recovery: "First Value path check passing",
+    detail:
+      "The synthetic First Value check could not load the landing page, read the Checkout prices, sign in its account and be admitted by Eve, or get a reply from the model. See first_value_check.failed in the logs for the step.",
+  },
+  grounded_eve_answer: {
+    alert: "Synthetic Eve answer failing",
+    recovery: "Synthetic Eve answer passing",
+    detail:
+      "The daily synthetic check did not get an Eve answer grounded in its fixture memory. See first_value_check.failed in the logs, and re-run with the first-value-check script.",
+    quietWhileShedding: "interactive",
   },
 } as const satisfies Record<string, OperatorAlertConditionDefinition>;
 

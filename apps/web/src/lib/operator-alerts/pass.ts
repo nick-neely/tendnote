@@ -4,11 +4,20 @@ import {
   createDrizzleOperatorAlertStore,
   runOperatorAlertPass,
 } from "@tendnote/db/queries/operator-alerts";
+import {
+  hasBackgroundBacklog,
+  hasLateReminderDelivery,
+} from "@tendnote/db/queries/reliability-indicators";
 import { readSpendBreakerStage } from "@tendnote/db/queries/spend-breaker";
 import { type OperatorAlertReading, operatorAlertMessage } from "@tendnote/domain/operator-alerts";
 import type { SpendBreakerStage } from "@tendnote/domain/usage-bounds";
 import { type BackupSurfaceCheck, backupSurfaceReading } from "@/lib/backup-surfaces";
 import type { StripeReconciliationResult } from "@/lib/billing/stripe-reconciliation";
+import {
+  checkFirstValuePath,
+  claimDailyGroundedAnswer,
+  type FirstValueCheck,
+} from "@/lib/first-value-check";
 import {
   createOperatorAlertSender,
   type OperatorAlertMessage,
@@ -18,14 +27,17 @@ import {
 /**
  * What one cron pass observed about each condition it can read. A read that
  * failed or a stage that did not run gives no reading, so its alert holds
- * rather than recovering. The background backlog's reading comes from the
- * Reliability Indicators (#649).
+ * rather than recovering. The last four are the Reliability Indicators (#649);
+ * the grounded Eve answer is asked on one pass a day, so the others hold it.
  */
 export function operatorAlertReadings(input: {
   stripeReconciliation: StripeReconciliationResult;
   deletionStuck: boolean | null;
   breaker: SpendBreakerStage | null;
   backupSurfaces: BackupSurfaceCheck | null;
+  backgroundBacklog: boolean | null;
+  remindersLate: boolean | null;
+  firstValue: FirstValueCheck | null;
 }): OperatorAlertReading[] {
   const readings: OperatorAlertReading[] = [];
   if (input.deletionStuck !== null) {
@@ -43,6 +55,18 @@ export function operatorAlertReadings(input: {
       condition: "backup_surface",
       firing: input.backupSurfaces.findings.length > 0,
     });
+  }
+  if (input.backgroundBacklog !== null) {
+    readings.push({ condition: "background_backlog", firing: input.backgroundBacklog });
+  }
+  if (input.remindersLate !== null) {
+    readings.push({ condition: "reminder_lateness", firing: input.remindersLate });
+  }
+  if (input.firstValue?.status === "ran") {
+    readings.push({ condition: "first_value_path", firing: input.firstValue.failed.length > 0 });
+    if (input.firstValue.groundedAnswer !== null) {
+      readings.push({ condition: "grounded_eve_answer", firing: !input.firstValue.groundedAnswer });
+    }
   }
   return readings;
 }
@@ -68,15 +92,34 @@ export async function runOperatorAlerts(input: {
 
   try {
     const now = new Date();
-    const [breaker, deletionStuck, backupSurfaces] = await Promise.all([
-      readSpendBreakerStage({ now }).catch(() => null),
-      hasStuckAccountDeletionIntent({ now }).catch(() => null),
-      backupSurfaceReading({ now }),
-    ]);
+    const [breaker, deletionStuck, backupSurfaces, backgroundBacklog, remindersLate, firstValue] =
+      await Promise.all([
+        readSpendBreakerStage({ now }).catch(() => null),
+        hasStuckAccountDeletionIntent({ now }).catch(() => null),
+        backupSurfaceReading({ now }),
+        hasBackgroundBacklog({ now }).catch(() => null),
+        hasLateReminderDelivery({ now }).catch(() => null),
+        checkFirstValuePath({ claimGroundedAnswer: () => claimDailyGroundedAnswer(now) }).catch(
+          (error: unknown) => {
+            console.error("first_value_check.check_failed", {
+              reason: error instanceof Error ? error.name : "unknown",
+            });
+            return null;
+          },
+        ),
+      ]);
     const send = createOperatorAlertSender({ destinations });
     const result = await runOperatorAlertPass({
       store: createDrizzleOperatorAlertStore(),
-      readings: operatorAlertReadings({ ...input, deletionStuck, breaker, backupSurfaces }),
+      readings: operatorAlertReadings({
+        ...input,
+        deletionStuck,
+        breaker,
+        backupSurfaces,
+        backgroundBacklog,
+        remindersLate,
+        firstValue,
+      }),
       breaker,
       notify: (notice) => send(noticeMessage(notice)),
       now,

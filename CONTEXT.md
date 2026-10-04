@@ -464,6 +464,10 @@ _Avoid_: User test, demo, beta invite, demand validation
 A content-free, per-account, operator-facing timestamp recording that a newcomer first reached one fixed step toward or at First Value. It is not record content, a user-facing productivity statistic, a third-party analytics event, or a streak.
 _Avoid_: Analytics event, activation metric, funnel step, streak
 
+**Reliability Indicator**:
+One of three operator-facing measures of whether the hosted service keeps its promises: the First Value path is reachable, a reminder is delivered within five minutes of its alert time, and no background job waits more than thirty minutes past when it was due. Each is read on every alert pass and alerts on breach. It is not a published uptime figure, a service credit, or a customer-facing status.
+_Avoid_: SLA, SLO, uptime, health check
+
 **Account Funnel Event**:
 An optional, content-free, account-linked record that an account enrolled from a known-US request first reached one fixed funnel stage, from signup through First Value, stored in Tendnote under a dedicated opaque identifier, honouring the telemetry opt-out, and deleted after ninety days or with the account. It is not an Activation Milestone, a billing or admission record, or a third-party analytics event.
 _Avoid_: Analytics event, tracking event, conversion pixel

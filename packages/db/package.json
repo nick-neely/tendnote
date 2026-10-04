@@ -12,6 +12,7 @@
     "./queries/account-deletion": "./src/queries/account-deletion.ts",
     "./queries/account-retention": "./src/queries/account-retention.ts",
     "./queries/operator-alerts": "./src/queries/operator-alerts.ts",
+    "./queries/reliability-indicators": "./src/queries/reliability-indicators.ts",
     "./queries/outbound-pause": "./src/queries/outbound-pause.ts",
     "./queries/recovery-journal": "./src/queries/recovery-journal.ts",
     "./queries/restore": "./src/queries/restore.ts",
