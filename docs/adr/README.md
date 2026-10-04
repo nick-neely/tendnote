@@ -91,6 +91,7 @@ the bounded publication evidence path.
 - [0260 - A Legal Hold covers an account and pauses only its purge](0260-a-legal-hold-covers-an-account-and-pauses-only-its-purge.md)
 - [0261 - A restore re-records lost money-moving Operator Actions from Stripe](0261-a-restore-re-records-lost-money-moving-operator-actions-from-stripe.md)
 - [0262 - The Service-Wide Hold is a database record enforced at the proxy](0262-the-service-wide-hold-is-a-database-record-enforced-at-the-proxy.md)
+- [0263 - Reliability Indicators are read by the recovery cron, and Eve is asked daily](0263-reliability-indicators-are-read-by-the-recovery-cron-and-eve-is-asked-daily.md)
 
 The catalog intentionally omits the Phase 9a planning workspace. That
 workspace remains useful to maintainers, but it is not a newcomer evidence

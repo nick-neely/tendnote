@@ -140,7 +140,9 @@ a hypothesis until measured:
 | Background job backlog age | Oldest pending delivery under thirty minutes | Extraction lag is where a captured Memory silently fails to appear |
 
 Targets are revised after the first measured month. No uptime percentage is
-promised publicly.
+promised publicly. The synthetic check asks Eve its grounded question once a
+day rather than every ten minutes, for cost; the other steps run every ten
+minutes ([ADR 0263](../adr/0263-reliability-indicators-are-read-by-the-recovery-cron-and-eve-is-asked-daily.md)).
 
 ## Regression bar for cost-motivated changes
 
