@@ -220,7 +220,9 @@ their Stripe effect is
     `restore-2026-10-04` and `production_old_2026-10-04`. Both hold deleted
     content. Neither may outlive one Backup Window from the restore, and the
     backup-surface check treats one that does as a Suspected Incident
-    (ADR 0250).
+    (ADR 0250). The check ages `restore-2026-10-04` from the restore point it
+    copied, not from the swap (ADR 0259), so with a restore point near seven
+    days old it alerts within hours; delete it as soon as verification passes.
 
 ## Record produced
 

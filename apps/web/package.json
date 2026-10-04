@@ -15,7 +15,8 @@
     "test:instant": "pnpm build:instant && TENDNOTE_INSTANT_MATRIX=1 playwright test",
     "test:instant:full": "pnpm build:instant && TENDNOTE_INSTANT_MATRIX=1 TENDNOTE_INSTANT_SCOPE=full playwright test",
     "operator": "tsx --env-file-if-exists=.env.local --import ./scripts/server-only-stub.mjs scripts/operator-action.ts",
-    "restore": "tsx --env-file-if-exists=.env.local --import ./scripts/server-only-stub.mjs scripts/restore.ts"
+    "restore": "tsx --env-file-if-exists=.env.local --import ./scripts/server-only-stub.mjs scripts/restore.ts",
+    "backup-surfaces": "tsx --env-file-if-exists=.env.local scripts/backup-surfaces.ts"
   },
   "dependencies": {
     "@better-auth/redis-storage": "^1.7.2",
