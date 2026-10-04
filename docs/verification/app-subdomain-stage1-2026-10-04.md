@@ -13,6 +13,11 @@ and unverified checks remain recorded as such, rather than marked passed.
 This record contains only non-secret settings. Credentials remain in their
 existing provider stores. The private operations sheet referenced by the
 runbook has not been created; this file records rollback information instead.
+The publication gate keeps the former hosted origin and maintainer deployment
+URLs out of the current tree, so the exact rollback hosts and URLs below are
+recoverable from this record as first merged, until the operations sheet
+(#652) holds them:
+`git show 16816256:docs/verification/app-subdomain-stage1-2026-10-04.md`.
 
 ## Before the move
 
@@ -27,8 +32,8 @@ runbook has not been created; this file records rollback information instead.
 - Apex `/join/check?x=1` returned HTTP 200 on 2026-10-04.
 - Production `BETTER_AUTH_URL`: `https://tendnote.com`.
 - `TENDNOTE_WEB_URL` and `NEXT_PUBLIC_APP_URL`: absent from the product project.
-- Prior Production deployment: Ready, `main` commit `6ccb859`; its URL is under
-  **Domains** in the operations sheet.
+- Prior Production deployment: Ready, `main` commit `6ccb859`; its exact URL is
+  in the first-merged record above.
 - Discord interactions endpoint:
   `/eve/v1/discord` on the former hosted origin.
 - Discord OAuth redirects before preparation:
@@ -74,8 +79,8 @@ Production hostname with rollback ready before enabling the apex redirect.
 ## Production changes
 
 - Production `BETTER_AUTH_URL` saved as `https://app.tendnote.com`.
-- Same-source redeploy started for `main` commit `6ccb859`; its URL is under
-  **Domains** in the operations sheet.
+- Same-source redeploy started for `main` commit `6ccb859`; its exact URL is in
+  the first-merged record above.
   Deployment ID: `9u1WBrJV8tcTA7Jq7cUHRvW6RrSt`. Ready after 2m17s.
   New release `/sign-in` passed TLS and HTTP 200 using current public DNS IP.
 - GitHub callback saved as
