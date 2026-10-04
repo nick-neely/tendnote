@@ -73,9 +73,11 @@ async function completeIntent(
 }
 
 /**
- * The confirmation never undoes or delays the purge it reports. The address
- * left with the account, so a failed send is logged for the operator rather
- * than retried.
+ * A failed send never undoes or delays the purge it reports. The address left
+ * with the account, so the failure is logged for the operator rather than
+ * retried. Reading the address is different: it reads the row the delete is
+ * about to remove, so a failure there retries with the delete instead of
+ * deleting without the address and losing the confirmation.
  */
 async function confirmCompletedPurge(
   deps: AccountDeletionDependencies,
