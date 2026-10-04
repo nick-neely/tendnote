@@ -12,7 +12,7 @@ finishing one that failed part-way.
 For each paid invoice whose period the suspension overlapped, one credit note
 credits the invoice's subscription line by the time-based amount, when that is
 at least one cent. A termination adds the unused remainder to the period end,
-on the same credit note. A termination that ends no suspension credits that
+or to an earlier cancellation, on the same credit note. A termination that ends no suspension credits that
 remainder alone, on a record that names the termination and no suspension.
 Stripe takes the line's discounts off the credited amount, and adds its tax,
 in proportion. The money goes:

@@ -203,7 +203,8 @@ Obligations Register row moves from an open counsel item to a decided default
 awaiting counsel review of the Terms wording.
 
 As built (#739), a Termination that converts no suspension returns the same
-remainder, alone, from the termination time to the period end, because the
+remainder, alone, from the termination time to the period end or an earlier
+cancellation, because the
 operator's choice to close the period does not depend on a review having come
 first. It is recorded and issued exactly as a Suspension Credit with no
 suspended time.

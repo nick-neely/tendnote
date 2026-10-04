@@ -13,9 +13,10 @@ renewal against a terminated account. Then the already-paid time the account
 can no longer use goes back to the card, as a
 [Suspension Credit](suspension-credit.md). When the termination converts an
 open Temporary Suspension, that is the suspended time plus the unused
-remainder to the period end. Otherwise it is the unused remainder alone. A
-Past Due subscription's current period was never paid, so ending it returns
-nothing.
+remainder to the period end, or to an earlier cancellation. Otherwise it is the
+unused remainder alone. A Past Due subscription's current period was never
+paid, so it adds no remainder. Suspended time on an earlier paid invoice is
+still credited.
 
 ## Trigger
 
@@ -43,7 +44,8 @@ review. This is the operator's choice, unlike cancellation or deletion.
    `stripeSubscriptionId`, `resumed`, and `suspensionCredits`.
    `stripeSubscriptionId` is empty when the account had no live subscription.
    `suspensionCredits` lists the money returned, one entry per credited
-   invoice. It is empty when nothing paid is left unused.
+   invoice. It is empty when no paid invoice holds suspended time or an unused
+   remainder.
    `resumed: true` means the account was already terminated, and this run
    finished it under its original record, reason, and deadline.
 2. If the command fails part-way, run it again. It resumes the stopped renewal
