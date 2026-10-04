@@ -115,6 +115,7 @@ async function seed() {
 }
 
 /** A Legal Hold pauses the notices and the purge until it ends, and keeps a held intent waiting (#632). */
+// fallow-ignore-next-line complexity -- A disposable Postgres contract: each hold check reads the real stores directly, and only the live check can run it.
 async function legalHoldsPause() {
   const held = [ids.held, ids.heldTerminated];
   for (const n of [1, 60, 90, 119]) {
