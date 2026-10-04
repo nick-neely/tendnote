@@ -10,8 +10,13 @@ export function createInMemoryAccountDeletionStore(options: { steps?: string[] }
   const accounts = new Map<string, string>();
   const intents = new Map<string, AccountDeletionIntent>();
   const attempts = new Map<string, number>();
+  const holds = new Map<string, Date>();
   let deleteFailures = 0;
   let markFailures = 0;
+
+  function isHeld(userId: string, now: Date): boolean {
+    return (holds.get(userId)?.getTime() ?? Number.NEGATIVE_INFINITY) > now.getTime();
+  }
 
   const store: AccountDeletionStore = {
     async commitIntent({ userId, at }) {
@@ -34,15 +39,20 @@ export function createInMemoryAccountDeletionStore(options: { steps?: string[] }
       return intent ? { ...intent } : null;
     },
 
-    async listIntents({ limit }) {
+    async listIntents({ limit, now }) {
       const attempted = (intent: AccountDeletionIntent) => attempts.get(intent.userId) ?? -Infinity;
       return [...intents.values()]
+        .filter((intent) => !isHeld(intent.userId, now))
         .sort(
           (a, b) =>
             attempted(a) - attempted(b) || a.requestedAt.getTime() - b.requestedAt.getTime(),
         )
         .slice(0, limit)
         .map((intent) => ({ ...intent }));
+    },
+
+    async isHeld({ userId, now }) {
+      return isHeld(userId, now);
     },
 
     async markAttempted({ userId, at }) {
@@ -89,6 +99,10 @@ export function createInMemoryAccountDeletionStore(options: { steps?: string[] }
         reason: input.reason,
       });
       steps.push(`intent:${input.userId}`);
+    },
+    /** A Legal Hold on the account's data until `expiresAt`. */
+    placeLegalHold(userId: string, expiresAt: Date) {
+      holds.set(userId, expiresAt);
     },
     hasAccount(userId: string) {
       return accounts.has(userId);

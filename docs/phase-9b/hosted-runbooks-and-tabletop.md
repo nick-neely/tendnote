@@ -143,8 +143,14 @@ goes out once the rows are gone; a failed confirmation logs
 `account_deletion.purge_confirmation_failed`. A purge that would strand a
 Household without an Owner is not started: it logs
 `account_retention.purge_refused` on every pass until the operator resolves the
-household. The Legal Hold pause is not built yet, because no Legal Hold record
-exists to read.
+household.
+
+A Legal Hold (#632, ADR 0260) is placed with `operator legal-hold <user id>
+<YYYY-MM-DD>` and ends when that date begins in UTC. While it is in force, the
+sweep sends the account no notice and does not purge it. When it ends, the
+sequence resumes from the stage it reached, and a deadline that passed during
+the hold is purged on the next pass. An owner's own deletion under a hold
+closes the account and stops billing, and its rows stay until the hold ends.
 
 ## Pre-launch tabletop
 

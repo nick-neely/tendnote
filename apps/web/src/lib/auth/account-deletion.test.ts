@@ -7,7 +7,7 @@ vi.mock("server-only", () => ({}));
 
 import { createAccountDeletionHook } from "./account-deletion";
 
-function dependencies(input: { journalFails?: boolean } = {}) {
+function dependencies(input: { journalFails?: boolean; held?: boolean } = {}) {
   const steps: string[] = [];
   const deps: AccountDeletionDependencies = {
     store: {
@@ -17,6 +17,7 @@ function dependencies(input: { journalFails?: boolean } = {}) {
       },
       findIntent: async () => null,
       listIntents: async () => [],
+      isHeld: async () => input.held ?? false,
       markAttempted: async () => {},
       markJournaled: async () => {
         steps.push("journaled");
@@ -60,6 +61,20 @@ describe("createAccountDeletionHook", () => {
 
   it("answers 202 Accepted and stops Better Auth deleting when only the intent committed", async () => {
     const { steps, deps } = dependencies({ journalFails: true });
+    const hook = createAccountDeletionHook({
+      dependencies: () => deps,
+      assertAllowed: async () => {},
+    });
+
+    const error = await hook({ id: "user_1" }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(APIError);
+    expect((error as APIError).statusCode).toBe(202);
+    expect(steps).toEqual(["intent", "revoke", "cancel"]);
+  });
+
+  it("answers 202 Accepted and deletes nothing while a Legal Hold covers the account (#632)", async () => {
+    const { steps, deps } = dependencies({ held: true });
     const hook = createAccountDeletionHook({
       dependencies: () => deps,
       assertAllowed: async () => {},

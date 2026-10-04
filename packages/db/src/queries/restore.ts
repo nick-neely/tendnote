@@ -12,6 +12,7 @@ import {
   accountCeilingOverrides,
   accountDeletionIntents,
   admissionExceptions,
+  legalHolds,
   ownerDataExportJobs,
   refundRecords,
   session,
@@ -22,6 +23,7 @@ import {
 } from "../schema";
 import { createDrizzleHouseholdPurgeStore } from "./households/drizzle-purge-store";
 import { reapplyHouseholdDeletionRecord } from "./households/purge";
+import { heldBeyond } from "./legal-holds";
 
 /**
  * The restored database's side of the restore procedure (#623, ADR 0250). Run
@@ -54,20 +56,32 @@ export async function reapplyDeletionRecord(
  * journaled or not, timed at its request exactly as the deletion path times
  * it. Read from production once writes stop, so a deletion whose journal write
  * had not yet succeeded is journaled before its intent is lost to the swap.
+ *
+ * An intent under a Legal Hold at `now` gets no record, because a restore
+ * would re-apply it and purge held data (#632). Its account is listed instead,
+ * for the operator to commit its intent again in the restored data.
  */
-export async function listAccountDeletionIntentRecords(): Promise<DeletionRecord[]> {
+export async function listAccountDeletionIntentRecords(input: {
+  now: Date;
+}): Promise<{ records: DeletionRecord[]; heldAccountIds: string[] }> {
   const intents = await getDb()
     .select({
       userId: accountDeletionIntents.userId,
       requestedAt: accountDeletionIntents.requestedAt,
+      held: heldBeyond(accountDeletionIntents.userId, input.now).mapWith(Boolean),
     })
     .from(accountDeletionIntents);
-  return intents.map((intent) => ({
-    kind: "deletion",
-    subjectKind: "account",
-    subjectId: intent.userId,
-    at: intent.requestedAt,
-  }));
+  return {
+    records: intents
+      .filter((intent) => !intent.held)
+      .map((intent) => ({
+        kind: "deletion",
+        subjectKind: "account",
+        subjectId: intent.userId,
+        at: intent.requestedAt,
+      })),
+    heldAccountIds: intents.filter((intent) => intent.held).map((intent) => intent.userId),
+  };
 }
 
 /** Whether a Deletion Record's subject is still in the database, for verification. */
@@ -86,12 +100,11 @@ export async function isDeletionSubjectPresent(record: DeletionRecord): Promise<
 
 /**
  * Where each journaled Operator Action keeps its record, by the action id the
- * journal names. A lift is the suspension row once it carries its lift. A
- * Legal Hold has no record yet (#632), so it cannot be checked.
+ * journal names. A lift is the suspension row once it carries its lift.
  */
 const OPERATOR_ACTION_RECORDS: Record<
   OperatorRecordKind,
-  { table: PgTable; id: PgColumn; recorded?: PgColumn } | null
+  { table: PgTable; id: PgColumn; recorded?: PgColumn }
 > = {
   suspension: { table: temporarySuspensions, id: temporarySuspensions.id },
   "suspension-lift": {
@@ -100,7 +113,7 @@ const OPERATOR_ACTION_RECORDS: Record<
     recorded: temporarySuspensions.liftedAt,
   },
   termination: { table: terminations, id: terminations.id },
-  "legal-hold": null,
+  "legal-hold": { table: legalHolds, id: legalHolds.id },
   grant: { table: admissionExceptions, id: admissionExceptions.id },
   refund: { table: refundRecords, id: refundRecords.id },
   "suspension-credit": { table: suspensionCredits, id: suspensionCredits.id },
@@ -111,15 +124,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Which of these journaled action ids the restored database holds a record
- * for, or `null` for a kind with no record to check. An id that is not a
- * record id at all is never held.
+ * for. An id that is not a record id at all is never held.
  */
 export async function findRecordedOperatorActions(input: {
   kind: OperatorRecordKind;
   actionIds: string[];
-}): Promise<Set<string> | null> {
+}): Promise<Set<string>> {
   const source = OPERATOR_ACTION_RECORDS[input.kind];
-  if (!source) return null;
   const ids = input.actionIds.filter((id) => UUID.test(id));
   if (ids.length === 0) return new Set();
   const rows = await getDb()
