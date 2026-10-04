@@ -5,8 +5,13 @@ import {
   type OperatorRecordKind,
   type RecoveryJournalRecord,
   recoveryJournalEntry,
+  terminationRetentionDeadline,
 } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
+import type {
+  StripeRefundRecord,
+  StripeSuspensionCredit,
+} from "@/lib/billing/operator-record-metadata";
 import type { StripeReconciliationResult } from "@/lib/billing/stripe-reconciliation";
 import {
   applyDeletionRecords,
@@ -22,6 +27,7 @@ import {
   verifyRestore,
   writeCutoverMarker,
 } from "./procedure";
+import { RERECORDED_TERMINATION_REASON } from "./rerecord";
 
 const T0 = new Date("2026-10-01T12:00:00.000Z");
 const at = (minutes: number) => new Date(T0.getTime() + minutes * 60 * 1000);
@@ -56,6 +62,11 @@ function createRestore(
     redisSessions?: number;
     stripe?: StripeReconciliationResult;
     intents?: DeletionRecord[];
+    /** Suspensions the restored branch holds still open, by id. */
+    openSuspensions?: string[];
+    /** What Stripe holds for each record, by the record's id. */
+    stripeRefunds?: StripeRefundRecord[];
+    stripeCredits?: StripeSuspensionCredit[];
     heldIntents?: string[];
   } = {},
 ) {
@@ -64,6 +75,25 @@ function createRestore(
   /** Entries that become listable only after the next listing. */
   const late: { pathname: string; body: string }[] = [];
   const accounts = new Set(options.accounts ?? []);
+  const recorded = new Map<OperatorRecordKind, Set<string>>(
+    Object.entries(options.recorded ?? {}).map(([kind, ids]) => [
+      kind as OperatorRecordKind,
+      new Set(ids),
+    ]),
+  );
+  const openSuspensions = new Set(options.openSuspensions ?? []);
+  /** Every row re-recorded, in order, and when the replay ran. */
+  const rerecorded: { kind: OperatorRecordKind; row: unknown }[] = [];
+  const replays: number[] = [];
+  /** Record one row under its id, unless one is already there, as the insert does. */
+  const rerecord = (kind: OperatorRecordKind, id: string, row: unknown) => {
+    const ids = recorded.get(kind) ?? new Set<string>();
+    recorded.set(kind, ids);
+    if (ids.has(id)) return false;
+    ids.add(id);
+    rerecorded.push({ kind, row });
+    return true;
+  };
   const households = new Set(options.households ?? []);
   const emailFences = new Set<string>();
   const exportJobs = (options.exportJobs ?? []).map((job) => ({ ...job, done: false }));
@@ -117,8 +147,8 @@ function createRestore(
       isDeletionSubjectPresent: async (record) =>
         (record.subjectKind === "account" ? accounts : households).has(record.subjectId),
       async findRecordedOperatorActions({ kind, actionIds }) {
-        const recorded = new Set(options.recorded?.[kind] ?? []);
-        return new Set(actionIds.filter((id) => recorded.has(id)));
+        const ids = recorded.get(kind) ?? new Set();
+        return new Set(actionIds.filter((id) => ids.has(id)));
       },
       async recordRestoredEmailFences(fences) {
         for (const fence of fences) emailFences.add(fence.digest);
@@ -151,7 +181,23 @@ function createRestore(
       },
       count: async () => redisSessions,
     },
-    reconcileStripe: async () => options.stripe ?? STRIPE_RAN,
+    operatorRecords: {
+      rerecordTermination: async (row) => rerecord("termination", row.id, row),
+      async rerecordSuspensionLift(row) {
+        if (!openSuspensions.delete(row.id)) return false;
+        return rerecord("suspension-lift", row.id, row);
+      },
+      rerecordRefund: async (row) => rerecord("refund", row.id, row),
+      rerecordSuspensionCredit: async (row) => rerecord("suspension-credit", row.id, row),
+      findStripeRefund: async ({ refundRecordId }) =>
+        options.stripeRefunds?.find((refund) => refund.id === refundRecordId) ?? null,
+      findStripeSuspensionCredit: async ({ suspensionCreditId }) =>
+        options.stripeCredits?.find((credit) => credit.id === suspensionCreditId) ?? null,
+    },
+    async reconcileStripe() {
+      replays.push(rerecorded.length);
+      return options.stripe ?? STRIPE_RAN;
+    },
     now: () => new Date(clockMs),
     async sleep(ms) {
       clockMs += ms;
@@ -177,6 +223,8 @@ function createRestore(
     blobs,
     listings,
     applied,
+    rerecorded,
+    replays,
     accounts,
     households,
     exportJobs,
@@ -317,7 +365,7 @@ describe("reconciling admission", () => {
   it("replays Stripe and lists the Operator Actions the restored data has no record of, for the operator", async () => {
     const restore = createRestore({ recorded: { suspension: ["s-1"] } });
     restore.journal({ kind: "suspension", accountId: "u1", actionId: "s-1", at: at(1) });
-    restore.journal({ kind: "termination", accountId: "u2", actionId: "t-1", at: at(5) });
+    restore.journal({ kind: "ceiling-override", accountId: "u2", actionId: "o-1", at: at(5) });
     restore.journal({ kind: "suspension-lift", accountId: "u1", actionId: "s-1", at: at(3) });
 
     const report = await reconcileAdmission(restore.deps);
@@ -327,8 +375,119 @@ describe("reconciling admission", () => {
       stripe: STRIPE_RAN,
       missing: [
         { kind: "suspension-lift", accountId: "u1", actionId: "s-1", at: at(3).toISOString() },
-        { kind: "termination", accountId: "u2", actionId: "t-1", at: at(5).toISOString() },
+        { kind: "ceiling-override", accountId: "u2", actionId: "o-1", at: at(5).toISOString() },
       ],
+    });
+  });
+
+  it("re-records a missing termination, lift, refund, and Suspension Credit under the journal's ids and times, before the replay (#723)", async () => {
+    const refund: StripeRefundRecord = {
+      id: "r-1",
+      stripeSubscriptionId: "sub_1",
+      invoiceId: "in_1",
+      paymentIntentId: "pi_1",
+      amount: 2000,
+      stripeRefundId: "re_1",
+    };
+    const credit: StripeSuspensionCredit = {
+      id: "c-1",
+      suspensionId: "s-1",
+      terminationId: null,
+      stripeSubscriptionId: "sub_1",
+      invoiceId: "in_1",
+      invoiceLineItemId: "il_1",
+      paymentIntentId: "pi_1",
+      suspendedAmount: 300,
+      remainderAmount: 0,
+      amount: 330,
+      instrument: "balance",
+      stripeCreditNoteId: "cn_1",
+      stripeRefundId: null,
+    };
+    const restore = createRestore({
+      recorded: { suspension: ["s-1"] },
+      openSuspensions: ["s-1"],
+      stripeRefunds: [refund],
+      stripeCredits: [credit],
+    });
+    restore.journal({ kind: "suspension-credit", accountId: "u1", actionId: "c-1", at: at(4) });
+    restore.journal({ kind: "termination", accountId: "u2", actionId: "t-1", at: at(5) });
+    restore.journal({ kind: "suspension-lift", accountId: "u1", actionId: "s-1", at: at(3) });
+    restore.journal({ kind: "refund", accountId: "u3", actionId: "r-1", at: at(6) });
+
+    const report = await reconcileAdmission(restore.deps);
+
+    expect(report).toMatchObject({ ok: true, missing: [], rerecordFailed: [] });
+    expect(report.rerecorded).toEqual([
+      { kind: "suspension-lift", accountId: "u1", actionId: "s-1", at: at(3).toISOString() },
+      { kind: "suspension-credit", accountId: "u1", actionId: "c-1", at: at(4).toISOString() },
+      { kind: "termination", accountId: "u2", actionId: "t-1", at: at(5).toISOString() },
+      { kind: "refund", accountId: "u3", actionId: "r-1", at: at(6).toISOString() },
+    ]);
+    expect(restore.rerecorded.map(({ row }) => row)).toEqual([
+      { id: "s-1", userId: "u1", liftedAt: at(3) },
+      { ...credit, userId: "u1", requestedAt: at(4) },
+      {
+        id: "t-1",
+        userId: "u2",
+        reason: RERECORDED_TERMINATION_REASON,
+        terminatedAt: at(5),
+        retentionDeadline: terminationRetentionDeadline(at(5)),
+      },
+      { ...refund, userId: "u3", requestedAt: at(6), revokedAt: null },
+    ]);
+    // The replay finds the refund on record, so it neither alerts nor goes unapplied.
+    expect(restore.replays).toEqual([4]);
+  });
+
+  it("leaves an action it cannot re-record for the operator, and re-records nothing twice", async () => {
+    const restore = createRestore({ recorded: { termination: ["t-0"] } });
+    // A refund or credit note made before they carried their record, and a
+    // lift whose suspension this restore re-created under a new id.
+    restore.journal({ kind: "refund", accountId: "u1", actionId: "r-1", at: at(1) });
+    restore.journal({ kind: "suspension-credit", accountId: "u1", actionId: "c-1", at: at(2) });
+    restore.journal({ kind: "suspension-lift", accountId: "u1", actionId: "s-1", at: at(3) });
+    // Kinds that are safe to re-run by hand are never re-recorded.
+    restore.journal({ kind: "suspension", accountId: "u1", actionId: "s-2", at: at(4) });
+    restore.journal({ kind: "grant", accountId: "u1", actionId: "g-1", at: at(5) });
+
+    const report = await reconcileAdmission(restore.deps);
+
+    expect(report).toMatchObject({ ok: true, rerecorded: [], rerecordFailed: [] });
+    expect((report.missing as { actionId: string }[]).map((each) => each.actionId)).toEqual([
+      "r-1",
+      "c-1",
+      "s-1",
+      "s-2",
+      "g-1",
+    ]);
+  });
+
+  it("is a no-op the second time", async () => {
+    const restore = createRestore();
+    restore.journal({ kind: "termination", accountId: "u2", actionId: "t-1", at: at(5) });
+
+    await reconcileAdmission(restore.deps);
+    const again = await reconcileAdmission(restore.deps);
+
+    expect(again).toMatchObject({ ok: true, rerecorded: [], missing: [] });
+    expect(restore.rerecorded).toHaveLength(1);
+  });
+
+  it("is not ok when a re-record fails, and keeps that action in the list", async () => {
+    const restore = createRestore();
+    restore.journal({ kind: "termination", accountId: "u2", actionId: "t-1", at: at(5) });
+    restore.deps.operatorRecords.rerecordTermination = async () => {
+      throw new Error("connection reset");
+    };
+
+    const report = await reconcileAdmission(restore.deps);
+
+    expect(report).toMatchObject({
+      ok: false,
+      rerecorded: [],
+      rerecordFailed: [{ kind: "termination", actionId: "t-1", error: "connection reset" }],
+      missing: [{ kind: "termination", actionId: "t-1" }],
     });
   });
 

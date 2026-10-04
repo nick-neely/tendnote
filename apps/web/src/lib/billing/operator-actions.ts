@@ -19,6 +19,7 @@ import {
 } from "./account-ceiling-override";
 import { type DunningExtensionDependencies, extendDunning } from "./dunning-extension";
 import { invoiceSubscription, stripeId } from "./first-paid-invoice";
+import { refundRecordMetadata } from "./operator-record-metadata";
 import {
   applyStripeRefund,
   isSubscriptionRevoked,
@@ -78,11 +79,12 @@ export type OperatorActionDependencies = PaidAccessRevocationDependencies &
       }) => Promise<{ id: string; grantedAt: Date }>;
     };
     retrieveRefundableInvoice: (invoiceId: string) => Promise<RefundableInvoice>;
-    /** Create the Stripe refund under the record's idempotency key. */
+    /** Create the Stripe refund under the record's idempotency key, carrying the record. */
     createRefund: (input: {
       paymentIntentId: string;
       amount: number;
       idempotencyKey: string;
+      metadata: Record<string, string>;
     }) => Promise<RefundSnapshot>;
     retrieveDisputeStatus: (stripeDisputeId: string) => Promise<string>;
     /** Undo a stopped renewal: the subscription renews at its period end again. */
@@ -133,6 +135,7 @@ export async function refundInvoice(
     paymentIntentId: invoice.paymentIntentId,
     amount,
     idempotencyKey: `refund:${record.id}`,
+    metadata: refundRecordMetadata({ ...invoice, id: record.id }),
   });
   const outcome = await applyRefundOf(deps, record.id, refund, input.now);
   return { refundRecordId: record.id, stripeRefundId: refund.id, outcome };

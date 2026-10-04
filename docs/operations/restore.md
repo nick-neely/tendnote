@@ -150,26 +150,36 @@ The times below are examples. Use the restore date in branch names.
    confirmation is an email that never went before the restore. Outbound is
    held, so it does not go now. Note it in the Incident Record.
 
-   The step is `ok` when the replay ran cleanly. Separately, `missing` lists,
-   oldest first, every journaled Operator Action the restored data has no
-   record of. The list stays the same when the step is re-run, because a
-   re-performed action gets a new id. Each one happened after the restore point. Journal
-   records hold no reason, amount, or invoice, so nothing is re-applied
-   automatically. Handle each one by kind:
+   Before the replay, the step re-records each lost termination, suspension
+   lift, refund, and Suspension Credit under the journal's own id and time,
+   without asking Stripe for anything but reads
+   ([#723](https://github.com/nick-neely/tendnote/issues/723)). A refund or
+   Suspension Credit is rebuilt from the Stripe refund or credit note that
+   carries its record. A termination is rebuilt from the journal, so its
+   retention deadline runs from when it happened, and its reason reads as
+   re-recorded: note the original reason in the Incident Record. Keeping the
+   ids means the replay matches a re-recorded refund instead of alerting on it,
+   and the copied fences hold back any confirmation it would send again.
+   `rerecorded` lists each one; re-running the step re-records nothing twice.
+
+   The step is `ok` when the re-recording and the replay ran cleanly. A
+   `rerecordFailed` entry names the action and the error; fix the cause and run
+   the step again. Separately, `missing` lists, oldest first, every journaled
+   Operator Action the restored data still has no record of. Each one happened
+   after the restore point. The list stays the same when the step is re-run,
+   because a re-performed action gets a new id. Journal records hold no reason,
+   amount, or invoice, so nothing else is re-applied automatically. Handle each
+   one by kind:
 
    | Kind | Action |
    | --- | --- |
-   | `suspension` | Re-run `operator suspend <account> <reason>`. It moves no money. |
+   | `suspension` | Re-run `operator suspend <account> <reason>`. It moves no money. An account whose termination was re-recorded refuses it; its termination then converted no suspension, so record the suspension in the Incident Record. |
    | `grant` | Re-run `operator extend-dunning` or `operator readmit-dispute`, whichever the account's billing state shows it was. |
    | `ceiling-override` | Re-run `operator raise-ceiling` with the original category and amount. |
-   | `termination` | Do not re-run: Stripe already stopped renewal and issued any credit. Run `operator suspend <account> "restore: termination"` so the account stays closed, and record it in the Incident Record. |
-   | `suspension-lift` | Do not re-run, because it would issue the Suspension Credit again. Re-record the lift without the credit by running this against `RESTORE_URL`: `update temporary_suspensions set lifted_at = '<at>' where id = '<id>' and lifted_at is null`. Confirm that exactly one row was updated. `<at>` is the lift entry's time. `<id>` is the lift entry's `actionId`, unless this restore re-ran the missing `suspension` action, in which case use the suspension id that command printed. |
+   | `termination` | Listed when it could not be re-recorded: the account is gone, it already holds another termination, or the attempt is in `rerecordFailed`. Do not re-run: Stripe already stopped renewal and issued any credit. Record it in the Incident Record. |
+   | `suspension-lift` | Listed when the suspension it names is not open in the restored data, such as one this restore re-created with `operator suspend`, or when the attempt is in `rerecordFailed`. Do not re-run, because it would issue the Suspension Credit again. Re-record the lift without the credit by running this against `RESTORE_URL`: `update temporary_suspensions set lifted_at = '<at>' where id = '<id>' and lifted_at is null`. Confirm that exactly one row was updated. `<at>` is the lift entry's time. `<id>` is the suspension id `operator suspend` printed. |
    | `legal-hold` | Re-run `operator legal-hold <account> <expiry>` with the expiry from the operations sheet. Do it before the swap, so the retention sweep cannot purge the account first. |
-   | `refund`, `suspension-credit` | Do not re-run, because the money already moved in Stripe. Record each in the Incident Record. A refund also shows as an unmatched-refund alert until it is recorded. |
-
-Re-recording terminations, refunds, and Suspension Credits without repeating
-their Stripe effect is
-[#723](https://github.com/nick-neely/tendnote/issues/723).
+   | `refund`, `suspension-credit` | Listed when no Stripe object carries the record, as with one made before refunds and credit notes carried it; when a Suspension Credit's account had no Stripe customer at the restore point; or when the attempt is in `rerecordFailed`. Do not re-run, because the money already moved in Stripe. Record each in the Incident Record. A refund also shows as an unmatched-refund alert until it is recorded. |
 
    Run every `operator` command with `DATABASE_URL=$RESTORE_URL`.
 

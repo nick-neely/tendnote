@@ -15,6 +15,7 @@ import {
   recoveryJournalPrefix,
 } from "@tendnote/domain";
 import type { StripeReconciliationResult } from "@/lib/billing/stripe-reconciliation";
+import { type OperatorRecordRestore, rerecordingFor } from "./rerecord";
 
 /**
  * The scripted steps of a whole-service restore (#623, ADR 0250), each one
@@ -56,6 +57,8 @@ export type RestoreDependencies = {
     deleteAll: () => Promise<number>;
     count: () => Promise<number>;
   };
+  /** Re-records an Operator Action the restored data lost (#723). */
+  operatorRecords: OperatorRecordRestore;
   reconcileStripe: () => Promise<StripeReconciliationResult>;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
@@ -227,24 +230,11 @@ async function readOperatorRecords(deps: RestoreDependencies) {
   return { byKind, unreadable };
 }
 
-/**
- * Reconciles admission: replays Stripe through the reconciliation job, then
- * lists every journaled Operator Action the restored database has no record
- * of, oldest first. Those happened after the restore point. A record is
- * content-free, so the operator handles each one from the runbook; nothing
- * here guesses a reason or moves money. A re-performed action is a new record
- * under a new id, so the list never empties: `ok` says the step itself ran
- * cleanly, and every entry in `missing` is the operator's.
- */
-export async function reconcileAdmission(deps: RestoreDependencies): Promise<Report> {
-  // The replay may try an email that already went before the restore; with
-  // its fence copied first, that send completes silently. Copying is
-  // idempotent, so running it here makes the order impossible to get wrong.
-  const fences = await markFencedEffects(deps);
-  if (!fences.ok) return { ok: false, fences };
-  const stripe = await deps.reconcileStripe();
-  const { byKind, unreadable } = await readOperatorRecords(deps);
-
+/** The journaled Operator Actions the restored data holds no record of, oldest first. */
+async function findUnrecorded(
+  deps: RestoreDependencies,
+  byKind: Map<OperatorRecordKind, OperatorRecord[]>,
+) {
   const missing: OperatorRecord[] = [];
   for (const [kind, records] of byKind) {
     if (records.length === 0) continue;
@@ -256,13 +246,73 @@ export async function reconcileAdmission(deps: RestoreDependencies): Promise<Rep
       if (!recorded.has(record.actionId)) missing.push(record);
     }
   }
-  const byTime = (a: OperatorRecord, b: OperatorRecord) => a.at.getTime() - b.at.getTime();
-  const show = (record: OperatorRecord) => ({ ...record, at: record.at.toISOString() });
+  return missing.sort(byTime);
+}
+
+function byTime(a: OperatorRecord, b: OperatorRecord) {
+  return a.at.getTime() - b.at.getTime();
+}
+
+function show(record: OperatorRecord) {
+  return { ...record, at: record.at.toISOString() };
+}
+
+/**
+ * Re-records, oldest first, each missing action whose kind cannot safely be run
+ * again (#723), so a termination is on record before the credit it converted.
+ */
+async function rerecordMissing(deps: RestoreDependencies, missing: OperatorRecord[]) {
+  const rerecorded: OperatorRecord[] = [];
+  const failed: (OperatorRecord & { error: string })[] = [];
+  for (const record of missing) {
+    const rerecord = rerecordingFor(record.kind);
+    if (!rerecord) continue;
+    try {
+      if (await rerecord(deps.operatorRecords, record)) rerecorded.push(record);
+    } catch (error) {
+      failed.push({ ...record, error: errorMessage(error) });
+    }
+  }
+  return { rerecorded, failed };
+}
+
+/**
+ * Reconciles admission: re-records the Operator Actions the restored data lost
+ * that cannot safely be run again, replays Stripe through the reconciliation
+ * job, then lists every journaled Operator Action the restored database still
+ * has no record of, oldest first. Those happened after the restore point.
+ *
+ * A termination, lift, refund, or Suspension Credit is re-recorded under the
+ * journal's own id and time, from the journal and the Stripe object that
+ * carries the record, with no Stripe write (#723). Re-recording comes before
+ * the replay, so a re-recorded refund is matched rather than alerted on. What
+ * cannot be re-recorded stays listed: a journal record is content-free, so the
+ * operator handles it from the runbook, and nothing here guesses a reason or
+ * moves money. A re-performed action is a new record under a new id, so the
+ * list never empties of those: `ok` says the step itself ran cleanly, and every
+ * entry in `missing` is the operator's.
+ */
+export async function reconcileAdmission(deps: RestoreDependencies): Promise<Report> {
+  // The replay may try an email that already went before the restore; with
+  // its fence copied first, that send completes silently. Copying is
+  // idempotent, so running it here makes the order impossible to get wrong.
+  const fences = await markFencedEffects(deps);
+  if (!fences.ok) return { ok: false, fences };
+  const { byKind, unreadable } = await readOperatorRecords(deps);
+  const restored = await rerecordMissing(deps, await findUnrecorded(deps, byKind));
+  const stripe = await deps.reconcileStripe();
+  const missing = await findUnrecorded(deps, byKind);
 
   return {
-    ok: stripe.status === "ran" && stripe.failed === 0 && unreadable.length === 0,
+    ok:
+      stripe.status === "ran" &&
+      stripe.failed === 0 &&
+      unreadable.length === 0 &&
+      restored.failed.length === 0,
     stripe,
-    missing: missing.sort(byTime).map(show),
+    rerecorded: restored.rerecorded.map(show),
+    rerecordFailed: restored.failed.map(show),
+    missing: missing.map(show),
     unreadable,
   };
 }

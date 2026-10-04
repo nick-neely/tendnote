@@ -85,10 +85,10 @@ export const operatorActionDependencies: OperatorActionDependencies = {
     refundableInvoice(
       await configuredStripe().invoices.retrieve(invoiceId, { expand: ["payments"] }),
     ),
-  createRefund: async ({ paymentIntentId, amount, idempotencyKey }) =>
+  createRefund: async ({ paymentIntentId, amount, idempotencyKey, metadata }) =>
     refundSnapshot(
       await configuredStripe().refunds.create(
-        { payment_intent: paymentIntentId, amount, reason: "requested_by_customer" },
+        { payment_intent: paymentIntentId, amount, reason: "requested_by_customer", metadata },
         { idempotencyKey },
       ),
     ),
