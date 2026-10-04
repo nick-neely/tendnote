@@ -16,7 +16,9 @@ export type AccountRetentionStore = {
    * least recently attempted, earliest deadline breaking ties. An
    * admitted account has no deadline, so resubscribing removes it from here; a
    * terminated account is read by its termination's deadline only; an account
-   * already being deleted is left to its intent.
+   * already being deleted is left to its intent. An account under a Legal Hold
+   * is owed nothing until the hold ends (#632): its notices pause, and resume
+   * from the stage they reached.
    */
   listDue: (input: { now: Date; limit: number }) => Promise<RetentionAccount[]>;
   /** Records the sweep taking the account up, for the order above. */
@@ -30,8 +32,9 @@ export type AccountRetentionStore = {
   /**
    * Commits the account's deletion intent for its passed deadline, in one
    * step that changes nothing unless the account still holds exactly that
-   * deadline. An account that resubscribed after it was listed is therefore
-   * never purged. Returns whether an intent was committed.
+   * deadline and no Legal Hold. An account that resubscribed, or was held,
+   * after it was listed is therefore never purged. Returns whether an intent
+   * was committed.
    */
   claimPurge: (input: { userId: string; retentionDeadline: Date; now: Date }) => Promise<boolean>;
 };

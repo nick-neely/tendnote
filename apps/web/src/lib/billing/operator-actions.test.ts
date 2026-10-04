@@ -7,6 +7,7 @@ import {
 import { ForbiddenError } from "eve/channels/auth";
 import { describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness } from "../access/admission-harness";
+import { createLegalHoldsFake } from "../access/legal-holds-fake";
 import { suspendAccount } from "../access/temporary-suspension";
 import { createTemporarySuspensionsFake } from "../access/temporary-suspensions-fake";
 import { createTerminationsFake } from "../access/terminations-fake";
@@ -74,6 +75,7 @@ async function operator() {
   const ceilingOverrides = createCeilingOverridesFake({
     period: { start: "2026-09-15", resetsOn: "2026-10-15" },
   });
+  const legalHolds = createLegalHoldsFake();
   const journaled: RecoveryJournalRecord[] = [];
   const journal = {
     write: vi.fn(async (record: RecoveryJournalRecord) => {
@@ -133,6 +135,7 @@ async function operator() {
     credits: revocations.credits,
     dunning: stripeSubscriptions.dunning,
     ceilings: ceilingOverrides.ceilings,
+    legalHolds: legalHolds.legalHolds,
     findStripeCustomer: async ({ userId }) => (userId === user.id ? CUSTOMER : null),
     listCreditableInvoices: vi.fn(async (customer: string) =>
       customer === CUSTOMER ? [...paidInvoices] : [],
@@ -546,6 +549,23 @@ describe("the operator CLI's commands", () => {
     }
   });
 
+  it("places a Legal Hold that leaves admission and Stripe alone (#632)", async () => {
+    const op = await operator();
+
+    await expect(
+      runOperatorCommand(op.deps, ["legal-hold", user.id, "2027-01-31"]),
+    ).resolves.toMatchObject({
+      userId: user.id,
+      heldUntil: new Date("2027-01-31T00:00:00.000Z"),
+    });
+
+    expect(op.journaled.map((record) => record.kind)).toEqual(["legal-hold"]);
+    await op.expectAdmitted();
+    for (const call of [op.deps.retrieveSubscription, op.deps.cancelSubscription]) {
+      expect(call).not.toHaveBeenCalled();
+    }
+  });
+
   it("refuses anything else with the usage, touching nothing", async () => {
     const op = await operator();
 
@@ -567,6 +587,8 @@ describe("the operator CLI's commands", () => {
       ["raise-ceiling", user.id, "interactive", "1e1"],
       ["raise-ceiling", user.id, "interactive", "-5"],
       ["raise-ceiling", user.id, "interactive", ""],
+      ["legal-hold", user.id],
+      ["legal-hold", user.id, "2027-01-31", "extra"],
     ]) {
       await expect(runOperatorCommand(op.deps, argv)).rejects.toThrow(OPERATOR_USAGE);
     }

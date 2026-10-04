@@ -1,6 +1,7 @@
 import type { RefundRecord } from "@tendnote/db/queries/paid-access-revocations";
 import type { AccessProfile, RecoveryJournal } from "@tendnote/domain";
 import type Stripe from "stripe";
+import { type LegalHoldDependencies, placeLegalHold } from "../access/legal-hold";
 import {
   liftSuspension,
   renewSuspensionReview,
@@ -53,7 +54,8 @@ export type OperatorActionDependencies = PaidAccessRevocationDependencies &
   TerminationDependencies &
   SuspensionCreditDependencies &
   DunningExtensionDependencies &
-  AccountCeilingOverrideDependencies & {
+  AccountCeilingOverrideDependencies &
+  LegalHoldDependencies & {
     /** One suspension by id, such as the one a Termination converted. */
     getSuspension: (input: { userId: string; id: string }) => Promise<{ suspendedAt: Date } | null>;
     journal: RecoveryJournal;
@@ -310,7 +312,8 @@ export const OPERATOR_USAGE = `Usage:
   operator suspend <user id> <reason>
   operator renew-suspension <user id>
   operator lift-suspension <user id>
-  operator terminate <user id> <reason>`;
+  operator terminate <user id> <reason>
+  operator legal-hold <user id> <expiry date, YYYY-MM-DD>`;
 
 /** A whole number of days, as an operator types one. */
 const WHOLE_NUMBER = /^\d+$/;
@@ -358,6 +361,10 @@ const OPERATOR_COMMANDS: Record<string, OperatorCommand> = {
     accepts: (rest) => rest.length > 0,
     run: (deps, userId, reason) =>
       terminateAccountWithCredit(deps, { userId, reason: reason.join(" ") }),
+  },
+  "legal-hold": {
+    accepts: (rest) => rest.length === 1,
+    run: (deps, userId, [expiresOn = ""]) => placeLegalHold(deps, { userId, expiresOn }),
   },
 };
 

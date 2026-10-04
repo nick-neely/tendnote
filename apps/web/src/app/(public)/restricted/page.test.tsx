@@ -9,10 +9,12 @@ const mocks = vi.hoisted(() => ({
   getLiveSubscription: vi.fn(),
   ownerHasExportableData: vi.fn(),
   getLatestOwnerDataExportJob: vi.fn(),
+  isAccountHeld: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 vi.mock("@/lib/access/current-access", () => ({ getCurrentAccess: mocks.getCurrentAccess }));
+vi.mock("@tendnote/db/queries/legal-holds", () => ({ isAccountHeld: mocks.isAccountHeld }));
 vi.mock("@tendnote/db/queries/stripe-subscriptions", () => ({
   getLiveSubscription: mocks.getLiveSubscription,
 }));
@@ -58,6 +60,7 @@ beforeEach(() => {
   mocks.getLiveSubscription.mockResolvedValue({ stripeSubscriptionId: "sub_1", cancelAt: null });
   mocks.ownerHasExportableData.mockResolvedValue(true);
   mocks.getLatestOwnerDataExportJob.mockResolvedValue(null);
+  mocks.isAccountHeld.mockResolvedValue(false);
 });
 
 describe("the restricted area (#629)", () => {
@@ -145,6 +148,17 @@ describe("the restricted area after a Termination (#630)", () => {
     expect(html).toContain("Your data is kept until January 7, 2027, then deleted.");
     expect(html).not.toContain("under review");
     expect(html).not.toContain("credited");
+  });
+
+  it("promises no deletion date while a Legal Hold pauses the deletion, and does not name it (#632)", async () => {
+    mocks.isAccountHeld.mockResolvedValue(true);
+
+    const html = await renderRestricted();
+
+    expect(mocks.isAccountHeld).toHaveBeenCalledWith({ userId: user.id });
+    expect(html).toContain("Your data is kept as it is, and nothing has been deleted.");
+    expect(html).not.toContain("January 7, 2027");
+    expect(html).not.toMatch(/hold/i);
   });
 
   it("offers exactly export and deletion, with no billing and no resubscribe", async () => {

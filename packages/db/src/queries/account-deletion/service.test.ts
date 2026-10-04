@@ -207,6 +207,72 @@ describe("retention-deadline purge confirmation", () => {
   });
 });
 
+describe("under a Legal Hold (#632)", () => {
+  const HOLD_ENDS = new Date(NOW.getTime() + 48 * HOUR_MS);
+
+  it("closes the account and stops billing, but journals and deletes nothing", async () => {
+    const { steps, store, journal, deps, logger } = harness();
+    store.placeLegalHold("user_1", HOLD_ENDS);
+
+    const result = await requestAccountDeletion(deps, { userId: "user_1", now: NOW });
+
+    expect(result).toEqual({ status: "pending" });
+    expect(steps).toEqual(["intent:user_1", "revoke:user_1", "cancel:user_1"]);
+    expect(store.hasAccount("user_1")).toBe(true);
+    expect(await store.findIntent({ userId: "user_1" })).toMatchObject({ journaledAt: null });
+    expect(journal.pathnames()).toEqual([]);
+    expect(logger.info).toHaveBeenCalledWith("account_deletion.held", { userId: "user_1" });
+  });
+
+  it("leaves a held intent to wait out of the sweep, then finishes it once the hold ends", async () => {
+    const { store, deps } = harness();
+    store.placeLegalHold("user_1", HOLD_ENDS);
+    await requestAccountDeletion(deps, { userId: "user_1", now: NOW });
+
+    const during = await runAccountDeletionSweep({
+      ...deps,
+      limit: 10,
+      now: new Date(HOLD_ENDS.getTime() - 1),
+    });
+    expect(during).toEqual({ scanned: 0, completed: 0, failed: 0, stuck: 0 });
+    expect(store.hasAccount("user_1")).toBe(true);
+
+    const after = await runAccountDeletionSweep({ ...deps, limit: 10, now: HOLD_ENDS });
+    expect(after).toEqual({ scanned: 1, completed: 1, failed: 0, stuck: 0 });
+    expect(store.hasAccount("user_1")).toBe(false);
+  });
+
+  it("deletes another account with no hold as usual", async () => {
+    const { store, deps } = harness();
+    store.seedAccount("user_2");
+    store.placeLegalHold("user_1", HOLD_ENDS);
+
+    await expect(requestAccountDeletion(deps, { userId: "user_2", now: NOW })).resolves.toEqual({
+      status: "deleted",
+    });
+    expect(store.hasAccount("user_2")).toBe(false);
+  });
+
+  it("stops short of the purge when the hold was placed after the sweep listed the intent", async () => {
+    const { store, journal, deps, logger } = harness();
+    journal.failNextWrites(1);
+    await requestAccountDeletion(deps, { userId: "user_1", now: NOW });
+    const listIntents = store.listIntents;
+    store.listIntents = async (input) => {
+      const listed = await listIntents(input);
+      store.placeLegalHold("user_1", HOLD_ENDS);
+      return listed;
+    };
+
+    const result = await runAccountDeletionSweep({ ...deps, limit: 10, now: NOW });
+
+    expect(result).toEqual({ scanned: 1, completed: 0, failed: 0, stuck: 0 });
+    expect(store.hasAccount("user_1")).toBe(true);
+    expect(journal.pathnames()).toEqual([]);
+    expect(logger.info).toHaveBeenCalledWith("account_deletion.held", { userId: "user_1" });
+  });
+});
+
 describe("runAccountDeletionSweep", () => {
   it("completes an intent whose journal write failed", async () => {
     const { store, journal, deps } = harness();

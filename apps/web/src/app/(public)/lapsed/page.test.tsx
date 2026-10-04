@@ -9,10 +9,12 @@ const mocks = vi.hoisted(() => ({
   isCheckoutOpen: vi.fn(),
   ownerHasExportableData: vi.fn(),
   getLatestOwnerDataExportJob: vi.fn(),
+  isAccountHeld: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 vi.mock("@/lib/access/current-access", () => ({ getCurrentAccess: mocks.getCurrentAccess }));
+vi.mock("@tendnote/db/queries/legal-holds", () => ({ isAccountHeld: mocks.isAccountHeld }));
 vi.mock("@/lib/billing/checkout-availability", () => ({ isCheckoutOpen: mocks.isCheckoutOpen }));
 vi.mock("@tendnote/db/queries/owner-data-export", () => ({
   ownerHasExportableData: mocks.ownerHasExportableData,
@@ -51,6 +53,7 @@ beforeEach(() => {
   mocks.isCheckoutOpen.mockResolvedValue(true);
   mocks.ownerHasExportableData.mockResolvedValue(true);
   mocks.getLatestOwnerDataExportJob.mockResolvedValue(null);
+  mocks.isAccountHeld.mockResolvedValue(false);
 });
 
 describe("the Lapsed area (#609)", () => {
@@ -59,6 +62,20 @@ describe("the Lapsed area (#609)", () => {
 
     expect(html).toContain("Your subscription has ended");
     expect(html).toContain("Your data is kept until January 29, 2027, then deleted.");
+  });
+
+  it("promises no deletion date while a Legal Hold pauses the deletion, and does not name it (#632)", async () => {
+    mocks.isAccountHeld.mockResolvedValue(true);
+
+    const html = await renderLapsed();
+
+    expect(mocks.isAccountHeld).toHaveBeenCalledWith({ userId: user.id });
+    expect(html).toContain("Your data is kept as it is, and nothing has been deleted.");
+    expect(html).not.toContain("January 29, 2027");
+    expect(html).not.toMatch(/hold/i);
+    for (const action of ["Subscribe", "Export", "Delete", "Sign out"]) {
+      expect(html).toContain(`<b>${action}</b>`);
+    }
   });
 
   it("offers exactly resubscribe, export, and delete, beside the signed-in identity and Sign out", async () => {

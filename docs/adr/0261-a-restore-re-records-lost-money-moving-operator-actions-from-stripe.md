@@ -1,4 +1,4 @@
-# ADR 0260: A restore re-records lost money-moving Operator Actions from Stripe
+# ADR 0261: A restore re-records lost money-moving Operator Actions from Stripe
 
 Status: Accepted in the October 4, 2026 implementation of issue #723.
 
@@ -56,5 +56,5 @@ it adds a second path to every money-moving command.
   matched, and stays a hand-run update in the runbook.
 - A re-recorded termination's original reason lives only in the Incident
   Record.
-- Kinds that move no money (suspension, grant, ceiling override) are still
-  re-run by the operator, as the runbook says.
+- Kinds that move no money (suspension, grant, ceiling override, Legal Hold)
+  are still re-run by the operator, as the runbook says.

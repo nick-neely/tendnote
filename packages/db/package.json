@@ -74,6 +74,7 @@
     "./queries/spend-breaker": "./src/queries/spend-breaker.ts",
     "./queries/account-ceiling-overrides": "./src/queries/account-ceiling-overrides.ts",
     "./queries/dunning-extensions": "./src/queries/dunning-extensions.ts",
+    "./queries/legal-holds": "./src/queries/legal-holds.ts",
     "./queries/memories": "./src/queries/memories.ts",
     "./queries/morning-agenda": "./src/queries/morning-agenda.ts",
     "./queries/owner-data-export": "./src/queries/owner-data-export.ts",
