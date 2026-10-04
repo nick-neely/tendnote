@@ -50,7 +50,11 @@ async function renderRestricted() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.getCurrentAccess.mockResolvedValue({ state: "restricted", user });
+  mocks.getCurrentAccess.mockResolvedValue({
+    state: "restricted",
+    user,
+    restriction: { kind: "suspension" },
+  });
   mocks.getLiveSubscription.mockResolvedValue({ stripeSubscriptionId: "sub_1", cancelAt: null });
   mocks.ownerHasExportableData.mockResolvedValue(true);
   mocks.getLatestOwnerDataExportJob.mockResolvedValue(null);
@@ -118,5 +122,39 @@ describe("the restricted area (#629)", () => {
       retentionDeadline: new Date(),
     });
     await expect(renderRestricted()).rejects.toThrow("REDIRECT:/lapsed");
+  });
+});
+
+describe("the restricted area after a Termination (#630)", () => {
+  beforeEach(() => {
+    mocks.getCurrentAccess.mockResolvedValue({
+      state: "restricted",
+      user,
+      restriction: {
+        kind: "termination",
+        retentionDeadline: new Date("2027-01-07T09:30:00.000Z"),
+      },
+    });
+  });
+
+  it("says access has ended, the renewal is stopped, and when the data is deleted", async () => {
+    const html = await renderRestricted();
+
+    expect(html).toContain("Your access to Tendnote has ended");
+    expect(html).toContain("won&#x27;t renew");
+    expect(html).toContain("Your data is kept until January 7, 2027, then deleted.");
+    expect(html).not.toContain("under review");
+    expect(html).not.toContain("credited");
+  });
+
+  it("offers exactly export and deletion, with no billing and no resubscribe", async () => {
+    const html = await renderRestricted();
+
+    for (const action of ["Export", "Delete", "Sign out"]) {
+      expect(html).toContain(`<b>${action}</b>`);
+    }
+    expect(html.match(/<b>/g)).toHaveLength(3);
+    expect(html).not.toMatch(/subscribe/i);
+    expect(mocks.getLiveSubscription).not.toHaveBeenCalled();
   });
 });

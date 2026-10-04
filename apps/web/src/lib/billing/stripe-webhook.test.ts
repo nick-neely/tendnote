@@ -155,6 +155,7 @@ function inertSubscriptions(): StripeWebhookDependencies["subscriptions"] {
     recordSubscription: vi.fn(),
     lapsePaidAccess: vi.fn(),
     paysForAccount: vi.fn(),
+    isTerminated: vi.fn(),
     confirmCancellation: vi.fn(),
   };
 }

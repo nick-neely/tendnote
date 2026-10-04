@@ -16,7 +16,13 @@ type AccessProfileWrites = {
  */
 export function createStripeSubscriptionsFake(
   profiles: AccessProfileWrites,
-  input: { stripeCustomerId: string; now?: () => Date; periodEnd?: Date },
+  input: {
+    stripeCustomerId: string;
+    now?: () => Date;
+    periodEnd?: Date;
+    /** Which accounts are terminated (#630); none unless given. */
+    isTerminated?: (input: { userId: string }) => Promise<boolean>;
+  },
 ) {
   const now = input.now ?? (() => new Date());
   const live = (id: string): SubscriptionSnapshot => ({
@@ -50,6 +56,7 @@ export function createStripeSubscriptionsFake(
     // The production rule over the same Access Profile store.
     paysForAccount: async ({ userId, stripeSubscriptionId }) =>
       paysForAccount(await profiles.getAccessProfile({ userId }), stripeSubscriptionId),
+    isTerminated: input.isTerminated ?? (async () => false),
     confirmCancellation,
   };
 

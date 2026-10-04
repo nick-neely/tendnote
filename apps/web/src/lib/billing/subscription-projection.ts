@@ -110,6 +110,12 @@ export type SubscriptionProjectionDependencies = {
    * renewal Tendnote stopped (#617) is not the customer cancelling anything.
    */
   paysForAccount: (input: { userId: string; stripeSubscriptionId: string }) => Promise<boolean>;
+  /**
+   * Whether the account is terminated. Its renewal was stopped by the
+   * Termination (#630), not cancelled by the customer, so it is not confirmed
+   * either: that email offers an undo and access the account no longer has.
+   */
+  isTerminated: (input: { userId: string }) => Promise<boolean>;
   /** Send the content-free cancellation confirmation, keyed on the cancellation. */
   confirmCancellation: (input: {
     userId: string;
@@ -143,7 +149,8 @@ export async function projectSubscription(
     snapshot.cancelAt &&
     !snapshot.endedAt &&
     previous?.cancelAt?.getTime() !== snapshot.cancelAt.getTime() &&
-    (await deps.paysForAccount({ userId, stripeSubscriptionId }))
+    (await deps.paysForAccount({ userId, stripeSubscriptionId })) &&
+    !(await deps.isTerminated({ userId }))
   ) {
     await deps.confirmCancellation({ userId, stripeSubscriptionId, endsAt: snapshot.cancelAt });
   }

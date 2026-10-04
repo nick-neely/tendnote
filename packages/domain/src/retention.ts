@@ -14,6 +14,8 @@
 export const RETENTION = {
   /** Content of a Lapsed account, counted from entering Lapsed. */
   lapsedAccount: { days: 90 },
+  /** Content of a terminated account, counted from its Termination. */
+  terminatedAccount: { days: 90 },
   /** The Backup Window (ADR 0250): recovery and the deletion tail in one bound. */
   backupWindow: { days: 7 },
   /** A Deletion Record in the Recovery Journal. */
@@ -62,6 +64,10 @@ const RETENTION_TABLE_ROWS: readonly RetentionTableRow[] = [
   {
     data: "Lapsed account content",
     retained: (p) => `${p("lapsedAccount")} from entering Lapsed, then deleted`,
+  },
+  {
+    data: "Terminated account content",
+    retained: (p) => `${p("terminatedAccount")} from termination, then deleted`,
   },
   {
     data: "Deleted account",
