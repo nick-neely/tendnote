@@ -87,6 +87,7 @@
     "./queries/source-records": "./src/queries/source-records.ts",
     "./queries/stripe-customers": "./src/queries/stripe-customers.ts",
     "./queries/stripe-subscriptions": "./src/queries/stripe-subscriptions.ts",
+    "./queries/suspension-credits": "./src/queries/suspension-credits.ts",
     "./queries/temporary-suspensions": "./src/queries/temporary-suspensions.ts",
     "./queries/terminations": "./src/queries/terminations.ts",
     "./queries/today": "./src/queries/today.ts",

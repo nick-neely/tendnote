@@ -64,6 +64,21 @@ export async function findOpenSuspension(input: {
   return withDeadlineInForce(row);
 }
 
+/** One of the account's suspensions by its id, such as the one a Termination converted. */
+export async function getSuspension(input: {
+  userId: string;
+  id: string;
+}): Promise<TemporarySuspension | null> {
+  const [row] = await getDb()
+    .select(suspensionColumns)
+    .from(temporarySuspensions)
+    .where(
+      and(eq(temporarySuspensions.userId, input.userId), eq(temporarySuspensions.id, input.id)),
+    )
+    .limit(1);
+  return withDeadlineInForce(row);
+}
+
 /** The account's newest suspension, open or lifted, so an interrupted lift can be resumed. */
 export async function findLatestSuspension(input: {
   userId: string;

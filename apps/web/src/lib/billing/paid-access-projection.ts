@@ -23,6 +23,11 @@ import {
   listClosedDunningWindows,
   recordStripeSubscription,
 } from "@tendnote/db/queries/stripe-subscriptions";
+import {
+  attachSuspensionCreditRefund,
+  findUnmatchedSuspensionCredit,
+  getSuspensionCreditByStripeRefund,
+} from "@tendnote/db/queries/suspension-credits";
 import { findTermination } from "@tendnote/db/queries/terminations";
 import { anchorUsagePeriod } from "@tendnote/db/queries/usage-bounds";
 import type { PaidAccessFunnelStage } from "@tendnote/domain/account-funnel";
@@ -111,6 +116,9 @@ export const paidAccessProjection = {
     findUnmatchedRefundRecord,
     attachStripeRefund,
     markRefundRevoked,
+    getSuspensionCreditByStripeRefund,
+    findUnmatchedSuspensionCredit,
+    attachSuspensionCreditRefund,
     getDispute,
     recordDispute,
     markDisputeRenewalStopped,

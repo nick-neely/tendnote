@@ -73,5 +73,6 @@ export * from "./scheduled-workflow-delivery";
 export * from "./semantic-retrieval";
 export * from "./source-records";
 export * from "./suggested-memory-extraction";
+export * from "./suspension-credit";
 export * from "./temporary-suspension";
 export * from "./today";

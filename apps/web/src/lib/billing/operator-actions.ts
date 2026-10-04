@@ -20,6 +20,7 @@ import {
   type RefundSnapshot,
 } from "./paid-access-revocation";
 import { projectSubscription, type SubscriptionSnapshot } from "./subscription-projection";
+import { issueSuspensionCredit, type SuspensionCreditDependencies } from "./suspension-credit";
 
 /** A paid invoice a Refund can return money from, read from Stripe. */
 export type RefundableInvoice = {
@@ -43,7 +44,10 @@ export function refundableInvoice(invoice: Stripe.Invoice): RefundableInvoice {
 
 export type OperatorActionDependencies = PaidAccessRevocationDependencies &
   TemporarySuspensionDependencies &
-  TerminationDependencies & {
+  TerminationDependencies &
+  SuspensionCreditDependencies & {
+    /** One suspension by id, such as the one a Termination converted. */
+    getSuspension: (input: { userId: string; id: string }) => Promise<{ suspendedAt: Date } | null>;
     journal: RecoveryJournal;
     /** The Operator Action records (ADR 0248), written before any Stripe call. */
     records: {
@@ -232,6 +236,62 @@ export async function readmitAfterWonDispute(
   return { restored: true, grantId: grant.id };
 }
 
+/**
+ * Lift a suspension, then issue its Suspension Credit (#631) for the time from
+ * the suspension's start to the lift. The lift commits and is journaled first,
+ * so a Stripe failure never leaves a customer suspended; running it again
+ * resumes the lift and finishes the credit.
+ */
+export async function liftSuspensionWithCredit(
+  deps: OperatorActionDependencies,
+  input: { userId: string; now?: Date },
+) {
+  const lift = await liftSuspension(deps, input);
+  const suspensionCredits = await issueSuspensionCredit(
+    deps,
+    {
+      userId: input.userId,
+      suspensionId: lift.suspensionId,
+      suspendedAt: lift.suspendedAt,
+      exitAt: lift.liftedAt,
+      terminationId: null,
+    },
+    input.now,
+  );
+  return { ...lift, suspensionCredits };
+}
+
+/**
+ * Terminate an account, then, when the termination converted an open
+ * suspension, issue that suspension's Suspension Credit (#631): the suspended
+ * time and the unused remainder to the period end, on one credit note per paid
+ * invoice and always back to the card. A termination that converted no
+ * suspension issues none. The termination commits and stops the renewal
+ * first; running it again resumes both.
+ */
+export async function terminateAccountWithCredit(
+  deps: OperatorActionDependencies,
+  input: { userId: string; reason: string; now?: Date },
+) {
+  const termination = await terminateAccount(deps, input);
+  const suspensionId = termination.convertedSuspensionId;
+  if (!suspensionId) return { ...termination, suspensionCredits: [] };
+  const converted = await deps.getSuspension({ userId: input.userId, id: suspensionId });
+  if (!converted) throw new Error(`Suspension ${suspensionId} is not on record.`);
+  const suspensionCredits = await issueSuspensionCredit(
+    deps,
+    {
+      userId: input.userId,
+      suspensionId,
+      suspendedAt: converted.suspendedAt,
+      exitAt: termination.terminatedAt,
+      terminationId: termination.terminationId,
+    },
+    input.now,
+  );
+  return { ...termination, suspensionCredits };
+}
+
 export const OPERATOR_USAGE = `Usage:
   operator refund <invoice id> [amount in cents]
   operator readmit-dispute <dispute id>
@@ -266,11 +326,12 @@ const OPERATOR_COMMANDS: Record<string, OperatorCommand> = {
   },
   "lift-suspension": {
     accepts: (rest) => rest.length === 0,
-    run: (deps, userId) => liftSuspension(deps, { userId }),
+    run: (deps, userId) => liftSuspensionWithCredit(deps, { userId }),
   },
   terminate: {
     accepts: (rest) => rest.length > 0,
-    run: (deps, userId, reason) => terminateAccount(deps, { userId, reason: reason.join(" ") }),
+    run: (deps, userId, reason) =>
+      terminateAccountWithCredit(deps, { userId, reason: reason.join(" ") }),
   },
 };
 

@@ -13,9 +13,10 @@ import { runOperatorCommand } from "@/lib/billing/operator-actions";
  *   pnpm --filter @tendnote/web operator terminate <user id> <reason>
  *
  * Each writes and journals its record before any Stripe call and prints the
- * outcome; the suspension actions make no Stripe call at all, and a
- * termination makes one, to stop the renewal. Running one again after a
- * failure resumes it.
+ * outcome. Suspending and renewing make no Stripe call at all. A lift and a
+ * termination then issue the Suspension Credit (#631), one credit note per paid
+ * invoice the denied time overlapped, and a termination first stops the
+ * renewal. Running one again after a failure resumes it.
  */
 runOperatorCommand(operatorActionDependencies, process.argv.slice(2)).then(
   (result) => {
