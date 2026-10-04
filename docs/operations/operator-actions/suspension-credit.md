@@ -61,8 +61,8 @@ A Suspension Credit never revokes Paid Access, even when it refunds the card.
 
 ## Record produced
 
-One Suspension Credit record per credited invoice, naming the suspension, the
-termination if there was one, the invoice and its line, the suspended and
+One Suspension Credit record per credited invoice, naming any suspension, any
+termination, the invoice and its line, the suspended and
 remainder amounts, the total, and the instrument. Each is written and
 journaled as a `suspension-credit` before its credit note is created. The
 credit note carries the record in its metadata, and its id, and any card

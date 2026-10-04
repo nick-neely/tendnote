@@ -48,6 +48,9 @@ review. This is the operator's choice, unlike cancellation or deletion.
    finished it under its original record, reason, and deadline.
 2. If the command fails part-way, run it again. It resumes the stopped renewal
    and the Suspension Credit. See [Suspension Credit](suspension-credit.md).
+   A rerun is not a no-op on an account terminated before terminations
+   returned their remainder (#739): it returns that remainder then, measured
+   from the original termination time.
 3. Tell the customer from the support mailbox that their access has ended.
    They can export and delete until `retentionDeadline`, when the data is
    purged, with deletion notices before it. Give the amount returned to the
