@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { RETENTION } from "./retention";
+
 /**
  * The Recovery Journal: the durable store outside the product database that a
  * restore reads to re-apply every irreversible purge and reconcile admission
@@ -89,6 +92,73 @@ export function recoveryJournalEntry(record: RecoveryJournalRecord): RecoveryJou
     }),
   };
 }
+
+/**
+ * The outbound effects a restore must not repeat: a Resend email send and an
+ * owner data export delivery. Reminders are deliberately absent. They are the
+ * one thing never deliberately shed, and a duplicate reminder after a restore is
+ * a far smaller harm than a suppressed one (ADR 0250).
+ */
+export const FENCED_EFFECTS = ["email", "export"] as const;
+
+export type FencedEffect = (typeof FENCED_EFFECTS)[number];
+
+/**
+ * The fact that an effect already left the system, written only after it
+ * succeeded. `key` is the effect's existing business idempotency key; the fence
+ * stores only its digest, so it stays content-free whatever the key holds, and
+ * a restore matches a restored job by hashing that job's own key.
+ */
+export type EffectFence = { effect: FencedEffect; key: string; at: Date };
+
+/**
+ * The write side of the fences. A retry after an uncertain failure may file a
+ * second fence for the same effect, which is harmless: a restore only asks
+ * whether any fence names the key.
+ */
+export type EffectFences = {
+  write: (fence: EffectFence) => Promise<void>;
+};
+
+/** The digest a fence is filed under, for matching a restored job against its fence. */
+export function effectFenceDigest(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
+}
+
+/** The prefix one effect's fences are listed under, in time order. */
+export function effectFencePrefix(effect: FencedEffect): string {
+  return `fence/${effect}/`;
+}
+
+/**
+ * The entry for a fence: beside the journal in the same store, timestamp first
+ * for the same reason, so the retention sweep can stop at the first fence it
+ * must keep.
+ */
+export function effectFenceEntry(fence: EffectFence): RecoveryJournalEntry {
+  const at = fence.at.toISOString();
+  const digest = effectFenceDigest(fence.key);
+  return {
+    pathname: `${effectFencePrefix(fence.effect)}${at}-${digest}.json`,
+    body: JSON.stringify({ effect: fence.effect, digest, at }),
+  };
+}
+
+/**
+ * Whether a fence has outlived its retention constant. A fence is only ever
+ * consulted for effects inside the Backup Window, so past this it holds nothing
+ * a restore could need. A pathname this module did not write is never expired,
+ * so the sweep leaves anything it cannot read alone.
+ */
+export function isEffectFenceExpired(input: { pathname: string; now: Date }): boolean {
+  const at = FENCE_PATHNAME.exec(input.pathname)?.[1];
+  if (!at) return false;
+  return input.now.getTime() - Date.parse(at) >= RETENTION.effectFence.days * 24 * 60 * 60 * 1000;
+}
+
+const FENCE_PATHNAME = new RegExp(
+  `^fence/(?:${FENCED_EFFECTS.join("|")})/(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z)-`,
+);
 
 /** How long a deletion intent may stay incomplete before the operator is alerted. */
 export const DELETION_INTENT_ALERT_AFTER_HOURS = 24;

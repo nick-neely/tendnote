@@ -31,6 +31,15 @@ content-free Deletion Record to the Recovery Journal before it deletes.
 Recovery re-applies those records. Deletion Record Retention is thirty days,
 derived from the window plus a detection margin.
 
+**A restore never repeats a completed email or export.** After a Resend email
+send or an owner data export delivery succeeds, an Effect Fence is written
+beside the journal, keyed by a digest of the effect's business idempotency key,
+and a restore marks the matching job complete. Exactly those two effects are
+fenced. Reminders are not: they are never deliberately shed, they are the
+highest-volume effect, and a duplicate reminder after a restore is a far smaller
+harm than a suppressed one. Fence retention is fourteen days, the window plus a
+margin, because a fence is only consulted for effects inside the window.
+
 ## Consequences
 
 The deletion tail cannot silently drift. Raising it would take a Neon plan

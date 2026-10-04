@@ -4,6 +4,7 @@ import {
   DEFAULT_EMAIL_FROM,
   decideTransactionalTransport,
   EmailTransportUnavailableError,
+  fenceDeliveredEmail,
   operatorLogSender,
   resolveSenderIdentity,
   resolveSupportEmail,
@@ -193,5 +194,60 @@ describe("the transports themselves", () => {
         error instanceof EmailTransportUnavailableError &&
         error.name === "EmailTransportUnavailableError",
     );
+  });
+});
+
+describe("fencing delivered email", () => {
+  const email = {
+    to: "owner@example.test",
+    subject: "Subject",
+    html: "<p>Body</p>",
+    text: "Body",
+    idempotencyKey: "admitted:in_123",
+  };
+
+  it("fences a sent message by its idempotency key, after the send", async () => {
+    const order: string[] = [];
+    const write = vi.fn(async () => {
+      order.push("fence");
+    });
+    const send = fenceDeliveredEmail(
+      async () => {
+        order.push("send");
+        return { providerMessageId: "msg_1" };
+      },
+      { write },
+    );
+
+    await expect(send(email)).resolves.toEqual({ providerMessageId: "msg_1" });
+    expect(order).toEqual(["send", "fence"]);
+    expect(write).toHaveBeenCalledWith({
+      effect: "email",
+      key: "admitted:in_123",
+      at: expect.any(Date),
+    });
+  });
+
+  it("writes no fence when the send fails", async () => {
+    const write = vi.fn();
+    const send = fenceDeliveredEmail(
+      async () => {
+        throw new Error("Resend refused the send");
+      },
+      { write },
+    );
+
+    await expect(send(email)).rejects.toThrow("Resend refused the send");
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("still reports the send when the fence cannot be written", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const send = fenceDeliveredEmail(async () => ({ providerMessageId: "msg_1" }), {
+      write: vi.fn().mockRejectedValue(new Error("store unavailable")),
+    });
+
+    await expect(send(email)).resolves.toEqual({ providerMessageId: "msg_1" });
+    expect(warn).toHaveBeenCalledOnce();
   });
 });

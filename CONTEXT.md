@@ -547,3 +547,7 @@ _Avoid_: Recovery window, PITR window, history retention
 **Recovery Journal**:
 The durable store outside the product database that holds Deletion Records and the records recovery needs to reconcile admission after a restore. It is a recovery aid, not a second authoritative event store.
 _Avoid_: Event store, event log, backup, audit log
+
+**Effect Fence**:
+The content-free fact, written beside the Recovery Journal only after the effect succeeded, that a Resend email send or an owner data export delivery already left the system, keyed by a digest of its business idempotency key. A restore marks the matching job complete instead of repeating it. Reminders are never fenced: a duplicate reminder is a smaller harm than a suppressed one. An email that happens to remind, such as the annual renewal reminder, is an email send and is fenced.
+_Avoid_: Sent flag, delivery receipt, dedupe key, outbox row

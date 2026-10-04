@@ -1,3 +1,5 @@
+import type { EffectFences } from "@tendnote/domain";
+
 /** One rendered message, independent of who is going to carry it. */
 export type TransactionalEmailContent = {
   subject: string;
@@ -195,5 +197,27 @@ export const operatorLogSender: TransactionalSender = async (email) => {
 export function unavailableSender(reason: string): TransactionalSender {
   return async () => {
     throw new EmailTransportUnavailableError(reason);
+  };
+}
+
+/**
+ * Fences each message the sender delivered, keyed by its idempotency key, so a
+ * restore marks the sending job complete instead of sending it again (ADR 0250).
+ * The fence is written only after the send succeeds, and a fence that cannot be
+ * written is logged rather than thrown: the message already left, and failing
+ * here would invite the caller to send it twice.
+ */
+export function fenceDeliveredEmail(
+  sender: TransactionalSender,
+  fences: EffectFences,
+): TransactionalSender {
+  return async (email) => {
+    const sent = await sender(email);
+    try {
+      await fences.write({ effect: "email", key: email.idempotencyKey, at: new Date() });
+    } catch {
+      console.warn("transactional-email: could not fence a delivered message");
+    }
+    return sent;
   };
 }

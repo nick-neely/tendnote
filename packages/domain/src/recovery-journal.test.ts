@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  effectFenceDigest,
+  effectFenceEntry,
+  FENCED_EFFECTS,
   isDeletionIntentStuck,
+  isEffectFenceExpired,
   type RecoveryJournalRecord,
   recoveryJournalEntry,
 } from "./recovery-journal";
+import { RETENTION } from "./retention";
 
 const AT = new Date("2026-09-21T14:03:22.145Z");
 const HOUR_MS = 60 * 60 * 1000;
@@ -86,5 +91,45 @@ describe("isDeletionIntentStuck", () => {
     expect(
       isDeletionIntentStuck({ requestedAt, now: new Date(requestedAt.getTime() + 24 * HOUR_MS) }),
     ).toBe(true);
+  });
+});
+
+describe("effect fences", () => {
+  it("fences email sends and export deliveries, and never reminders", () => {
+    expect(FENCED_EFFECTS).toEqual(["email", "export"]);
+  });
+
+  it("files a fence by its key's digest, so it holds nothing the key held", () => {
+    const key = "admitted:in_123";
+    const entry = effectFenceEntry({ effect: "email", key, at: AT });
+    const digest = effectFenceDigest(key);
+
+    expect(digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(entry.pathname).toBe(`fence/email/2026-09-21T14:03:22.145Z-${digest}.json`);
+    expect(JSON.parse(entry.body)).toEqual({
+      effect: "email",
+      digest,
+      at: "2026-09-21T14:03:22.145Z",
+    });
+    expect(`${entry.pathname}${entry.body}`).not.toContain("in_123");
+  });
+
+  it("expires a fence exactly at its retention constant", () => {
+    const { pathname } = effectFenceEntry({ effect: "export", key: "owner:request", at: AT });
+    const retention = RETENTION.effectFence.days * 24 * HOUR_MS;
+
+    expect(isEffectFenceExpired({ pathname, now: new Date(AT.getTime() + retention - 1) })).toBe(
+      false,
+    );
+    expect(isEffectFenceExpired({ pathname, now: new Date(AT.getTime() + retention) })).toBe(true);
+  });
+
+  it("never expires a pathname it did not write", () => {
+    const now = new Date("2030-01-01T00:00:00.000Z");
+
+    expect(
+      isEffectFenceExpired({ pathname: "journal/deletion/2026-01-01T00:00:00.000Z-x.json", now }),
+    ).toBe(false);
+    expect(isEffectFenceExpired({ pathname: "fence/email/not-a-time-x.json", now })).toBe(false);
   });
 });
