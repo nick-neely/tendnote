@@ -209,6 +209,7 @@ To reproduce the CI gate exactly, run `pnpm coverage:ci && pnpm fallow:coverage:
 - Contributor-facing CI workflow, fork approval, and RunsOn setup details live
   in [`docs/ci-contributing.md`](ci-contributing.md).
 - `.github/workflows/pr-verify.yml` detects which paths changed and calls the reusable verification workflow when a PR opens, reopens, or receives a new commit. There is one path and no label: every code push runs the full set ([ADR 0236](adr/0236-pull-request-verification-is-one-full-fidelity-path.md)). The required checks are the verification jobs themselves, so a lane whose paths did not change skips and reports success. Converting an already-verified draft to ready does not start another workflow.
+- `.github/workflows/main-verify.yml` reruns every lane, unfiltered, on each push to main, so two pull requests that pass separately but break main together are caught within minutes of the merge ([ADR 0264](adr/0264-main-is-re-verified-after-every-merge.md)). Nothing waits on it; the person who merged is notified and fixes forward.
 - `.github/workflows/reusable-verify.yml` runs the selected lanes in parallel. Vercel owns the deployable production build.
   - **Quality** - `pnpm lint`, `pnpm typecheck`, and the Chromium contract tests when web paths change.
   - **Test and Fallow** - the root workflow contracts, then `pnpm coverage:ci`, `pnpm fallow:coverage:check`, `pnpm fallow:ci` on a runner pinned to 16 vCPU.
