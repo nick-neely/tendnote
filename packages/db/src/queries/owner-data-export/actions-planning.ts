@@ -34,6 +34,7 @@ import {
 } from "../../schema";
 import type { HouseholdRecordShare } from "../households/types";
 import { archiveEntry } from "./archive";
+import { type DraftBriefEntryPoint, loadDraftBriefEntryPoints } from "./draft-entry-points";
 import { envelope, iso, jsonBytes, sensitivityRank, sortByCreatedAt, sortById } from "./shared";
 import type { OwnerDataExportResource } from "./types";
 
@@ -74,6 +75,7 @@ export type OwnerDataExportActionsPlanningContext = {
   savedItemEvents: SavedItemEvent[];
   savedItemOutcomes: SavedItemOutcome[];
   messageDrafts: MessageDraft[];
+  briefItems?: DraftBriefEntryPoint[];
   giftPlans: GiftPlan[];
   giftIdeas: GiftIdea[];
   giftPlanEvents: GiftPlanEvent[];
@@ -444,6 +446,7 @@ function validateDraftReference(
     sourceRecordIds: ReadonlySet<string>;
     memoryIds: ReadonlySet<string>;
     followupIds: ReadonlySet<string>;
+    briefItemIds: ReadonlySet<string>;
   },
 ) {
   if (ref.kind === "source_record") {
@@ -466,6 +469,14 @@ function validateDraftReference(
     }
     return;
   }
+  if (ref.kind === "brief_item") {
+    if (!grounding.briefItemIds.has(ref.id)) {
+      throw new Error(
+        `Owner data export message draft ${draftId} references brief item ${ref.id} outside the owner export.`,
+      );
+    }
+    return;
+  }
   const unsupportedKind = (ref as { kind?: unknown }).kind;
   throw new Error(
     `Owner data export message draft ${draftId} has unsupported source reference kind ${String(unsupportedKind)}.`,
@@ -478,6 +489,7 @@ function validateDraftReferences(
     sourceRecordIds: ReadonlySet<string>;
     memoryIds: ReadonlySet<string>;
     followupIds: ReadonlySet<string>;
+    briefItemIds: ReadonlySet<string>;
   },
 ) {
   for (const ref of draft.sourceRefs) validateDraftReference(draft.id, ref, grounding);
@@ -515,10 +527,13 @@ function directSensitivity(value: unknown): OwnerDataExportSensitivity | undefin
 }
 
 function buildGrounding(
+  ownerUserId: string,
   context: OwnerDataExportActionsPlanningContext,
   grounding: OwnerDataExportGrounding | undefined,
 ) {
+  const briefItems = (context.briefItems ?? []).filter((item) => item.ownerUserId === ownerUserId);
   return {
+    briefItemIds: new Set(briefItems.map((item) => item.id)),
     sourceRecordIds: setFrom(prefer(grounding?.sourceRecordIds, context.sourceRecordIds)),
     personIds: setFrom(prefer(grounding?.personIds, context.personIds)),
     memoryIds: setFrom(prefer(grounding?.memoryIds, context.memoryIds)),
@@ -526,8 +541,10 @@ function buildGrounding(
     assetIds: grounding?.assetIds === undefined ? undefined : new Set(grounding.assetIds),
     assetMemoryIds:
       grounding?.assetMemoryIds === undefined ? undefined : new Set(grounding.assetMemoryIds),
-    sensitivityByRecordId:
-      prefer(grounding?.sensitivityByRecordId, context.sensitivityByRecordId) ?? {},
+    sensitivityByRecordId: {
+      ...(prefer(grounding?.sensitivityByRecordId, context.sensitivityByRecordId) ?? {}),
+      ...Object.fromEntries(briefItems.map((item) => [item.id, item.sensitivity])),
+    },
   };
 }
 
@@ -542,7 +559,7 @@ export function filterOwnerDataExportActionsPlanningContext(
   input: OwnerDataExportActionsPlanningContext,
   grounding?: OwnerDataExportGrounding,
 ): OwnerDataExportActionsPlanningContext {
-  const facts = buildGrounding(input, grounding);
+  const facts = buildGrounding(ownerUserId, input, grounding);
   const actions = sortById(
     input.generalActions.filter(
       (action) => action.ownerUserId === ownerUserId && action.ownership === "member_owned",
@@ -646,6 +663,7 @@ export function filterOwnerDataExportActionsPlanningContext(
     savedItemEvents: itemEvents,
     savedItemOutcomes: itemOutcomes,
     messageDrafts: drafts,
+    briefItems: (input.briefItems ?? []).filter((item) => item.ownerUserId === ownerUserId),
     giftPlans: plans,
     giftIdeas: ideas,
     giftPlanEvents: planEvents,
@@ -675,7 +693,7 @@ export function ownerDataExportActionsPlanningContextExtension(
   grounding?: OwnerDataExportGrounding,
 ): OwnerDataExportActionsPlanningArchiveExtension {
   const context = filterOwnerDataExportActionsPlanningContext(ownerUserId, input, grounding);
-  const facts = buildGrounding(context, grounding);
+  const facts = buildGrounding(ownerUserId, context, grounding);
   const actionSensitivity = sensitivityOf(
     context.generalActions.map((action) => action.sourceRecordId),
     context.generalActions.map((action) =>
@@ -989,6 +1007,12 @@ export async function loadOwnerDataExportActionsPlanningContext(input: {
     savedItemEvents: savedEventRows.map((row) => row.event) as unknown as SavedItemEvent[],
     savedItemOutcomes: savedOutcomeRows.map((row) => row.outcome) as unknown as SavedItemOutcome[],
     messageDrafts: draftRows.map((row) => row.draft) as unknown as MessageDraft[],
+    briefItems: await loadDraftBriefEntryPoints(
+      ownerUserId,
+      draftRows.flatMap(({ draft }) =>
+        draft.sourceRefs.filter((ref) => ref.kind === "brief_item").map((ref) => ref.id),
+      ),
+    ),
     giftPlans: plans,
     giftIdeas: ideaRows.map((row) => row.idea) as unknown as GiftIdea[],
     giftPlanEvents: planEventRows.map((row) => row.event) as unknown as GiftPlanEvent[],

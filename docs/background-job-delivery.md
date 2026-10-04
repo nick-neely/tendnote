@@ -42,6 +42,8 @@ Run the smoke with `pnpm --filter @tendnote/web test -- vercel-queue.smoke`. It 
 
 While a restore holds the Outbound Pause ([restore runbook](operations/restore.md)), the cron returns `{"status":"paused"}` without running anything, and every queue callback throws after authenticating, so the platform redelivers the message once outbound resumes. A [Service-Wide Hold](operations/service-wide-hold.md) does the same, with the cron returning `{"status":"held"}`, so export, deletion, and their alerts wait for the lift.
 
+Extraction and Action extraction claims expire after fifteen minutes, longer than the hosted function execution limit. The next bounded backfill or queue delivery atomically reclaims an expired `running` job, incrementing its attempt count and replacing `claimed_at`; a live claim and a terminal job remain untouched. Legacy running rows without `claimed_at` use `updated_at` as the lease start. This repairs abandoned claims without a manual production-data reset.
+
 The recovery dispatcher runs bounded work on the same ten-minute cron. It republishes due `pending` or `publish_failed` delivery intents (up to 25 per pass), abandons obsolete delivery intents, and backfills up to 5 jobs per pass each for `extraction`, `embedding`, `action_extraction`, and `context_fact_extraction` through the same shared processors used by queue consumers.
 
 A job whose account has reached its background Account Ceiling is deferred, not failed ([ADR 0254](adr/0254-background-and-web-search-ceilings-pause-where-the-spend-happens.md)). The model-call entry point refuses the call, and the processor puts the job back in `pending` with its `run_after` at the start of the Usage Period's reset day and no `last_error`; Context Fact extraction, the one family that dead-letters on attempts, also hands back the attempt its claim counted. The queue message is acknowledged, so nothing redelivers it early; the backfill above picks the job up once it is due. The Spend Breaker defers the same way while it sheds background work ([ADR 0255](adr/0255-the-spend-breaker-sheds-in-stages-past-its-daily-ceiling.md)), with `run_after` at the next UTC midnight, when the breaker's day ends. Reminder pushes have no model call and are never deferred.
@@ -75,3 +77,11 @@ curl -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/background-jobs"
 ```
 
 This PRD adds no user-facing queue UI, queue dashboard, new review surface, or Eve mode. Delivery visibility stays in schema state, structured logs, deterministic tests, optional live smoke tests, and targeted backend inspection or recovery commands.
+
+## Diagnosing persistent failures
+
+Inspect processor jobs as well as the delivery ledger. A published delivery does not prove completion, and a successful cron response can contain failed processor outcomes. The backlog indicator uses `run_after`, which advances on each retry, so recurring failures can coexist with a clear backlog indicator.
+
+- Extraction rows stuck in `running` are reclaimed after the lease expires. Historical `last_error` values may describe configuration that has since been corrected; check the next processing attempt.
+- Owner exports preserve draft `brief_item` entry-point references only when the item and its parent brief belong to the export owner. The item supplies a sensitivity label; generated briefs remain excluded from the portable archive.
+- Hosted embeddings must use the approved model/provider pair in [Production and Fallback models](phase-9b/production-and-fallback-models.md): `openai/text-embedding-3-small` on OpenAI. Keep `TENDNOTE_EMBEDDING_MODEL` and `TENDNOTE_EMBEDDING_VERSION` consistent in production and preview. Changing an environment variable takes effect on a new deployment. Do not loosen zero-retention/no-training flags or the provider pin to accommodate an unsupported model. Existing indexes are isolated by model and version; old vectors do not need to be deleted to process a retry under the corrected configuration.
