@@ -127,9 +127,9 @@ The times below are examples. Use the restore date in branch names.
    and expired, and its owner can request a new one. Reminders are never fenced,
    so a reminder may repeat. That is accepted (ADR 0250).
 
-   This runs before step 7 on purpose: the Stripe replay there may try to send
-   an email that already went before the restore, and that send must complete
-   silently.
+   Step 7 copies the fences again before its Stripe replay, so the replay never
+   repeats an email that already went before the restore. That copy is
+   idempotent, so the order cannot be got wrong.
 
 7. **Reconcile admission from Stripe and the operator records.**
 
@@ -156,7 +156,7 @@ The times below are examples. Use the restore date in branch names.
    | `grant` | Re-run `operator extend-dunning` or `operator readmit-dispute`, whichever the account's billing state shows it was. |
    | `ceiling-override` | Re-run `operator raise-ceiling` with the original category and amount. |
    | `termination` | Do not re-run: Stripe already stopped renewal and issued any credit. Run `operator suspend <account> "restore: termination"` so the account stays closed, and record it in the Incident Record. |
-   | `suspension-lift` | Do not re-run, because it would issue the Suspension Credit again. Re-record the lift without the credit by running this against `RESTORE_URL`: `update temporary_suspensions set lifted_at = '<at>' where id = '<actionId>' and lifted_at is null`. The `at` and `actionId` come from the entry. |
+   | `suspension-lift` | Do not re-run, because it would issue the Suspension Credit again. Re-record the lift without the credit by running this against `RESTORE_URL`: `update temporary_suspensions set lifted_at = '<at>' where id = '<id>' and lifted_at is null`. Confirm that exactly one row was updated. `<at>` is the lift entry's time. `<id>` is the lift entry's `actionId`, unless this restore re-ran the missing `suspension` action, in which case use the suspension id that command printed. |
    | `refund`, `suspension-credit` | Do not re-run, because the money already moved in Stripe. Record each in the Incident Record. A refund also shows as an unmatched-refund alert until it is recorded. |
 
 Re-recording terminations, refunds, and Suspension Credits without repeating

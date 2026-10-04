@@ -338,6 +338,34 @@ describe("reconciling admission", () => {
     });
   });
 
+  it("copies the email fences before the Stripe replay, so a sent email is never repeated", async () => {
+    const restore = createRestore();
+    restore.fence("email", "admitted:in_1", 1);
+    let fencedBeforeReplay = 0;
+    restore.deps.reconcileStripe = async () => {
+      fencedBeforeReplay = await restore.deps.database.countRestoredEmailFences([
+        effectFenceDigest("admitted:in_1"),
+      ]);
+      return STRIPE_RAN;
+    };
+
+    await expect(reconcileAdmission(restore.deps)).resolves.toMatchObject({ ok: true });
+    expect(fencedBeforeReplay).toBe(1);
+  });
+
+  it("does not replay Stripe when the fences cannot all be read", async () => {
+    const restore = createRestore();
+    restore.blob("fence/email/not-a-fence.json", "{}");
+    let replayed = false;
+    restore.deps.reconcileStripe = async () => {
+      replayed = true;
+      return STRIPE_RAN;
+    };
+
+    await expect(reconcileAdmission(restore.deps)).resolves.toMatchObject({ ok: false });
+    expect(replayed).toBe(false);
+  });
+
   it("is not ok when Stripe did not run cleanly", async () => {
     const skipped = createRestore({ stripe: { status: "skipped" } });
     await expect(reconcileAdmission(skipped.deps)).resolves.toMatchObject({ ok: false });
@@ -438,6 +466,21 @@ describe("verifying the restore", () => {
     await markFencedEffects(restore.deps);
 
     await expect(verifyRestore(restore.deps)).resolves.toMatchObject({ ok: true });
+  });
+
+  it("fails the fence checks on a fence it cannot read", async () => {
+    const restore = createRestore();
+    await pauseOutbound(restore.deps);
+    restore.blob("fence/email/not-a-fence.json", "{}");
+    restore.blob("fence/export/not-a-fence.json", "{}");
+
+    const report = await verifyRestore(restore.deps);
+
+    expect(
+      (report.checks as { check: string; ok: boolean }[])
+        .filter((check) => !check.ok)
+        .map((check) => check.check),
+    ).toEqual(["every email fence is marked complete", "no fenced export job is left to run"]);
   });
 
   it("names every check that fails", async () => {

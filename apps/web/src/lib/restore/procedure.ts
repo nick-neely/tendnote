@@ -232,6 +232,11 @@ async function readOperatorRecords(deps: RestoreDependencies) {
  * cleanly, and every entry in `missing` and `unchecked` is the operator's.
  */
 export async function reconcileAdmission(deps: RestoreDependencies): Promise<Report> {
+  // The replay may try an email that already went before the restore; with
+  // its fence copied first, that send completes silently. Copying is
+  // idempotent, so running it here makes the order impossible to get wrong.
+  const fences = await markFencedEffects(deps);
+  if (!fences.ok) return { ok: false, fences };
   const stripe = await deps.reconcileStripe();
   const { byKind, unreadable } = await readOperatorRecords(deps);
 
@@ -347,8 +352,8 @@ export async function verifyRestore(deps: RestoreDependencies): Promise<Report> 
   const copied = await deps.database.countRestoredEmailFences(digests);
   checks.push({
     check: "every email fence is marked complete",
-    ok: copied === digests.length,
-    detail: { keys: digests.length, copied },
+    ok: copied === digests.length && email.unreadable.length === 0,
+    detail: { keys: digests.length, copied, unreadable: email.unreadable },
   });
 
   const exports = await listFences(deps, "export");
@@ -357,8 +362,8 @@ export async function verifyRestore(deps: RestoreDependencies): Promise<Report> 
   );
   checks.push({
     check: "no fenced export job is left to run",
-    ok: unfinished === 0,
-    detail: { unfinished },
+    ok: unfinished === 0 && exports.unreadable.length === 0,
+    detail: { unfinished, unreadable: exports.unreadable },
   });
 
   const sessions = {

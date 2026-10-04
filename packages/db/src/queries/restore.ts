@@ -147,7 +147,7 @@ async function listFencedUnfinishedExportJobs(digests: Set<string>) {
   return unfinished
     .map((job) => ({
       id: job.id,
-      digest: effectFenceDigest(`${job.ownerUserId}:${job.idempotencyKey}`),
+      digest: effectFenceDigest(ownerDataExportFenceKey(job)),
     }))
     .filter((job) => digests.has(job.digest));
 }
