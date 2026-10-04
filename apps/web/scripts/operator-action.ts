@@ -10,7 +10,7 @@ import { runOperatorCommand } from "@/lib/billing/operator-actions";
  *   pnpm --filter @tendnote/web operator extend-dunning <invoice id> <days>
  *   pnpm --filter @tendnote/web operator raise-ceiling <user id> <cost category> <dollars>
  *   pnpm --filter @tendnote/web operator suspend <user id> <reason>
- *   pnpm --filter @tendnote/web operator renew-suspension <user id>
+ *   pnpm --filter @tendnote/web operator renew-suspension <user id> <reason>
  *   pnpm --filter @tendnote/web operator lift-suspension <user id>
  *   pnpm --filter @tendnote/web operator terminate <user id> <reason>
  *   pnpm --filter @tendnote/web operator legal-hold <user id> <expiry date, YYYY-MM-DD>

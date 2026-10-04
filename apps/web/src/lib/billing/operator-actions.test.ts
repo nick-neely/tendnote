@@ -503,7 +503,9 @@ describe("the operator CLI's commands", () => {
     await op.expectNotAdmitted();
     expect(op.suspensions.suspensions[0]).toMatchObject({ reason: "Reported abuse" });
 
-    await runOperatorCommand(op.deps, ["renew-suspension", user.id]);
+    await expect(
+      runOperatorCommand(op.deps, ["renew-suspension", user.id, "Awaiting", "evidence"]),
+    ).resolves.toMatchObject({ reason: "Awaiting evidence" });
     await runOperatorCommand(op.deps, ["lift-suspension", user.id]);
     await op.expectAdmitted();
 
@@ -577,6 +579,7 @@ describe("the operator CLI's commands", () => {
       ["delete", "x"],
       ["toString", "x"],
       ["suspend", user.id],
+      ["renew-suspension", user.id],
       ["lift-suspension", user.id, "extra"],
       ["extend-dunning", "in_renewal"],
       ["extend-dunning", "in_renewal", "3", "extra"],
@@ -839,18 +842,86 @@ describe("the Suspension Credit (#631, ADR 0249)", () => {
     });
   });
 
-  it("issues none for a termination that converted no suspension", async () => {
+  it("returns the unused remainder to the card when a termination converts no suspension (#739)", async () => {
     const op = await operator();
+    const september: CreditableInvoice = {
+      ...october,
+      invoiceId: "in_sep",
+      paymentIntentId: "pi_sep",
+      invoiceLineItemId: "il_sep",
+      periodStart: new Date("2026-09-01T00:00:00.000Z"),
+      periodEnd: october.periodStart,
+    };
+    op.paidInvoices.push(september, october);
+    const TERMINATED_AT = new Date("2026-10-25T00:00:00.000Z");
+
+    const result = await terminateAccountWithCredit(op.deps, {
+      userId: user.id,
+      reason: "Abuse",
+      now: TERMINATED_AT,
+    });
+
+    expect(result.convertedSuspensionId).toBeNull();
+    expect(op.steps.slice(-3)).toEqual([
+      "record:suspension-credit",
+      "journal:suspension-credit",
+      "stripe:credit-note",
+    ]);
+    // Six unused days of October's 1500, with tax; September was used in full.
+    expect(op.deps.createCreditNote).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        invoiceId: "in_oct",
+        lineAmount: 300,
+        instrument: "card",
+        amount: 330,
+      }),
+    );
+    expect(result.suspensionCredits).toMatchObject([
+      { invoiceId: "in_oct", suspendedAmount: 0, remainderAmount: 300, instrument: "card" },
+    ]);
+    const record = op.revocations.suspensionCredits[0] as SuspensionCredit;
+    expect(record).toMatchObject({
+      suspensionId: null,
+      terminationId: result.terminationId,
+      requestedAt: TERMINATED_AT,
+    });
+    // The note carries the record without a suspension, so a restore rebuilds it.
+    expect(suspensionCreditMetadata(record)).not.toHaveProperty("suspension");
+    expect(op.journaled.at(-1)).toEqual({
+      kind: "suspension-credit",
+      accountId: user.id,
+      actionId: record.id,
+      at: TERMINATED_AT,
+    });
+
+    const again = await terminateAccountWithCredit(op.deps, { userId: user.id, reason: "Abuse" });
+
+    expect(again.resumed).toBe(true);
+    expect(again.suspensionCredits).toEqual(result.suspensionCredits);
+    expect(op.revocations.suspensionCredits).toHaveLength(1);
+    expect(op.deps.createCreditNote).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns nothing when a termination ends a Past Due subscription, whose period is unpaid (#739)", async () => {
+    const op = await operator();
+    await op.deps.subscriptions.recordSubscription({
+      userId: user.id,
+      stripeSubscriptionId: "sub_1",
+      cancelAt: null,
+      endedAt: null,
+      pastDue: { invoiceId: "in_nov", since: october.periodEnd },
+    });
+    // The last paid period was October; November's renewal failed.
     op.paidInvoices.push(october);
 
     const result = await terminateAccountWithCredit(op.deps, {
       userId: user.id,
       reason: "Abuse",
-      now: new Date("2026-10-25T00:00:00.000Z"),
+      now: new Date("2026-11-03T00:00:00.000Z"),
     });
 
+    expect(result.stripeSubscriptionId).toBe("sub_1");
     expect(result.suspensionCredits).toEqual([]);
-    expect(op.deps.listCreditableInvoices).not.toHaveBeenCalled();
     expect(op.deps.createCreditNote).not.toHaveBeenCalled();
   });
 

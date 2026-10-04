@@ -179,15 +179,25 @@ describe("Temporary Suspension (#629)", () => {
     await suspendAccount(op.deps, { userId: user.id, reason: "Review", now: SUSPENDED_AT });
     const renewedAt = new Date("2026-10-15T08:00:00.000Z");
 
-    const renewal = await renewSuspensionReview(op.deps, { userId: user.id, now: renewedAt });
+    const renewal = await renewSuspensionReview(op.deps, {
+      userId: user.id,
+      reason: " Awaiting the reporter's evidence ",
+      now: renewedAt,
+    });
 
     expect(renewal).toEqual({
       suspensionId: "suspension-1",
+      reason: "Awaiting the reporter's evidence",
       previousDeadline: new Date("2026-10-16T12:00:00.000Z"),
       reviewDeadline: new Date("2026-10-29T08:00:00.000Z"),
     });
     expect(op.suspensions.renewals).toEqual([
-      { suspensionId: "suspension-1", reviewDeadline: renewal.reviewDeadline, renewedAt },
+      {
+        suspensionId: "suspension-1",
+        reason: "Awaiting the reporter's evidence",
+        reviewDeadline: renewal.reviewDeadline,
+        renewedAt,
+      },
     ]);
     await expect(
       op.suspensions.records.findOpenSuspension({ userId: user.id }),
@@ -198,10 +208,20 @@ describe("Temporary Suspension (#629)", () => {
   it("refuses to renew when no suspension is open", async () => {
     const op = await suspensionScenario();
 
-    await expect(renewSuspensionReview(op.deps, { userId: user.id })).rejects.toThrow(
-      `Account ${user.id} has no open suspension.`,
-    );
+    await expect(
+      renewSuspensionReview(op.deps, { userId: user.id, reason: "Still reviewing" }),
+    ).rejects.toThrow(`Account ${user.id} has no open suspension.`);
     expect(op.steps).toEqual([]);
+  });
+
+  it("refuses a renewal with no reason, writing nothing", async () => {
+    const op = await suspensionScenario();
+    await suspendAccount(op.deps, { userId: user.id, reason: "Review", now: SUSPENDED_AT });
+
+    await expect(renewSuspensionReview(op.deps, { userId: user.id, reason: "  " })).rejects.toThrow(
+      "A renewal needs a reason.",
+    );
+    expect(op.suspensions.renewals).toEqual([]);
   });
 
   it("lifts as an audited, journaled transition that restores admission", async () => {

@@ -319,9 +319,9 @@ describe("Termination (#630)", () => {
 
     expect(result.convertedSuspensionId).toBe("suspension-1");
     const refusal = `Account ${user.id} is terminated; a termination is permanent.`;
-    await expect(renewSuspensionReview(op.suspensionDeps, { userId: user.id })).rejects.toThrow(
-      refusal,
-    );
+    await expect(
+      renewSuspensionReview(op.suspensionDeps, { userId: user.id, reason: "Still reviewing" }),
+    ).rejects.toThrow(refusal);
     await expect(liftSuspension(op.suspensionDeps, { userId: user.id })).rejects.toThrow(refusal);
     await expect(
       suspendAccount(op.suspensionDeps, { userId: user.id, reason: "Again" }),

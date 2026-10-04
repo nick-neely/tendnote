@@ -533,7 +533,7 @@ The permanent removal of a hosted account's admission by the operator, cancellin
 _Avoid_: Ban, deactivation, account closure
 
 **Suspension Credit**:
-The compensation a hosted account receives for days it paid for and was denied, issued once at the audited end of a Temporary Suspension against the paid invoices whose periods it overlapped. It is compensation for denied service rather than the unwinding of a sale, and it is not a cancellation proration.
+The compensation a hosted account receives for days it paid for and was denied, issued once at the audited end of a Temporary Suspension against the paid invoices whose periods it overlapped. It is compensation for denied service rather than the unwinding of a sale, and it is not a cancellation proration. A Termination adds its unused remainder to the period end, and a Termination that ends no suspension issues one for that remainder alone.
 _Avoid_: Refund, proration, service credit, discount, make-good
 
 **Legal Hold**:

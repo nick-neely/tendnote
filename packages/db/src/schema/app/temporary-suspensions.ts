@@ -36,7 +36,9 @@ export const temporarySuspensions = pgTable(
 
 /**
  * Each renewal of an open suspension's internal review deadline, audited as its
- * own append-only record. The newest one is the deadline now in force.
+ * own append-only record with the operator's reason for renewing (#740), an
+ * internal note like the suspension's own. The newest one is the deadline now
+ * in force.
  */
 export const suspensionDeadlineRenewals = pgTable(
   "suspension_deadline_renewals",
@@ -45,6 +47,7 @@ export const suspensionDeadlineRenewals = pgTable(
     suspensionId: uuid("suspension_id")
       .notNull()
       .references(() => temporarySuspensions.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(),
     reviewDeadline: timestamp("review_deadline", { withTimezone: true }).notNull(),
     renewedAt: timestamp("renewed_at", { withTimezone: true }).notNull().defaultNow(),
   },

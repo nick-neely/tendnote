@@ -161,15 +161,19 @@ export type SuspensionCreditDependencies = {
 
 /**
  * The audited exit of a Temporary Suspension, from the records: its lift, or
- * the Termination that converted it, which `terminationId` names.
+ * the Termination that converted it, which `terminationId` names. A
+ * Termination that converted no suspension is credited too, for its unused
+ * remainder alone (#739): `suspensionId` is then `null`, and `suspendedAt` is
+ * the termination time, so no suspended time is counted.
  */
 export type CreditedExit = {
   userId: string;
-  suspensionId: string;
   suspendedAt: Date;
   exitAt: Date;
-  terminationId: string | null;
-};
+} & (
+  | { suspensionId: string; terminationId: null }
+  | { suspensionId: string | null; terminationId: string }
+);
 
 /**
  * The Suspension Credit Operator Action (ADR 0249): one credit note per paid
@@ -193,9 +197,10 @@ export async function issueSuspensionCredit(
   exit: CreditedExit,
   now: Date = new Date(),
 ) {
-  const ref: SuspensionExitRef = exit.terminationId
-    ? { terminationId: exit.terminationId }
-    : { suspensionId: exit.suspensionId };
+  const ref: SuspensionExitRef =
+    exit.terminationId === null
+      ? { suspensionId: exit.suspensionId }
+      : { terminationId: exit.terminationId };
   const existing = await deps.credits.listSuspensionCreditsForExit(ref);
   const stripeCustomerId = await deps.findStripeCustomer({ userId: exit.userId });
   const invoices = stripeCustomerId ? await deps.listCreditableInvoices(stripeCustomerId) : [];

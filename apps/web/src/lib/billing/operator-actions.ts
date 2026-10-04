@@ -274,12 +274,14 @@ export async function liftSuspensionWithCredit(
 }
 
 /**
- * Terminate an account, then, when the termination converted an open
- * suspension, issue that suspension's Suspension Credit (#631): the suspended
+ * Terminate an account, then return the already-paid time it can no longer
+ * use, always back to the card. When the termination converted an open
+ * suspension, that is the suspension's Suspension Credit (#631): the suspended
  * time and the unused remainder to the period end, on one credit note per paid
- * invoice and always back to the card. A termination that converted no
- * suspension issues none. The termination commits and stops the renewal
- * first; running it again resumes both.
+ * invoice. Otherwise it is the unused remainder alone (#739), on a record that
+ * names the termination and no suspension: the operator closed the period, so
+ * the customer is not left paying for it. The termination commits and stops
+ * the renewal first; running it again resumes both and credits nothing twice.
  */
 export async function terminateAccountWithCredit(
   deps: OperatorActionDependencies,
@@ -287,15 +289,17 @@ export async function terminateAccountWithCredit(
 ) {
   const termination = await terminateAccount(deps, input);
   const suspensionId = termination.convertedSuspensionId;
-  if (!suspensionId) return { ...termination, suspensionCredits: [] };
-  const converted = await deps.getSuspension({ userId: input.userId, id: suspensionId });
-  if (!converted) throw new Error(`Suspension ${suspensionId} is not on record.`);
+  const converted = suspensionId
+    ? await deps.getSuspension({ userId: input.userId, id: suspensionId })
+    : null;
+  if (suspensionId && !converted) throw new Error(`Suspension ${suspensionId} is not on record.`);
   const suspensionCredits = await issueSuspensionCredit(
     deps,
     {
       userId: input.userId,
       suspensionId,
-      suspendedAt: converted.suspendedAt,
+      // With no suspension, nothing was denied before the termination itself.
+      suspendedAt: converted?.suspendedAt ?? termination.terminatedAt,
       exitAt: termination.terminatedAt,
       terminationId: termination.terminationId,
     },
@@ -310,7 +314,7 @@ export const OPERATOR_USAGE = `Usage:
   operator extend-dunning <invoice id> <days>
   operator raise-ceiling <user id> <interactive|background|web_search> <dollars>
   operator suspend <user id> <reason>
-  operator renew-suspension <user id>
+  operator renew-suspension <user id> <reason>
   operator lift-suspension <user id>
   operator terminate <user id> <reason>
   operator legal-hold <user id> <expiry date, YYYY-MM-DD>`;
@@ -350,8 +354,9 @@ const OPERATOR_COMMANDS: Record<string, OperatorCommand> = {
     run: (deps, userId, reason) => suspendAccount(deps, { userId, reason: reason.join(" ") }),
   },
   "renew-suspension": {
-    accepts: (rest) => rest.length === 0,
-    run: (deps, userId) => renewSuspensionReview(deps, { userId }),
+    accepts: (rest) => rest.length > 0,
+    run: (deps, userId, reason) =>
+      renewSuspensionReview(deps, { userId, reason: reason.join(" ") }),
   },
   "lift-suspension": {
     accepts: (rest) => rest.length === 0,

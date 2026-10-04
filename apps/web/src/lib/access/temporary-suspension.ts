@@ -23,6 +23,7 @@ export type TemporarySuspensionDependencies = {
     }) => Promise<TemporarySuspension>;
     renewSuspensionDeadline: (input: {
       suspensionId: string;
+      reason: string;
       reviewDeadline: Date;
       renewedAt: Date;
     }) => Promise<void>;
@@ -80,12 +81,16 @@ export async function suspendAccount(
 
 /**
  * Renew an open suspension's internal review deadline to ten business days
- * from now. Each renewal is its own audited record; admission is unchanged.
+ * from now. Each renewal is its own audited record carrying the operator's
+ * reason for renewing, so a run of renewals can be reviewed and never licenses
+ * an indefinite suspension (#740); admission is unchanged.
  */
 export async function renewSuspensionReview(
   deps: TemporarySuspensionDependencies,
-  input: { userId: string; now?: Date },
+  input: { userId: string; reason: string; now?: Date },
 ) {
+  const reason = input.reason.trim();
+  if (!reason) throw new Error("A renewal needs a reason.");
   const now = input.now ?? new Date();
   await refuseTerminated(deps.terminations, input.userId);
   const open = await deps.suspensions.findOpenSuspension({ userId: input.userId });
@@ -94,10 +99,11 @@ export async function renewSuspensionReview(
   const reviewDeadline = suspensionReviewDeadline(now);
   await deps.suspensions.renewSuspensionDeadline({
     suspensionId: open.id,
+    reason,
     reviewDeadline,
     renewedAt: now,
   });
-  return { suspensionId: open.id, previousDeadline: open.reviewDeadline, reviewDeadline };
+  return { suspensionId: open.id, reason, previousDeadline: open.reviewDeadline, reviewDeadline };
 }
 
 /**

@@ -73,9 +73,9 @@ The only ways the operator changes a customer account
 Each writes its record, and journals it, before any Stripe call. There is no
 admin UI. Every action but Delete on request and Suspension Credit is a
 command, `pnpm --filter @tendnote/web operator <action>`. The Suspension
-Credit is issued by the lift or termination that ends a suspension. It prints its outcome as JSON
-and exits non-zero with a message when it refuses or fails. Running it again
-resumes an action that failed part-way.
+Credit is issued by the lift that ends a suspension, or by a termination. Each
+command prints its outcome as JSON and exits non-zero with a message when it
+refuses or fails. Running it again resumes an action that failed part-way.
 
 | Action | Runbook |
 | --- | --- |
