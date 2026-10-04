@@ -53,6 +53,23 @@ describe("operatorAlertReadings", () => {
     ).toContainEqual({ condition: "stripe_reconciliation", firing: false });
   });
 
+  it("fires backup_surface for a history-window finding below the Backup Window", () => {
+    expect(
+      operatorAlertReadings({
+        stripeReconciliation: { status: "skipped" },
+        deletionStuck: null,
+        breaker: null,
+        backupSurfaces: {
+          status: "ran",
+          findings: [
+            // Six hours against seven days, the setting observed in production (#730).
+            { surface: "history_window", configuredSeconds: 21_600, expectedSeconds: 604_800 },
+          ],
+        },
+      }),
+    ).toEqual([{ condition: "backup_surface", firing: true }]);
+  });
+
   it("gives no reading for a read that failed or a stage that did not run, so its alert holds", () => {
     for (const backupSurfaces of [null, { status: "off" as const }]) {
       expect(
