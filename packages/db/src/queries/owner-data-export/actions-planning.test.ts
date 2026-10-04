@@ -656,9 +656,72 @@ describe("owner actions and planning export", () => {
     ).rejects.toThrow(expected);
   });
 
+  it("exports a draft's owner-owned brief entry point without exporting generated briefs", async () => {
+    const context = planningContext();
+    context.briefItems = [
+      { id: "brief-item-owned", ownerUserId: "owner-1", sensitivity: "restricted" },
+    ];
+    context.messageDrafts.push({
+      id: "draft-brief",
+      personId: "person-owned",
+      ownerUserId: "owner-1",
+      channel: "email",
+      purpose: "check_in",
+      body: "Hello",
+      status: "draft",
+      createdAt: NOW,
+      updatedAt: NOW,
+      sourceRefs: [
+        {
+          kind: "brief_item",
+          id: "brief-item-owned",
+          label: "Morning brief entry",
+          trust: "entry_point",
+        },
+      ],
+    });
+    const archive = await generateOwnerDataExportArchive({
+      ownerUserId: "owner-1",
+      account: ACCOUNT,
+      now: NOW,
+      expiresAt: new Date("2026-08-20T12:00:00.000Z"),
+      relationshipContext: emptyRelationshipContext(),
+      actionsPlanningContext: context,
+    });
+    const entries = readStoredZipEntries(archive.bytes);
+    const drafts = JSON.parse(entries.get("resources/drafts/message-drafts-v1.json") ?? "null");
+    expect(drafts.records[0].sourceRefs).toContainEqual({
+      kind: "brief_item",
+      id: "brief-item-owned",
+      label: "Morning brief entry",
+      trust: "entry_point",
+    });
+    expect([...entries.keys()].some((path) => path.includes("brief"))).toBe(false);
+    const manifest = JSON.parse(entries.get("manifest.json") ?? "null");
+    expect(manifest.resources).toContainEqual(
+      expect.objectContaining({
+        path: "resources/drafts/message-drafts-v1.json",
+        sensitivity: "restricted",
+      }),
+    );
+    context.briefItems = [
+      { id: "brief-item-owned", ownerUserId: "owner-2", sensitivity: "restricted" },
+    ];
+    await expect(
+      generateOwnerDataExportArchive({
+        ownerUserId: "owner-1",
+        account: ACCOUNT,
+        now: NOW,
+        expiresAt: new Date("2026-08-20T12:00:00.000Z"),
+        relationshipContext: emptyRelationshipContext(),
+        actionsPlanningContext: context,
+      }),
+    ).rejects.toThrow("references brief item brief-item-owned outside the owner export");
+  });
+
   it.each([
     {
-      name: "the valid but ungrounded brief_item kind",
+      name: "a brief item outside the owner export",
       ref: {
         kind: "brief_item",
         id: "brief-item-owned",
@@ -711,7 +774,9 @@ describe("owner actions and planning export", () => {
         actionsPlanningContext: context,
       }),
     ).rejects.toThrow(
-      `message draft draft-unsupported-ref has unsupported source reference kind ${expectedKind}`,
+      expectedKind === "brief_item"
+        ? "message draft draft-unsupported-ref references brief item brief-item-owned outside the owner export."
+        : `message draft draft-unsupported-ref has unsupported source reference kind ${expectedKind}`,
     );
   });
 

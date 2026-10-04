@@ -27,11 +27,11 @@ export type ExtractionJobLifecycleStore = {
   createExtractionJob: (job: CreateExtractionJobInput) => Promise<ExtractionJob>;
   findExtractionJobByIdempotencyKey: (idempotencyKey: string) => Promise<ExtractionJob | null>;
   getExtractionJob: (jobId: string) => Promise<ExtractionJob | null>;
-  // Claims a single job by id if it is in a claimable state (pending or failed)
+  // Claims a single job by id if pending, failed, or its running claim expired
   // and due (runAfter <= now), atomically flipping it to running and bumping the
   // attempt count. Returns null when the job is not claimable.
   claimExtractionJob: (input: { jobId: string; now: Date }) => Promise<ExtractionJob | null>;
-  // Claims the next due job (FIFO by runAfter) for queue-less polling. Returns
+  // Claims the next due job, including expired runs (FIFO by runAfter). Returns
   // null when nothing is claimable.
   claimNextExtractionJob: (input: { now: Date }) => Promise<ExtractionJob | null>;
   updateExtractionJob: (input: UpdateExtractionJobInput) => Promise<ExtractionJob>;
