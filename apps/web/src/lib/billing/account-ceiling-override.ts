@@ -52,7 +52,7 @@ export async function raiseAccountCeiling(
     throw new Error(`A cost category is one of ${COST_CATEGORIES.join(", ")}.`);
   }
   const ceilingMicroUsd = Math.round(input.ceilingUsd * MICRO_USD_PER_USD);
-  if (!Number.isSafeInteger(ceilingMicroUsd)) {
+  if (!Number.isSafeInteger(ceilingMicroUsd) || ceilingMicroUsd <= 0) {
     throw new Error("An Account Ceiling is an amount in dollars, such as 20 or 1.75.");
   }
   const now = input.now ?? new Date();

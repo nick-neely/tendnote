@@ -169,6 +169,16 @@ describe("raising the Account Ceiling for the current period (#633)", () => {
         now: NOW,
       }),
     ).rejects.toThrow("An Account Ceiling is an amount in dollars");
+    for (const ceilingUsd of [0, -5]) {
+      await expect(
+        raiseAccountCeiling(op.deps, {
+          userId: USER,
+          category: "background",
+          ceilingUsd,
+          now: NOW,
+        }),
+      ).rejects.toThrow("An Account Ceiling is an amount in dollars");
+    }
     await expect(
       raiseAccountCeiling(operator(null).deps, {
         userId: USER,

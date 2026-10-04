@@ -554,6 +554,11 @@ describe("the operator CLI's commands", () => {
       ["extend-dunning", "in_renewal", "3", "extra"],
       ["raise-ceiling", user.id, "interactive"],
       ["raise-ceiling", user.id, "interactive", "20", "extra"],
+      ["extend-dunning", "in_renewal", "2.5"],
+      ["extend-dunning", "in_renewal", ""],
+      ["raise-ceiling", user.id, "interactive", "1e1"],
+      ["raise-ceiling", user.id, "interactive", "-5"],
+      ["raise-ceiling", user.id, "interactive", ""],
     ]) {
       await expect(runOperatorCommand(op.deps, argv)).rejects.toThrow(OPERATOR_USAGE);
     }

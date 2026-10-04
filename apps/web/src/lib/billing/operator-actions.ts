@@ -309,6 +309,11 @@ export const OPERATOR_USAGE = `Usage:
   operator lift-suspension <user id>
   operator terminate <user id> <reason>`;
 
+/** A whole number of days, as an operator types one. */
+const WHOLE_NUMBER = /^\d+$/;
+/** An amount in dollars, as an operator types one: `20` or `1.75`. */
+const DOLLARS = /^\d+(\.\d+)?$/;
+
 type OperatorCommand = {
   /** Whether the arguments after the id are acceptable. */
   accepts: (rest: readonly string[]) => boolean;
@@ -326,11 +331,11 @@ const OPERATOR_COMMANDS: Record<string, OperatorCommand> = {
     run: (deps, stripeDisputeId) => readmitAfterWonDispute(deps, { stripeDisputeId }),
   },
   "extend-dunning": {
-    accepts: (rest) => rest.length === 1,
+    accepts: (rest) => rest.length === 1 && WHOLE_NUMBER.test(rest[0] ?? ""),
     run: (deps, invoiceId, [days]) => extendDunning(deps, { invoiceId, days: Number(days) }),
   },
   "raise-ceiling": {
-    accepts: (rest) => rest.length === 2,
+    accepts: (rest) => rest.length === 2 && DOLLARS.test(rest[1] ?? ""),
     run: (deps, userId, [category = "", dollars]) =>
       raiseAccountCeiling(deps, { userId, category, ceilingUsd: Number(dollars) }),
   },
