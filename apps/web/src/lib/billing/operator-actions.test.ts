@@ -902,7 +902,7 @@ describe("the Suspension Credit (#631, ADR 0249)", () => {
     expect(op.deps.createCreditNote).toHaveBeenCalledTimes(1);
   });
 
-  it("returns nothing when a termination ends a Past Due subscription, whose period is unpaid (#739)", async () => {
+  it("returns nothing when a termination ends a Past Due subscription, whose last paid period already ended (#739)", async () => {
     const op = await operator();
     await op.deps.subscriptions.recordSubscription({
       userId: user.id,

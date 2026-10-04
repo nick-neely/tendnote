@@ -177,10 +177,10 @@ export type CreditedExit = {
 
 /**
  * The Suspension Credit Operator Action (ADR 0249): one credit note per paid
- * invoice whose period the suspension overlaps, crediting that invoice's
+ * invoice whose period the denied time overlaps, crediting that invoice's
  * subscription line by the time-based amount, issued whenever that is at least
  * one cent. A Termination also returns the unused remainder, on the same credit
- * note.
+ * note; one that converted no suspension returns that remainder alone (#739).
  *
  * The money goes onto the customer credit balance when the subscription will
  * produce a future invoice to consume it, and back to the card otherwise: when
@@ -240,8 +240,8 @@ export async function issueSuspensionCredit(
 }
 
 /**
- * Write the record for one invoice's credit, or return `null` when the
- * suspension earns that invoice less than a cent. The instrument is read here,
+ * Write the record for one invoice's credit, or return `null` when the exit
+ * earns that invoice less than a cent. The instrument is read here,
  * once: a renewing subscription takes the balance, anything else the card.
  */
 async function openSuspensionCredit(

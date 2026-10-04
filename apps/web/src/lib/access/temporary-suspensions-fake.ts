@@ -20,12 +20,9 @@ export function createTemporarySuspensionsFake(
 ) {
   const steps = input.steps ?? [];
   const suspensions: (TemporarySuspension & { reason: string })[] = [];
-  const renewals: {
-    suspensionId: string;
-    reason: string;
-    reviewDeadline: Date;
-    renewedAt: Date;
-  }[] = [];
+  const renewals: Parameters<
+    TemporarySuspensionDependencies["suspensions"]["renewSuspensionDeadline"]
+  >[0][] = [];
 
   function inForce(row: (typeof suspensions)[number] | undefined): TemporarySuspension | null {
     if (!row) return null;

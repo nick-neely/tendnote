@@ -289,10 +289,11 @@ export async function terminateAccountWithCredit(
 ) {
   const termination = await terminateAccount(deps, input);
   const suspensionId = termination.convertedSuspensionId;
-  const converted = suspensionId
-    ? await deps.getSuspension({ userId: input.userId, id: suspensionId })
-    : null;
-  if (suspensionId && !converted) throw new Error(`Suspension ${suspensionId} is not on record.`);
+  let converted: { suspendedAt: Date } | null = null;
+  if (suspensionId) {
+    converted = await deps.getSuspension({ userId: input.userId, id: suspensionId });
+    if (!converted) throw new Error(`Suspension ${suspensionId} is not on record.`);
+  }
   const suspensionCredits = await issueSuspensionCredit(
     deps,
     {
