@@ -200,10 +200,15 @@ async function rerecordedMoney(terminationId: string) {
   const refunds = await findRecordedOperatorActions({ kind: "refund", actionIds: [refund.id] });
   check("the refund is then on record", refunds?.has(refund.id) === true, refunds);
 
+  // Another account's suspension: held, but not this account's to name.
+  const [others] = await getDb()
+    .insert(temporarySuspensions)
+    .values({ userId: ids.owner, reason: "live check", reviewDeadline: NOW })
+    .returning({ id: temporarySuspensions.id });
   const credit = {
     id: randomUUID(),
     userId: ids.rerecorded,
-    suspensionId: randomUUID(),
+    suspensionId: others?.id as string,
     terminationId,
     stripeSubscriptionId: `sub_${run}`,
     invoiceId: `in_${run}`,
@@ -227,7 +232,7 @@ async function rerecordedMoney(terminationId: string) {
     .from(suspensionCredits)
     .where(eq(suspensionCredits.id, credit.id));
   check(
-    "it keeps the termination it holds, and stores a suspension it does not hold as none",
+    "it keeps its own termination, and stores another account's suspension as none",
     stored?.terminationId === terminationId && stored.suspensionId === null,
     stored,
   );

@@ -58,60 +58,48 @@ export const RERECORDED_TERMINATION_REASON =
  */
 const STRIPE_CLOCK_SKEW_MS = 60 * 60 * 1000;
 
-/** The kinds whose Operator Action cannot safely be run again, so a restore re-records them. */
-const RERECORDED_KINDS: ReadonlySet<OperatorRecordKind> = new Set([
-  "termination",
-  "suspension-lift",
-  "refund",
-  "suspension-credit",
-]);
-
-export function isRerecordedKind(kind: OperatorRecordKind): boolean {
-  return RERECORDED_KINDS.has(kind);
-}
+type Rerecord = (store: OperatorRecordRestore, record: OperatorRecord) => Promise<boolean>;
 
 /**
- * Re-records one journaled Operator Action the restored data has no record of,
- * under the journal's action id and time, and says whether it did. Keeping the
- * id takes the action off the missing list, and lets the email fences copied in
- * from production, which are keyed by record id, silence any confirmation the
- * Stripe replay would otherwise send again.
+ * How each kind whose Operator Action cannot safely be run again is
+ * re-recorded under the journal's action id and time; every other kind is the
+ * operator's. Each says whether it wrote. Keeping the id takes the action off
+ * the missing list, and lets the email fences copied in from production, which
+ * are keyed by record id, silence any confirmation the Stripe replay would
+ * otherwise send again.
  *
  * A refund or Suspension Credit is rebuilt from the Stripe object that carries
  * its record; one made before they carried it is not found, and stays for the
  * operator. A Termination is rebuilt from the journal alone, so its retention
  * deadline runs from when it happened.
  */
-export async function rerecordOperatorAction(
-  store: OperatorRecordRestore,
-  record: OperatorRecord,
-): Promise<boolean> {
-  const { actionId: id, accountId: userId, at } = record;
-  switch (record.kind) {
-    case "termination":
-      return store.rerecordTermination({
-        id,
-        userId,
-        reason: RERECORDED_TERMINATION_REASON,
-        terminatedAt: at,
-        retentionDeadline: terminationRetentionDeadline(at),
-      });
-    case "suspension-lift":
-      return store.rerecordSuspensionLift({ id, userId, liftedAt: at });
-    case "refund": {
-      const refund = await store.findStripeRefund({
-        refundRecordId: id,
-        createdSince: new Date(at.getTime() - STRIPE_CLOCK_SKEW_MS),
-      });
-      if (!refund) return false;
-      return store.rerecordRefund({ ...refund, userId, requestedAt: at, revokedAt: null });
-    }
-    case "suspension-credit": {
-      const credit = await store.findStripeSuspensionCredit({ userId, suspensionCreditId: id });
-      if (!credit) return false;
-      return store.rerecordSuspensionCredit({ ...credit, userId, requestedAt: at });
-    }
-    default:
-      return false;
-  }
+const RERECORD: Partial<Record<OperatorRecordKind, Rerecord>> = {
+  termination: (store, { actionId: id, accountId: userId, at }) =>
+    store.rerecordTermination({
+      id,
+      userId,
+      reason: RERECORDED_TERMINATION_REASON,
+      terminatedAt: at,
+      retentionDeadline: terminationRetentionDeadline(at),
+    }),
+  "suspension-lift": (store, { actionId: id, accountId: userId, at }) =>
+    store.rerecordSuspensionLift({ id, userId, liftedAt: at }),
+  refund: async (store, { actionId: id, accountId: userId, at }) => {
+    const refund = await store.findStripeRefund({
+      refundRecordId: id,
+      createdSince: new Date(at.getTime() - STRIPE_CLOCK_SKEW_MS),
+    });
+    if (!refund) return false;
+    return store.rerecordRefund({ ...refund, userId, requestedAt: at, revokedAt: null });
+  },
+  "suspension-credit": async (store, { actionId: id, accountId: userId, at }) => {
+    const credit = await store.findStripeSuspensionCredit({ userId, suspensionCreditId: id });
+    if (!credit) return false;
+    return store.rerecordSuspensionCredit({ ...credit, userId, requestedAt: at });
+  },
+};
+
+/** The re-recording for this kind, or `undefined` when the operator handles it. */
+export function rerecordingFor(kind: OperatorRecordKind): Rerecord | undefined {
+  return RERECORD[kind];
 }

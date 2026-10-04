@@ -166,12 +166,12 @@ The times below are examples. Use the restore date in branch names.
 
    | Kind | Action |
    | --- | --- |
-   | `suspension` | Re-run `operator suspend <account> <reason>`. It moves no money. A terminated account refuses it, and needs nothing more. |
+   | `suspension` | Re-run `operator suspend <account> <reason>`. It moves no money. An account whose termination was re-recorded refuses it; its termination then converted no suspension, so record the suspension in the Incident Record. |
    | `grant` | Re-run `operator extend-dunning` or `operator readmit-dispute`, whichever the account's billing state shows it was. |
    | `ceiling-override` | Re-run `operator raise-ceiling` with the original category and amount. |
-   | `termination` | Listed only when the account is gone or already holds another termination. Do not re-run: Stripe already stopped renewal and issued any credit. Record it in the Incident Record. |
-   | `suspension-lift` | Listed only when the suspension it names is not open in the restored data, such as one this restore re-created with `operator suspend`. Do not re-run, because it would issue the Suspension Credit again. Re-record the lift without the credit by running this against `RESTORE_URL`: `update temporary_suspensions set lifted_at = '<at>' where id = '<id>' and lifted_at is null`. Confirm that exactly one row was updated. `<at>` is the lift entry's time. `<id>` is the suspension id `operator suspend` printed. |
-   | `refund`, `suspension-credit` | Listed only when no Stripe object carries the record, as with one made before refunds and credit notes carried it. Do not re-run, because the money already moved in Stripe. Record each in the Incident Record. A refund also shows as an unmatched-refund alert until it is recorded. |
+   | `termination` | Listed when it could not be re-recorded: the account is gone, it already holds another termination, or the attempt is in `rerecordFailed`. Do not re-run: Stripe already stopped renewal and issued any credit. Record it in the Incident Record. |
+   | `suspension-lift` | Listed when the suspension it names is not open in the restored data, such as one this restore re-created with `operator suspend`, or when the attempt is in `rerecordFailed`. Do not re-run, because it would issue the Suspension Credit again. Re-record the lift without the credit by running this against `RESTORE_URL`: `update temporary_suspensions set lifted_at = '<at>' where id = '<id>' and lifted_at is null`. Confirm that exactly one row was updated. `<at>` is the lift entry's time. `<id>` is the suspension id `operator suspend` printed. |
+   | `refund`, `suspension-credit` | Listed when no Stripe object carries the record, as with one made before refunds and credit notes carried it; when a Suspension Credit's account had no Stripe customer at the restore point; or when the attempt is in `rerecordFailed`. Do not re-run, because the money already moved in Stripe. Record each in the Incident Record. A refund also shows as an unmatched-refund alert until it is recorded. |
 
    `unchecked` lists records with nothing to check them against yet, such as a
    Legal Hold. Re-apply each by hand. Run every `operator` command with

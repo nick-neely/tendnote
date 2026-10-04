@@ -23,7 +23,6 @@ import {
 import { createDrizzleHouseholdPurgeStore } from "./households/drizzle-purge-store";
 import { reapplyHouseholdDeletionRecord } from "./households/purge";
 import type { RefundRecord } from "./paid-access-revocations";
-import { getLiveSubscription } from "./stripe-subscriptions";
 import type { SuspensionCredit } from "./suspension-credits";
 
 /**
@@ -154,13 +153,20 @@ async function canRerecord(id: string, userId: string): Promise<boolean> {
   return Boolean(row);
 }
 
-/** The id when a row of `table` holds it, else `null`, so a lost reference is stored as none. */
-async function heldId(
-  source: { table: PgTable; id: PgColumn },
+/**
+ * The id when the account's own row of `table` holds it, else `null`, so a
+ * reference the restored data lost is stored as none.
+ */
+async function ownHeldIdOrNull(
+  source: { table: PgTable; id: PgColumn; userId: PgColumn },
+  userId: string,
   id: string | null,
 ): Promise<string | null> {
   if (id === null || !UUID.test(id)) return null;
-  const [row] = await getDb().select({ id: source.id }).from(source.table).where(eq(source.id, id));
+  const [row] = await getDb()
+    .select({ id: source.id })
+    .from(source.table)
+    .where(and(eq(source.id, id), eq(source.userId, userId)));
   return row ? id : null;
 }
 
@@ -182,8 +188,9 @@ async function suspensionOpenBy(userId: string, at: Date): Promise<string | null
 
 /**
  * A Termination, timed when it happened. It converted the suspension the
- * account still has open from before then, if any, and stopped the renewal of
- * the subscription the account still has live.
+ * account still has open from before then, if any. The subscription whose
+ * renewal it stopped stays unrecorded: the original stores it only once Stripe
+ * confirms, and the restored data cannot say which one that was.
  */
 export async function rerecordTermination(input: {
   id: string;
@@ -193,13 +200,11 @@ export async function rerecordTermination(input: {
   retentionDeadline: Date;
 }): Promise<boolean> {
   if (!(await canRerecord(input.id, input.userId))) return false;
-  const live = await getLiveSubscription({ userId: input.userId });
   const written = await getDb()
     .insert(terminations)
     .values({
       ...input,
       suspensionId: await suspensionOpenBy(input.userId, input.terminatedAt),
-      stripeSubscriptionId: live?.stripeSubscriptionId ?? null,
     })
     .onConflictDoNothing()
     .returning({ id: terminations.id });
@@ -248,12 +253,18 @@ export async function rerecordSuspensionCredit(record: SuspensionCredit): Promis
     .insert(suspensionCredits)
     .values({
       ...record,
-      suspensionId: await heldId(
-        { table: temporarySuspensions, id: temporarySuspensions.id },
+      suspensionId: await ownHeldIdOrNull(
+        {
+          table: temporarySuspensions,
+          id: temporarySuspensions.id,
+          userId: temporarySuspensions.userId,
+        },
+        record.userId,
         record.suspensionId,
       ),
-      terminationId: await heldId(
-        { table: terminations, id: terminations.id },
+      terminationId: await ownHeldIdOrNull(
+        { table: terminations, id: terminations.id, userId: terminations.userId },
+        record.userId,
         record.terminationId,
       ),
     })

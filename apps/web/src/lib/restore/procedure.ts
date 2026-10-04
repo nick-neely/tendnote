@@ -15,7 +15,7 @@ import {
   recoveryJournalPrefix,
 } from "@tendnote/domain";
 import type { StripeReconciliationResult } from "@/lib/billing/stripe-reconciliation";
-import { isRerecordedKind, type OperatorRecordRestore, rerecordOperatorAction } from "./rerecord";
+import { type OperatorRecordRestore, rerecordingFor } from "./rerecord";
 
 /**
  * The scripted steps of a whole-service restore (#623, ADR 0250), each one
@@ -261,9 +261,11 @@ function show(record: OperatorRecord) {
 async function rerecordMissing(deps: RestoreDependencies, missing: OperatorRecord[]) {
   const rerecorded: OperatorRecord[] = [];
   const failed: (OperatorRecord & { error: string })[] = [];
-  for (const record of missing.filter((each) => isRerecordedKind(each.kind))) {
+  for (const record of missing) {
+    const rerecord = rerecordingFor(record.kind);
+    if (!rerecord) continue;
     try {
-      if (await rerecordOperatorAction(deps.operatorRecords, record)) rerecorded.push(record);
+      if (await rerecord(deps.operatorRecords, record)) rerecorded.push(record);
     } catch (error) {
       failed.push({ ...record, error: errorMessage(error) });
     }
@@ -294,7 +296,7 @@ export async function reconcileAdmission(deps: RestoreDependencies): Promise<Rep
   const fences = await markFencedEffects(deps);
   if (!fences.ok) return { ok: false, fences };
   const { byKind, unreadable } = await readOperatorRecords(deps);
-  const rerecord = await rerecordMissing(deps, (await findUnrecorded(deps, byKind)).missing);
+  const restored = await rerecordMissing(deps, (await findUnrecorded(deps, byKind)).missing);
   const stripe = await deps.reconcileStripe();
   const { missing, unchecked } = await findUnrecorded(deps, byKind);
 
@@ -303,10 +305,10 @@ export async function reconcileAdmission(deps: RestoreDependencies): Promise<Rep
       stripe.status === "ran" &&
       stripe.failed === 0 &&
       unreadable.length === 0 &&
-      rerecord.failed.length === 0,
+      restored.failed.length === 0,
     stripe,
-    rerecorded: rerecord.rerecorded.map(show),
-    rerecordFailed: rerecord.failed.map(show),
+    rerecorded: restored.rerecorded.map(show),
+    rerecordFailed: restored.failed.map(show),
     missing: missing.map(show),
     unchecked: unchecked.map(show),
     unreadable,
