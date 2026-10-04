@@ -211,6 +211,7 @@ Proactive delivery is strictly opt-in: the sender returns `null` when unconfigur
 | `embedding` | 60 / 60s | Embedding model spend |
 | `provider-call` | 60 / 60s | Outbound Google and Discord calls |
 | `push-delivery` | 120 / 60s | Per-installation Web Push attempts |
+| `diagnostic-report` | 10 / 60s | Per-account browser error reports forwarded to GlitchTip |
 | `household-invitation-inviter` | 10 / hour | One person's sends |
 | `household-invitation-household` | 15 / hour | All co-owners' sends, combined |
 | `household-invitation-recipient` | 5 / day | One mailbox, regardless of who is inviting |

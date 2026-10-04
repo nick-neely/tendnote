@@ -9,5 +9,9 @@ export {
   suppressRequestFunnelStage,
   sweepAccountFunnelEvents,
 } from "./account-telemetry/funnel-writes";
-export { isTelemetryOptedOut, setTelemetryOptedOut } from "./account-telemetry/opt-out";
+export {
+  allowsErrorReports,
+  isTelemetryOptedOut,
+  setTelemetryOptedOut,
+} from "./account-telemetry/opt-out";
 export { readAccountFunnelReport } from "./account-telemetry/report";

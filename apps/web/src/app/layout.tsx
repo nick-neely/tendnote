@@ -1,5 +1,6 @@
 import { plexFontVariables } from "@tendnote/ui/fonts";
 import type { Metadata, Viewport } from "next";
+import { BrowserDiagnostics } from "@/components/browser-diagnostics";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -68,6 +69,7 @@ export default function RootLayout({
             <TooltipProvider>{children}</TooltipProvider>
           </ReversibleMutationProvider>
           <Toaster position="bottom-center" />
+          <BrowserDiagnostics />
         </ThemeProvider>
       </body>
     </html>
