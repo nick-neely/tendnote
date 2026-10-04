@@ -86,6 +86,7 @@ the bounded publication evidence path.
 - [0255 - The Spend Breaker sheds in stages past its daily ceiling](0255-the-spend-breaker-sheds-in-stages-past-its-daily-ceiling.md)
 - [0256 - Next dev validates in process and compiles React natively](0256-next-dev-validates-in-process-and-compiles-react-natively.md)
 - [0257 - GlitchTip reports are built by hand, with no SDK](0257-glitchtip-reports-are-built-by-hand-with-no-sdk.md)
+- [0258 - Operator alerts are condition episodes, sent by email and ntfy](0258-operator-alerts-are-condition-episodes-sent-by-email-and-ntfy.md)
 
 The catalog intentionally omits the Phase 9a planning workspace. That
 workspace remains useful to maintainers, but it is not a newcomer evidence
