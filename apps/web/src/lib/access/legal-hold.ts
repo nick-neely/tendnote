@@ -32,7 +32,8 @@ function startOfUtcDate(date: string): Date | null {
  * Stripe. The record is written, then journaled.
  *
  * A hold cannot be shortened. A later expiry is a second hold, and the latest
- * expiry governs. Running the same hold again journals the same record again.
+ * expiry governs. Running the same hold again journals the same record again,
+ * which is how a failed journal write is finished.
  */
 export async function placeLegalHold(
   deps: LegalHoldDependencies,
@@ -49,11 +50,20 @@ export async function placeLegalHold(
     expiresAt,
     placedAt: now,
   });
-  await deps.journal.write({
-    kind: "legal-hold",
-    accountId: hold.userId,
-    actionId: hold.id,
-    at: hold.placedAt,
-  });
+  // The hold is in force once its row commits. A restore only finds it
+  // through the journal, so a failed write must be retried, not left alone.
+  try {
+    await deps.journal.write({
+      kind: "legal-hold",
+      accountId: hold.userId,
+      actionId: hold.id,
+      at: hold.placedAt,
+    });
+  } catch (error) {
+    throw new Error(
+      `Legal Hold ${hold.id} is in force but not yet journaled, so a restore would lose it. Run the same command again until it succeeds.`,
+      { cause: error },
+    );
+  }
   return { holdId: hold.id, userId: hold.userId, heldUntil: hold.expiresAt };
 }

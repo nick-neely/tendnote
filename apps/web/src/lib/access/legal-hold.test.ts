@@ -45,6 +45,27 @@ describe("placing a Legal Hold (#632)", () => {
     ]);
   });
 
+  it("says how to finish a hold whose journal write failed, and finishes it on the rerun", async () => {
+    const op = legalHold();
+    const write = op.deps.journal.write;
+    op.deps.journal.write = async () => {
+      throw new Error("blob store unavailable");
+    };
+
+    await expect(
+      placeLegalHold(op.deps, { userId: "u1", expiresOn: "2027-01-31", now: NOW }),
+    ).rejects.toThrow(
+      "Legal Hold hold_1 is in force but not yet journaled, so a restore would lose it. Run the same command again until it succeeds.",
+    );
+
+    op.deps.journal.write = write;
+    await placeLegalHold(op.deps, { userId: "u1", expiresOn: "2027-01-31", now: LATER });
+    expect(op.holds).toHaveLength(1);
+    expect(op.journaled).toEqual([
+      { kind: "legal-hold", accountId: "u1", actionId: "hold_1", at: NOW },
+    ]);
+  });
+
   it("extends a hold with a second record rather than changing the first", async () => {
     const op = legalHold();
 
