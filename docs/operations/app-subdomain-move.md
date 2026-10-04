@@ -39,9 +39,22 @@ pre-launch tabletop, so both run on the final origin.
    deploys as its own project, the Eve project, note the current value of `BETTER_AUTH_URL`, and of `TENDNOTE_WEB_URL` or
    `NEXT_PUBLIC_APP_URL` on Eve if either is set. These are the values rollback
    restores.
+6. **Webhook endpoints are listed.** Providers POST webhooks to a fixed URL,
+   and the apex redirect from step 4 cannot be relied on to carry them, so an
+   endpoint left on `tendnote.com` stops receiving at the move. The
+   [cutover decision](../phase-9b/private-beta-migration-and-app-subdomain-cutover.md)
+   creates the live Stripe webhook directly on `app.tendnote.com` at Stage 2,
+   and the Resend `email.received` webhook for support-email alerts
+   ([ADR 0258](../adr/0258-operator-alerts-are-condition-episodes-sent-by-email-and-ntfy.md))
+   belongs there too. In the Stripe dashboard (live and test mode) and the
+   Resend dashboard, note any endpoint whose URL is on `tendnote.com`:
+   `/api/stripe/webhook` or `/api/resend/webhook`. Usually there is none.
 
-Nothing else carries the origin. The Resend sending domain, the Web Push VAPID
-subject (`mailto:`), and the Vercel cron and queue triggers do not change.
+Nothing else carries the origin. Stripe Checkout and billing-portal return
+URLs are built from `BETTER_AUTH_URL` per session. The marketing app already
+links to `app.tendnote.com`. The Resend sending domain, the Web Push VAPID
+subject (`mailto:`), the status page URL, and the Vercel cron and queue
+triggers do not change.
 
 ## Steps
 
@@ -57,6 +70,12 @@ subject (`mailto:`), and the Vercel cron and queue triggers do not change.
      `https://app.tendnote.com/eve/v1/discord`. Discord verifies the endpoint
      when you save it, so a failed save means the Eve deployment is not
      answering on the new origin yet.
+   - Each webhook endpoint from precondition 6: edit its URL in place to the
+     same path on `https://app.tendnote.com`, rather than creating a new
+     endpoint, which would come with a new signing secret. Then confirm the
+     signing secret the dashboard shows still matches `STRIPE_WEBHOOK_SECRET`
+     or `RESEND_WEBHOOK_SECRET`; if it does not, update the variable and
+     redeploy.
 4. Redirect `tendnote.com` (and `www.tendnote.com`, if attached) to
    `app.tendnote.com` in the project's Domains settings with status **307**.
    Use a temporary redirect for the whole of Stage 1: browsers cache a
@@ -87,7 +106,11 @@ origin:
    `https://app.tendnote.com`, and both links work.
 7. One cron pass (`/api/cron/background-jobs`) and one queue job complete in the
    Vercel logs.
-8. Remove the installed PWA, reinstall it from `app.tendnote.com`, turn
+8. Each endpoint moved in step 3 shows a successful delivery on its new URL.
+   For Stripe, resend a recent event to the endpoint from the dashboard. For
+   Resend, send a message to the support address and receive the "New support
+   email" alert. Skip this check if precondition 6 listed none.
+9. Remove the installed PWA, reinstall it from `app.tendnote.com`, turn
    reminders back on, and receive a push notification. Push subscriptions
    belong to an origin, so installs from `tendnote.com` no longer receive them.
 
@@ -98,8 +121,8 @@ Available until Stage 2 begins:
 1. Restore the values recorded in precondition 5 and redeploy
    Production.
 2. Remove the domain redirect from `tendnote.com`.
-3. Point the GitHub callback and the Discord Interactions Endpoint URL back at
-   `tendnote.com`.
+3. Point the GitHub callback, the Discord Interactions Endpoint URL, and any
+   webhook endpoint moved in step 3 back at `tendnote.com`.
 
 The dual-registered Google and Discord OAuth redirects need nothing. Once
 Stage 2 begins, remove the `tendnote.com` OAuth registrations and fix forward on

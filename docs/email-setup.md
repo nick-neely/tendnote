@@ -254,7 +254,10 @@ from Resend's inbound mail:
    copy to a Resend receiving address.
 2. In Resend, add a webhook for the `email.received` event pointing at
    `https://<app origin>/api/resend/webhook`, and set its signing secret as
-   `RESEND_WEBHOOK_SECRET`.
+   `RESEND_WEBHOOK_SECRET`. On the hosted service the app origin is
+   `app.tendnote.com`. The apex redirect cannot be relied on to carry webhooks,
+   so an endpoint registered on `tendnote.com` has to move with the product
+   ([the move runbook](operations/app-subdomain-move.md)).
 3. Set `TENDNOTE_OPERATOR_ALERT_EMAIL`, `TENDNOTE_OPERATOR_ALERT_PUSH_URL`, or
    both (see `apps/web/.env.example`).
 
