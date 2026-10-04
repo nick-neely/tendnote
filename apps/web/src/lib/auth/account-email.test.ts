@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+// The restore hold (#623) reads the database before every Resend send.
+vi.mock("@tendnote/db/queries/outbound-pause", () => ({ isOutboundPaused: async () => false }));
+vi.mock("@tendnote/db/queries/restored-email-fences", () => ({
+  isRestoredEmailFenced: async () => false,
+}));
 
 const { resendSend, afterCallbacks } = vi.hoisted(() => ({
   resendSend: vi.fn(),

@@ -1,4 +1,4 @@
-import type { EffectFences } from "@tendnote/domain";
+import { type EffectFences, ownerDataExportFenceKey } from "@tendnote/domain";
 import { blobEffectFences } from "../effect-fences/blob";
 import {
   createDrizzleOwnerDataExportArtifactStore,
@@ -238,7 +238,7 @@ async function fenceDelivery(fences: EffectFences, job: OwnerDataExportJob, now:
   try {
     await fences.write({
       effect: "export",
-      key: `${job.ownerUserId}:${job.idempotencyKey}`,
+      key: ownerDataExportFenceKey(job),
       at: now,
     });
   } catch {

@@ -43,7 +43,8 @@ before enabling reads. File reads are authenticated, private, and uncached.
 Configure the same private store's `BLOB_READ_WRITE_TOKEN` in Web and Agent.
 The Recovery Journal (ADR 0250) shares this store: Deletion Records live under
 `journal/` and Effect Fences under `fence/`, which file deletion never touches,
-so the same token is also what lets account deletion complete.
+so the same token is also what lets account deletion complete. A restore's
+cutover markers live under `journal/_cutover/` ([restore runbook](../operations/restore.md)).
 The token stays server-side. Development must use a separate store from production.
 A development-only store was provisioned for this change; production is not changed.
 
