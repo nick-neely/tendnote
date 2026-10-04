@@ -8,11 +8,15 @@ import { assertHouseholdAccountDeletionAllowed } from "@tendnote/db/queries/hous
 import { getStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
 import { HouseholdValidationError } from "@tendnote/domain";
 import { APIError } from "better-auth/api";
+import { sendPurgeConfirmationEmail } from "@/lib/access/deletion-notice-email";
 import { cancelSubscriptionsForDeletion } from "@/lib/billing/deletion-cancellation";
 
 type RevokeSessions = AccountDeletionDependencies["revokeSessions"];
 
-/** Self-service deletion's production wiring, shared by the request and the recovery cron. */
+/**
+ * Account deletion's production wiring, shared by the owner's request, the
+ * retention-deadline purge, and the recovery cron.
+ */
 export function accountDeletionDependencies(
   revokeSessions: RevokeSessions,
 ): AccountDeletionDependencies {
@@ -29,6 +33,7 @@ export function accountDeletionDependencies(
         account,
       );
     },
+    confirmPurge: sendPurgeConfirmationEmail,
     logger: console,
   };
 }

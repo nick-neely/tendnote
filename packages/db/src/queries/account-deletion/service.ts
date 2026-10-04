@@ -26,6 +26,12 @@ export type AccountDeletionDependencies = {
    * remainder. Safe to repeat, and a no-op for an account that never billed.
    */
   cancelSubscriptions: (input: { userId: string }) => Promise<void>;
+  /**
+   * Confirms by email that a retention-deadline purge happened (#621). Called
+   * once the rows are gone, with the address read before they went; the owner's
+   * own deletion is not confirmed.
+   */
+  confirmPurge: (input: { to: string; userId: string; requestedAt: Date }) => Promise<void>;
   logger?: AccountDeletionLogger;
 };
 
@@ -58,7 +64,32 @@ async function completeIntent(
     await deps.journal.write(deletionRecord(intent));
     await deps.store.markJournaled({ userId: intent.userId, at: now });
   }
+  const confirmTo =
+    intent.reason === "retention_deadline"
+      ? await deps.store.findAccountEmail({ userId: intent.userId })
+      : null;
   await deps.store.deleteAccount({ userId: intent.userId });
+  if (confirmTo) await confirmCompletedPurge(deps, intent, confirmTo);
+}
+
+/**
+ * The confirmation never undoes or delays the purge it reports. The address
+ * left with the account, so a failed send is logged for the operator rather
+ * than retried.
+ */
+async function confirmCompletedPurge(
+  deps: AccountDeletionDependencies,
+  intent: AccountDeletionIntent,
+  to: string,
+): Promise<void> {
+  try {
+    await deps.confirmPurge({ to, userId: intent.userId, requestedAt: intent.requestedAt });
+  } catch (error) {
+    deps.logger?.error?.("account_deletion.purge_confirmation_failed", {
+      userId: intent.userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 /**

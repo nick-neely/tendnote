@@ -7,6 +7,7 @@ import { sweepUsageLedger } from "@tendnote/db/queries/usage-ledger";
 import { parseAdmissionPolicy } from "@tendnote/domain";
 import { type NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { carryOutRetentionDeadlines } from "@/lib/access/account-retention";
 import { runBackgroundJobRecovery } from "@/lib/background-jobs/recovery";
 import { paidAccessProjection } from "@/lib/billing/paid-access-projection";
 import { createStripeReconciliation } from "@/lib/billing/stripe-reconciliation";
@@ -28,6 +29,12 @@ const ACCOUNT_DELETION_LIMIT = 10;
  * minutes to drain in rather than needing to clear in a single run.
  */
 const HOUSEHOLD_PURGE_LIMIT = 3;
+/**
+ * Accounts given a deletion notice or purged per pass. A purge is one account
+ * deletion; a ten-minute pass against deadlines measured in days drains any
+ * backlog long before a notice is late by more than a pass.
+ */
+const ACCOUNT_RETENTION_LIMIT = 25;
 /** Audit evidence is cheaper than a household purge, but stays bounded per pass. */
 const AUDIT_RETENTION_LIMIT = 100;
 
@@ -44,8 +51,9 @@ function timingSafeEqualStrings(a: string, b: string): boolean {
 
 /**
  * This route triggers expensive and irreversible recovery work (extraction/embedding
- * backfills, owner-export generation, household purges, audit, Usage Ledger,
- * account funnel, public activity, and effect fence retention sweeps), so it must never run unauthenticated.
+ * backfills, owner-export generation, household purges, retention-deadline notices and
+ * purges, audit, Usage Ledger, account funnel, public activity, and effect fence retention
+ * sweeps), so it must never run unauthenticated.
  *
  * Vercel Cron invokes it with `Authorization: Bearer $CRON_SECRET`, so a configured
  * secret is compared against that header in constant time.
@@ -101,8 +109,11 @@ export async function GET(request: NextRequest) {
   const accountFunnel = await sweepAccountFunnelEvents();
   const publicActivity = await sweepPublicActivityCounts();
   const effectFences = await sweepEffectFences();
+  // Last, so a failure here never costs the housekeeping sweeps above their pass.
+  const accountRetention = await carryOutRetentionDeadlines({ limit: ACCOUNT_RETENTION_LIMIT });
   return NextResponse.json({
     ...result,
+    accountRetention,
     files,
     usageLedger,
     accountFunnel,

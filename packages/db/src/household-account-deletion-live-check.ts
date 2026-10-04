@@ -255,6 +255,7 @@ const deletion = {
   },
   revokeSessions: async () => {},
   cancelSubscriptions: async () => {},
+  confirmPurge: async () => {},
 };
 
 // fallow-ignore-next-line complexity -- This executable is a linear destructive Postgres contract whose ordered setup, deletion, and assertions must stay visible together; it is exercised directly against a fresh migrated database.

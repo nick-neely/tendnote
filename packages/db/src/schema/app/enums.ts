@@ -1,6 +1,7 @@
 import { HOUSEHOLD_RECORD_OWNERSHIP_VALUES } from "@tendnote/domain";
 import { ACCOUNT_FUNNEL_STAGES } from "@tendnote/domain/account-funnel";
 import { ACTIVATION_MILESTONES } from "@tendnote/domain/activation-milestones";
+import { DELETION_NOTICE_STAGES } from "@tendnote/domain/deletion-notices";
 import { LEGAL_DOCUMENT_KEYS } from "@tendnote/domain/legal-documents";
 import { PUBLIC_ACTIVITY_EVENTS, PUBLIC_PAGES } from "@tendnote/domain/public-activity";
 import { COST_CATEGORIES } from "@tendnote/domain/usage-ledger";
@@ -46,6 +47,16 @@ export const publicActivityEvent = pgEnum("public_activity_event", PUBLIC_ACTIVI
 export const publicPage = pgEnum("public_page", PUBLIC_PAGES);
 
 export const costCategory = pgEnum("cost_category", COST_CATEGORIES);
+
+// The deletion notices an account with a retention deadline is sent (#621).
+export const deletionNoticeStage = pgEnum("deletion_notice_stage", DELETION_NOTICE_STAGES);
+
+// Why an account deletion was committed: the owner asked, or its retention
+// deadline passed (#621). Only the second is confirmed by email afterwards.
+export const accountDeletionReason = pgEnum("account_deletion_reason", [
+  "owner_request",
+  "retention_deadline",
+]);
 
 export const relationshipType = pgEnum("relationship_type", [
   "friend",

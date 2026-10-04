@@ -21,6 +21,9 @@ function harness() {
   const cancelSubscriptions = vi.fn(async ({ userId }: { userId: string }) => {
     steps.push(`cancel:${userId}`);
   });
+  const confirmPurge = vi.fn(async ({ to }: { to: string }) => {
+    steps.push(`confirm:${to}`);
+  });
   const logger = { info: vi.fn(), error: vi.fn() };
   store.seedAccount("user_1");
   return {
@@ -28,8 +31,9 @@ function harness() {
     store,
     journal,
     revokeSessions,
+    confirmPurge,
     logger,
-    deps: { store, journal, revokeSessions, cancelSubscriptions, logger },
+    deps: { store, journal, revokeSessions, cancelSubscriptions, confirmPurge, logger },
   };
 }
 
@@ -148,6 +152,58 @@ describe("requestAccountDeletion", () => {
 
     expect(steps).toEqual(["revoke:user_1", "cancel:user_1", "delete:user_1"]);
     expect(store.hasAccount("user_1")).toBe(false);
+  });
+
+  it("does not confirm the owner's own deletion by email", async () => {
+    const { deps, confirmPurge } = harness();
+
+    await requestAccountDeletion(deps, { userId: "user_1", now: NOW });
+
+    expect(confirmPurge).not.toHaveBeenCalled();
+  });
+});
+
+describe("retention-deadline purge confirmation", () => {
+  it("confirms to the account's address only once its rows are gone", async () => {
+    const { steps, store, deps, confirmPurge } = harness();
+    store.seedIntent({ userId: "user_1", at: NOW, reason: "retention_deadline" });
+
+    const result = await requestAccountDeletion(deps, { userId: "user_1", now: NOW });
+
+    expect(result).toEqual({ status: "deleted" });
+    expect(steps.slice(-2)).toEqual(["delete:user_1", "confirm:user_1@example.test"]);
+    expect(confirmPurge).toHaveBeenCalledWith({
+      to: "user_1@example.test",
+      userId: "user_1",
+      requestedAt: NOW,
+    });
+  });
+
+  it("confirms a purge the recovery sweep finished", async () => {
+    const { store, journal, deps, confirmPurge } = harness();
+    store.seedIntent({ userId: "user_1", at: NOW, reason: "retention_deadline" });
+    journal.failNextWrites(1);
+    await requestAccountDeletion(deps, { userId: "user_1", now: NOW });
+    expect(confirmPurge).not.toHaveBeenCalled();
+
+    await runAccountDeletionSweep({ ...deps, limit: 10, now: NOW });
+
+    expect(confirmPurge).toHaveBeenCalledOnce();
+  });
+
+  it("logs a failed confirmation without undoing or failing the purge", async () => {
+    const { store, deps, confirmPurge, logger } = harness();
+    store.seedIntent({ userId: "user_1", at: NOW, reason: "retention_deadline" });
+    confirmPurge.mockRejectedValueOnce(new Error("resend down"));
+
+    const result = await requestAccountDeletion(deps, { userId: "user_1", now: NOW });
+
+    expect(result).toEqual({ status: "deleted" });
+    expect(store.hasAccount("user_1")).toBe(false);
+    expect(logger.error).toHaveBeenCalledWith(
+      "account_deletion.purge_confirmation_failed",
+      expect.objectContaining({ userId: "user_1" }),
+    );
   });
 });
 
