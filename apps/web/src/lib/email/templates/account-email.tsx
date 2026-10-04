@@ -101,21 +101,50 @@ const COPY = {
     reason:
       "A payment for the Tendnote subscription at this email address was refunded. If you didn’t ask for this, reply to this email and we’ll look into it.",
   },
-} as const satisfies Record<AccountEmailPurpose, Record<string, string>>;
+} as const satisfies Record<AccountEmailPurpose, NotebookEmailCopy>;
 
 /** Renders one account email as both bodies from the same component. */
-export async function renderAccountEmail(
-  props: AccountEmailProps,
+export function renderAccountEmail(props: AccountEmailProps): Promise<TransactionalEmailContent> {
+  return renderNotebookEmail({
+    copy: COPY[props.purpose],
+    actionUrl: props.actionUrl,
+    supportEmail: props.supportEmail,
+  });
+}
+
+/**
+ * The words of one notebook-page email. `action` and `fallback` come as a
+ * pair: an email without an action, such as a deletion confirmation, has
+ * neither, and renders no button.
+ */
+export type NotebookEmailCopy = {
+  subject: string;
+  preview: string;
+  heading: string;
+  body: string;
+  reason: string;
+} & ({ action: string; fallback: string } | { action?: never; fallback?: never });
+
+type NotebookEmailProps = {
+  copy: NotebookEmailCopy;
+  /** Required exactly when the copy has an action. */
+  actionUrl?: string;
+  supportEmail: string;
+};
+
+/** Renders a notebook-page email as both bodies from the same component. */
+export async function renderNotebookEmail(
+  props: NotebookEmailProps,
 ): Promise<TransactionalEmailContent> {
-  const email = <AccountEmail {...props} />;
+  const email = <NotebookEmail {...props} />;
   const [html, text] = await Promise.all([render(email), render(email, { plainText: true })]);
 
-  return { subject: COPY[props.purpose].subject, html, text };
+  return { subject: props.copy.subject, html, text };
 }
 
 /** Laid out on the same notebook page as a Household Invitation. */
-function AccountEmail({ purpose, actionUrl, supportEmail }: AccountEmailProps) {
-  const copy = COPY[purpose];
+export function NotebookEmail({ copy, actionUrl, supportEmail }: NotebookEmailProps) {
+  const action = copy.action && actionUrl ? { label: copy.action, url: actionUrl } : null;
 
   return (
     <Html dir="ltr" lang="en">
@@ -140,27 +169,31 @@ function AccountEmail({ purpose, actionUrl, supportEmail }: AccountEmailProps) {
             <Text className="tn-ink" style={styles.body_}>
               {copy.body}
             </Text>
-            <Section style={styles.actionRow}>
-              <Button className="tn-action" href={actionUrl} style={styles.action}>
-                {copy.action}
-              </Button>
-            </Section>
+            {action ? (
+              <Section style={styles.actionRow}>
+                <Button className="tn-action" href={action.url} style={styles.action}>
+                  {action.label}
+                </Button>
+              </Section>
+            ) : null}
           </Section>
 
-          <Section className="tn-panel" style={styles.fallback}>
-            <Text className="tn-ink" style={styles.fallbackTitle}>
-              Button not working?
-            </Text>
-            <Text className="tn-muted" style={styles.small}>
-              <Link className="tn-link" href={actionUrl} style={styles.fallbackLink}>
-                {copy.fallback}
-              </Link>
-              , or copy and paste this address:
-            </Text>
-            <Text className="tn-muted" style={styles.url}>
-              {actionUrl}
-            </Text>
-          </Section>
+          {action ? (
+            <Section className="tn-panel" style={styles.fallback}>
+              <Text className="tn-ink" style={styles.fallbackTitle}>
+                Button not working?
+              </Text>
+              <Text className="tn-muted" style={styles.small}>
+                <Link className="tn-link" href={action.url} style={styles.fallbackLink}>
+                  {copy.fallback}
+                </Link>
+                , or copy and paste this address:
+              </Text>
+              <Text className="tn-muted" style={styles.url}>
+                {action.url}
+              </Text>
+            </Section>
+          ) : null}
 
           <Hr className="tn-rule" style={styles.rule} />
 
@@ -183,8 +216,8 @@ function AccountEmail({ purpose, actionUrl, supportEmail }: AccountEmailProps) {
 /** React Email preview entry point; not used by the transport. */
 export default function AccountEmailPreview() {
   return (
-    <AccountEmail
-      purpose="verify-email"
+    <NotebookEmail
+      copy={COPY["verify-email"]}
       actionUrl="http://localhost:3000/api/auth/verify-email?token=preview-token"
       supportEmail="support@example.test"
     />

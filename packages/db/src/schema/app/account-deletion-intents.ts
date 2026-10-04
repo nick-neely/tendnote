@@ -1,8 +1,10 @@
 import { index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { user } from "../auth";
+import { accountDeletionReason } from "./enums";
 
 /**
- * A committed self-service deletion that has not finished (#616).
+ * A committed account deletion that has not finished: the owner's own (#616),
+ * or the purge of an account whose retention deadline passed (#621).
  *
  * The account closes the moment this row commits: admission reads it as a
  * block, and sessions are revoked. The Deletion Record is then written to the
@@ -17,6 +19,8 @@ export const accountDeletionIntents = pgTable(
       .primaryKey()
       .references(() => user.id, { onDelete: "cascade" }),
     requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    // A retention-deadline purge is confirmed by email once the rows are gone.
+    reason: accountDeletionReason("reason").notNull().default("owner_request"),
     journaledAt: timestamp("journaled_at", { withTimezone: true }),
     /** The recovery sweep's last attempt, so a failing intent cannot starve the rest. */
     attemptedAt: timestamp("attempted_at", { withTimezone: true }),

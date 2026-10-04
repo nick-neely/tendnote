@@ -23,6 +23,7 @@ export * from "./app/context-fact-extraction-jobs";
 export * from "./app/context-fact-imports";
 export * from "./app/context-facts";
 export * from "./app/context-snapshots";
+export * from "./app/deletion-notices";
 export * from "./app/discord-identities";
 export * from "./app/discord-installs";
 export * from "./app/engagement";

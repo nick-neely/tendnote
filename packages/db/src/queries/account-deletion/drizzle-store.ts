@@ -7,6 +7,7 @@ const intentColumns = {
   userId: accountDeletionIntents.userId,
   requestedAt: accountDeletionIntents.requestedAt,
   journaledAt: accountDeletionIntents.journaledAt,
+  reason: accountDeletionIntents.reason,
 };
 
 export function createDrizzleAccountDeletionStore(
@@ -61,6 +62,15 @@ export function createDrizzleAccountDeletionStore(
         .update(accountDeletionIntents)
         .set({ journaledAt: at })
         .where(eq(accountDeletionIntents.userId, userId));
+    },
+
+    async findAccountEmail({ userId }) {
+      const [row] = await resolveDb()
+        .select({ email: user.email })
+        .from(user)
+        .where(eq(user.id, userId))
+        .limit(1);
+      return row?.email ?? null;
     },
 
     async deleteAccount({ userId }) {

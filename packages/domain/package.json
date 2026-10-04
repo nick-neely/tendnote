@@ -16,6 +16,7 @@
     "./assistant-conversations": "./src/assistant-conversations.ts",
     "./assistant-sources": "./src/assistant-sources.ts",
     "./audit-retention": "./src/audit-retention.ts",
+    "./deletion-notices": "./src/deletion-notices.ts",
     "./usage-ledger": "./src/usage-ledger.ts",
     "./usage-bounds": "./src/usage-bounds.ts",
     "./brief-schedules": "./src/brief-schedules.ts",

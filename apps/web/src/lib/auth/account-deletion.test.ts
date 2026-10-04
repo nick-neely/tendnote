@@ -2,6 +2,9 @@ import type { AccountDeletionDependencies } from "@tendnote/db/queries/account-d
 import { HouseholdValidationError } from "@tendnote/domain";
 import { APIError } from "better-auth/api";
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
+
 import { createAccountDeletionHook } from "./account-deletion";
 
 function dependencies(input: { journalFails?: boolean } = {}) {
@@ -10,7 +13,7 @@ function dependencies(input: { journalFails?: boolean } = {}) {
     store: {
       commitIntent: async ({ userId, at }) => {
         steps.push("intent");
-        return { userId, requestedAt: at, journaledAt: null };
+        return { userId, requestedAt: at, journaledAt: null, reason: "owner_request" };
       },
       findIntent: async () => null,
       listIntents: async () => [],
@@ -18,6 +21,7 @@ function dependencies(input: { journalFails?: boolean } = {}) {
       markJournaled: async () => {
         steps.push("journaled");
       },
+      findAccountEmail: async () => "user_1@example.test",
       deleteAccount: async () => {
         steps.push("delete");
       },
@@ -33,6 +37,9 @@ function dependencies(input: { journalFails?: boolean } = {}) {
     },
     cancelSubscriptions: async () => {
       steps.push("cancel");
+    },
+    confirmPurge: async () => {
+      steps.push("confirm");
     },
     logger: { error: vi.fn() },
   };

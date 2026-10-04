@@ -5,8 +5,9 @@
  * every sweep that deletes data reads its period from here (the ADR 0221
  * pattern), so what the policy promises and what actually gets deleted cannot
  * drift apart. Today the household purge, audit, account funnel, anonymous
- * daily total, and effect fence retention sweeps and the Lapsed retention
- * deadline read it; the Lapsed and Deletion Record sweeps must when built.
+ * daily total, and effect fence retention sweeps and the Lapsed and Terminated
+ * retention deadlines read it, and the retention-deadline sweep carries those
+ * deadlines out; the Deletion Record sweep must when built.
  * Changing a value here is a reviewed change to a published promise: the
  * committed table in
  * `docs/legal/privacy-retention-table.md` fails its test until it is

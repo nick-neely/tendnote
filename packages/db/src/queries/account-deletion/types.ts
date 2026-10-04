@@ -1,7 +1,16 @@
+import type { accountDeletionReason } from "../../schema";
+
+/**
+ * Why a deletion was committed: the owner asked (#616), or the account's
+ * retention deadline passed (#621). Only the second is confirmed by email.
+ */
+export type AccountDeletionReason = (typeof accountDeletionReason.enumValues)[number];
+
 /** A committed deletion not yet finished. Ids and moments; no content. */
 export type AccountDeletionIntent = {
   userId: string;
   requestedAt: Date;
+  reason: AccountDeletionReason;
   /** When the Deletion Record was confirmed in the Recovery Journal. */
   journaledAt: Date | null;
 };
@@ -19,6 +28,8 @@ export type AccountDeletionStore = {
   /** Records a recovery attempt, for the order above. */
   markAttempted: (input: { userId: string; at: Date }) => Promise<void>;
   markJournaled: (input: { userId: string; at: Date }) => Promise<void>;
+  /** The account's address, read before its rows go so a purge can be confirmed after. */
+  findAccountEmail: (input: { userId: string }) => Promise<string | null>;
   /**
    * The existing household-aware disposition: deleting the account row, whose
    * database trigger and foreign keys decide what goes and what stays with a

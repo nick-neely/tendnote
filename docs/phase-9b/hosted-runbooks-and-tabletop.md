@@ -133,6 +133,19 @@ Four content-free emails for a Lapsed Account, measured from Lapsed entry:
 A Terminated account gets the same schedule without the resubscribe link. A
 Legal Hold pauses the sequence for the data it covers.
 
+As built (#621), the background-jobs cron sends each notice and runs the purge
+(`runAccountRetentionSweep`). Notices are timed from the stored deadline, so day
+60 is thirty days before deletion and day 83 seven days before; a late sweep
+sends only the latest notice owed, and each names the deletion date. A
+Terminated account is read by its termination's deadline. The purge is an
+account deletion with the Deletion Record journaled first, and the confirmation
+goes out once the rows are gone; a failed confirmation logs
+`account_deletion.purge_confirmation_failed`. A purge that would strand a
+Household without an Owner is not started: it logs
+`account_retention.purge_refused` on every pass until the operator resolves the
+household. The Legal Hold pause is not built yet, because no Legal Hold record
+exists to read.
+
 ## Pre-launch tabletop
 
 Run once, alone, on a timer, against a written scenario: a Neon connection

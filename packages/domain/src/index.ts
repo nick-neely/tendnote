@@ -25,6 +25,7 @@ export * from "./context-fact-orientation";
 export * from "./context-facts";
 export * from "./context-snapshots";
 export * from "./conversational-capture";
+export * from "./deletion-notices";
 export * from "./draft-generation";
 export * from "./draft-proposals";
 export * from "./drafts";

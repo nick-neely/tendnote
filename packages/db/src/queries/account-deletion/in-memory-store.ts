@@ -1,4 +1,4 @@
-import type { AccountDeletionIntent, AccountDeletionStore } from "./types";
+import type { AccountDeletionIntent, AccountDeletionReason, AccountDeletionStore } from "./types";
 
 /**
  * The deletion store without a database. `steps` records every state change in
@@ -7,7 +7,7 @@ import type { AccountDeletionIntent, AccountDeletionStore } from "./types";
  */
 export function createInMemoryAccountDeletionStore(options: { steps?: string[] } = {}) {
   const steps = options.steps ?? [];
-  const accounts = new Set<string>();
+  const accounts = new Map<string, string>();
   const intents = new Map<string, AccountDeletionIntent>();
   const attempts = new Map<string, number>();
   let deleteFailures = 0;
@@ -18,7 +18,12 @@ export function createInMemoryAccountDeletionStore(options: { steps?: string[] }
       if (!accounts.has(userId)) throw new Error("No such account.");
       const existing = intents.get(userId);
       if (existing) return { ...existing };
-      const intent = { userId, requestedAt: at, journaledAt: null };
+      const intent: AccountDeletionIntent = {
+        userId,
+        requestedAt: at,
+        journaledAt: null,
+        reason: "owner_request",
+      };
       intents.set(userId, intent);
       steps.push(`intent:${userId}`);
       return { ...intent };
@@ -54,6 +59,10 @@ export function createInMemoryAccountDeletionStore(options: { steps?: string[] }
       steps.push(`journaled:${userId}`);
     },
 
+    async findAccountEmail({ userId }) {
+      return accounts.get(userId) ?? null;
+    },
+
     async deleteAccount({ userId }) {
       if (deleteFailures > 0) {
         deleteFailures -= 1;
@@ -68,8 +77,18 @@ export function createInMemoryAccountDeletionStore(options: { steps?: string[] }
 
   return {
     ...store,
-    seedAccount(userId: string) {
-      accounts.add(userId);
+    seedAccount(userId: string, email = `${userId}@example.test`) {
+      accounts.set(userId, email);
+    },
+    /** Commits an intent with a reason, as the retention purge's claim does. */
+    seedIntent(input: { userId: string; at: Date; reason: AccountDeletionReason }) {
+      intents.set(input.userId, {
+        userId: input.userId,
+        requestedAt: input.at,
+        journaledAt: null,
+        reason: input.reason,
+      });
+      steps.push(`intent:${input.userId}`);
     },
     hasAccount(userId: string) {
       return accounts.has(userId);
