@@ -7,6 +7,10 @@ export const RATE_LIMIT_COST_CATEGORIES = {
   embedding: { limit: 60, windowSeconds: 60 },
   "provider-call": { limit: 60, windowSeconds: 60 },
   "push-delivery": { limit: 120, windowSeconds: 60 },
+  // Browser error reports, per signed-in account. The page itself stops at five;
+  // this bounds an account posting to the endpoint directly, so it cannot make
+  // Tendnote forward a flood to GlitchTip.
+  "diagnostic-report": { limit: 10, windowSeconds: 60 },
   /**
    * Household Invitation abuse budgets — five independent keys, one category
    * each, because a single shared limit is only ever as strict as its loosest

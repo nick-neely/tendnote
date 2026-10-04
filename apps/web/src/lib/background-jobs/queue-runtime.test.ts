@@ -342,6 +342,7 @@ describe("background job queue runtime", () => {
         embedding: { limit: 0, windowSeconds: 60 },
         "provider-call": { limit: 0, windowSeconds: 60 },
         "push-delivery": { limit: 0, windowSeconds: 60 },
+        "diagnostic-report": { limit: 0, windowSeconds: 60 },
         "household-invitation-inviter": { limit: 0, windowSeconds: 60 },
         "household-invitation-household": { limit: 0, windowSeconds: 60 },
         "household-invitation-recipient": { limit: 0, windowSeconds: 60 },

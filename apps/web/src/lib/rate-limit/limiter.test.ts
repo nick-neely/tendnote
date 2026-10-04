@@ -14,6 +14,7 @@ const limiter = createProductRateLimiter(store, {
     embedding: { limit: 10, windowSeconds: 60 },
     "provider-call": { limit: 4, windowSeconds: 60 },
     "push-delivery": { limit: 8, windowSeconds: 60 },
+    "diagnostic-report": { limit: 8, windowSeconds: 60 },
     "household-invitation-inviter": { limit: 3, windowSeconds: 60 },
     "household-invitation-household": { limit: 3, windowSeconds: 60 },
     "household-invitation-recipient": { limit: 3, windowSeconds: 60 },
