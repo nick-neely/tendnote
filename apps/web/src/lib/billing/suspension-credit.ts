@@ -2,6 +2,7 @@ import type { SuspensionCredit, SuspensionExitRef } from "@tendnote/db/queries/s
 import { type RecoveryJournal, suspensionCreditAmounts } from "@tendnote/domain";
 import type Stripe from "stripe";
 import { invoiceSubscription, stripeId } from "./first-paid-invoice";
+import { suspensionCreditMetadata } from "./operator-record-metadata";
 import type { SubscriptionSnapshot } from "./subscription-projection";
 
 /**
@@ -72,7 +73,8 @@ function creditNoteLines(line: CreditNoteLine) {
  * in proportion, so the instrument moves the previewed total; both are sandbox
  * checks for launch evidence. The record's id is the idempotency key and is
  * kept on the credit note, so a rerun after the key has expired finds the
- * credit note a lost response left behind rather than creating another.
+ * credit note a lost response left behind rather than creating another. The
+ * note carries the whole record, so a restore that lost it rebuilds it (#723).
  */
 export function suspensionCreditStripeCalls(
   stripe: () => Pick<Stripe, "invoices" | "creditNotes">,
@@ -101,7 +103,7 @@ export function suspensionCreditStripeCalls(
           lines: creditNoteLines(line),
         })
       ).total,
-    createCreditNote: async ({ suspensionCreditId, instrument, amount, ...line }) => {
+    createCreditNote: async ({ suspensionCreditId, instrument, amount, metadata, ...line }) => {
       const notes = stripe().creditNotes;
       let note: Stripe.CreditNote | undefined;
       for await (const each of notes.list({ invoice: line.invoiceId, limit: 100 })) {
@@ -112,7 +114,7 @@ export function suspensionCreditStripeCalls(
           invoice: line.invoiceId,
           lines: creditNoteLines(line),
           ...(instrument === "card" ? { refund_amount: amount } : { credit_amount: amount }),
-          metadata: { suspension_credit: suspensionCreditId },
+          metadata,
         },
         { idempotencyKey: `suspension-credit:${suspensionCreditId}` },
       );
@@ -144,13 +146,15 @@ export type SuspensionCreditDependencies = {
   previewCreditNote: (line: CreditNoteLine) => Promise<number>;
   /**
    * Create the credit note for a record, under the record's id as the
-   * idempotency key, or return the one already created for it.
+   * idempotency key and carrying the record, or return the one already
+   * created for it.
    */
   createCreditNote: (
     input: CreditNoteLine & {
       suspensionCreditId: string;
       instrument: SuspensionCredit["instrument"];
       amount: number;
+      metadata: Record<string, string>;
     },
   ) => Promise<{ id: string; stripeRefundId: string | null }>;
 };
@@ -299,6 +303,7 @@ async function createCreditNoteFor(
     suspensionCreditId: record.id,
     instrument: record.instrument,
     amount: record.amount,
+    metadata: suspensionCreditMetadata(record),
   });
   await deps.credits.attachSuspensionCreditNote({ id: record.id, stripeCreditNoteId: note.id });
   if (note.stripeRefundId) {

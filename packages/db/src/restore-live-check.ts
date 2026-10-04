@@ -6,7 +6,8 @@
  * the second time; that each journaled Operator Action is found by its action
  * id in its own table, a lift only once the suspension carries it; that a
  * restored export job is matched to its fence by the same digest the processor
- * fences under; and that copied email fences are found, counted, and swept.
+ * fences under; that copied email fences are found, counted, and swept; and
+ * that a lost Operator Action is re-recorded under its journal id once (#723).
  *
  * It touches only its own fixtures, so it is safe on the shared development
  * database. The two global steps, ending every session and stopping writes to
@@ -26,6 +27,10 @@ import {
   isDeletionSubjectPresent,
   markFencedExportJobs,
   reapplyDeletionRecord,
+  rerecordRefund,
+  rerecordSuspensionCredit,
+  rerecordSuspensionLift,
+  rerecordTermination,
 } from "./queries/restore";
 import {
   countRestoredEmailFences,
@@ -33,10 +38,21 @@ import {
   recordRestoredEmailFences,
   sweepRestoredEmailFences,
 } from "./queries/restored-email-fences";
-import { ownerDataExportJobs, restoredEmailFences, temporarySuspensions, user } from "./schema";
+import {
+  ownerDataExportJobs,
+  restoredEmailFences,
+  suspensionCredits,
+  temporarySuspensions,
+  terminations,
+  user,
+} from "./schema";
 
 const run = randomUUID().slice(0, 8);
-const ids = { deleted: `restore-deleted-${run}`, owner: `restore-owner-${run}` };
+const ids = {
+  deleted: `restore-deleted-${run}`,
+  owner: `restore-owner-${run}`,
+  rerecorded: `restore-rerecorded-${run}`,
+};
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date();
 
@@ -113,6 +129,108 @@ async function suspensionLifts(id: string) {
 
   const hold = await findRecordedOperatorActions({ kind: "legal-hold", actionIds: [id] });
   check("a Legal Hold has no record to check", hold === null);
+}
+
+/**
+ * A lost termination, lift, refund, and Suspension Credit go back in under
+ * their journal ids, once, and are then found as on record (#723).
+ */
+async function rerecordedOperatorActions() {
+  const db = getDb();
+  const [open] = await db
+    .insert(temporarySuspensions)
+    .values({
+      userId: ids.rerecorded,
+      reason: "live check",
+      suspendedAt: new Date(NOW.getTime() - DAY),
+      reviewDeadline: new Date(NOW.getTime() + DAY),
+    })
+    .returning({ id: temporarySuspensions.id });
+  const suspensionId = open?.id as string;
+  const termination = {
+    id: randomUUID(),
+    userId: ids.rerecorded,
+    reason: "live check",
+    terminatedAt: NOW,
+    retentionDeadline: new Date(NOW.getTime() + DAY),
+  };
+
+  check("a lost termination is re-recorded", await rerecordTermination(termination));
+  check("and not twice", !(await rerecordTermination(termination)));
+  const [row] = await db
+    .select({ suspensionId: terminations.suspensionId, terminatedAt: terminations.terminatedAt })
+    .from(terminations)
+    .where(eq(terminations.id, termination.id));
+  check(
+    "it converts the suspension open before it, at its own time",
+    row?.suspensionId === suspensionId && row.terminatedAt.getTime() === NOW.getTime(),
+    row,
+  );
+  check(
+    "no termination is written for an account that is gone",
+    !(await rerecordTermination({ ...termination, id: randomUUID(), userId: `gone-${run}` })),
+  );
+
+  const lift = { id: suspensionId, userId: ids.rerecorded, liftedAt: NOW };
+  check("a lost lift is re-recorded on its open suspension", await rerecordSuspensionLift(lift));
+  check("and not twice", !(await rerecordSuspensionLift(lift)));
+  const lifts = await findRecordedOperatorActions({
+    kind: "suspension-lift",
+    actionIds: [lift.id],
+  });
+  check("the lift is then on record", lifts?.has(lift.id) === true, lifts);
+
+  await rerecordedMoney(termination.id);
+}
+
+async function rerecordedMoney(terminationId: string) {
+  const refund = {
+    id: randomUUID(),
+    userId: ids.rerecorded,
+    stripeSubscriptionId: `sub_${run}`,
+    invoiceId: `in_${run}`,
+    paymentIntentId: `pi_${run}`,
+    amount: 2000,
+    requestedAt: NOW,
+    stripeRefundId: `re_${run}`,
+    revokedAt: null,
+  };
+  check("a lost refund is re-recorded", await rerecordRefund(refund));
+  check("and not twice", !(await rerecordRefund(refund)));
+  const refunds = await findRecordedOperatorActions({ kind: "refund", actionIds: [refund.id] });
+  check("the refund is then on record", refunds?.has(refund.id) === true, refunds);
+
+  const credit = {
+    id: randomUUID(),
+    userId: ids.rerecorded,
+    suspensionId: randomUUID(),
+    terminationId,
+    stripeSubscriptionId: `sub_${run}`,
+    invoiceId: `in_${run}`,
+    invoiceLineItemId: `il_${run}`,
+    paymentIntentId: `pi_${run}`,
+    suspendedAmount: 300,
+    remainderAmount: 750,
+    amount: 1155,
+    instrument: "card" as const,
+    requestedAt: NOW,
+    stripeCreditNoteId: `cn_${run}`,
+    stripeRefundId: `re_cn_${run}`,
+  };
+  check("a lost Suspension Credit is re-recorded", await rerecordSuspensionCredit(credit));
+  check("and not twice", !(await rerecordSuspensionCredit(credit)));
+  const [stored] = await getDb()
+    .select({
+      suspensionId: suspensionCredits.suspensionId,
+      terminationId: suspensionCredits.terminationId,
+    })
+    .from(suspensionCredits)
+    .where(eq(suspensionCredits.id, credit.id));
+  check(
+    "it keeps the termination it holds, and stores a suspension it does not hold as none",
+    stored?.terminationId === terminationId && stored.suspensionId === null,
+    stored,
+  );
 }
 
 async function exportJobs() {
@@ -192,6 +310,7 @@ try {
   await seed();
   await deletionRecords();
   await operatorActions();
+  await rerecordedOperatorActions();
   await exportJobs();
   await emailFences();
 } finally {

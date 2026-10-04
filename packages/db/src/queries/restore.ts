@@ -5,7 +5,7 @@ import {
   ownerDataExportFenceKey,
   type RestoredFence,
 } from "@tendnote/domain";
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { getDb } from "../client";
 import {
@@ -22,6 +22,9 @@ import {
 } from "../schema";
 import { createDrizzleHouseholdPurgeStore } from "./households/drizzle-purge-store";
 import { reapplyHouseholdDeletionRecord } from "./households/purge";
+import type { RefundRecord } from "./paid-access-revocations";
+import { getLiveSubscription } from "./stripe-subscriptions";
+import type { SuspensionCredit } from "./suspension-credits";
 
 /**
  * The restored database's side of the restore procedure (#623, ADR 0250). Run
@@ -131,6 +134,132 @@ export async function findRecordedOperatorActions(input: {
         : inArray(source.id, ids),
     );
   return new Set(rows.map((row) => String(row.id)));
+}
+
+/*
+ * Re-recording an Operator Action the restored data lost (#723). Each record
+ * goes in under the id the Recovery Journal names, and only when the account
+ * is still there and no record holds that id, so running it again writes
+ * nothing. Each says whether it wrote.
+ */
+
+/** Whether a record may go in under this id: a record id, for an account still there. */
+async function canRerecord(id: string, userId: string): Promise<boolean> {
+  if (!UUID.test(id)) return false;
+  const [row] = await getDb()
+    .select({ id: user.id })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1);
+  return Boolean(row);
+}
+
+/** The id when a row of `table` holds it, else `null`, so a lost reference is stored as none. */
+async function heldId(
+  source: { table: PgTable; id: PgColumn },
+  id: string | null,
+): Promise<string | null> {
+  if (id === null || !UUID.test(id)) return null;
+  const [row] = await getDb().select({ id: source.id }).from(source.table).where(eq(source.id, id));
+  return row ? id : null;
+}
+
+/** The suspension the account had open by `at`, which a Termination then converts. */
+async function suspensionOpenBy(userId: string, at: Date): Promise<string | null> {
+  const [open] = await getDb()
+    .select({ id: temporarySuspensions.id })
+    .from(temporarySuspensions)
+    .where(
+      and(
+        eq(temporarySuspensions.userId, userId),
+        isNull(temporarySuspensions.liftedAt),
+        lte(temporarySuspensions.suspendedAt, at),
+      ),
+    )
+    .limit(1);
+  return open?.id ?? null;
+}
+
+/**
+ * A Termination, timed when it happened. It converted the suspension the
+ * account still has open from before then, if any, and stopped the renewal of
+ * the subscription the account still has live.
+ */
+export async function rerecordTermination(input: {
+  id: string;
+  userId: string;
+  reason: string;
+  terminatedAt: Date;
+  retentionDeadline: Date;
+}): Promise<boolean> {
+  if (!(await canRerecord(input.id, input.userId))) return false;
+  const live = await getLiveSubscription({ userId: input.userId });
+  const written = await getDb()
+    .insert(terminations)
+    .values({
+      ...input,
+      suspensionId: await suspensionOpenBy(input.userId, input.terminatedAt),
+      stripeSubscriptionId: live?.stripeSubscriptionId ?? null,
+    })
+    .onConflictDoNothing()
+    .returning({ id: terminations.id });
+  return written.length > 0;
+}
+
+/** A lift, on the account's suspension the id names, if it is still open. */
+export async function rerecordSuspensionLift(input: {
+  id: string;
+  userId: string;
+  liftedAt: Date;
+}): Promise<boolean> {
+  if (!UUID.test(input.id)) return false;
+  const lifted = await getDb()
+    .update(temporarySuspensions)
+    .set({ liftedAt: input.liftedAt })
+    .where(
+      and(
+        eq(temporarySuspensions.id, input.id),
+        eq(temporarySuspensions.userId, input.userId),
+        isNull(temporarySuspensions.liftedAt),
+      ),
+    )
+    .returning({ id: temporarySuspensions.id });
+  return lifted.length > 0;
+}
+
+/** A Refund record, rebuilt from the Stripe refund that carries it. */
+export async function rerecordRefund(record: RefundRecord): Promise<boolean> {
+  if (!(await canRerecord(record.id, record.userId))) return false;
+  const written = await getDb()
+    .insert(refundRecords)
+    .values(record)
+    .onConflictDoNothing()
+    .returning({ id: refundRecords.id });
+  return written.length > 0;
+}
+
+/**
+ * A Suspension Credit, rebuilt from the credit note that carries it. A
+ * suspension or Termination the restored data does not hold is stored as none.
+ */
+export async function rerecordSuspensionCredit(record: SuspensionCredit): Promise<boolean> {
+  if (!(await canRerecord(record.id, record.userId))) return false;
+  const written = await getDb()
+    .insert(suspensionCredits)
+    .values({
+      ...record,
+      suspensionId: await heldId(
+        { table: temporarySuspensions, id: temporarySuspensions.id },
+        record.suspensionId,
+      ),
+      terminationId: await heldId(
+        { table: terminations, id: terminations.id },
+        record.terminationId,
+      ),
+    })
+    .onConflictDoNothing()
+    .returning({ id: suspensionCredits.id });
+  return written.length > 0;
 }
 
 const UNFINISHED_EXPORT = ["pending", "running", "failed"] as const;

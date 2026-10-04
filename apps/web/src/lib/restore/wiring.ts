@@ -17,15 +17,21 @@ import {
   listAccountDeletionIntentRecords,
   markFencedExportJobs,
   reapplyDeletionRecord,
+  rerecordRefund,
+  rerecordSuspensionCredit,
+  rerecordSuspensionLift,
+  rerecordTermination,
   setDatabaseWritesStopped,
 } from "@tendnote/db/queries/restore";
 import {
   countRestoredEmailFences,
   recordRestoredEmailFences,
 } from "@tendnote/db/queries/restored-email-fences";
+import { getStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
 import { parseAdmissionPolicy } from "@tendnote/domain";
 import Stripe from "stripe";
-import { paidAccessProjection } from "@/lib/billing/paid-access-projection";
+import { operatorRecordStripeReads } from "@/lib/billing/operator-record-metadata";
+import { configuredStripe, paidAccessProjection } from "@/lib/billing/paid-access-projection";
 import { createStripeReconciliation } from "@/lib/billing/stripe-reconciliation";
 import { getRedis } from "@/lib/cache/redis";
 import type { RestoreDependencies } from "./procedure";
@@ -55,6 +61,14 @@ export function restoreDependencies(): RestoreDependencies {
       countSessions,
     },
     sessionCache: redisSessionCache(getRedis()),
+    // Restored-data writes and production Stripe reads; no Stripe write.
+    operatorRecords: {
+      rerecordTermination,
+      rerecordSuspensionLift,
+      rerecordRefund,
+      rerecordSuspensionCredit,
+      ...operatorRecordStripeReads(configuredStripe, getStripeCustomerId),
+    },
     // The same job the cron runs. Its emails go through the held sender, so a
     // fenced one completes silently and any other fails as a reported stage.
     reconcileStripe: createStripeReconciliation({

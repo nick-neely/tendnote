@@ -1,3 +1,4 @@
+import type { SuspensionCredit } from "@tendnote/db/queries/suspension-credits";
 import {
   type AdmissionPolicy,
   lapsedRetentionDeadline,
@@ -20,6 +21,7 @@ import {
   runOperatorCommand,
   terminateAccountWithCredit,
 } from "./operator-actions";
+import { suspensionCreditMetadata } from "./operator-record-metadata";
 import {
   applyStripeDispute,
   applyStripeRefund,
@@ -220,6 +222,12 @@ describe("the Refund Operator Action (#617, ADR 0249)", () => {
       paymentIntentId: "pi_first",
       amount: 2000,
       idempotencyKey: `refund:${result.refundRecordId}`,
+      // What a restore that lost the record rebuilds it from (#723).
+      metadata: {
+        refund_record: result.refundRecordId,
+        invoice: "in_first",
+        subscription: "sub_1",
+      },
     });
     expect(result).toMatchObject({ stripeRefundId: "re_1", outcome: "revoked" });
     expect(op.revocations.refunds[0]).toMatchObject({
@@ -618,6 +626,8 @@ describe("the Suspension Credit (#631, ADR 0249)", () => {
       suspensionCreditId: "suspension-credit-1",
       instrument: "balance",
       amount: 330,
+      // The whole record, for a restore that lost it to rebuild (#723).
+      metadata: suspensionCreditMetadata(op.revocations.suspensionCredits[0] as SuspensionCredit),
     });
     expect(result.suspensionCredits).toEqual([
       {
@@ -1008,6 +1018,7 @@ describe("the Suspension Credit's Stripe calls (#631)", () => {
         suspensionCreditId: "sc-1",
         instrument: "card",
         amount: 330,
+        metadata: { suspension_credit: "sc-1", instrument: "card" },
       }),
     ).resolves.toEqual({ id: "cn_new", stripeRefundId: "re_new" });
     expect(creditNotes.create).toHaveBeenCalledWith(
@@ -1015,7 +1026,7 @@ describe("the Suspension Credit's Stripe calls (#631)", () => {
         invoice: "in_oct",
         lines: [{ type: "invoice_line_item", invoice_line_item: "il_oct", amount: 300 }],
         refund_amount: 330,
-        metadata: { suspension_credit: "sc-1" },
+        metadata: { suspension_credit: "sc-1", instrument: "card" },
       },
       { idempotencyKey: "suspension-credit:sc-1" },
     );
@@ -1025,6 +1036,7 @@ describe("the Suspension Credit's Stripe calls (#631)", () => {
       suspensionCreditId: "sc-2",
       instrument: "balance",
       amount: 330,
+      metadata: { suspension_credit: "sc-2" },
     });
     expect(creditNotes.create).toHaveBeenLastCalledWith(
       expect.objectContaining({ credit_amount: 330 }),
@@ -1044,6 +1056,7 @@ describe("the Suspension Credit's Stripe calls (#631)", () => {
         suspensionCreditId: "sc-1",
         instrument: "card",
         amount: 330,
+        metadata: { suspension_credit: "sc-1" },
       }),
     ).resolves.toEqual({ id: "cn_lost", stripeRefundId: "re_lost" });
     expect(creditNotes.create).not.toHaveBeenCalled();
