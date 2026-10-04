@@ -11,6 +11,7 @@ import { carryOutRetentionDeadlines } from "@/lib/access/account-retention";
 import { runBackgroundJobRecovery } from "@/lib/background-jobs/recovery";
 import { paidAccessProjection } from "@/lib/billing/paid-access-projection";
 import { createStripeReconciliation } from "@/lib/billing/stripe-reconciliation";
+import { runOperatorAlerts } from "@/lib/operator-alerts/pass";
 
 const DELIVERY_LIMIT = 25;
 const EXTRACTION_BACKFILL_LIMIT = 5;
@@ -53,7 +54,7 @@ function timingSafeEqualStrings(a: string, b: string): boolean {
  * This route triggers expensive and irreversible recovery work (extraction/embedding
  * backfills, owner-export generation, household purges, retention-deadline notices and
  * purges, audit, Usage Ledger, account funnel, public activity, and effect fence retention
- * sweeps), so it must never run unauthenticated.
+ * sweeps, and operator alerts), so it must never run unauthenticated.
  *
  * Vercel Cron invokes it with `Authorization: Bearer $CRON_SECRET`, so a configured
  * secret is compared against that header in constant time.
@@ -109,6 +110,8 @@ export async function GET(request: NextRequest) {
   const accountFunnel = await sweepAccountFunnelEvents();
   const publicActivity = await sweepPublicActivityCounts();
   const effectFences = await sweepEffectFences();
+  // It never throws, so it runs before the retention step, which is last on purpose.
+  const operatorAlerts = await runOperatorAlerts({ stripeReconciliation });
   // Last, so a failure here never costs the housekeeping sweeps above their pass.
   const accountRetention = await carryOutRetentionDeadlines({ limit: ACCOUNT_RETENTION_LIMIT });
   return NextResponse.json({
@@ -120,5 +123,6 @@ export async function GET(request: NextRequest) {
     publicActivity,
     effectFences,
     stripeReconciliation,
+    operatorAlerts,
   });
 }

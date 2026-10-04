@@ -66,7 +66,7 @@ export type StripeReconciliationDependencies = PaidAccessAdmissionDependencies &
     };
   };
 
-type StripeReconciliationResult =
+export type StripeReconciliationResult =
   | { status: "skipped" }
   | {
       status: "ran";

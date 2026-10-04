@@ -41,6 +41,11 @@ vi.mock("@/lib/billing/stripe-reconciliation", () => ({
 }));
 vi.mock("@/lib/billing/paid-access-projection", () => ({ paidAccessProjection: {} }));
 
+const { runOperatorAlerts } = vi.hoisted(() => ({
+  runOperatorAlerts: vi.fn(async (): Promise<Record<string, unknown>> => ({ status: "off" })),
+}));
+vi.mock("@/lib/operator-alerts/pass", () => ({ runOperatorAlerts }));
+
 import { GET } from "./route";
 
 const SECRET = "cron-secret-value";
@@ -144,5 +149,19 @@ describe("background-jobs recovery cron route", () => {
     await expect(GET(request(`Bearer ${SECRET}`))).rejects.toThrow(/recovery stage failed/);
 
     expect(reconcileStripe).toHaveBeenCalledOnce();
+  });
+
+  it("ends the pass with operator alerts over what the pass found", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    const stripeReconciliation = { status: "ran", failed: 1, unmatchedRefunds: 0 };
+    reconcileStripe.mockResolvedValue(stripeReconciliation);
+    runOperatorAlerts.mockResolvedValue({ status: "ran", sent: 2, failed: 0 });
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+
+    expect(runOperatorAlerts).toHaveBeenCalledWith({ stripeReconciliation });
+    await expect(response.json()).resolves.toMatchObject({
+      operatorAlerts: { status: "ran", sent: 2 },
+    });
   });
 });
