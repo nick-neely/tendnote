@@ -1,6 +1,7 @@
+import { dunningWindowEnd } from "@tendnote/domain/access";
 import { and, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import { getDb } from "../client";
-import { stripeSubscriptions } from "../schema";
+import { admissionExceptions, stripeSubscriptions } from "../schema";
 
 /** What Tendnote has on record for one Stripe subscription. */
 export type StripeSubscriptionRecord = { cancelAt: Date | null; endedAt: Date | null };
@@ -52,8 +53,12 @@ export async function recordStripeSubscription(input: {
 export type BillingStanding = {
   /** When a scheduled cancellation takes effect: the Ending notice (#609). */
   endsAt: Date | null;
-  /** When a renewal payment failed: the Past Due notice (#610). */
-  pastDueSince: Date | null;
+  /**
+   * When a renewal payment failed, the moment its dunning window closes, as a
+   * dunning extension naming that invoice moved it (#633): the Past Due notice
+   * (#610).
+   */
+  pastDueUntil: Date | null;
 };
 
 /**
@@ -67,12 +72,56 @@ export async function getBillingStanding(input: { userId: string }): Promise<Bil
     .select({
       endsAt: stripeSubscriptions.cancelAt,
       pastDueSince: stripeSubscriptions.pastDueSince,
+      extendedUntil: admissionExceptions.expiresAt,
     })
     .from(stripeSubscriptions)
+    .leftJoin(
+      admissionExceptions,
+      and(
+        eq(admissionExceptions.blockKind, "dunning"),
+        eq(admissionExceptions.event, stripeSubscriptions.pastDueInvoiceId),
+      ),
+    )
     .where(and(eq(stripeSubscriptions.userId, input.userId), isNull(stripeSubscriptions.endedAt)))
     .orderBy(desc(stripeSubscriptions.createdAt))
     .limit(1);
-  return row ?? { endsAt: null, pastDueSince: null };
+  if (!row) return { endsAt: null, pastDueUntil: null };
+  return {
+    endsAt: row.endsAt,
+    pastDueUntil: row.pastDueSince ? dunningWindowEnd(row.pastDueSince, row.extendedUntil) : null,
+  };
+}
+
+/** A live subscription recorded Past Due on one failed invoice. */
+export type PastDueSubscription = {
+  userId: string;
+  stripeSubscriptionId: string;
+  pastDueSince: Date;
+};
+
+/**
+ * The live subscription recorded Past Due on this failed invoice, or `null`
+ * when none is: the invoice was paid, belongs to an ended subscription, or was
+ * never the one failing. Read locally; never Stripe.
+ */
+export async function findPastDueSubscription(input: {
+  invoiceId: string;
+}): Promise<PastDueSubscription | null> {
+  const [row] = await getDb()
+    .select({
+      userId: stripeSubscriptions.userId,
+      stripeSubscriptionId: stripeSubscriptions.stripeSubscriptionId,
+      pastDueSince: stripeSubscriptions.pastDueSince,
+    })
+    .from(stripeSubscriptions)
+    .where(
+      and(
+        eq(stripeSubscriptions.pastDueInvoiceId, input.invoiceId),
+        isNull(stripeSubscriptions.endedAt),
+      ),
+    )
+    .limit(1);
+  return row?.pastDueSince ? { ...row, pastDueSince: row.pastDueSince } : null;
 }
 
 /**

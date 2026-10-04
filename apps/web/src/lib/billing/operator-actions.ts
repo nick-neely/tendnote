@@ -12,6 +12,11 @@ import {
   type TerminationDependencies,
   terminateAccount,
 } from "../access/termination";
+import {
+  type AccountCeilingOverrideDependencies,
+  raiseAccountCeiling,
+} from "./account-ceiling-override";
+import { type DunningExtensionDependencies, extendDunning } from "./dunning-extension";
 import { invoiceSubscription, stripeId } from "./first-paid-invoice";
 import {
   applyStripeRefund,
@@ -45,7 +50,9 @@ export function refundableInvoice(invoice: Stripe.Invoice): RefundableInvoice {
 export type OperatorActionDependencies = PaidAccessRevocationDependencies &
   TemporarySuspensionDependencies &
   TerminationDependencies &
-  SuspensionCreditDependencies & {
+  SuspensionCreditDependencies &
+  DunningExtensionDependencies &
+  AccountCeilingOverrideDependencies & {
     /** One suspension by id, such as the one a Termination converted. */
     getSuspension: (input: { userId: string; id: string }) => Promise<{ suspendedAt: Date } | null>;
     journal: RecoveryJournal;
@@ -295,6 +302,8 @@ export async function terminateAccountWithCredit(
 export const OPERATOR_USAGE = `Usage:
   operator refund <invoice id> [amount in cents]
   operator readmit-dispute <dispute id>
+  operator extend-dunning <invoice id> <days>
+  operator raise-ceiling <user id> <interactive|background|web_search> <dollars>
   operator suspend <user id> <reason>
   operator renew-suspension <user id>
   operator lift-suspension <user id>
@@ -315,6 +324,15 @@ const OPERATOR_COMMANDS: Record<string, OperatorCommand> = {
   "readmit-dispute": {
     accepts: (rest) => rest.length === 0,
     run: (deps, stripeDisputeId) => readmitAfterWonDispute(deps, { stripeDisputeId }),
+  },
+  "extend-dunning": {
+    accepts: (rest) => rest.length === 1,
+    run: (deps, invoiceId, [days]) => extendDunning(deps, { invoiceId, days: Number(days) }),
+  },
+  "raise-ceiling": {
+    accepts: (rest) => rest.length === 2,
+    run: (deps, userId, [category = "", dollars]) =>
+      raiseAccountCeiling(deps, { userId, category, ceilingUsd: Number(dollars) }),
   },
   suspend: {
     accepts: (rest) => rest.length > 0,

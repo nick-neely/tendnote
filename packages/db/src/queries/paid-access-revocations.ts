@@ -184,7 +184,12 @@ export async function grantAdmissionException(input: {
 }): Promise<AdmissionExceptionRecord> {
   await getDb().insert(admissionExceptions).values(input).onConflictDoNothing();
   const [row] = await getDb()
-    .select()
+    .select({
+      id: admissionExceptions.id,
+      userId: admissionExceptions.userId,
+      event: admissionExceptions.event,
+      grantedAt: admissionExceptions.grantedAt,
+    })
     .from(admissionExceptions)
     .where(
       and(
@@ -194,7 +199,7 @@ export async function grantAdmissionException(input: {
     )
     .limit(1);
   if (!row) throw new Error("Failed to write the Admission Exception.");
-  return row;
+  return { ...row, blockKind: input.blockKind };
 }
 
 /**

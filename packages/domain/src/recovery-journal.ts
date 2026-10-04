@@ -24,7 +24,10 @@ export type DeletionRecord = {
   at: Date;
 };
 
-/** The Operator Actions a restore reconciles admission against. */
+/**
+ * The Operator Actions a restore re-applies: the ones it reconciles admission
+ * against, and the Account Ceiling override, which changes only pace (#633).
+ */
 export type OperatorRecordKind =
   | "suspension"
   | "suspension-lift"
@@ -32,7 +35,8 @@ export type OperatorRecordKind =
   | "legal-hold"
   | "grant"
   | "refund"
-  | "suspension-credit";
+  | "suspension-credit"
+  | "ceiling-override";
 
 /** An Operator Action's mirror, named by the action's own id. */
 export type OperatorRecord = {

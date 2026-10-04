@@ -4,6 +4,7 @@ import {
   interactiveUsageNotice,
   overFairUseBudget,
   type PeriodSpend,
+  planCeilingMicroUsd,
   recoveryText,
   spendBreakerCeilingMicroUsd,
   spendBreakerRetryAt,
@@ -12,6 +13,7 @@ import {
   usageNotice,
   usageNotices,
   usagePeriod,
+  withCeilingOverrides,
 } from "./usage-bounds";
 
 describe("usagePeriod", () => {
@@ -444,5 +446,26 @@ describe("usageNotices under the Spend Breaker", () => {
     expect(
       usageNotices({ plan: HOSTED_PLAN, spend: spend({}), breaker: "interactive" }).webSearch,
     ).toEqual(normal);
+  });
+});
+
+describe("withCeilingOverrides (#633)", () => {
+  it("raises each overridden category's Account Ceiling, leaving the rest and the Fair-Use Budget", () => {
+    const plan = withCeilingOverrides(HOSTED_PLAN, {
+      background: 2_600_000,
+      web_search: 1_400_000,
+    });
+
+    expect(plan.allowance).toEqual({
+      interactive: { fairUseBudgetUsd: 10.5, accountCeilingUsd: 12 },
+      background: { accountCeilingUsd: 2.6 },
+      webSearch: { accountCeilingUsd: 1.4 },
+    });
+    expect(planCeilingMicroUsd(plan, "web_search")).toBe(1_400_000);
+    expect(HOSTED_PLAN.allowance.background.accountCeilingUsd).toBe(1.3);
+  });
+
+  it("never lowers a ceiling", () => {
+    expect(withCeilingOverrides(HOSTED_PLAN, { interactive: 5_000_000 })).toEqual(HOSTED_PLAN);
   });
 });

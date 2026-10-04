@@ -123,10 +123,20 @@ const DUNNING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 /**
  * When the dunning window of a renewal that failed at `pastDueSince` closes
  * and the account becomes Lapsed. The notice's days remaining and the sweep
- * that closes the window both read this one instant.
+ * that closes the window both read this one instant. A dunning extension
+ * naming the failed invoice (#633) replaces it with the extension's expiry;
+ * the caller passes one only when it names this window's invoice.
  */
-export function dunningWindowEnd(pastDueSince: Date): Date {
-  return new Date(pastDueSince.getTime() + DUNNING_WINDOW_MS);
+export function dunningWindowEnd(pastDueSince: Date, extendedUntil: Date | null = null): Date {
+  return extendedUntil ?? new Date(pastDueSince.getTime() + DUNNING_WINDOW_MS);
+}
+
+/**
+ * When a dunning extension granted for `days` expires (#633): that many days
+ * past the window's ordinary close, so an extension never shortens a window.
+ */
+export function dunningExtensionExpiry(pastDueSince: Date, days: number): Date {
+  return new Date(dunningWindowEnd(pastDueSince).getTime() + days * 24 * 60 * 60 * 1000);
 }
 
 /**

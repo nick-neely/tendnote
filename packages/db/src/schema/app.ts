@@ -1,5 +1,6 @@
 export * from "./app/acceptance-records";
 export * from "./app/access-profiles";
+export * from "./app/account-ceiling-overrides";
 export * from "./app/account-deletion-intents";
 export * from "./app/account-funnel";
 export * from "./app/activation-milestones";
