@@ -33,6 +33,16 @@ sheet, outside the repository, holds what is: provider account ids, contact
 routes, credential locations, and counsel's contact. Runbooks reference the
 sheet by entry name and never copy from it.
 
+As built (#651), the runbooks are indexed in
+[`docs/operations/README.md`](../operations/README.md), which also names the
+sheet's entries, and `scripts/operations-runbooks.test.ts` checks every runbook
+against the template, every Operator Action command against the CLI, and the
+whole directory for secrets and contacts. Credential rotation adds one step
+before sessions for the credentials outside the six providers (OAuth apps,
+Redis, the alert channel, Web Push). Delete on request has no command of its
+own: the operator confirms the holder through a password-reset link, and
+the holder deletes in the app, which journals the Deletion Record.
+
 ## One runbook template
 
 Every runbook, including every Operator Action, has the same sections:
