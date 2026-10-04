@@ -210,7 +210,12 @@ describe("Temporary Suspension (#629)", () => {
 
     const lifted = await liftSuspension(op.deps, { userId: user.id, now: LIFTED_AT });
 
-    expect(lifted).toEqual({ suspensionId: "suspension-1", liftedAt: LIFTED_AT, resumed: false });
+    expect(lifted).toEqual({
+      suspensionId: "suspension-1",
+      suspendedAt: SUSPENDED_AT,
+      liftedAt: LIFTED_AT,
+      resumed: false,
+    });
     expect(op.steps.slice(-2)).toEqual(["record:lift", "journal:suspension-lift"]);
     expect(op.journaled.at(-1)).toEqual({
       kind: "suspension-lift",
@@ -232,7 +237,12 @@ describe("Temporary Suspension (#629)", () => {
     );
     const resumed = await liftSuspension(op.deps, { userId: user.id });
 
-    expect(resumed).toEqual({ suspensionId: "suspension-1", liftedAt: LIFTED_AT, resumed: true });
+    expect(resumed).toEqual({
+      suspensionId: "suspension-1",
+      suspendedAt: SUSPENDED_AT,
+      liftedAt: LIFTED_AT,
+      resumed: true,
+    });
     expect(op.journaled.at(-1)).toMatchObject({ kind: "suspension-lift", at: LIFTED_AT });
   });
 

@@ -58,6 +58,7 @@ export * from "./app/spend-breaker-days";
 export * from "./app/stripe-customers";
 export * from "./app/stripe-disputes";
 export * from "./app/stripe-subscriptions";
+export * from "./app/suspension-credits";
 export * from "./app/temporary-suspensions";
 export * from "./app/terminations";
 export * from "./app/today-feedback";

@@ -6,10 +6,18 @@ import {
   grantAdmissionException,
   recordRefund,
 } from "@tendnote/db/queries/paid-access-revocations";
+import { getStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
 import { getLiveSubscription } from "@tendnote/db/queries/stripe-subscriptions";
+import {
+  attachSuspensionCreditNote,
+  attachSuspensionCreditRefund,
+  listSuspensionCreditsForExit,
+  recordSuspensionCredit,
+} from "@tendnote/db/queries/suspension-credits";
 import {
   findLatestSuspension,
   findOpenSuspension,
+  getSuspension,
   liftSuspension,
   recordSuspension,
   renewSuspensionDeadline,
@@ -23,13 +31,16 @@ import { type OperatorActionDependencies, refundableInvoice } from "./operator-a
 import { configuredStripe, paidAccessProjection } from "./paid-access-projection";
 import { refundSnapshot } from "./paid-access-revocation";
 import { subscriptionSnapshot } from "./subscription-projection";
+import { suspensionCreditStripeCalls } from "./suspension-credit";
 
 /**
  * The production dependencies of the Operator Actions (#617): the same
  * projection the webhook and reconciliation write through, plus the records,
  * the Recovery Journal, and the Stripe calls only an operator makes. The
  * Temporary Suspension actions (#629) use only the records, the journal, and
- * session revocation; Termination (#630) adds stopping the renewal.
+ * session revocation; Termination (#630) adds stopping the renewal. The
+ * Suspension Credit (#631) issued at a lift or a termination adds its records
+ * and the credit note calls.
  */
 export const operatorActionDependencies: OperatorActionDependencies = {
   ...paidAccessProjection,
@@ -43,6 +54,15 @@ export const operatorActionDependencies: OperatorActionDependencies = {
     liftSuspension,
   },
   terminations: { findTermination, recordTermination, attachTerminationSubscription },
+  getSuspension,
+  credits: {
+    listSuspensionCreditsForExit,
+    recordSuspensionCredit,
+    attachSuspensionCreditNote,
+    attachSuspensionCreditRefund,
+  },
+  findStripeCustomer: getStripeCustomerId,
+  ...suspensionCreditStripeCalls(configuredStripe),
   findLiveSubscription: getLiveSubscription,
   // Loaded on use, as the recovery cron does, so the refund actions never boot auth.
   revokeSessions: async (input) => (await import("@/lib/auth/server")).revokeUserSessions(input),

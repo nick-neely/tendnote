@@ -6,7 +6,8 @@ import { refuseTerminated, type TerminationDependencies } from "./termination";
  * What the Temporary Suspension Operator Actions touch (#629): the suspension
  * records, the Recovery Journal, and the account's sessions. Nothing here can
  * reach Stripe: the subscription stays active, invoices are paid, and dunning
- * runs as usual, because admission is denied by the record alone. None of
+ * runs as usual, because admission is denied by the record alone. The
+ * Suspension Credit issued after a lift is its own Operator Action (#631). None of
  * them acts on a terminated account: its Termination ended any suspension.
  */
 export type TemporarySuspensionDependencies = {
@@ -126,5 +127,10 @@ export async function liftSuspension(
     actionId: lifted.id,
     at: lifted.liftedAt,
   });
-  return { suspensionId: lifted.id, liftedAt: lifted.liftedAt, resumed: open === null };
+  return {
+    suspensionId: lifted.id,
+    suspendedAt: lifted.suspendedAt,
+    liftedAt: lifted.liftedAt,
+    resumed: open === null,
+  };
 }

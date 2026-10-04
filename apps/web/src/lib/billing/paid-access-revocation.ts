@@ -1,4 +1,5 @@
 import type { DisputeRecord, RefundRecord } from "@tendnote/db/queries/paid-access-revocations";
+import type { SuspensionCredit } from "@tendnote/db/queries/suspension-credits";
 import { type AdmissionBlock, decideAdmission } from "@tendnote/domain";
 import type Stripe from "stripe";
 import { stripeId } from "./first-paid-invoice";
@@ -56,7 +57,10 @@ const REFUND_CLOCK_SKEW_MS = 60 * 1000;
 /** Refund statuses under which no money went back, so nothing is revoked. */
 const UNREFUNDED_STATUSES = new Set(["failed", "canceled"]);
 
-/** Tendnote's records behind refund and dispute revocation (#617). */
+/**
+ * Tendnote's records behind refund and dispute revocation (#617), and the
+ * Suspension Credit records whose refunds never revoke (#631).
+ */
 export type RevocationRecords = {
   getRefundRecordByStripeRefund: (input: {
     stripeRefundId: string;
@@ -69,6 +73,16 @@ export type RevocationRecords = {
   }) => Promise<RefundRecord | null>;
   attachStripeRefund: (input: { id: string; stripeRefundId: string }) => Promise<void>;
   markRefundRevoked: (input: { id: string; at: Date }) => Promise<void>;
+  getSuspensionCreditByStripeRefund: (input: {
+    stripeRefundId: string;
+  }) => Promise<SuspensionCredit | null>;
+  findUnmatchedSuspensionCredit: (input: {
+    paymentIntentId: string;
+    amount: number;
+    requestedAtOrAfter: Date;
+    requestedAtOrBefore: Date;
+  }) => Promise<SuspensionCredit | null>;
+  attachSuspensionCreditRefund: (input: { id: string; stripeRefundId: string }) => Promise<void>;
   getDispute: (input: { stripeDisputeId: string }) => Promise<DisputeRecord | null>;
   recordDispute: (input: {
     stripeDisputeId: string;
@@ -114,35 +128,68 @@ export async function isSubscriptionRevoked(
   return !decideAdmission({ sourceAdmits: true, blocks });
 }
 
-type RefundOutcome = "revoked" | "already_revoked" | "unmatched" | "not_refunded";
+type RefundOutcome =
+  | "revoked"
+  | "already_revoked"
+  | "suspension_credit"
+  | "unmatched"
+  | "not_refunded";
 
-/** The Refund record a Stripe refund belongs to, by its id or else by payment, amount, and time. */
-async function matchRefundRecord(
-  records: RevocationRecords,
-  refund: RefundSnapshot,
-): Promise<RefundRecord | null> {
-  const byId = await records.getRefundRecordByStripeRefund({ stripeRefundId: refund.id });
-  if (byId || !refund.paymentIntentId) return byId;
-
-  const record = await records.findUnmatchedRefundRecord({
+/** The window a refund whose id was never stored is matched to a record inside. */
+function matchWindow(refund: RefundSnapshot & { paymentIntentId: string }) {
+  return {
     paymentIntentId: refund.paymentIntentId,
     amount: refund.amount,
     requestedAtOrAfter: new Date(refund.createdAt.getTime() - REFUND_MATCH_WINDOW_MS),
     requestedAtOrBefore: new Date(refund.createdAt.getTime() + REFUND_CLOCK_SKEW_MS),
-  });
-  if (!record) return null;
-  // The id write the Refund Operator Action lost, repaired here.
-  await records.attachStripeRefund({ id: record.id, stripeRefundId: refund.id });
-  return { ...record, stripeRefundId: refund.id };
+  };
+}
+
+/**
+ * The record a Stripe refund belongs to: a Refund record or a Suspension Credit,
+ * by the refund's id, or else by payment, amount, and time. Both ids are tried
+ * before either fallback, so a refund already matched is never taken by the
+ * other kind of record, and a fallback both kinds fit matches neither.
+ */
+async function matchRefundOrigin(
+  records: RevocationRecords,
+  refund: RefundSnapshot,
+): Promise<{ refund: RefundRecord } | { suspensionCredit: SuspensionCredit } | null> {
+  const stripeRefundId = refund.id;
+  const byId = await records.getRefundRecordByStripeRefund({ stripeRefundId });
+  if (byId) return { refund: byId };
+  const creditById = await records.getSuspensionCreditByStripeRefund({ stripeRefundId });
+  if (creditById) return { suspensionCredit: creditById };
+  if (!refund.paymentIntentId) return null;
+
+  // The id write the Operator Action lost, or has not made yet, repaired here.
+  // A refund both kinds of record fit is not guessed at: it alerts until the
+  // operator records which it was, since amount is not intent (ADR 0249).
+  const window = matchWindow({ ...refund, paymentIntentId: refund.paymentIntentId });
+  const [record, credit] = await Promise.all([
+    records.findUnmatchedRefundRecord(window),
+    records.findUnmatchedSuspensionCredit(window),
+  ]);
+  if (record && credit) return null;
+  if (record) {
+    await records.attachStripeRefund({ id: record.id, stripeRefundId });
+    return { refund: { ...record, stripeRefundId } };
+  }
+  if (credit) {
+    await records.attachSuspensionCreditRefund({ id: credit.id, stripeRefundId });
+    return { suspensionCredit: { ...credit, stripeRefundId } };
+  }
+  return null;
 }
 
 /**
  * Apply one Stripe refund to Paid Access (ADR 0249). Revocation follows the
  * refund's origin, never its amount: a refund matching a Refund record revokes
  * Paid Access on the subscription that record names and nothing else, so a
- * fresh subscription is unaffected by an older refund. A refund matching no
- * record changes nothing and is returned as `unmatched` for the caller to
- * raise the reconciliation alert.
+ * fresh subscription is unaffected by an older refund. A refund matching a
+ * Suspension Credit is compensation for denied service and never revokes. A
+ * refund matching neither changes nothing and is returned as `unmatched` for
+ * the caller to raise the reconciliation alert.
  *
  * Revoking makes the account Lapsed through the same end every other lapse
  * uses, and ends the subscription in Stripe so the refunded customer is never
@@ -158,8 +205,10 @@ export async function applyStripeRefund(
 ): Promise<RefundOutcome> {
   if (refund.status && UNREFUNDED_STATUSES.has(refund.status)) return "not_refunded";
 
-  const record = await matchRefundRecord(deps.revocations, refund);
-  if (!record) return "unmatched";
+  const origin = await matchRefundOrigin(deps.revocations, refund);
+  if (!origin) return "unmatched";
+  if ("suspensionCredit" in origin) return "suspension_credit";
+  const record = origin.refund;
   if (record.revokedAt) return "already_revoked";
 
   const { userId, stripeSubscriptionId } = record;
