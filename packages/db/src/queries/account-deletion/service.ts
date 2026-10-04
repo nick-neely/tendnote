@@ -21,6 +21,11 @@ export type AccountDeletionDependencies = {
   journal: RecoveryJournal;
   /** Ends every session the account holds. Safe to repeat. */
   revokeSessions: (input: { userId: string }) => Promise<void>;
+  /**
+   * Cancels the account's live subscriptions at once, with no refund of the
+   * remainder. Safe to repeat, and a no-op for an account that never billed.
+   */
+  cancelSubscriptions: (input: { userId: string }) => Promise<void>;
   logger?: AccountDeletionLogger;
 };
 
@@ -44,6 +49,10 @@ async function completeIntent(
   now: Date,
 ): Promise<void> {
   if (!intent.journaledAt) {
+    // Billing stops before anything is journaled or deleted: the account
+    // closed at commit, and the Stripe customer the cancellation needs is
+    // deleted with the account. A failure leaves the intent for the sweep.
+    await deps.cancelSubscriptions({ userId: intent.userId });
     await deps.journal.write(deletionRecord(intent));
     await deps.store.markJournaled({ userId: intent.userId, at: now });
   }

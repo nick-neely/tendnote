@@ -1,4 +1,5 @@
 import type { AccountDeletionDependencies } from "@tendnote/db/queries/account-deletion";
+import { HouseholdValidationError } from "@tendnote/domain";
 import { APIError } from "better-auth/api";
 import { describe, expect, it, vi } from "vitest";
 import { createAccountDeletionHook } from "./account-deletion";
@@ -30,6 +31,9 @@ function dependencies(input: { journalFails?: boolean } = {}) {
     revokeSessions: async () => {
       steps.push("revoke");
     },
+    cancelSubscriptions: async () => {
+      steps.push("cancel");
+    },
     logger: { error: vi.fn() },
   };
   return { steps, deps };
@@ -44,7 +48,7 @@ describe("createAccountDeletionHook", () => {
     });
 
     await expect(hook({ id: "user_1" })).resolves.toBeUndefined();
-    expect(steps).toEqual(["intent", "revoke", "journal", "journaled", "delete"]);
+    expect(steps).toEqual(["intent", "revoke", "cancel", "journal", "journaled", "delete"]);
   });
 
   it("answers 202 Accepted and stops Better Auth deleting when only the intent committed", async () => {
@@ -58,7 +62,7 @@ describe("createAccountDeletionHook", () => {
 
     expect(error).toBeInstanceOf(APIError);
     expect((error as APIError).statusCode).toBe(202);
-    expect(steps).toEqual(["intent", "revoke"]);
+    expect(steps).toEqual(["intent", "revoke", "cancel"]);
   });
 
   it("commits no intent when the household guard refuses", async () => {
@@ -71,6 +75,26 @@ describe("createAccountDeletionHook", () => {
     });
 
     await expect(hook({ id: "user_1" })).rejects.toThrow("hand off ownership first");
+    expect(steps).toEqual([]);
+  });
+
+  it("answers a household refusal as a 400 carrying what to do next", async () => {
+    const { steps, deps } = dependencies();
+    const hook = createAccountDeletionHook({
+      dependencies: () => deps,
+      assertAllowed: async () => {
+        throw new HouseholdValidationError("Ask someone to become an owner first.");
+      },
+    });
+
+    const error = await hook({ id: "user_1" }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(APIError);
+    expect((error as APIError).statusCode).toBe(400);
+    expect((error as APIError).body).toMatchObject({
+      code: "HOUSEHOLD_REFUSED",
+      message: "Ask someone to become an owner first.",
+    });
     expect(steps).toEqual([]);
   });
 });

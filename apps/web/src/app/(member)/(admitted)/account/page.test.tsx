@@ -63,11 +63,18 @@ vi.mock("@/components/account/reminder-settings", () => ({ ReminderSettings: () 
 vi.mock("@/components/account/assistant-approval-settings", () => ({
   AssistantApprovalSettings: () => null,
 }));
+vi.mock("@/components/account/delete-account-button", () => ({
+  DeleteAccountButton: ({ email }: { email: string }) => `delete-account:${email}`,
+}));
 vi.mock("@/components/ui/badge", () => ({
   Badge: ({ children }: { children: unknown }) => children,
 }));
 
 import { renderToStaticMarkup } from "react-dom/server";
+import {
+  DELETION_BILLING_LINE,
+  DELETION_PROMISE,
+} from "@/components/account/account-deletion-section";
 import {
   AccountContent,
   CalendarPreviewStream,
@@ -208,5 +215,58 @@ describe("the analytics and error reports setting", () => {
 
     expect(await render()).toBeNull();
     expect(isTelemetryOptedOut).not.toHaveBeenCalled();
+  });
+});
+
+describe("AccountPage deletion screen (#619)", () => {
+  function admitted() {
+    getCurrentAccess.mockResolvedValue({ state: "admitted", user: { id: "owner-1" } });
+    resolveAccountView.mockReturnValue({
+      type: "render",
+      name: "Nick",
+      email: "nick@example.com",
+      sourceLabel: "Initial owner",
+    });
+  }
+
+  it("offers Delete directly after export, with the deletion promise and no gate", async () => {
+    admitted();
+
+    const markup = renderToStaticMarkup(await AccountContent());
+
+    const exportAt = markup.indexOf('aria-label="Data export"');
+    const deleteAt = markup.indexOf("delete-account:nick@example.com");
+    expect(exportAt).toBeGreaterThan(-1);
+    expect(deleteAt).toBeGreaterThan(exportAt);
+    for (const line of DELETION_PROMISE) {
+      expect(markup).toContain(line.replaceAll("'", "&#x27;"));
+    }
+    expect(markup).toContain("you don&#x27;t need to export");
+  });
+
+  it("states the seven-day Backup Window", () => {
+    expect(DELETION_PROMISE.at(-1)).toContain("within 7 days");
+  });
+
+  it("tells a hosted account its subscription ends with no refund", async () => {
+    admitted();
+    vi.stubEnv("TENDNOTE_ADMISSION_MODE", "hosted");
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_1");
+    vi.stubEnv("STRIPE_PRICE_MONTHLY", "price_m");
+    vi.stubEnv("STRIPE_PRICE_ANNUAL", "price_a");
+
+    const markup = renderToStaticMarkup(await AccountContent());
+
+    expect(markup).toContain(DELETION_BILLING_LINE.replaceAll("'", "&#x27;"));
+  });
+
+  it("says nothing about a subscription where Tendnote takes no payment", async () => {
+    admitted();
+    vi.stubEnv("STRIPE_SECRET_KEY", "");
+
+    const markup = renderToStaticMarkup(await AccountContent());
+
+    expect(markup).toContain("delete-account:nick@example.com");
+    expect(markup).not.toContain("subscription ends now");
   });
 });
