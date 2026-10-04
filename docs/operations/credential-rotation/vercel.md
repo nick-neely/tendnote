@@ -43,11 +43,14 @@ scope is unknown.
    `BACKGROUND_JOB_QUEUE_SECRET` on the web and Eve projects, and `CRON_SECRET`
    and `FLAGS_SECRET` on the web project. Remove the same variables from
    Preview, then set new Preview values different from Production's.
-4. **Rotate the Blob store token.** In the Blob store's settings, under
-   **Vercel Blob**, rotate its read-write token, and set the new
-   `BLOB_READ_WRITE_TOKEN` on the web and Eve projects. If the store offers no
-   rotation, record that in the Incident Record. The pre-launch tabletop
-   confirms this path.
+4. **Close the Blob store token.** The store is under **Vercel Blob**. Vercel
+   documents no way to rotate or revoke a store's long-lived
+   `BLOB_READ_WRITE_TOKEN`. Its documented answer is OIDC, whose short-lived
+   tokens rotate on their own. If a project still sets the static token and
+   it may be exposed, ask Vercel support to revoke it, and record in the
+   Incident Record that it stays valid until they do. Moving the store to
+   OIDC, so production holds no static token, is
+   [#741](https://github.com/nick-neely/tendnote/issues/741).
 5. **Redeploy Production** on every project, the web project last, so that
    both sides of the queue and reconciliation signatures change together.
    Queue messages signed with the old secret are refused. The recovery cron

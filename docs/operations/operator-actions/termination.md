@@ -13,7 +13,9 @@ renewal against a terminated account. When the termination converts an open
 Temporary Suspension, it issues that suspension's
 [Suspension Credit](suspension-credit.md): the suspended time plus the unused
 remainder to the period end, always back to the card. A termination that
-converts no suspension issues no credit.
+converts no suspension issues no credit and returns no remainder, although
+the contract says it should:
+[#739](https://github.com/nick-neely/tendnote/issues/739).
 
 ## Trigger
 

@@ -53,7 +53,8 @@ and dunning runs as usual. The suspended paid time is compensated once, by the
 
    It prints `suspensionId`, `previousDeadline`, and the new `reviewDeadline`,
    ten business days from now. The renewal stores no reason, so write the
-   reason for renewing as an internal note on the support thread. Send the customer an update with the new date.
+   reason for renewing as an internal note on the support thread, until
+   [#740](https://github.com/nick-neely/tendnote/issues/740) records it. Send the customer an update with the new date.
    The customer hears from the operator at least every ten business days while
    the account stays under review. Renewing over and over does not license an
    indefinite suspension.

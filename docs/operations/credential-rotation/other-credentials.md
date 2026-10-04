@@ -9,9 +9,9 @@ in the projects' environment, so an exposed environment exposes them too.
 | `GITHUB_CLIENT_SECRET` | web | The GitHub OAuth app: generate a new client secret, then delete the old one | **OAuth apps** |
 | `GOOGLE_CLIENT_SECRET` | web, Eve | The Google Cloud OAuth client: add a secret, then disable and delete the old one | **OAuth apps** |
 | `DISCORD_CLIENT_SECRET` | web | The Discord application's **OAuth2** page: reset the secret | **OAuth apps** |
-| `DISCORD_BOT_TOKEN` | Eve | The Discord application's **Bot** page: reset the token | **OAuth apps** |
+| `DISCORD_BOT_TOKEN` | Eve | The Discord application's **Bot** page: reset the token | **Discord bot** |
 | `REDIS_URL` | web, Eve | The Redis service: reset the password or rotate the access key | **Redis** |
-| `TENDNOTE_OPERATOR_ALERT_PUSH_URL`, `TENDNOTE_OPERATOR_ALERT_PUSH_TOKEN` | web | ntfy: move to a new unguessable topic and a new access token, then delete the old token | **Alert channel** |
+| `TENDNOTE_OPERATOR_ALERT_PUSH_URL`, `TENDNOTE_OPERATOR_ALERT_PUSH_TOKEN` | web | ntfy: move to a new unguessable topic and a new access token, then delete the old token | **Operator alerts** |
 | `WEB_PUSH_VAPID_PRIVATE_KEY`, `NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY` | web | Generate a new pair: `pnpm --filter @tendnote/web exec web-push generate-vapid-keys --json` | **Vercel** |
 | `TENDNOTE_SYNTHETIC_CHECK_PASSWORD` | web | Change the synthetic account's password in the app | **Synthetic check** |
 

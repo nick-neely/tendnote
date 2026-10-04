@@ -23,10 +23,12 @@ them is not a runbook yet. `scripts/operations-runbooks.test.ts` checks it.
 One private operations sheet, outside the repository, holds what is secret:
 provider account ids, contact routes, credential locations, and counsel's
 contact. Runbooks name its entries in bold and never copy from it. Its entries
-are **Vercel**, **Neon**, **Stripe**, **Resend**, **AI Gateway**,
-**GlitchTip**, **Redis**, **Vercel Blob**, **OAuth apps**, **Domains**,
-**Alert channel**, **Synthetic check**, **Support mailbox**, **Incident log**,
-**Counsel**, and **Regulators**.
+are the ones [#652](https://github.com/nick-neely/tendnote/issues/652) lists:
+**Vercel**, **Neon**, **Stripe**, **Resend**, **AI Gateway**, **GlitchTip**,
+**Vercel Blob**, **Redis**, **Operator alerts**, **Synthetic check**,
+**OAuth apps**, **Discord bot**, **Domains**, **Status page**, **GitHub**,
+**Incident log**, **Support mailbox**, **Counsel**, **Regulators**, and
+**Neely Solutions LLC**.
 
 A command below that reads production's environment runs from `apps/web` after
 `vercel env pull .env.local --environment=production`. Delete `.env.local` when
