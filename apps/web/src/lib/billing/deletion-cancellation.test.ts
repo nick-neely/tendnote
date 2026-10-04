@@ -5,7 +5,10 @@ import { cancelSubscriptionsForDeletion } from "./deletion-cancellation";
 function harness(subscriptions: Array<{ id: string; status: Stripe.Subscription.Status }>) {
   const stripe = {
     subscriptions: {
-      list: vi.fn(async (_params: Stripe.SubscriptionListParams) => ({ data: subscriptions })),
+      list: vi.fn(async (_params: Stripe.SubscriptionListParams) => ({
+        data: subscriptions,
+        has_more: false,
+      })),
       cancel: vi.fn(async (_id: string, _params: Stripe.SubscriptionCancelParams) => ({})),
     },
   };
@@ -49,6 +52,25 @@ describe("cancelSubscriptionsForDeletion", () => {
     await cancelSubscriptionsForDeletion(deps, { userId: "user_1" });
 
     expect(stripe.subscriptions.cancel).not.toHaveBeenCalled();
+  });
+
+  it("follows every page, so a live subscription on a later page is cancelled", async () => {
+    const { stripe, deps } = harness([]);
+    stripe.subscriptions.list
+      .mockResolvedValueOnce({ data: [{ id: "sub_old", status: "canceled" }], has_more: true })
+      .mockResolvedValueOnce({ data: [{ id: "sub_live", status: "active" }], has_more: false });
+
+    await cancelSubscriptionsForDeletion(deps, { userId: "user_1" });
+
+    expect(stripe.subscriptions.list).toHaveBeenLastCalledWith({
+      customer: "cus_1",
+      status: "all",
+      limit: 100,
+      starting_after: "sub_old",
+    });
+    expect(stripe.subscriptions.cancel.mock.calls).toEqual([
+      ["sub_live", { prorate: false, invoice_now: false }],
+    ]);
   });
 
   it("never reaches Stripe for an account that never billed", async () => {

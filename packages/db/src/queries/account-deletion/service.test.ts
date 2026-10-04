@@ -146,7 +146,7 @@ describe("requestAccountDeletion", () => {
 
     await runAccountDeletionSweep({ ...deps, limit: 10, now: NOW });
 
-    expect(steps).toEqual(["revoke:user_1", "delete:user_1"]);
+    expect(steps).toEqual(["revoke:user_1", "cancel:user_1", "delete:user_1"]);
     expect(store.hasAccount("user_1")).toBe(false);
   });
 });

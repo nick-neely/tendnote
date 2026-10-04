@@ -3,9 +3,10 @@ import type Stripe from "stripe";
 /** The slice of the Stripe client the cancellation uses. */
 export type DeletionCancellationStripeClient = {
   subscriptions: {
-    list: (
-      params: Stripe.SubscriptionListParams,
-    ) => Promise<{ data: ReadonlyArray<{ id: string; status: Stripe.Subscription.Status }> }>;
+    list: (params: Stripe.SubscriptionListParams) => Promise<{
+      data: ReadonlyArray<{ id: string; status: Stripe.Subscription.Status }>;
+      has_more: boolean;
+    }>;
     cancel: (id: string, params: Stripe.SubscriptionCancelParams) => Promise<unknown>;
   };
 };
@@ -37,9 +38,18 @@ export async function cancelSubscriptionsForDeletion(
   if (!customer) return;
 
   const stripe = deps.stripe();
-  const { data } = await stripe.subscriptions.list({ customer, status: "all", limit: 100 });
-  for (const subscription of data) {
-    if (ENDED_STATUSES.has(subscription.status)) continue;
-    await stripe.subscriptions.cancel(subscription.id, { prorate: false, invoice_now: false });
-  }
+  let startingAfter: string | undefined;
+  do {
+    const page = await stripe.subscriptions.list({
+      customer,
+      status: "all",
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    for (const subscription of page.data) {
+      if (ENDED_STATUSES.has(subscription.status)) continue;
+      await stripe.subscriptions.cancel(subscription.id, { prorate: false, invoice_now: false });
+    }
+    startingAfter = page.has_more ? page.data.at(-1)?.id : undefined;
+  } while (startingAfter);
 }

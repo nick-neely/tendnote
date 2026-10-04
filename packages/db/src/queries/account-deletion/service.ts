@@ -48,11 +48,13 @@ async function completeIntent(
   intent: AccountDeletionIntent,
   now: Date,
 ): Promise<void> {
+  // Billing stops before anything is journaled or deleted: the account closed
+  // at commit, and the Stripe customer the cancellation needs is deleted with
+  // the account. It runs on every attempt, journaled or not, so an intent
+  // journaled before this step existed is never deleted while still billing.
+  // A failure leaves the intent for the sweep.
+  await deps.cancelSubscriptions({ userId: intent.userId });
   if (!intent.journaledAt) {
-    // Billing stops before anything is journaled or deleted: the account
-    // closed at commit, and the Stripe customer the cancellation needs is
-    // deleted with the account. A failure leaves the intent for the sweep.
-    await deps.cancelSubscriptions({ userId: intent.userId });
     await deps.journal.write(deletionRecord(intent));
     await deps.store.markJournaled({ userId: intent.userId, at: now });
   }
