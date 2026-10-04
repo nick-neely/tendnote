@@ -1,5 +1,6 @@
 import {
   type AccountDeletionSweepResult,
+  blobRecoveryJournal,
   runAccountDeletionSweep,
 } from "@tendnote/db/queries/account-deletion";
 import {
@@ -296,7 +297,8 @@ async function completePendingAccountDeletions(input: {
 /**
  * Closes the household recovery window for the households whose thirty days are
  * up, disposing of the workspace's own records and leaving the minimized
- * non-content tombstone (#391).
+ * non-content tombstone (#391). Each household's Deletion Record reaches the
+ * Recovery Journal before its rows go (#618).
  *
  * Bounded like every other family here, and after the retryable recovery work:
  * it is the only irreversible family in this part of the pass, so its own
@@ -310,6 +312,7 @@ function purgeDueDissolvedHouseholds(input: {
   return runHouseholdPurgeSweep({
     limit: input.limit,
     store: createDrizzleHouseholdPurgeStore(),
+    journal: blobRecoveryJournal,
     ...(input.now ? { now: input.now } : {}),
     ...(input.logger ? { logger: input.logger } : {}),
   });

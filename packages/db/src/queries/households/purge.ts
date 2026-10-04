@@ -1,7 +1,9 @@
 import {
+  type DeletionRecord,
   householdPurgeCutoff,
   householdRecoveryDeadline,
   isHouseholdPurgeDue,
+  type RecoveryJournal,
 } from "@tendnote/domain";
 
 /**
@@ -36,6 +38,11 @@ import {
  * moments, and how much of each family moved is written in the same transaction
  * as the deletes, with a scrubbed system actor: no person decided this, the
  * deadline did.
+ *
+ * **The journal hears first.** A Deletion Record goes to the Recovery Journal
+ * before the transaction opens, so a restore from before the purge cannot bring
+ * the household back: recovery re-applies the record through
+ * {@link reapplyHouseholdDeletionRecord} (ADR 0250).
  *
  * The disposal *order* lives here rather than in the storage adapter, because it
  * is a fact about the schema's constraints rather than about SQL, and because a
@@ -220,6 +227,13 @@ export type HouseholdPurgeTransaction = {
 
 export type HouseholdPurgeStore = {
   /**
+   * The household as it stands, whatever its status, or null once it is gone.
+   * Recovery reads it to tell a purge still to re-apply from one already done.
+   */
+  findHousehold: (input: {
+    householdId: string;
+  }) => Promise<{ householdId: string; dissolvedAt: Date | null } | null>;
+  /**
    * Dissolved households whose recovery window closed at or before `cutoff`,
    * oldest first, at most `limit` of them.
    *
@@ -340,6 +354,22 @@ export async function eraseHousehold(
 }
 
 /**
+ * The Deletion Record for a household's purge, timed at the attempt. Not the
+ * recovery deadline: retention ages a record from its time, so a purge that ran
+ * weeks late would otherwise leave a record already near expiry. A retry after
+ * a failed erasure therefore writes a second record, which re-application
+ * absorbs because it is idempotent.
+ */
+export function householdDeletionRecord(input: { householdId: string; at: Date }): DeletionRecord {
+  return {
+    kind: "deletion",
+    subjectKind: "household",
+    subjectId: input.householdId,
+    at: input.at,
+  };
+}
+
+/**
  * One bounded pass over the dissolved households whose window has closed.
  *
  * Per-household error isolation rather than one transaction over the batch: a
@@ -350,6 +380,7 @@ export async function eraseHousehold(
 export async function runHouseholdPurgeSweep(input: {
   limit: number;
   store: HouseholdPurgeStore;
+  journal: RecoveryJournal;
   now?: Date;
   logger?: HouseholdPurgeLogger;
 }): Promise<HouseholdPurgeSweepResult> {
@@ -376,6 +407,11 @@ export async function runHouseholdPurgeSweep(input: {
     }
 
     try {
+      // Journal, then delete. A failed write leaves the household whole for the
+      // next pass, so no reachable state has its rows gone without a record.
+      await input.journal.write(
+        householdDeletionRecord({ householdId: candidate.householdId, at: now }),
+      );
       const counts = await input.store.purgeHousehold(
         { householdId: candidate.householdId },
         (tx) =>
@@ -400,4 +436,40 @@ export async function runHouseholdPurgeSweep(input: {
   }
 
   return result;
+}
+
+export type HouseholdDeletionReapplyResult = { status: "purged" | "absent" };
+
+/**
+ * Re-applies a household Deletion Record after a restore, through the same
+ * erasure the sweep runs. The record is the authority, so the deadline is not
+ * re-checked; the journal is not written, because replay only reads it. The
+ * restore rolled the original tombstone back, so the new one's `purgedAt` is
+ * the replay's.
+ *
+ * Idempotent: a household already gone is `absent` and nothing happens. One
+ * that exists but was never dissolved cannot have been purged inside the
+ * Backup Window, so it is refused for the operator rather than erased.
+ */
+export async function reapplyHouseholdDeletionRecord(input: {
+  record: DeletionRecord;
+  store: HouseholdPurgeStore;
+  now?: Date;
+}): Promise<HouseholdDeletionReapplyResult> {
+  if (input.record.subjectKind !== "household") {
+    throw new Error("Only a household Deletion Record re-applies through the household purge.");
+  }
+  const householdId = input.record.subjectId;
+  const household = await input.store.findHousehold({ householdId });
+  if (!household) return { status: "absent" };
+
+  const { dissolvedAt } = household;
+  if (!dissolvedAt) {
+    throw new Error(`Household ${householdId} has a Deletion Record but was never dissolved.`);
+  }
+  const purgedAt = input.now ?? new Date();
+  await input.store.purgeHousehold({ householdId }, (tx) =>
+    eraseHousehold(tx, { householdId, dissolvedAt, purgedAt }),
+  );
+  return { status: "purged" };
 }

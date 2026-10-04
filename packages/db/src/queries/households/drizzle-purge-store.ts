@@ -48,6 +48,18 @@ export function createDrizzleHouseholdPurgeStore(
   resolveDb: () => DatabaseExecutor = getDb,
 ): HouseholdPurgeStore {
   return {
+    async findHousehold(input) {
+      const [row] = await resolveDb()
+        .select({
+          householdId: householdWorkspaces.id,
+          dissolvedAt: householdWorkspaces.dissolvedAt,
+        })
+        .from(householdWorkspaces)
+        .where(eq(householdWorkspaces.id, input.householdId))
+        .limit(1);
+      return row ?? null;
+    },
+
     async listPurgeableHouseholds(input) {
       if (input.limit <= 0) return [];
       const rows = await resolveDb()

@@ -6,15 +6,22 @@
  * thing an in-memory store cannot, which is that the delete order actually
  * satisfies Postgres - every foreign key, every `on delete` rule, and
  * `saved_items_ownership_check`, the constraint that turns a wrong order into an
- * aborted transaction rather than a stray row.
+ * aborted transaction rather than a stray row. It also confirms the household's
+ * Deletion Record is journaled while the workspace still exists, and that
+ * re-applying a record after a simulated restore erases through the same path.
  *
  *   pnpm --filter @tendnote/db db:purge:check
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "./client";
+import { createInMemoryRecoveryJournal } from "./queries/account-deletion/in-memory-journal";
 import { createDrizzleHouseholdPurgeStore } from "./queries/households/drizzle-purge-store";
-import { runHouseholdPurgeSweep } from "./queries/households/purge";
+import {
+  householdDeletionRecord,
+  reapplyHouseholdDeletionRecord,
+  runHouseholdPurgeSweep,
+} from "./queries/households/purge";
 import {
   assetEvidence,
   assetMemories,
@@ -353,9 +360,23 @@ async function main() {
   const { householdId } = seeded;
 
   console.log("running the sweep…");
+  const journal = createInMemoryRecoveryJournal();
+  const journaledWhileWorkspaceExisted: boolean[] = [];
   const result = await runHouseholdPurgeSweep({
     limit: 25,
     store: createDrizzleHouseholdPurgeStore(),
+    journal: {
+      async write(record) {
+        if (record.kind === "deletion" && record.subjectId === householdId) {
+          const rows = await db
+            .select()
+            .from(householdWorkspaces)
+            .where(eq(householdWorkspaces.id, householdId));
+          journaledWhileWorkspaceExisted.push(rows.length === 1);
+        }
+        await journal.write(record);
+      },
+    },
     logger: { info: () => {}, error: (message, context) => console.error(message, context) },
   });
   console.log("  sweep result:", result);
@@ -492,6 +513,48 @@ async function main() {
     nullOwnerHouseholdNative.length === 0,
     nullOwnerHouseholdNative.length,
   );
+
+  console.log("\nthe Recovery Journal:");
+  const householdRecords = journal.records().filter((record) => record.subjectId === householdId);
+  check(
+    "one content-free household Deletion Record was journaled",
+    householdRecords.length === 1 &&
+      householdRecords[0]?.subjectKind === "household" &&
+      Object.keys(householdRecords[0] ?? {})
+        .sort()
+        .join() === "at,kind,subjectId,subjectKind",
+    householdRecords,
+  );
+  check(
+    "it was written while the workspace still existed",
+    journaledWhileWorkspaceExisted.length === 1 && journaledWhileWorkspaceExisted[0] === true,
+    journaledWhileWorkspaceExisted,
+  );
+
+  console.log("\nre-applying after a simulated restore:");
+  const restored = await seedDissolvedHousehold(dissolvedAt);
+  const record = householdDeletionRecord({ householdId: restored.householdId, at: new Date() });
+  const store = createDrizzleHouseholdPurgeStore();
+  const first = await reapplyHouseholdDeletionRecord({ record, store });
+  check("the restored household is purged", first.status === "purged", first);
+  check(
+    "its workspace row is gone",
+    (
+      await db
+        .select()
+        .from(householdWorkspaces)
+        .where(eq(householdWorkspaces.id, restored.householdId))
+    ).length === 0,
+  );
+  const again = await reapplyHouseholdDeletionRecord({ record, store });
+  check("re-applying again is a no-op", again.status === "absent", again);
+  const restoredTombstones = await db
+    .select()
+    .from(auditLog)
+    .where(
+      and(eq(auditLog.entityId, restored.householdId), eq(auditLog.action, "household.purge")),
+    );
+  check("exactly one tombstone for it", restoredTombstones.length === 1, restoredTombstones.length);
 
   console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) FAILED`);
   process.exit(failures === 0 ? 0 : 1);

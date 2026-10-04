@@ -1,5 +1,10 @@
-import { HOUSEHOLD_RECOVERY_WINDOW_DAYS, householdRecoveryDeadline } from "@tendnote/domain";
+import {
+  HOUSEHOLD_RECOVERY_WINDOW_DAYS,
+  householdRecoveryDeadline,
+  type RecoveryJournal,
+} from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
+import { createInMemoryRecoveryJournal } from "../account-deletion/in-memory-journal";
 import {
   createInMemoryHouseholdPurgeStore,
   HouseholdPurgeConstraintError,
@@ -10,7 +15,9 @@ import {
   HOUSEHOLD_PURGE_DISPOSAL_ORDER,
   HOUSEHOLD_PURGE_FENCED_FAMILIES,
   type HouseholdPurgeCounts,
+  householdDeletionRecord,
   householdPurgeTombstone,
+  reapplyHouseholdDeletionRecord,
   runHouseholdPurgeSweep,
 } from "./purge";
 
@@ -127,11 +134,20 @@ function rowsIn(store: ReturnType<typeof createInMemoryHouseholdPurgeStore>, hou
 
 const seededRowCount = populated("any", LONG_AGO).rows?.length ?? 0;
 
+/** A sweep with a working journal unless a case brings its own. */
+function sweep(
+  input: Omit<Parameters<typeof runHouseholdPurgeSweep>[0], "journal"> & {
+    journal?: RecoveryJournal;
+  },
+) {
+  return runHouseholdPurgeSweep({ journal: createInMemoryRecoveryJournal(), ...input });
+}
+
 describe("the household purge sweep", () => {
   it("disposes of a household whose recovery window has closed", async () => {
     const store = createInMemoryHouseholdPurgeStore([populated("ended", LONG_AGO)]);
 
-    const result = await runHouseholdPurgeSweep({ limit: 10, now: NOW, store });
+    const result = await sweep({ limit: 10, now: NOW, store });
 
     expect(result).toEqual({ scanned: 1, purged: 1, skipped: 0, failed: 0 });
     expect(rowsIn(store, "ended")).toEqual([]);
@@ -140,7 +156,7 @@ describe("the household purge sweep", () => {
   it("leaves a household alone while it can still be recovered", async () => {
     const store = createInMemoryHouseholdPurgeStore([populated("recent", YESTERDAY)]);
 
-    const result = await runHouseholdPurgeSweep({ limit: 10, now: NOW, store });
+    const result = await sweep({ limit: 10, now: NOW, store });
 
     expect(result).toEqual({ scanned: 0, purged: 0, skipped: 0, failed: 0 });
     expect(rowsIn(store, "recent")).not.toEqual([]);
@@ -156,7 +172,7 @@ describe("the household purge sweep", () => {
     ]);
     store.ignoreCutoff = true;
 
-    const result = await runHouseholdPurgeSweep({ limit: 10, now: NOW, store });
+    const result = await sweep({ limit: 10, now: NOW, store });
 
     expect(result).toEqual({ scanned: 2, purged: 1, skipped: 1, failed: 0 });
     expect(rowsIn(store, "ended")).toEqual([]);
@@ -166,8 +182,8 @@ describe("the household purge sweep", () => {
   it("is safe to re-run: a purged household is gone from the next sweep", async () => {
     const store = createInMemoryHouseholdPurgeStore([populated("ended", LONG_AGO)]);
 
-    const first = await runHouseholdPurgeSweep({ limit: 10, now: NOW, store });
-    const second = await runHouseholdPurgeSweep({ limit: 10, now: NOW, store });
+    const first = await sweep({ limit: 10, now: NOW, store });
+    const second = await sweep({ limit: 10, now: NOW, store });
 
     expect(first.purged).toBe(1);
     expect(second).toEqual({ scanned: 0, purged: 0, skipped: 0, failed: 0 });
@@ -178,7 +194,7 @@ describe("the household purge sweep", () => {
     const store = createInMemoryHouseholdPurgeStore([populated("ended", LONG_AGO)]);
     const list = vi.spyOn(store, "listPurgeableHouseholds");
 
-    const result = await runHouseholdPurgeSweep({ limit: 0, now: NOW, store });
+    const result = await sweep({ limit: 0, now: NOW, store });
 
     expect(result).toEqual({ scanned: 0, purged: 0, skipped: 0, failed: 0 });
     expect(list).not.toHaveBeenCalled();
@@ -191,7 +207,7 @@ describe("the household purge sweep", () => {
       populated("middle", LONG_AGO),
     ]);
 
-    const result = await runHouseholdPurgeSweep({ limit: 2, now: NOW, store });
+    const result = await sweep({ limit: 2, now: NOW, store });
 
     expect(result).toEqual({ scanned: 2, purged: 2, skipped: 0, failed: 0 });
     expect(rowsIn(store, "newer")).toHaveLength(seededRowCount);
@@ -208,7 +224,7 @@ describe("the household purge sweep", () => {
     store.failOn.add("broken");
     const logger = { info: vi.fn(), error: vi.fn() };
 
-    const result = await runHouseholdPurgeSweep({ limit: 10, now: NOW, store, logger });
+    const result = await sweep({ limit: 10, now: NOW, store, logger });
 
     expect(result).toEqual({ scanned: 2, purged: 1, skipped: 0, failed: 1 });
     // Half-erased is the one state a re-runnable sweep may never leave behind:
@@ -227,7 +243,7 @@ describe("the household purge sweep", () => {
   it("leaves a tombstone for every household it erases", async () => {
     const store = createInMemoryHouseholdPurgeStore([populated("ended", LONG_AGO)]);
 
-    await runHouseholdPurgeSweep({ limit: 10, now: NOW, store });
+    await sweep({ limit: 10, now: NOW, store });
 
     expect(store.tombstones).toHaveLength(1);
     const tombstone = store.tombstones[0];
@@ -260,10 +276,132 @@ describe("the household purge sweep", () => {
       { householdId: "empty", dissolvedAt: LONG_AGO },
     ]);
 
-    await runHouseholdPurgeSweep({ limit: 10, now: NOW, store });
+    await sweep({ limit: 10, now: NOW, store });
 
     expect(store.tombstones).toHaveLength(1);
     expect(store.tombstones[0]?.metadataJson).toMatchObject({ disposedSavedItems: 0 });
+  });
+});
+
+describe("the household purge journals before it deletes", () => {
+  const pathnameAt = (at: Date) => `journal/deletion/${at.toISOString()}-household-ended.json`;
+  const LATER = new Date(NOW.getTime() + DAY_MS);
+
+  it("writes the household's Deletion Record while every row is still there", async () => {
+    const store = createInMemoryHouseholdPurgeStore([populated("ended", LONG_AGO)]);
+    const journal = createInMemoryRecoveryJournal();
+    const rowsAtWrite: number[] = [];
+    const watched: RecoveryJournal = {
+      async write(record) {
+        rowsAtWrite.push(rowsIn(store, "ended").length);
+        await journal.write(record);
+      },
+    };
+
+    await sweep({ journal: watched, limit: 10, now: NOW, store });
+
+    expect(rowsAtWrite).toEqual([seededRowCount]);
+    expect(rowsIn(store, "ended")).toEqual([]);
+    expect(journal.pathnames()).toEqual([pathnameAt(NOW)]);
+    // Content-free: the subject and a time, nothing the household held.
+    expect(journal.records()).toEqual([
+      { kind: "deletion", subjectKind: "household", subjectId: "ended", at: NOW.toISOString() },
+    ]);
+  });
+
+  it("deletes nothing when the journal write fails, and journals on the retry", async () => {
+    const store = createInMemoryHouseholdPurgeStore([populated("ended", LONG_AGO)]);
+    const journal = createInMemoryRecoveryJournal();
+    journal.failNextWrites(1);
+
+    const first = await sweep({ journal, limit: 10, now: NOW, store });
+
+    expect(first).toEqual({ scanned: 1, purged: 0, skipped: 0, failed: 1 });
+    expect(rowsIn(store, "ended")).toHaveLength(seededRowCount);
+    expect(store.tombstones).toEqual([]);
+    expect(journal.pathnames()).toEqual([]);
+
+    const second = await sweep({ journal, limit: 10, now: LATER, store });
+
+    expect(second).toEqual({ scanned: 1, purged: 1, skipped: 0, failed: 0 });
+    expect(rowsIn(store, "ended")).toEqual([]);
+    expect(journal.pathnames()).toEqual([pathnameAt(LATER)]);
+  });
+
+  it("times each record at its attempt, and recovery absorbs a failed erasure's extra one", async () => {
+    const store = createInMemoryHouseholdPurgeStore([populated("ended", LONG_AGO)]);
+    const journal = createInMemoryRecoveryJournal();
+    store.failOn.add("ended");
+
+    await sweep({ journal, limit: 10, now: NOW, store });
+    store.failOn.clear();
+    await sweep({ journal, limit: 10, now: LATER, store });
+
+    expect(rowsIn(store, "ended")).toEqual([]);
+    expect(journal.pathnames()).toEqual([pathnameAt(NOW), pathnameAt(LATER)]);
+
+    // A restore brings the household back; both records re-apply, and only the
+    // first finds anything to erase.
+    const restored = createInMemoryHouseholdPurgeStore([populated("ended", LONG_AGO)]);
+    const outcomes = [];
+    for (const at of [NOW, LATER]) {
+      const record = householdDeletionRecord({ householdId: "ended", at });
+      outcomes.push((await reapplyHouseholdDeletionRecord({ record, store: restored })).status);
+    }
+    expect(outcomes).toEqual(["purged", "absent"]);
+    expect(restored.tombstones).toHaveLength(1);
+  });
+});
+
+describe("recovery re-applies a household Deletion Record", () => {
+  const record = householdDeletionRecord({ householdId: "restored", at: NOW });
+
+  it("erases a household a restore brought back, through the purge path", async () => {
+    const store = createInMemoryHouseholdPurgeStore([populated("restored", LONG_AGO)]);
+
+    const result = await reapplyHouseholdDeletionRecord({ record, store, now: NOW });
+
+    expect(result).toEqual({ status: "purged" });
+    expect(rowsIn(store, "restored")).toEqual([]);
+    expect(store.disposalOrder).toEqual([...HOUSEHOLD_PURGE_DISPOSAL_ORDER]);
+    expect(store.tombstones).toHaveLength(1);
+    expect(store.tombstones[0]?.metadataJson).toMatchObject({
+      householdId: "restored",
+      recovery: "expired",
+      purgedAt: NOW.toISOString(),
+    });
+  });
+
+  it("is idempotent: re-applying a household already gone changes nothing", async () => {
+    const store = createInMemoryHouseholdPurgeStore([populated("restored", LONG_AGO)]);
+
+    await reapplyHouseholdDeletionRecord({ record, store, now: NOW });
+    const again = await reapplyHouseholdDeletionRecord({ record, store, now: NOW });
+
+    expect(again).toEqual({ status: "absent" });
+    expect(store.tombstones).toHaveLength(1);
+  });
+
+  it("does not wait for the deadline: the record is the authority", async () => {
+    const store = createInMemoryHouseholdPurgeStore([populated("restored", YESTERDAY)]);
+
+    const result = await reapplyHouseholdDeletionRecord({ record, store, now: NOW });
+
+    expect(result).toEqual({ status: "purged" });
+    expect(rowsIn(store, "restored")).toEqual([]);
+  });
+
+  it("refuses an account record rather than erasing a household by its id", async () => {
+    const store = createInMemoryHouseholdPurgeStore([populated("restored", LONG_AGO)]);
+
+    await expect(
+      reapplyHouseholdDeletionRecord({
+        record: { ...record, subjectKind: "account" },
+        store,
+        now: NOW,
+      }),
+    ).rejects.toThrow(/household Deletion Record/);
+    expect(rowsIn(store, "restored")).toHaveLength(seededRowCount);
   });
 });
 
@@ -282,7 +420,7 @@ describe("the purge disposes of a household in the one order its constraints all
   it("clears household-native Saved Items before the workspace row they check against", async () => {
     const store = createInMemoryHouseholdPurgeStore([populated("ended", LONG_AGO)]);
 
-    await runHouseholdPurgeSweep({ limit: 10, now: NOW, store });
+    await sweep({ limit: 10, now: NOW, store });
 
     expect(store.disposalOrder).toEqual([...HOUSEHOLD_PURGE_DISPOSAL_ORDER]);
     expect(store.disposalOrder).toContain("savedItems");
