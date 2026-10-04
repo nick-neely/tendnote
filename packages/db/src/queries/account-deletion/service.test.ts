@@ -18,6 +18,9 @@ function harness() {
   const revokeSessions = vi.fn(async ({ userId }: { userId: string }) => {
     steps.push(`revoke:${userId}`);
   });
+  const cancelSubscriptions = vi.fn(async ({ userId }: { userId: string }) => {
+    steps.push(`cancel:${userId}`);
+  });
   const logger = { info: vi.fn(), error: vi.fn() };
   store.seedAccount("user_1");
   return {
@@ -26,12 +29,12 @@ function harness() {
     journal,
     revokeSessions,
     logger,
-    deps: { store, journal, revokeSessions, logger },
+    deps: { store, journal, revokeSessions, cancelSubscriptions, logger },
   };
 }
 
 describe("requestAccountDeletion", () => {
-  it("commits the intent, revokes sessions, journals the Deletion Record, then deletes", async () => {
+  it("commits the intent, revokes sessions, cancels billing, journals the Deletion Record, then deletes", async () => {
     const { steps, store, journal, deps } = harness();
 
     const result = await requestAccountDeletion(deps, { userId: "user_1", now: NOW });
@@ -40,6 +43,7 @@ describe("requestAccountDeletion", () => {
     expect(steps).toEqual([
       "intent:user_1",
       "revoke:user_1",
+      "cancel:user_1",
       "journal:user_1",
       "journaled:user_1",
       "delete:user_1",
@@ -77,7 +81,7 @@ describe("requestAccountDeletion", () => {
     const result = await requestAccountDeletion(deps, { userId: "user_1", now: NOW });
 
     expect(result).toEqual({ status: "pending" });
-    expect(steps).toEqual(["intent:user_1", "revoke:user_1"]);
+    expect(steps).toEqual(["intent:user_1", "revoke:user_1", "cancel:user_1"]);
     expect(store.hasAccount("user_1")).toBe(true);
     const intent = await store.findIntent({ userId: "user_1" });
     expect(intent).toMatchObject({ userId: "user_1", journaledAt: null });
@@ -117,6 +121,23 @@ describe("requestAccountDeletion", () => {
     ]);
   });
 
+  it("journals and deletes nothing until the subscription is cancelled", async () => {
+    const { steps, store, journal, deps } = harness();
+    deps.cancelSubscriptions.mockRejectedValueOnce(new Error("stripe down"));
+
+    const result = await requestAccountDeletion(deps, { userId: "user_1", now: NOW });
+
+    expect(result).toEqual({ status: "pending" });
+    expect(steps).toEqual(["intent:user_1", "revoke:user_1"]);
+    expect(journal.pathnames()).toEqual([]);
+    expect(store.hasAccount("user_1")).toBe(true);
+
+    await runAccountDeletionSweep({ ...deps, limit: 10, now: NOW });
+
+    expect(deps.cancelSubscriptions).toHaveBeenCalledTimes(2);
+    expect(store.hasAccount("user_1")).toBe(false);
+  });
+
   it("does not re-journal an intent that was journaled before the delete failed", async () => {
     const { steps, store, deps } = harness();
     store.failNextDeletes(1);
@@ -125,7 +146,7 @@ describe("requestAccountDeletion", () => {
 
     await runAccountDeletionSweep({ ...deps, limit: 10, now: NOW });
 
-    expect(steps).toEqual(["revoke:user_1", "delete:user_1"]);
+    expect(steps).toEqual(["revoke:user_1", "cancel:user_1", "delete:user_1"]);
     expect(store.hasAccount("user_1")).toBe(false);
   });
 });
