@@ -2,7 +2,10 @@ import { timingSafeEqual } from "node:crypto";
 import { sweepAccountFunnelEvents } from "@tendnote/db/queries/account-telemetry";
 import { sweepEffectFences } from "@tendnote/db/queries/effect-fences";
 import { sweepFileStorage } from "@tendnote/db/queries/file-uploads";
+import { isOutboundPaused } from "@tendnote/db/queries/outbound-pause";
 import { sweepPublicActivityCounts } from "@tendnote/db/queries/public-activity";
+import { sweepDeletionRecords } from "@tendnote/db/queries/recovery-journal";
+import { sweepRestoredEmailFences } from "@tendnote/db/queries/restored-email-fences";
 import { sweepUsageLedger } from "@tendnote/db/queries/usage-ledger";
 import { parseAdmissionPolicy } from "@tendnote/domain";
 import { type NextRequest, NextResponse } from "next/server";
@@ -53,8 +56,8 @@ function timingSafeEqualStrings(a: string, b: string): boolean {
 /**
  * This route triggers expensive and irreversible recovery work (extraction/embedding
  * backfills, owner-export generation, household purges, retention-deadline notices and
- * purges, audit, Usage Ledger, account funnel, public activity, and effect fence retention
- * sweeps, and operator alerts), so it must never run unauthenticated.
+ * purges, audit, Usage Ledger, account funnel, public activity, effect fence, and Deletion
+ * Record retention sweeps, and operator alerts), so it must never run unauthenticated.
  *
  * Vercel Cron invokes it with `Authorization: Bearer $CRON_SECRET`, so a configured
  * secret is compared against that header in constant time.
@@ -79,6 +82,12 @@ function isAuthorized(request: NextRequest) {
 export async function GET(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // A restore holds every pass until the operator resumes outbound (#623). A
+  // missed pass is ordinary for a cron, so nothing here needs to catch up.
+  if (await isOutboundPaused()) {
+    return NextResponse.json({ status: "paused" });
   }
 
   // First, because it never throws: a failing recovery stage below must not
@@ -110,6 +119,8 @@ export async function GET(request: NextRequest) {
   const accountFunnel = await sweepAccountFunnelEvents();
   const publicActivity = await sweepPublicActivityCounts();
   const effectFences = await sweepEffectFences();
+  const restoredEmailFences = await sweepRestoredEmailFences();
+  const deletionRecords = await sweepDeletionRecords();
   // It never throws, so it runs before the retention step, which is last on purpose.
   const operatorAlerts = await runOperatorAlerts({ stripeReconciliation });
   // Last, so a failure here never costs the housekeeping sweeps above their pass.
@@ -122,6 +133,8 @@ export async function GET(request: NextRequest) {
     accountFunnel,
     publicActivity,
     effectFences,
+    restoredEmailFences,
+    deletionRecords,
     stripeReconciliation,
     operatorAlerts,
   });

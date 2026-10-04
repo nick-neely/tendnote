@@ -16,6 +16,7 @@ import type {
   BackgroundJobQueueConsumerMetadata,
   BackgroundJobQueueProcessor,
 } from "@tendnote/db/queries/background-jobs";
+import { isOutboundPaused } from "@tendnote/db/queries/outbound-pause";
 import { handleCallback, send as sendVercelQueueMessage } from "@vercel/queue";
 import type { CostCategory, ProductRateLimiter } from "@/lib/rate-limit";
 import { getProductRateLimiter } from "@/lib/rate-limit";
@@ -87,6 +88,8 @@ function assertAuthenticQueueCallback(message: unknown): void {
  * shared logger and product rate limiter, and turn a deferred result into a
  * throw so the platform redelivers it. One copy means a change to that
  * contract cannot land in one route and be silently forgotten in another.
+ * While a restore holds outbound (#623), every message is redelivered later
+ * untouched, which is what keeps queues and push off the restored data.
  */
 export function createBackgroundJobQueueCallback(input: {
   config: { visibilityTimeoutSeconds: number; retryAfterSeconds: number };
@@ -102,6 +105,9 @@ export function createBackgroundJobQueueCallback(input: {
     async (message, metadata) => {
       // Authenticate before touching the consumer or the database.
       assertAuthenticQueueCallback(message);
+      if (await isOutboundPaused()) {
+        throw new Error("Background work is paused for a restore; redelivering later.");
+      }
       const result = await input.consume({
         payload: message,
         metadata: {

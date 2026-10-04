@@ -40,6 +40,16 @@ highest-volume effect, and a duplicate reminder after a restore is a far smaller
 harm than a suppressed one. Fence retention is fourteen days, the window plus a
 margin, because a fence is only consulted for effects inside the window.
 
+**A restore holds outbound and marks fenced effects complete in the restored
+data.** The first thing written to a restore branch is an outbound pause, a row
+in the database, so the cron, every queue consumer, push, and email stand down
+on whatever reads that data until the operator resumes them after the swap.
+The restore copies the email fences into the restored data, and a send whose
+key is fenced completes without sending. That marks a completed email complete
+whichever job or state change would repeat it, without a per-email list to
+keep in step. Restored export jobs a fence names are marked delivered directly.
+The procedure is the [restore runbook](../operations/restore.md).
+
 ## Consequences
 
 The deletion tail cannot silently drift. Raising it would take a Neon plan

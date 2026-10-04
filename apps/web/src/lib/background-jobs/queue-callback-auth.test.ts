@@ -18,6 +18,8 @@ vi.mock("@vercel/queue", () => ({
     },
   send: sendMock,
 }));
+const { isOutboundPaused } = vi.hoisted(() => ({ isOutboundPaused: vi.fn(async () => false) }));
+vi.mock("@tendnote/db/queries/outbound-pause", () => ({ isOutboundPaused }));
 vi.mock("@/lib/rate-limit", () => ({
   getProductRateLimiter: () => ({ check: vi.fn().mockResolvedValue({ allowed: true }) }),
 }));
@@ -123,6 +125,25 @@ describe("background job queue callback authentication", () => {
 
     expect(response.status).toBe(200);
     expect(consume).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a background job queue callback while a restore holds outbound (#623)", () => {
+  it("redelivers an authentic message later without consuming it", async () => {
+    const { callback, consume } = makeCallback();
+    isOutboundPaused.mockResolvedValueOnce(true);
+
+    await expect(
+      callback({ message: attachBackgroundJobQueueSignature(basePayload, SECRET), metadata }),
+    ).rejects.toThrow(/paused for a restore/);
+    expect(consume).not.toHaveBeenCalled();
+  });
+
+  it("authenticates before it reads the pause", async () => {
+    const { callback } = makeCallback();
+
+    await expect(callback({ message: basePayload, metadata })).rejects.toThrow(/signature/i);
+    expect(isOutboundPaused).not.toHaveBeenCalled();
   });
 });
 

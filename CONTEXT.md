@@ -551,3 +551,7 @@ _Avoid_: Event store, event log, backup, audit log
 **Effect Fence**:
 The content-free fact, written beside the Recovery Journal only after the effect succeeded, that a Resend email send or an owner data export delivery already left the system, keyed by a digest of its business idempotency key. A restore marks the matching job complete instead of repeating it. Reminders are never fenced: a duplicate reminder is a smaller harm than a suppressed one. An email that happens to remind, such as the annual renewal reminder, is an email send and is fenced.
 _Avoid_: Sent flag, delivery receipt, dedupe key, outbox row
+
+**Outbound Pause**:
+The hold a restore places on the recovery cron, every queue consumer (and with them push), and every email send, stored as a row in the database so a restore branch carries it from creation until the operator resumes outbound after the swap. It is not a Service-Wide Hold, which takes the product offline for every account.
+_Avoid_: Maintenance mode, kill switch, outbound flag

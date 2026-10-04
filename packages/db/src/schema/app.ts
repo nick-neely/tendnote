@@ -53,6 +53,7 @@ export * from "./app/public-activity";
 export * from "./app/refund-records";
 export * from "./app/relations";
 export * from "./app/reminders";
+export * from "./app/restore-controls";
 export * from "./app/saved-items";
 export * from "./app/scheduled-workflow-deliveries";
 export * from "./app/semantic-retrieval";

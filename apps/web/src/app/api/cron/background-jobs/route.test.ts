@@ -30,6 +30,19 @@ const { sweepEffectFences } = vi.hoisted(() => ({
 }));
 vi.mock("@tendnote/db/queries/effect-fences", () => ({ sweepEffectFences }));
 
+const { sweepDeletionRecords } = vi.hoisted(() => ({
+  sweepDeletionRecords: vi.fn(async () => ({ deleted: 0, failed: false })),
+}));
+vi.mock("@tendnote/db/queries/recovery-journal", () => ({ sweepDeletionRecords }));
+
+const { sweepRestoredEmailFences } = vi.hoisted(() => ({
+  sweepRestoredEmailFences: vi.fn(async () => ({ deleted: 0 })),
+}));
+vi.mock("@tendnote/db/queries/restored-email-fences", () => ({ sweepRestoredEmailFences }));
+
+const { isOutboundPaused } = vi.hoisted(() => ({ isOutboundPaused: vi.fn(async () => false) }));
+vi.mock("@tendnote/db/queries/outbound-pause", () => ({ isOutboundPaused }));
+
 const { carryOutRetentionDeadlines } = vi.hoisted(() => ({
   carryOutRetentionDeadlines: vi.fn(async () => ({ scanned: 0 })),
 }));
@@ -107,7 +120,29 @@ describe("background-jobs recovery cron route", () => {
     expect(sweepAccountFunnelEvents).toHaveBeenCalledTimes(1);
     expect(sweepPublicActivityCounts).toHaveBeenCalledTimes(1);
     expect(sweepEffectFences).toHaveBeenCalledTimes(1);
+    expect(sweepRestoredEmailFences).toHaveBeenCalledTimes(1);
+    expect(sweepDeletionRecords).toHaveBeenCalledTimes(1);
     expect(carryOutRetentionDeadlines).toHaveBeenCalledWith({ limit: 25 });
+  });
+
+  it("stands the whole pass down while a restore holds outbound", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    isOutboundPaused.mockResolvedValueOnce(true);
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ status: "paused" });
+    expect(reconcileStripe).not.toHaveBeenCalled();
+    expect(runBackgroundJobRecovery).not.toHaveBeenCalled();
+    expect(carryOutRetentionDeadlines).not.toHaveBeenCalled();
+  });
+
+  it("checks the pause only after authorizing", async () => {
+    const response = await GET(request());
+
+    expect(response.status).toBe(401);
+    expect(isOutboundPaused).not.toHaveBeenCalled();
   });
 
   it("allows the explicit development-only opt-in when no secret is configured", async () => {
