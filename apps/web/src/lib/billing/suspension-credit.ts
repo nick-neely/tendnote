@@ -161,22 +161,26 @@ export type SuspensionCreditDependencies = {
 
 /**
  * The audited exit of a Temporary Suspension, from the records: its lift, or
- * the Termination that converted it, which `terminationId` names.
+ * the Termination that converted it, which `terminationId` names. A
+ * Termination that converted no suspension is credited too, for its unused
+ * remainder alone (#739): `suspensionId` is then `null`, and `suspendedAt` is
+ * the termination time, so no suspended time is counted.
  */
 export type CreditedExit = {
   userId: string;
-  suspensionId: string;
   suspendedAt: Date;
   exitAt: Date;
-  terminationId: string | null;
-};
+} & (
+  | { suspensionId: string; terminationId: null }
+  | { suspensionId: string | null; terminationId: string }
+);
 
 /**
  * The Suspension Credit Operator Action (ADR 0249): one credit note per paid
- * invoice whose period the suspension overlaps, crediting that invoice's
+ * invoice whose period the denied time overlaps, crediting that invoice's
  * subscription line by the time-based amount, issued whenever that is at least
  * one cent. A Termination also returns the unused remainder, on the same credit
- * note.
+ * note; one that converted no suspension returns that remainder alone (#739).
  *
  * The money goes onto the customer credit balance when the subscription will
  * produce a future invoice to consume it, and back to the card otherwise: when
@@ -193,9 +197,10 @@ export async function issueSuspensionCredit(
   exit: CreditedExit,
   now: Date = new Date(),
 ) {
-  const ref: SuspensionExitRef = exit.terminationId
-    ? { terminationId: exit.terminationId }
-    : { suspensionId: exit.suspensionId };
+  const ref: SuspensionExitRef =
+    exit.terminationId === null
+      ? { suspensionId: exit.suspensionId }
+      : { terminationId: exit.terminationId };
   const existing = await deps.credits.listSuspensionCreditsForExit(ref);
   const stripeCustomerId = await deps.findStripeCustomer({ userId: exit.userId });
   const invoices = stripeCustomerId ? await deps.listCreditableInvoices(stripeCustomerId) : [];
@@ -235,8 +240,8 @@ export async function issueSuspensionCredit(
 }
 
 /**
- * Write the record for one invoice's credit, or return `null` when the
- * suspension earns that invoice less than a cent. The instrument is read here,
+ * Write the record for one invoice's credit, or return `null` when the exit
+ * earns that invoice less than a cent. The instrument is read here,
  * once: a renewing subscription takes the balance, anything else the card.
  */
 async function openSuspensionCredit(

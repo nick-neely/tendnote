@@ -9,13 +9,14 @@ Household memberships are kept, but Household access is denied.
 
 Then Stripe is asked to stop the subscription renewing. A Past Due
 subscription is ended at once instead, so Stripe never retries its failed
-renewal against a terminated account. When the termination converts an open
-Temporary Suspension, it issues that suspension's
-[Suspension Credit](suspension-credit.md): the suspended time plus the unused
-remainder to the period end, always back to the card. A termination that
-converts no suspension issues no credit and returns no remainder, although
-the contract says it should:
-[#739](https://github.com/nick-neely/tendnote/issues/739).
+renewal against a terminated account. Then the already-paid time the account
+can no longer use goes back to the card, as a
+[Suspension Credit](suspension-credit.md). When the termination converts an
+open Temporary Suspension, that is the suspended time plus the unused
+remainder to the period end, or to an earlier cancellation. Otherwise it is the
+unused remainder alone. A Past Due subscription's current period was never
+paid, so it adds no remainder. Suspended time on an earlier paid invoice is
+still credited.
 
 ## Trigger
 
@@ -42,10 +43,16 @@ review. This is the operator's choice, unlike cancellation or deletion.
    `terminatedAt`, `retentionDeadline`, `convertedSuspensionId`,
    `stripeSubscriptionId`, `resumed`, and `suspensionCredits`.
    `stripeSubscriptionId` is empty when the account had no live subscription.
+   `suspensionCredits` lists the money returned, one entry per credited
+   invoice. It is empty when no paid invoice holds suspended time or an unused
+   remainder.
    `resumed: true` means the account was already terminated, and this run
    finished it under its original record, reason, and deadline.
 2. If the command fails part-way, run it again. It resumes the stopped renewal
    and the Suspension Credit. See [Suspension Credit](suspension-credit.md).
+   A rerun is not a no-op on an account terminated before terminations
+   returned their remainder (#739): it returns that remainder then, measured
+   from the original termination time.
 3. Tell the customer from the support mailbox that their access has ended.
    They can export and delete until `retentionDeadline`, when the data is
    purged, with deletion notices before it. Give the amount returned to the

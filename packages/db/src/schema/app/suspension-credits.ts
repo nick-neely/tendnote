@@ -6,8 +6,10 @@ import { terminations } from "./terminations";
 
 /**
  * The Suspension Credit Operator Action's record (#631, ADR 0249): one per
- * credit note, so one per paid invoice the suspended time overlapped, written
- * before the credit note is created. A Stripe refund matching one never
+ * credit note, so one per paid invoice the denied time overlapped, written
+ * before the credit note is created. A Termination that converted no
+ * suspension has one for its unused remainder alone, naming no suspension
+ * (#739). A Stripe refund matching one never
  * revokes Paid Access: it is compensation for denied service, not the
  * unwinding of a sale.
  *

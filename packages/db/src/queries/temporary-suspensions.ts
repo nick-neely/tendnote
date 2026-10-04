@@ -110,6 +110,7 @@ export async function recordSuspension(input: {
 /** Record a renewal of an open suspension's review deadline. */
 export async function renewSuspensionDeadline(input: {
   suspensionId: string;
+  reason: string;
   reviewDeadline: Date;
   renewedAt: Date;
 }): Promise<void> {

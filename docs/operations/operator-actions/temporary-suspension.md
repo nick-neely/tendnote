@@ -48,13 +48,13 @@ and dunning runs as usual. The suspended paid time is compensated once, by the
    decided, renew the deadline:
 
    ```sh
-   pnpm --filter @tendnote/web operator renew-suspension <user id>
+   pnpm --filter @tendnote/web operator renew-suspension <user id> <reason>
    ```
 
-   It prints `suspensionId`, `previousDeadline`, and the new `reviewDeadline`,
-   ten business days from now. The renewal stores no reason, so write the
-   reason for renewing as an internal note on the support thread, until
-   [#740](https://github.com/nick-neely/tendnote/issues/740) records it. Send the customer an update with the new date.
+   The rest of the line is the internal reason for renewing, such as what the
+   review is still waiting for. It prints `suspensionId`, `reason`,
+   `previousDeadline`, and the new `reviewDeadline`, ten business days from
+   now. Send the customer an update with the new date.
    The customer hears from the operator at least every ten business days while
    the account stays under review. Renewing over and over does not license an
    indefinite suspension.
@@ -63,8 +63,8 @@ and dunning runs as usual. The suspended paid time is compensated once, by the
 
 A suspension record naming the account, the reason, the time, and the review
 deadline, written before sessions are revoked and journaled as a `suspension`
-afterwards. Each renewal adds its own record of the new deadline and the time.
-The renewal stores no reason.
+afterwards. Each renewal adds its own record of the new deadline, the reason
+for renewing, and the time.
 
 ## Verification
 

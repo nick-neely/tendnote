@@ -1,18 +1,21 @@
 # Runbook: Suspension Credit
 
-Compensate the paid time a Temporary Suspension denied (#631,
+Compensate the paid time a Temporary Suspension denied, and the paid time a
+Termination closed (#631, #739,
 [ADR 0249](../../adr/0249-refund-revocation-is-matched-to-its-operator-action-record.md),
 [the billing policy](../../phase-9b/temporary-suspension-billing-policy.md)).
-There is no separate command. The credit is issued by the suspension's audited
-exit: the [lift](lift-suspension.md), or the [termination](termination.md)
-that converts it. This runbook covers checking a credit and finishing one that
-failed part-way.
+There is no separate command. The credit is issued by the
+[lift](lift-suspension.md) that ends a suspension, or by any
+[termination](termination.md). This runbook covers checking a credit and
+finishing one that failed part-way.
 
 For each paid invoice whose period the suspension overlapped, one credit note
 credits the invoice's subscription line by the time-based amount, when that is
 at least one cent. A termination adds the unused remainder to the period end,
-on the same credit note. Stripe takes the line's discounts off the credited
-amount, and adds its tax, in proportion. The money goes:
+or to an earlier cancellation, on the same credit note. A termination that ends no suspension credits that
+remainder alone, on a record that names the termination and no suspension.
+Stripe takes the line's discounts off the credited amount, and adds its tax,
+in proportion. The money goes:
 
 - to the customer's **balance**, when the subscription will renew and so
   produce an invoice that uses it;
@@ -58,8 +61,8 @@ A Suspension Credit never revokes Paid Access, even when it refunds the card.
 
 ## Record produced
 
-One Suspension Credit record per credited invoice, naming the suspension, the
-termination if there was one, the invoice and its line, the suspended and
+One Suspension Credit record per credited invoice, naming any suspension, any
+termination, the invoice and its line, the suspended and
 remainder amounts, the total, and the instrument. Each is written and
 journaled as a `suspension-credit` before its credit note is created. The
 credit note carries the record in its metadata, and its id, and any card
