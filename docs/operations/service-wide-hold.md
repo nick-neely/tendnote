@@ -29,7 +29,8 @@ within seconds of the record changing.
 
 ## Trigger
 
-A Suspected Incident whose scope is unknown, opened under the incident runbook.
+A Suspected Incident whose scope is unknown, opened under the
+[incident runbook](incident.md).
 Whenever scope is unknown, place the hold first and investigate after.
 
 ## Preconditions
@@ -50,11 +51,12 @@ Whenever scope is unknown, place the hold first and investigate after.
 
    The command prints `holdId`, `placedAt`, and `alreadyHeld`. If
    `alreadyHeld` is `true`, a hold was already in force and is unchanged.
-2. **Post a Service Notice** under the Service Notice procedure. For example:
+2. **Post a Service Notice** under the [Service Notice](service-notice.md)
+   runbook. For example:
    "Tendnote is offline while we investigate a problem. Your next update
    will be here." Update it at least once a day while the hold is in force.
 3. Contain the incident under the incident runbook: GlitchTip capture, then
-   credential rotation per provider.
+   [credential rotation](README.md#credential-rotation) per provider.
 4. **Lift the hold** once containment is verified:
 
    ```sh

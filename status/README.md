@@ -5,7 +5,9 @@ from it and published to a host independent of the product's Vercel project
 and database, and the product fetches the published copy for its in-app banner
 (`TENDNOTE_STATUS_PAGE_URL`).
 
-To post or update a notice, edit `notice.json` and push to `main`:
+To post or update a notice, edit `notice.json` and merge it to `main` through a
+pull request, with `gh pr merge --admin` so it does not wait for CI
+([runbook](../docs/operations/service-notice.md)):
 
 ```json
 {
