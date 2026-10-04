@@ -93,6 +93,7 @@
     "./queries/relationship-shares": "./src/queries/relationship-shares.ts",
     "./queries/relationship-context-search": "./src/queries/relationship-context-search.ts",
     "./queries/semantic-retrieval": "./src/queries/semantic-retrieval.ts",
+    "./queries/service-wide-hold": "./src/queries/service-wide-hold.ts",
     "./queries/weekly-relationship-review": "./src/queries/weekly-relationship-review.ts",
     "./queries/source-records": "./src/queries/source-records.ts",
     "./queries/stripe-customers": "./src/queries/stripe-customers.ts",

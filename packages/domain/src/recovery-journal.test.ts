@@ -98,6 +98,39 @@ describe("isDeletionIntentStuck", () => {
       isDeletionIntentStuck({ requestedAt, now: new Date(requestedAt.getTime() + 24 * HOUR_MS) }),
     ).toBe(true);
   });
+
+  it("counts from a Service-Wide Hold's lift when the intent waited through the hold", () => {
+    const requestedAt = new Date("2026-09-21T00:00:00.000Z");
+    const holdLiftedAt = new Date(requestedAt.getTime() + 72 * HOUR_MS);
+
+    expect(
+      isDeletionIntentStuck({
+        requestedAt,
+        holdLiftedAt,
+        now: new Date(holdLiftedAt.getTime() + 24 * HOUR_MS - 1),
+      }),
+    ).toBe(false);
+    expect(
+      isDeletionIntentStuck({
+        requestedAt,
+        holdLiftedAt,
+        now: new Date(holdLiftedAt.getTime() + 24 * HOUR_MS),
+      }),
+    ).toBe(true);
+  });
+
+  it("ignores a lift older than the request", () => {
+    const requestedAt = new Date("2026-09-21T00:00:00.000Z");
+    const holdLiftedAt = new Date(requestedAt.getTime() - 72 * HOUR_MS);
+
+    expect(
+      isDeletionIntentStuck({
+        requestedAt,
+        holdLiftedAt,
+        now: new Date(requestedAt.getTime() + 24 * HOUR_MS),
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("effect fences", () => {

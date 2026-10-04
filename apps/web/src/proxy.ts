@@ -1,8 +1,14 @@
+import { isServiceWideHoldActive } from "@tendnote/db/queries/service-wide-hold";
 import type { NextRequest } from "next/server";
 import { regionBlockResponse } from "@/lib/access/region-block";
+import { createServiceHoldCheck, serviceHoldResponse } from "@/lib/access/service-wide-hold-gate";
 
-export function proxy(request: NextRequest) {
-  return regionBlockResponse(request) ?? undefined;
+const isServiceHeld = createServiceHoldCheck({ read: isServiceWideHoldActive, logger: console });
+
+export async function proxy(request: NextRequest) {
+  return (
+    (await serviceHoldResponse(request, isServiceHeld)) ?? regionBlockResponse(request) ?? undefined
+  );
 }
 
 export const config = {

@@ -325,6 +325,25 @@ describe("runAccountDeletionSweep", () => {
     );
   });
 
+  it("counts an intent that waited through a Service-Wide Hold from the lift", async () => {
+    const { journal, deps, logger } = harness();
+    journal.failNextWrites(Number.POSITIVE_INFINITY);
+    await requestAccountDeletion(deps, { userId: "user_1", now: NOW });
+
+    const result = await runAccountDeletionSweep({
+      ...deps,
+      limit: 10,
+      holdLiftedAt: new Date(NOW.getTime() + 48 * HOUR_MS),
+      now: new Date(NOW.getTime() + 50 * HOUR_MS),
+    });
+
+    expect(result).toEqual({ scanned: 1, completed: 0, failed: 1, stuck: 0 });
+    expect(logger.error).not.toHaveBeenCalledWith(
+      "account_deletion.intent_stuck",
+      expect.anything(),
+    );
+  });
+
   it("drains the oldest intents first within its limit", async () => {
     const { store, journal, deps } = harness();
     store.seedAccount("user_2");

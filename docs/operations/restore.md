@@ -48,6 +48,11 @@ runbook. Also the restore drill, run against an isolated copy of production.
    production branch's connection string as `PROD_URL`.
 5. **Nothing else is changing production.** No deploy, migration, or Operator
    Action is in flight. Hold them until the end of this runbook.
+6. **Note whether a [Service-Wide Hold](service-wide-hold.md) is in force.**
+   The hold is a database row, so a branch restored to a point before it was
+   placed has no hold. To keep the product offline through the swap, place
+   the hold again on the restored branch, with `DATABASE_URL` set to that
+   branch, before the swap.
 
 ## Steps
 

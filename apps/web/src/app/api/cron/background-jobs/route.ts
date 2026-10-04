@@ -6,6 +6,7 @@ import { isOutboundPaused } from "@tendnote/db/queries/outbound-pause";
 import { sweepPublicActivityCounts } from "@tendnote/db/queries/public-activity";
 import { sweepDeletionRecords } from "@tendnote/db/queries/recovery-journal";
 import { sweepRestoredEmailFences } from "@tendnote/db/queries/restored-email-fences";
+import { isServiceWideHoldActive } from "@tendnote/db/queries/service-wide-hold";
 import { sweepUsageLedger } from "@tendnote/db/queries/usage-ledger";
 import { parseAdmissionPolicy } from "@tendnote/domain";
 import { type NextRequest, NextResponse } from "next/server";
@@ -88,6 +89,12 @@ export async function GET(request: NextRequest) {
   // missed pass is ordinary for a cron, so nothing here needs to catch up.
   if (await isOutboundPaused()) {
     return NextResponse.json({ status: "paused" });
+  }
+  // A Service-Wide Hold (#634) holds every pass too, so export, deletion, and
+  // their alerts wait for the lift. The proxy already refuses this route on a
+  // hosted deployment; this keeps the rule wherever the route is reached.
+  if (await isServiceWideHoldActive()) {
+    return NextResponse.json({ status: "held" });
   }
 
   // First, because it never throws: a failing recovery stage below must not

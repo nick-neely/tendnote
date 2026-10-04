@@ -17,6 +17,7 @@ import type {
   BackgroundJobQueueProcessor,
 } from "@tendnote/db/queries/background-jobs";
 import { isOutboundPaused } from "@tendnote/db/queries/outbound-pause";
+import { isServiceWideHoldActive } from "@tendnote/db/queries/service-wide-hold";
 import { handleCallback, send as sendVercelQueueMessage } from "@vercel/queue";
 import type { CostCategory, ProductRateLimiter } from "@/lib/rate-limit";
 import { getProductRateLimiter } from "@/lib/rate-limit";
@@ -88,8 +89,9 @@ function assertAuthenticQueueCallback(message: unknown): void {
  * shared logger and product rate limiter, and turn a deferred result into a
  * throw so the platform redelivers it. One copy means a change to that
  * contract cannot land in one route and be silently forgotten in another.
- * While a restore holds outbound (#623), every message is redelivered later
- * untouched, which is what keeps queues and push off the restored data.
+ * While a restore holds outbound (#623) or a Service-Wide Hold is in force
+ * (#634), every message is redelivered later untouched, which is what keeps
+ * queues and push off the restored data and off a held service.
  */
 export function createBackgroundJobQueueCallback(input: {
   config: { visibilityTimeoutSeconds: number; retryAfterSeconds: number };
@@ -107,6 +109,9 @@ export function createBackgroundJobQueueCallback(input: {
       assertAuthenticQueueCallback(message);
       if (await isOutboundPaused()) {
         throw new Error("Background work is paused for a restore; redelivering later.");
+      }
+      if (await isServiceWideHoldActive()) {
+        throw new Error("Background work waits out a Service-Wide Hold; redelivering later.");
       }
       const result = await input.consume({
         payload: message,

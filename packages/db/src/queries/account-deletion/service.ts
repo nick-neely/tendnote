@@ -158,10 +158,11 @@ export type AccountDeletionSweepResult = {
  * resumes at the step it stopped at, and one that is still incomplete after
  * twenty-four hours is logged as `account_deletion.intent_stuck` for the
  * operator alert channel. An intent under a Legal Hold is left until the hold
- * ends.
+ * ends. `holdLiftedAt` is the latest Service-Wide Hold lift (#634): an intent
+ * that waited through that hold counts from it.
  */
 export async function runAccountDeletionSweep(
-  input: AccountDeletionDependencies & { limit: number; now?: Date },
+  input: AccountDeletionDependencies & { limit: number; now?: Date; holdLiftedAt?: Date | null },
 ): Promise<AccountDeletionSweepResult> {
   const result: AccountDeletionSweepResult = { scanned: 0, completed: 0, failed: 0, stuck: 0 };
   if (input.limit <= 0) return result;
@@ -187,7 +188,13 @@ export async function runAccountDeletionSweep(
         userId: intent.userId,
         error: error instanceof Error ? error.message : String(error),
       });
-      if (isDeletionIntentStuck({ requestedAt: intent.requestedAt, now })) {
+      if (
+        isDeletionIntentStuck({
+          requestedAt: intent.requestedAt,
+          now,
+          holdLiftedAt: input.holdLiftedAt,
+        })
+      ) {
         result.stuck += 1;
         input.logger?.error?.("account_deletion.intent_stuck", {
           userId: intent.userId,

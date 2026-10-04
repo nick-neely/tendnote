@@ -276,9 +276,16 @@ export function parseEffectFencePathname(
 /** How long a deletion intent may stay incomplete before the operator is alerted. */
 export const DELETION_INTENT_ALERT_AFTER_HOURS = 24;
 
-export function isDeletionIntentStuck(input: { requestedAt: Date; now: Date }): boolean {
-  return (
-    input.now.getTime() - input.requestedAt.getTime() >=
-    DELETION_INTENT_ALERT_AFTER_HOURS * 60 * 60 * 1000
-  );
+/**
+ * Whether an intent has stayed incomplete too long. A Service-Wide Hold makes
+ * every intent wait (#634), so the clock starts at the later of the request and
+ * the most recent lift.
+ */
+export function isDeletionIntentStuck(input: {
+  requestedAt: Date;
+  now: Date;
+  holdLiftedAt?: Date | null;
+}): boolean {
+  const from = Math.max(input.requestedAt.getTime(), input.holdLiftedAt?.getTime() ?? 0);
+  return input.now.getTime() - from >= DELETION_INTENT_ALERT_AFTER_HOURS * 60 * 60 * 1000;
 }
