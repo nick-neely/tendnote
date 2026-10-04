@@ -4,10 +4,11 @@
  * The Privacy Policy's retention table is generated from these values, and
  * every sweep that deletes data reads its period from here (the ADR 0221
  * pattern), so what the policy promises and what actually gets deleted cannot
- * drift apart. Today the household purge, audit, account funnel, and anonymous
- * daily total retention sweeps and the Lapsed retention deadline read it; the
- * Lapsed, Deletion Record, and fence sweeps must when built. Changing a value here is a
- * reviewed change to a published promise: the committed table in
+ * drift apart. Today the household purge, audit, account funnel, anonymous
+ * daily total, and effect fence retention sweeps and the Lapsed retention
+ * deadline read it; the Lapsed and Deletion Record sweeps must when built.
+ * Changing a value here is a reviewed change to a published promise: the
+ * committed table in
  * `docs/legal/privacy-retention-table.md` fails its test until it is
  * regenerated from here.
  */
@@ -19,7 +20,7 @@ export const RETENTION = {
   /** A Deletion Record in the Recovery Journal. */
   deletionRecord: { days: 30 },
   /** A fence that stops a restore from re-sending email or re-running an export. */
-  deletionFence: { days: 14 },
+  effectFence: { days: 14 },
   /** Account-linked funnel events, or sooner when the account is deleted. */
   accountLinkedFunnelEvents: { days: 90 },
   anonymousDailyTotals: { months: 13 },
@@ -71,7 +72,7 @@ const RETENTION_TABLE_ROWS: readonly RetentionTableRow[] = [
   {
     data: "Deletion Records",
     retained: (p) =>
-      `${p("deletionRecord")}; the restore fences for email and export, ${p("deletionFence")}. Neither holds content`,
+      `${p("deletionRecord")}; the restore fences for email and export, ${p("effectFence")}. Neither holds content`,
   },
   {
     data: "Shared household records after the household ends",

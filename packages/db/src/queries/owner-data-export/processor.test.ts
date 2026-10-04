@@ -1,4 +1,6 @@
+import { effectFenceEntry } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
+import { createInMemoryEffectFences } from "../effect-fences/in-memory";
 import {
   createInMemoryOwnerDataExportArtifactStore,
   createInMemoryOwnerDataExportJobStore,
@@ -314,5 +316,72 @@ describe("owner data export jobs", () => {
       artifactExpiresAt: null,
     });
     await expect(artifacts.deleteExpired({ now: expiresAt, limit: 10 })).resolves.toBe(0);
+  });
+});
+
+describe("owner data export fences", () => {
+  const generate = () =>
+    vi.fn().mockResolvedValue({ bytes: new Uint8Array([1]), manifest: {} as never });
+
+  it("fences a delivered export by its owner and idempotency key", async () => {
+    const jobs = createInMemoryOwnerDataExportJobStore();
+    const artifacts = createInMemoryOwnerDataExportArtifactStore(jobs);
+    const fences = createInMemoryEffectFences();
+    const now = new Date("2026-08-19T12:00:00.000Z");
+    const { job } = await jobs.enqueue({ ownerUserId: "owner-1", now, idempotencyKey: "req-1" });
+
+    const result = await processOwnerDataExportJob({
+      jobId: job.id,
+      jobs,
+      artifacts,
+      fences,
+      now,
+      generate: generate(),
+    });
+
+    expect(result.outcome).toBe("completed");
+    expect(fences.pathnames()).toEqual([
+      effectFenceEntry({ effect: "export", key: "owner-1:req-1", at: now }).pathname,
+    ]);
+  });
+
+  it("does not fence an export that failed", async () => {
+    const jobs = createInMemoryOwnerDataExportJobStore();
+    const artifacts = createInMemoryOwnerDataExportArtifactStore(jobs);
+    const fences = createInMemoryEffectFences();
+    const { job } = await jobs.enqueue({ ownerUserId: "owner-1", idempotencyKey: "req-1" });
+
+    const result = await processOwnerDataExportJob({
+      jobId: job.id,
+      jobs,
+      artifacts,
+      fences,
+      generate: vi.fn().mockRejectedValue(new Error("archive unavailable")),
+    });
+
+    expect(result.outcome).toBe("failed");
+    expect(fences.pathnames()).toEqual([]);
+  });
+
+  it("keeps a delivered export completed when its fence cannot be written", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const jobs = createInMemoryOwnerDataExportJobStore();
+    const artifacts = createInMemoryOwnerDataExportArtifactStore(jobs);
+    const fences = createInMemoryEffectFences();
+    fences.failNextWrites(1);
+    const { job } = await jobs.enqueue({ ownerUserId: "owner-1", idempotencyKey: "req-1" });
+
+    const result = await processOwnerDataExportJob({
+      jobId: job.id,
+      jobs,
+      artifacts,
+      fences,
+      generate: generate(),
+    });
+
+    expect(result.outcome).toBe("completed");
+    expect(result.job?.status).toBe("completed");
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
   });
 });
