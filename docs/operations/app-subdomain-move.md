@@ -4,9 +4,10 @@ Stage 1 of the
 [private-beta migration and app-subdomain cutover](../phase-9b/private-beta-migration-and-app-subdomain-cutover.md):
 the product moves from `tendnote.com` to `app.tendnote.com` while it is still
 private, and `tendnote.com` redirects every path to the same path on the app.
-Provider ids, dashboard locations, and credentials are in the private
-operations sheet under **Domains** and **OAuth apps**; this runbook never
-copies them.
+Keep credentials in their existing provider stores. Record non-secret domain,
+callback, and deployment settings in the private operations sheet under
+**Domains** and **OAuth apps**, or in a dated `docs/verification/` record if that
+sheet does not exist.
 
 ## Trigger
 
@@ -78,14 +79,20 @@ triggers do not change.
      redeploy.
 4. Redirect `tendnote.com` (and `www.tendnote.com`, if attached) to
    `app.tendnote.com` in the project's Domains settings with status **307**.
+   Vercel blocks this while another domain redirects to `tendnote.com`.
+   Record those aliases' current targets and status codes, then point them
+   directly to `app.tendnote.com`, preserving the legacy aliases' status codes.
+   Set the apex and www redirects to 307 after removing those incoming chains.
    Use a temporary redirect for the whole of Stage 1: browsers cache a
    permanent one, and a cached redirect would outlive a rollback.
 
 ## Record produced
 
 None in the database: this is a deployment change, not an Operator Action on
-an account. Before step 1, write the move date and the values from
-precondition 5 in the operations sheet under **Domains**.
+an account. Before step 1, record the move date, the values from precondition 5,
+the current deployment, and the actual domain and single-valued callback
+settings. Use the operations sheet under **Domains** or a dated non-secret
+verification record.
 
 ## Verification
 
@@ -120,9 +127,11 @@ Available until Stage 2 begins:
 
 1. Restore the values recorded in precondition 5 and redeploy
    Production.
-2. Remove the domain redirect from `tendnote.com`.
-3. Point the GitHub callback, the Discord Interactions Endpoint URL, and any
-   webhook endpoint moved in step 3 back at `tendnote.com`.
+2. Restore `tendnote.com` to Production without a redirect, then restore www
+   and the legacy aliases to their recorded targets and status codes.
+3. Restore the GitHub callback, the Discord Interactions Endpoint URL, and any
+   webhook endpoint moved in step 3 to their recorded previous values. Do not
+   assume they all used the apex.
 
 The dual-registered Google and Discord OAuth redirects need nothing. Once
 Stage 2 begins, remove the `tendnote.com` OAuth registrations and fix forward on
