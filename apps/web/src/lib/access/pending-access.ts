@@ -1,5 +1,12 @@
 import { redirect } from "next/navigation";
-import { type AccessState, GUEST_PATH, LAPSED_PATH, REACCEPTANCE_PATH } from "./access-state";
+import {
+  type AccessState,
+  GUEST_PATH,
+  LAPSED_PATH,
+  REACCEPTANCE_PATH,
+  RESTRICTED_PATH,
+  signedInHome,
+} from "./access-state";
 import { getCurrentAccess } from "./current-access";
 
 type UnadmittedAccess = Extract<AccessState, { state: "pending" | "lapsed" }>;
@@ -15,6 +22,7 @@ type SubscribingAccess = Extract<AccessState, { state: "pending" | "lapsed" | "g
 export async function requireSubscribingAccess(): Promise<SubscribingAccess> {
   const access = await getCurrentAccess();
   if (access.state === "unauthenticated") redirect("/sign-in");
+  if (access.state === "restricted") redirect(RESTRICTED_PATH);
   if (access.state === "reacceptance") redirect(REACCEPTANCE_PATH);
   if (access.state === "admitted") redirect("/");
   return access;
@@ -39,6 +47,7 @@ async function requireUnadmittedAccess(): Promise<UnadmittedAccess> {
 export async function requireGuestAccess(): Promise<Extract<AccessState, { state: "guest" }>> {
   const access = await getCurrentAccess();
   if (access.state === "unauthenticated") redirect("/sign-in");
+  if (access.state === "restricted") redirect(RESTRICTED_PATH);
   if (access.state === "reacceptance") redirect(REACCEPTANCE_PATH);
   if (access.state === "admitted") redirect("/");
   if (access.state === "pending") redirect("/pending");
@@ -58,4 +67,18 @@ export async function requireLapsedAccess(): Promise<Extract<AccessState, { stat
   const access = await requireUnadmittedAccess();
   if (access.state === "pending") redirect("/pending");
   return access;
+}
+
+/**
+ * The suspended account the restricted area renders for (#629). Everyone else
+ * goes where they belong, so a lifted suspension leaves the area on the next
+ * request.
+ */
+export async function requireRestrictedAccess(): Promise<
+  Extract<AccessState, { state: "restricted" }>
+> {
+  const access = await getCurrentAccess();
+  if (access.state === "restricted") return access;
+  if (access.state === "unauthenticated") redirect("/sign-in");
+  redirect(signedInHome(access));
 }

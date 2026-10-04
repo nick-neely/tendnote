@@ -24,6 +24,9 @@ export const LAPSED_PATH = "/lapsed";
 /** Where a live Household Guest lands: read-only, outside the app shell (#635). */
 export const GUEST_PATH = "/guest";
 
+/** Where a suspended account lands: export, deletion, and billing cancel only (#629). */
+export const RESTRICTED_PATH = "/restricted";
+
 /**
  * Resolved Private Beta Access for the current request. `admitted` carries the
  * owner id used to scope product data; `pending` carries identity only so the
@@ -40,6 +43,10 @@ export const GUEST_PATH = "/guest";
  * acceptance of a flagged document version (#614). It carries no owner id, so
  * everything keyed on admission fails closed; its `decision` is kept only so
  * export can still serve the account admission would otherwise admit.
+ *
+ * `restricted` is an account under an open Temporary Suspension (#629),
+ * whatever else is true of it. Admission already denies it through the
+ * suspension's block; this state only decides where it lands.
  */
 export type AccessState =
   | { state: "unauthenticated" }
@@ -47,6 +54,7 @@ export type AccessState =
   | { state: "lapsed"; user: SessionUser; decision: AccessDecision; retentionDeadline: Date }
   | { state: "admitted"; user: SessionUser; ownerUserId: string; decision: AccessDecision }
   | { state: "guest"; user: SessionUser; householdId: string; decision: AccessDecision }
+  | { state: "restricted"; user: SessionUser; decision: AccessDecision }
   | {
       state: "reacceptance";
       user: SessionUser;
@@ -69,19 +77,28 @@ export async function resolveAccessState(
   readOutstandingReacceptance: (
     userId: string,
   ) => Promise<readonly LegalDocument[]> = async () => [],
+  isSuspended: (userId: string) => Promise<boolean> = async () => false,
 ): Promise<AccessState> {
   if (!user) {
     return { state: "unauthenticated" };
   }
 
-  const [decision, documents] = await Promise.all([
+  const [decision, documents, suspended] = await Promise.all([
     resolveAccess({
       userId: user.id,
       email: user.email,
       emailVerified: user.emailVerified,
     }),
     readOutstandingReacceptance(user.id),
+    isSuspended(user.id),
   ]);
+
+  // A suspension outranks every other landing: a suspended account that is
+  // also Lapsed, or owes new terms, still has exactly the restricted area's
+  // exits, and must not reach resubscribe or the app through either.
+  if (suspended) {
+    return { state: "restricted", user, decision };
+  }
 
   if (documents.length > 0) {
     return { state: "reacceptance", user, decision, documents };
@@ -129,6 +146,7 @@ export type AccessRoute =
         | "/pending"
         | typeof LAPSED_PATH
         | typeof GUEST_PATH
+        | typeof RESTRICTED_PATH
         | typeof REACCEPTANCE_PATH;
     };
 
@@ -153,11 +171,19 @@ export function decideAccessRoute(
       return { type: "redirect", to: GUEST_PATH };
     case "reacceptance":
       return { type: "redirect", to: REACCEPTANCE_PATH };
+    case "restricted":
+      return { type: "redirect", to: RESTRICTED_PATH };
     default:
       return options.localFallbackOwnerUserId
         ? { type: "admitted", ownerUserId: options.localFallbackOwnerUserId }
         : { type: "redirect", to: "/sign-in" };
   }
+}
+
+/** Where a signed-in account belongs: the app when admitted, otherwise its own area. */
+export function signedInHome(state: Exclude<AccessState, { state: "unauthenticated" }>): string {
+  const route = decideAccessRoute(state);
+  return route.type === "admitted" ? "/" : route.to;
 }
 
 /**
@@ -178,7 +204,9 @@ export function accountOwnerUserId(
     case "lapsed":
     case "guest":
     case "reacceptance":
-      // Refusing new terms never blocks export or deletion (#614).
+    case "restricted":
+      // Refusing new terms never blocks export or deletion (#614), and nor
+      // does a suspension (#629).
       return state.user.id;
     default:
       return options.localFallbackOwnerUserId ?? null;
@@ -204,4 +232,6 @@ const ACTION_REFUSALS: Record<Extract<AccessRoute, { type: "redirect" }>["to"], 
   [LAPSED_PATH]: "Your subscription has ended. Resubscribe to do that.",
   [GUEST_PATH]: "A Household Guest can read the household but not change anything.",
   [REACCEPTANCE_PATH]: "Accept the updated terms to do that.",
+  [RESTRICTED_PATH]:
+    "Your account is under review. Until the review ends you can only export your data, delete your account, or cancel your subscription.",
 };

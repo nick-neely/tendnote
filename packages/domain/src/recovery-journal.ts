@@ -24,6 +24,7 @@ export type DeletionRecord = {
 /** The Operator Actions a restore reconciles admission against. */
 export type OperatorRecordKind =
   | "suspension"
+  | "suspension-lift"
   | "termination"
   | "legal-hold"
   | "grant"

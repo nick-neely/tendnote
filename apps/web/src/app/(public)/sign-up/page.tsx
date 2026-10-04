@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { CredentialsForm } from "@/components/auth/credentials-form";
-import { GUEST_PATH, LAPSED_PATH, REACCEPTANCE_PATH } from "@/lib/access/access-state";
+import { signedInHome } from "@/lib/access/access-state";
 import { getCurrentAccess } from "@/lib/access/current-access";
 import { githubEnvFromProcess, isGithubConfigured } from "@/lib/auth/social";
 import { legalDocumentUrl } from "@/lib/public-links";
@@ -27,24 +27,9 @@ export default async function SignUpPage() {
   if (process.env.NODE_ENV !== "test") await connection();
   const access = await getCurrentAccess();
 
-  if (access.state === "reacceptance") {
-    redirect(REACCEPTANCE_PATH);
-  }
-
-  if (access.state === "admitted") {
-    redirect("/");
-  }
-
-  if (access.state === "pending") {
-    redirect("/pending");
-  }
-
-  if (access.state === "lapsed") {
-    redirect(LAPSED_PATH);
-  }
-
-  if (access.state === "guest") {
-    redirect(GUEST_PATH);
+  // A signed-in account already has a home: the app, or its own area.
+  if (access.state !== "unauthenticated") {
+    redirect(signedInHome(access));
   }
 
   return (

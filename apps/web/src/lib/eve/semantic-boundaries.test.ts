@@ -96,6 +96,9 @@ describe("semantic retrieval product-route boundaries", () => {
       "region",
       "reminders/open",
       "reset-password",
+      // Where a suspended account lands (#629): its identity, whether it owns
+      // anything to export, and its live subscription. No relationship data.
+      "restricted",
       "saved-items",
       // The one Relationship Share a direct request names (#388). A single
       // proof-gated record, never a browsable set: there is no `/shared`

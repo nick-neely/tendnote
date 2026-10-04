@@ -1,11 +1,5 @@
 import type { AccessSource } from "@tendnote/domain";
-import {
-  type AccessRoute,
-  type AccessState,
-  GUEST_PATH,
-  LAPSED_PATH,
-  REACCEPTANCE_PATH,
-} from "./access-state";
+import { type AccessRoute, type AccessState, decideAccessRoute } from "./access-state";
 
 /**
  * Human-readable label for how an admitted user's Private Beta Access was granted,
@@ -54,20 +48,10 @@ export function resolveAccountView(
   access: AccessState,
   fallbackOwnerUserId: string | undefined,
 ): AccountView {
-  if (access.state === "pending") {
-    return { type: "redirect", to: "/pending" };
-  }
-
-  if (access.state === "lapsed") {
-    return { type: "redirect", to: LAPSED_PATH };
-  }
-
-  if (access.state === "reacceptance") {
-    return { type: "redirect", to: REACCEPTANCE_PATH };
-  }
-
-  if (access.state === "guest") {
-    return { type: "redirect", to: GUEST_PATH };
+  // Every signed-in account that is not admitted goes to its own area.
+  const route = decideAccessRoute(access);
+  if (access.state !== "unauthenticated" && route.type === "redirect") {
+    return route;
   }
 
   if (access.state === "admitted") {

@@ -10,6 +10,7 @@
     "./instant/restore": "./src/instant/restore.ts",
     "./queries/access-profiles": "./src/queries/access-profiles.ts",
     "./queries/account-deletion": "./src/queries/account-deletion.ts",
+    "./queries/admission-blocks": "./src/queries/admission-blocks.ts",
     "./queries/acceptance-records": "./src/queries/acceptance-records.ts",
     "./queries/account-telemetry": "./src/queries/account-telemetry.ts",
     "./queries/activation-milestones": "./src/queries/activation-milestones.ts",
@@ -85,6 +86,7 @@
     "./queries/source-records": "./src/queries/source-records.ts",
     "./queries/stripe-customers": "./src/queries/stripe-customers.ts",
     "./queries/stripe-subscriptions": "./src/queries/stripe-subscriptions.ts",
+    "./queries/temporary-suspensions": "./src/queries/temporary-suspensions.ts",
     "./queries/today": "./src/queries/today.ts",
     "./queries/file-uploads": "./src/queries/file-uploads.ts"
   },

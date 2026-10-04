@@ -1,6 +1,12 @@
 import type { RefundRecord } from "@tendnote/db/queries/paid-access-revocations";
 import type { AccessProfile, RecoveryJournal } from "@tendnote/domain";
 import type Stripe from "stripe";
+import {
+  liftSuspension,
+  renewSuspensionReview,
+  suspendAccount,
+  type TemporarySuspensionDependencies,
+} from "../access/temporary-suspension";
 import { invoiceSubscription, stripeId } from "./first-paid-invoice";
 import {
   applyStripeRefund,
@@ -30,40 +36,41 @@ export function refundableInvoice(invoice: Stripe.Invoice): RefundableInvoice {
   return { invoiceId: invoice.id, ...owner, paymentIntentId, amountPaid: invoice.amount_paid };
 }
 
-export type OperatorActionDependencies = PaidAccessRevocationDependencies & {
-  journal: RecoveryJournal;
-  /** The Operator Action records (ADR 0248), written before any Stripe call. */
-  records: {
-    /** The newest Refund record naming this invoice, if any. */
-    findRefundRecordForInvoice: (input: { invoiceId: string }) => Promise<RefundRecord | null>;
-    recordRefund: (input: {
-      userId: string;
-      stripeSubscriptionId: string;
-      invoiceId: string;
+export type OperatorActionDependencies = PaidAccessRevocationDependencies &
+  TemporarySuspensionDependencies & {
+    journal: RecoveryJournal;
+    /** The Operator Action records (ADR 0248), written before any Stripe call. */
+    records: {
+      /** The newest Refund record naming this invoice, if any. */
+      findRefundRecordForInvoice: (input: { invoiceId: string }) => Promise<RefundRecord | null>;
+      recordRefund: (input: {
+        userId: string;
+        stripeSubscriptionId: string;
+        invoiceId: string;
+        paymentIntentId: string;
+        amount: number;
+        requestedAt: Date;
+      }) => Promise<{ id: string; requestedAt: Date }>;
+      grantAdmissionException: (input: {
+        userId: string;
+        blockKind: "dispute";
+        event: string;
+        grantedAt: Date;
+      }) => Promise<{ id: string; grantedAt: Date }>;
+    };
+    retrieveRefundableInvoice: (invoiceId: string) => Promise<RefundableInvoice>;
+    /** Create the Stripe refund under the record's idempotency key. */
+    createRefund: (input: {
       paymentIntentId: string;
       amount: number;
-      requestedAt: Date;
-    }) => Promise<{ id: string; requestedAt: Date }>;
-    grantAdmissionException: (input: {
-      userId: string;
-      blockKind: "dispute";
-      event: string;
-      grantedAt: Date;
-    }) => Promise<{ id: string; grantedAt: Date }>;
+      idempotencyKey: string;
+    }) => Promise<RefundSnapshot>;
+    retrieveDisputeStatus: (stripeDisputeId: string) => Promise<string>;
+    /** Undo a stopped renewal: the subscription renews at its period end again. */
+    resumeRenewal: (stripeSubscriptionId: string) => Promise<SubscriptionSnapshot>;
+    readAccessProfile: (userId: string) => Promise<Pick<AccessProfile, "status"> | null>;
+    grantPaidAccess: (userId: string, stripeSubscriptionId: string) => Promise<unknown>;
   };
-  retrieveRefundableInvoice: (invoiceId: string) => Promise<RefundableInvoice>;
-  /** Create the Stripe refund under the record's idempotency key. */
-  createRefund: (input: {
-    paymentIntentId: string;
-    amount: number;
-    idempotencyKey: string;
-  }) => Promise<RefundSnapshot>;
-  retrieveDisputeStatus: (stripeDisputeId: string) => Promise<string>;
-  /** Undo a stopped renewal: the subscription renews at its period end again. */
-  resumeRenewal: (stripeSubscriptionId: string) => Promise<SubscriptionSnapshot>;
-  readAccessProfile: (userId: string) => Promise<Pick<AccessProfile, "status"> | null>;
-  grantPaidAccess: (userId: string, stripeSubscriptionId: string) => Promise<unknown>;
-};
 
 /**
  * The Refund Operator Action (ADR 0249). The Refund record is written and
@@ -217,21 +224,48 @@ export async function readmitAfterWonDispute(
 
 export const OPERATOR_USAGE = `Usage:
   operator refund <invoice id> [amount in cents]
-  operator readmit-dispute <dispute id>`;
+  operator readmit-dispute <dispute id>
+  operator suspend <user id> <reason>
+  operator renew-suspension <user id>
+  operator lift-suspension <user id>`;
+
+type OperatorCommand = {
+  /** Whether the arguments after the id are acceptable. */
+  accepts: (rest: readonly string[]) => boolean;
+  run: (deps: OperatorActionDependencies, id: string, rest: readonly string[]) => Promise<unknown>;
+};
+
+const OPERATOR_COMMANDS: Record<string, OperatorCommand> = {
+  refund: {
+    accepts: (rest) => rest.length <= 1,
+    run: (deps, invoiceId, [amount]) =>
+      refundInvoice(deps, { invoiceId, amount: amount === undefined ? undefined : Number(amount) }),
+  },
+  "readmit-dispute": {
+    accepts: (rest) => rest.length === 0,
+    run: (deps, stripeDisputeId) => readmitAfterWonDispute(deps, { stripeDisputeId }),
+  },
+  suspend: {
+    accepts: (rest) => rest.length > 0,
+    run: (deps, userId, reason) => suspendAccount(deps, { userId, reason: reason.join(" ") }),
+  },
+  "renew-suspension": {
+    accepts: (rest) => rest.length === 0,
+    run: (deps, userId) => renewSuspensionReview(deps, { userId }),
+  },
+  "lift-suspension": {
+    accepts: (rest) => rest.length === 0,
+    run: (deps, userId) => liftSuspension(deps, { userId }),
+  },
+};
 
 /** One Operator Action from the operator CLI's arguments; anything else is refused with the usage. */
 export function runOperatorCommand(
   deps: OperatorActionDependencies,
-  [action, id, amount, ...rest]: readonly string[],
+  [action, id, ...rest]: readonly string[],
 ): Promise<unknown> {
-  if (action === "refund" && id && rest.length === 0) {
-    return refundInvoice(deps, {
-      invoiceId: id,
-      amount: amount === undefined ? undefined : Number(amount),
-    });
-  }
-  if (action === "readmit-dispute" && id && amount === undefined) {
-    return readmitAfterWonDispute(deps, { stripeDisputeId: id });
-  }
-  return Promise.reject(new Error(OPERATOR_USAGE));
+  const command =
+    action && Object.hasOwn(OPERATOR_COMMANDS, action) ? OPERATOR_COMMANDS[action] : undefined;
+  if (!command || !id || !command.accepts(rest)) return Promise.reject(new Error(OPERATOR_USAGE));
+  return command.run(deps, id, rest);
 }

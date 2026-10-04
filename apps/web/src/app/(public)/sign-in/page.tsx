@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { CredentialsForm } from "@/components/auth/credentials-form";
-import { GUEST_PATH, LAPSED_PATH, REACCEPTANCE_PATH } from "@/lib/access/access-state";
+import { decideAccessRoute } from "@/lib/access/access-state";
 import { getCurrentAccess } from "@/lib/access/current-access";
 import { safeReturnTo } from "@/lib/auth/return-to";
 import { githubEnvFromProcess, isGithubConfigured } from "@/lib/auth/social";
@@ -30,24 +30,15 @@ export default async function SignInPage({
   const returnTo = safeReturnTo(requestedReturnTo);
   const copy = signInCopy(Boolean(requestedReturnTo));
 
-  if (access.state === "reacceptance") {
-    redirect(REACCEPTANCE_PATH);
-  }
-
   if (access.state === "admitted") {
     redirect(returnTo);
   }
 
-  if (access.state === "pending") {
-    redirect("/pending");
-  }
-
-  if (access.state === "lapsed") {
-    redirect(LAPSED_PATH);
-  }
-
-  if (access.state === "guest") {
-    redirect(GUEST_PATH);
+  // Every other signed-in account lands in its own area: the gate, pending,
+  // Lapsed, guest, or restricted.
+  const route = decideAccessRoute(access);
+  if (access.state !== "unauthenticated" && route.type === "redirect") {
+    redirect(route.to);
   }
 
   return (

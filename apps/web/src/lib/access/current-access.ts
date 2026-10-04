@@ -1,6 +1,7 @@
 import "server-only";
 
 import { listOutstandingReacceptance } from "@tendnote/db/queries/acceptance-records";
+import { findOpenSuspension } from "@tendnote/db/queries/temporary-suspensions";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
@@ -62,6 +63,7 @@ export const getCurrentAccess = cache(async function getCurrentAccess(): Promise
     sessionUser,
     (entity) => privateBetaAccess.resolveAccess(entity),
     (userId) => listOutstandingReacceptance({ userId }),
+    async (userId) => (await findOpenSuspension({ userId })) !== null,
   );
 });
 

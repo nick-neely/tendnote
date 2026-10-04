@@ -10,6 +10,7 @@ import {
   localFallbackOwnerUserId,
   ownerForActionOrThrow,
   REACCEPTANCE_PATH,
+  RESTRICTED_PATH,
   resolveAccessState,
   type SessionUser,
 } from "./access-state";
@@ -423,5 +424,54 @@ describe("Lapsed Account (#609)", () => {
     );
 
     expect(state.state).toBe("reacceptance");
+  });
+});
+
+describe("Temporary Suspension (#629)", () => {
+  const deniedDecision: AccessDecision = { ...admittedDecision, admitted: false, status: "denied" };
+  const suspended = async () => true;
+  const owesTerms = async () => [{ key: "terms" } as unknown as LegalDocument];
+
+  it("lands a suspended account in the restricted area, never admitted", async () => {
+    const state = await resolveAccessState(USER, async () => deniedDecision, undefined, suspended);
+
+    expect(state).toEqual({ state: "restricted", user: USER, decision: deniedDecision });
+  });
+
+  it("outranks Lapsed, guest, and owed re-acceptance alike", async () => {
+    const profile = admittedDecision.profile as NonNullable<AccessDecision["profile"]>;
+    for (const decision of [
+      { ...pendingDecision, profile: { ...profile, retentionDeadline: new Date() } },
+      { ...pendingDecision, guest: { householdId: "household-1" } },
+    ]) {
+      await expect(
+        resolveAccessState(USER, async () => decision, owesTerms, suspended),
+      ).resolves.toMatchObject({ state: "restricted" });
+    }
+  });
+
+  it("is exactly what admission decided once no suspension is open", async () => {
+    await expect(
+      resolveAccessState(
+        USER,
+        async () => admittedDecision,
+        undefined,
+        async () => false,
+      ),
+    ).resolves.toMatchObject({ state: "admitted" });
+  });
+
+  it("routes to the restricted area and refuses product actions, never a local fallback owner", () => {
+    const state: AccessState = { state: "restricted", user: USER, decision: deniedDecision };
+    const route = decideAccessRoute(state, { localFallbackOwnerUserId: "demo-user" });
+
+    expect(route).toEqual({ type: "redirect", to: RESTRICTED_PATH });
+    expect(() => ownerForActionOrThrow(route)).toThrow(/under review/);
+  });
+
+  it("keeps export and deletion open to the account itself", () => {
+    expect(accountOwnerUserId({ state: "restricted", user: USER, decision: deniedDecision })).toBe(
+      USER.id,
+    );
   });
 });

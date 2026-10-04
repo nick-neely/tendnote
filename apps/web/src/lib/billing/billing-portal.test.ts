@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   type BillingPortalDependencies,
+  CANCEL_ONLY_PORTAL_CONFIGURATION_VERSION,
+  cancelOnlyPortalConfiguration,
   openBillingPortal,
+  openSubscriptionCancel,
   PORTAL_CONFIGURATION_VERSION,
   portalConfiguration,
 } from "./billing-portal";
@@ -115,6 +118,84 @@ describe("opening the portal", () => {
     await expect(openBillingPortal(deps, { userId: "someone-else" })).rejects.toThrow(
       /no billing to manage/,
     );
+    expect(stripe.billingPortal.sessions.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("cancelling from the restricted area (#629)", () => {
+  it("lets a suspended account cancel at period end and nothing else", () => {
+    expect(cancelOnlyPortalConfiguration().features).toEqual({
+      payment_method_update: { enabled: false },
+      invoice_history: { enabled: false },
+      customer_update: { enabled: false },
+      subscription_cancel: { enabled: true, mode: "at_period_end", proration_behavior: "none" },
+      subscription_update: { enabled: false },
+    });
+  });
+
+  it("creates the cancel-only configuration once, beside the full portal's", async () => {
+    const { stripe, deps } = portalHarness([
+      { id: "bpc_full", metadata: { tendnote_portal_configuration: PORTAL_CONFIGURATION_VERSION } },
+    ]);
+    const open = () =>
+      openSubscriptionCancel(deps, {
+        userId: "subscriber-1",
+        stripeSubscriptionId: "sub_1",
+        returnPath: "/restricted",
+      });
+
+    await open();
+    await open();
+
+    expect(stripe.billingPortal.configurations.create).toHaveBeenCalledExactlyOnceWith(
+      cancelOnlyPortalConfiguration(),
+    );
+    expect(stripe.prices.retrieve).not.toHaveBeenCalled();
+    expect(stripe.billingPortal.sessions.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ configuration: "bpc_2" }),
+    );
+  });
+
+  it("opens the portal straight into the subscription's cancel flow and returns to the area", async () => {
+    const { stripe, deps } = portalHarness([
+      {
+        id: "bpc_current",
+        metadata: { tendnote_portal_configuration: CANCEL_ONLY_PORTAL_CONFIGURATION_VERSION },
+      },
+    ]);
+
+    await expect(
+      openSubscriptionCancel(deps, {
+        userId: "subscriber-1",
+        stripeSubscriptionId: "sub_1",
+        returnPath: "/restricted",
+      }),
+    ).resolves.toBe("https://billing.stripe.test/session");
+    expect(stripe.billingPortal.sessions.create).toHaveBeenCalledExactlyOnceWith({
+      customer: "cus_1",
+      configuration: "bpc_current",
+      return_url: "https://app.tendnote.test/restricted",
+      flow_data: {
+        type: "subscription_cancel",
+        subscription_cancel: { subscription: "sub_1" },
+        after_completion: {
+          type: "redirect",
+          redirect: { return_url: "https://app.tendnote.test/restricted" },
+        },
+      },
+    });
+  });
+
+  it("refuses an account with no Stripe customer without calling Stripe", async () => {
+    const { stripe, deps } = portalHarness();
+
+    await expect(
+      openSubscriptionCancel(deps, {
+        userId: "never-paid",
+        stripeSubscriptionId: "sub_1",
+        returnPath: "/restricted",
+      }),
+    ).rejects.toThrow("There is no subscription to cancel.");
     expect(stripe.billingPortal.sessions.create).not.toHaveBeenCalled();
   });
 });
