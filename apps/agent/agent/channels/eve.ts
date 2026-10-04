@@ -1,6 +1,6 @@
 import { listOutstandingReacceptance } from "@tendnote/db/queries/acceptance-records";
 import { checkAccess, grantAccess } from "@tendnote/db/queries/access-profiles";
-import { listAccountDeletionAdmissionBlocks } from "@tendnote/db/queries/account-deletion";
+import { listAccountAdmissionBlocks } from "@tendnote/db/queries/admission-blocks";
 import { getEveSessionOwnerUserId } from "@tendnote/db/queries/eve-session-owners";
 import { readEveUsageNotice } from "@tendnote/db/queries/usage-bounds";
 import { eveChannel } from "eve/channels/eve";
@@ -20,7 +20,7 @@ const hostedSessionAuth = createTendnoteAdmissionAuth({
     // access is therefore persisted-first and fail-closed; Web persists any
     // successful Flags grant before both surfaces consume it.
     evaluateFlag: async () => false,
-    listAdmissionBlocks: listAccountDeletionAdmissionBlocks,
+    listAdmissionBlocks: listAccountAdmissionBlocks,
   },
   getSession: (headers) => getAgentAuth().api.getSession({ headers }),
   owesReacceptance: async (userId) => (await listOutstandingReacceptance({ userId })).length > 0,

@@ -47,6 +47,7 @@ export async function requestOwnerDataExportAction(): Promise<
     revalidatePath("/account");
     revalidatePath("/pending");
     revalidatePath("/lapsed");
+    revalidatePath("/restricted");
   }
   return result;
 }

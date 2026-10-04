@@ -666,6 +666,13 @@
       "when": 1791068678985,
       "tag": "0094_first_run_and_integration_offer",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1791077973050,
+      "tag": "0095_temporary_suspensions",
+      "breakpoints": true
     }
   ]
 }

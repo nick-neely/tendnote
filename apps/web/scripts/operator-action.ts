@@ -7,9 +7,13 @@ import { runOperatorCommand } from "@/lib/billing/operator-actions";
  *
  *   pnpm --filter @tendnote/web operator refund <invoice id> [amount in cents]
  *   pnpm --filter @tendnote/web operator readmit-dispute <dispute id>
+ *   pnpm --filter @tendnote/web operator suspend <user id> <reason>
+ *   pnpm --filter @tendnote/web operator renew-suspension <user id>
+ *   pnpm --filter @tendnote/web operator lift-suspension <user id>
  *
  * Each writes and journals its record before any Stripe call and prints the
- * outcome. Running one again after a failure resumes it.
+ * outcome; the suspension actions make no Stripe call at all. Running one
+ * again after a failure resumes it.
  */
 runOperatorCommand(operatorActionDependencies, process.argv.slice(2)).then(
   (result) => {

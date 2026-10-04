@@ -6,6 +6,7 @@ import {
 import { ForbiddenError } from "eve/channels/auth";
 import { describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness } from "../access/admission-harness";
+import { createTemporarySuspensionsFake } from "../access/temporary-suspensions-fake";
 import {
   OPERATOR_USAGE,
   type OperatorActionDependencies,
@@ -37,12 +38,14 @@ const DISPUTED_AT = new Date("2026-10-02T08:00:00.000Z");
  * `steps` records the order records, the journal, and Stripe were touched in.
  */
 async function operator() {
+  const steps: string[] = [];
+  const suspensions = createTemporarySuspensionsFake({ steps });
   const harness = createAdmissionHarness({
     policy: hosted,
     evaluateFlag: vi.fn().mockResolvedValue(false),
     user,
+    listAdmissionBlocks: suspensions.listAdmissionBlocks,
   });
-  const steps: string[] = [];
   const stripeSubscriptions = createStripeSubscriptionsFake(harness.queries, {
     stripeCustomerId: CUSTOMER,
     now: () => NOW,
@@ -98,6 +101,10 @@ async function operator() {
       return refund;
     }),
     retrieveDisputeStatus: async (id) => disputeStatuses.get(id) ?? "needs_response",
+    suspensions: suspensions.records,
+    revokeSessions: vi.fn(async () => {
+      steps.push("sessions:revoked");
+    }),
     readAccessProfile: (userId) => harness.queries.getAccessProfile({ userId }),
     grantPaidAccess: (userId, stripeSubscriptionId) =>
       harness.queries.grantAccess({ userId, source: "paid_access", stripeSubscriptionId }),
@@ -136,6 +143,7 @@ async function operator() {
     journaled,
     journal,
     revocations,
+    suspensions,
     stripeSubscriptions,
     disputeStatuses,
     disputed,
@@ -403,10 +411,50 @@ describe("the operator CLI's commands", () => {
     });
   });
 
+  it("suspends, renews, and lifts without a single Stripe call (#629)", async () => {
+    const op = await operator();
+    const stripeCalls = [
+      op.deps.createRefund,
+      op.deps.resumeRenewal,
+      op.deps.retrieveSubscription,
+      op.deps.cancelSubscription,
+      op.deps.stopRenewal,
+    ];
+
+    await expect(
+      runOperatorCommand(op.deps, ["suspend", user.id, "Reported", "abuse"]),
+    ).resolves.toMatchObject({ resumed: false });
+    await op.expectNotAdmitted();
+    expect(op.suspensions.suspensions[0]).toMatchObject({ reason: "Reported abuse" });
+
+    await runOperatorCommand(op.deps, ["renew-suspension", user.id]);
+    await runOperatorCommand(op.deps, ["lift-suspension", user.id]);
+    await op.expectAdmitted();
+
+    expect(op.steps).toEqual([
+      "record:suspension",
+      "sessions:revoked",
+      "journal:suspension",
+      "record:renewal",
+      "record:lift",
+      "journal:suspension-lift",
+    ]);
+    for (const call of stripeCalls) expect(call).not.toHaveBeenCalled();
+  });
+
   it("refuses anything else with the usage, touching nothing", async () => {
     const op = await operator();
 
-    for (const argv of [[], ["refund"], ["readmit-dispute", "du_1", "extra"], ["delete", "x"]]) {
+    for (const argv of [
+      [],
+      ["refund"],
+      ["refund", "in_first", "1500", "extra"],
+      ["readmit-dispute", "du_1", "extra"],
+      ["delete", "x"],
+      ["toString", "x"],
+      ["suspend", user.id],
+      ["lift-suspension", user.id, "extra"],
+    ]) {
       await expect(runOperatorCommand(op.deps, argv)).rejects.toThrow(OPERATOR_USAGE);
     }
     expect(op.steps).toEqual([]);

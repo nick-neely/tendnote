@@ -75,6 +75,26 @@ export async function getBillingStanding(input: { userId: string }): Promise<Bil
   return row ?? { endsAt: null, pastDueSince: null };
 }
 
+/**
+ * The account's live subscription and any cancellation already scheduled on
+ * it, or `null` when it has none. The newest live one is the one paying, as in
+ * {@link getBillingStanding}. Read locally; never Stripe.
+ */
+export async function getLiveSubscription(input: {
+  userId: string;
+}): Promise<{ stripeSubscriptionId: string; cancelAt: Date | null } | null> {
+  const [row] = await getDb()
+    .select({
+      stripeSubscriptionId: stripeSubscriptions.stripeSubscriptionId,
+      cancelAt: stripeSubscriptions.cancelAt,
+    })
+    .from(stripeSubscriptions)
+    .where(and(eq(stripeSubscriptions.userId, input.userId), isNull(stripeSubscriptions.endedAt)))
+    .orderBy(desc(stripeSubscriptions.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
 /** A live subscription whose dunning window has closed, named by its failed invoice. */
 export type ClosedDunningWindow = {
   userId: string;

@@ -6,6 +6,13 @@ import {
   grantAdmissionException,
   recordRefund,
 } from "@tendnote/db/queries/paid-access-revocations";
+import {
+  findLatestSuspension,
+  findOpenSuspension,
+  liftSuspension,
+  recordSuspension,
+  renewSuspensionDeadline,
+} from "@tendnote/db/queries/temporary-suspensions";
 import { type OperatorActionDependencies, refundableInvoice } from "./operator-actions";
 import { configuredStripe, paidAccessProjection } from "./paid-access-projection";
 import { refundSnapshot } from "./paid-access-revocation";
@@ -14,12 +21,23 @@ import { subscriptionSnapshot } from "./subscription-projection";
 /**
  * The production dependencies of the Operator Actions (#617): the same
  * projection the webhook and reconciliation write through, plus the records,
- * the Recovery Journal, and the Stripe calls only an operator makes.
+ * the Recovery Journal, and the Stripe calls only an operator makes. The
+ * Temporary Suspension actions (#629) use only the records, the journal, and
+ * session revocation.
  */
 export const operatorActionDependencies: OperatorActionDependencies = {
   ...paidAccessProjection,
   journal: blobRecoveryJournal,
   records: { findRefundRecordForInvoice, recordRefund, grantAdmissionException },
+  suspensions: {
+    findOpenSuspension,
+    findLatestSuspension,
+    recordSuspension,
+    renewSuspensionDeadline,
+    liftSuspension,
+  },
+  // Loaded on use, as the recovery cron does, so the refund actions never boot auth.
+  revokeSessions: async (input) => (await import("@/lib/auth/server")).revokeUserSessions(input),
   retrieveRefundableInvoice: async (invoiceId) =>
     refundableInvoice(
       await configuredStripe().invoices.retrieve(invoiceId, { expand: ["payments"] }),

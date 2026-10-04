@@ -38,6 +38,30 @@ export function portalConfiguration(input: {
   };
 }
 
+/**
+ * The version of {@link cancelOnlyPortalConfiguration}, kept apart from the
+ * full portal's under the same metadata key. Bump it with any change.
+ */
+export const CANCEL_ONLY_PORTAL_CONFIGURATION_VERSION = "cancel-only-1";
+
+/**
+ * The portal a suspended account cancels through (#629): cancel at period end,
+ * as anyone may, and nothing else. No plan switch can invoice it, and no card
+ * or invoice page is reachable, whatever page of the session it lands on.
+ */
+export function cancelOnlyPortalConfiguration(): Stripe.BillingPortal.ConfigurationCreateParams {
+  return {
+    features: {
+      payment_method_update: { enabled: false },
+      invoice_history: { enabled: false },
+      customer_update: { enabled: false },
+      subscription_cancel: { enabled: true, mode: "at_period_end", proration_behavior: "none" },
+      subscription_update: { enabled: false },
+    },
+    metadata: { [VERSION_KEY]: CANCEL_ONLY_PORTAL_CONFIGURATION_VERSION },
+  };
+}
+
 /** The slice of the Stripe client the portal uses. */
 export type PortalStripeClient = {
   prices: { retrieve: (id: string) => Promise<{ product: string | { id: string } }> };
@@ -63,26 +87,63 @@ export type BillingPortalDependencies = {
 };
 
 /**
- * The portal configuration of the current version, created the first time
- * one is needed in each Stripe account, test or live, so no deployment depends
- * on the configuration someone left in the dashboard.
+ * The portal configuration of one version, created the first time one is
+ * needed in each Stripe account, test or live, so no deployment depends on the
+ * configuration someone left in the dashboard.
  */
-async function ensurePortalConfiguration(deps: BillingPortalDependencies): Promise<string> {
+async function ensureConfiguration(
+  deps: BillingPortalDependencies,
+  version: string,
+  create: () => Promise<Stripe.BillingPortal.ConfigurationCreateParams>,
+): Promise<string> {
   const { data } = await deps.stripe.billingPortal.configurations.list({
     active: true,
     limit: 100,
   });
-  const current = data.find(
-    (configuration) => configuration.metadata?.[VERSION_KEY] === PORTAL_CONFIGURATION_VERSION,
-  );
+  const current = data.find((configuration) => configuration.metadata?.[VERSION_KEY] === version);
   if (current) return current.id;
 
-  const price = await deps.stripe.prices.retrieve(deps.prices.monthly);
-  const product = typeof price.product === "string" ? price.product : price.product.id;
-  const created = await deps.stripe.billingPortal.configurations.create(
-    portalConfiguration({ product, prices: deps.prices }),
-  );
+  const created = await deps.stripe.billingPortal.configurations.create(await create());
   return created.id;
+}
+
+function ensurePortalConfiguration(deps: BillingPortalDependencies): Promise<string> {
+  return ensureConfiguration(deps, PORTAL_CONFIGURATION_VERSION, async () => {
+    const price = await deps.stripe.prices.retrieve(deps.prices.monthly);
+    const product = typeof price.product === "string" ? price.product : price.product.id;
+    return portalConfiguration({ product, prices: deps.prices });
+  });
+}
+
+/**
+ * Open the Stripe portal straight into cancelling one subscription at period
+ * end, and come back to `returnPath` when it is done (#629). The restricted
+ * area offers only this: the session uses the cancel-only configuration, opens
+ * on the cancel flow, and returns to Tendnote on completion.
+ */
+export async function openSubscriptionCancel(
+  deps: BillingPortalDependencies,
+  input: { userId: string; stripeSubscriptionId: string; returnPath: string },
+): Promise<string> {
+  const customer = await deps.getStripeCustomerId({ userId: input.userId });
+  if (!customer) throw new Error("There is no subscription to cancel.");
+
+  const returnUrl = new URL(input.returnPath, deps.baseUrl).toString();
+  const session = await deps.stripe.billingPortal.sessions.create({
+    customer,
+    return_url: returnUrl,
+    configuration: await ensureConfiguration(
+      deps,
+      CANCEL_ONLY_PORTAL_CONFIGURATION_VERSION,
+      async () => cancelOnlyPortalConfiguration(),
+    ),
+    flow_data: {
+      type: "subscription_cancel",
+      subscription_cancel: { subscription: input.stripeSubscriptionId },
+      after_completion: { type: "redirect", redirect: { return_url: returnUrl } },
+    },
+  });
+  return session.url;
 }
 
 /**

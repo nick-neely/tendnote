@@ -2,7 +2,7 @@ import "server-only";
 
 import { vercelAdapter } from "@flags-sdk/vercel";
 import { checkAccess, grantAccess } from "@tendnote/db/queries/access-profiles";
-import { listAccountDeletionAdmissionBlocks } from "@tendnote/db/queries/account-deletion";
+import { listAccountAdmissionBlocks } from "@tendnote/db/queries/admission-blocks";
 import { readGuestHousehold } from "@tendnote/db/queries/households";
 import { dedupe, flag } from "flags/next";
 import { headers } from "next/headers";
@@ -57,6 +57,6 @@ export const evaluatePrivateBetaFlag: PrivateBetaFlagEvaluator = async (entity: 
 export const privateBetaAccess = createPrivateBetaAccessResolver({
   accessProfiles: { checkAccess, grantAccess },
   evaluateFlag: evaluatePrivateBetaFlag,
-  listAdmissionBlocks: listAccountDeletionAdmissionBlocks,
+  listAdmissionBlocks: listAccountAdmissionBlocks,
   readGuestHousehold,
 });

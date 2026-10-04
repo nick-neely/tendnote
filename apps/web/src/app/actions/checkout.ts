@@ -5,7 +5,7 @@ import { getStripeCustomerId, recordStripeCustomer } from "@tendnote/db/queries/
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Stripe from "stripe";
-import { REACCEPTANCE_PATH } from "@/lib/access/access-state";
+import { REACCEPTANCE_PATH, RESTRICTED_PATH } from "@/lib/access/access-state";
 import { getCurrentAccess } from "@/lib/access/current-access";
 import {
   openCheckout,
@@ -23,6 +23,7 @@ import { captureRequestFunnelStage } from "@/lib/telemetry/account-funnel";
 export async function startCheckoutAction(formData: FormData): Promise<void> {
   const access = await getCurrentAccess();
   if (access.state === "unauthenticated") redirect("/sign-in");
+  if (access.state === "restricted") redirect(RESTRICTED_PATH);
   if (access.state === "reacceptance") redirect(REACCEPTANCE_PATH);
   if (access.state === "admitted") redirect("/");
 
