@@ -35,7 +35,11 @@ beforeEach(() => {
   vi.stubEnv("STRIPE_PRICE_ANNUAL", "price_annual");
   requireAdmittedOwnerForAction.mockResolvedValue("subscriber-1");
   openBillingPortal.mockResolvedValue("https://billing.stripe.test/session");
-  getCurrentAccess.mockResolvedValue({ state: "restricted", user: { id: "suspended-1" } });
+  getCurrentAccess.mockResolvedValue({
+    state: "restricted",
+    user: { id: "suspended-1" },
+    restriction: { kind: "suspension" },
+  });
   getLiveSubscription.mockResolvedValue({ stripeSubscriptionId: "sub_1", cancelAt: null });
   openSubscriptionCancel.mockResolvedValue("https://billing.stripe.test/cancel");
 });
@@ -82,6 +86,17 @@ describe("Cancel subscription from the restricted area (#629)", () => {
 
   it("is only for a suspended account", async () => {
     getCurrentAccess.mockResolvedValueOnce({ state: "admitted", user: { id: "subscriber-1" } });
+
+    await expect(openSubscriptionCancelAction()).rejects.toThrow(/no subscription to cancel here/);
+    expect(openSubscriptionCancel).not.toHaveBeenCalled();
+  });
+
+  it("refuses a terminated account, whose renewal the termination already stopped (#630)", async () => {
+    getCurrentAccess.mockResolvedValueOnce({
+      state: "restricted",
+      user: { id: "suspended-1" },
+      restriction: { kind: "termination", retentionDeadline: new Date() },
+    });
 
     await expect(openSubscriptionCancelAction()).rejects.toThrow(/no subscription to cancel here/);
     expect(openSubscriptionCancel).not.toHaveBeenCalled();

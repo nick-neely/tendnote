@@ -104,6 +104,15 @@ export function lapsedRetentionDeadline(lapsedAt: Date): Date {
 }
 
 /**
+ * The retention deadline of an account terminated at `terminatedAt` (#630),
+ * computed once and stored on the termination for the same reason as
+ * {@link lapsedRetentionDeadline}.
+ */
+export function terminationRetentionDeadline(terminatedAt: Date): Date {
+  return new Date(terminatedAt.getTime() + RETENTION.terminatedAccount.days * 24 * 60 * 60 * 1000);
+}
+
+/**
  * How long an account stays admitted, as Past Due, after a renewal payment
  * fails: seven days (ADR 0245). Stripe's retries do the mechanical work; this is
  * Tendnote's policy, closed by the reconciliation job. Stripe's own retry

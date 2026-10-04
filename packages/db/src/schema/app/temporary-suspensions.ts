@@ -7,7 +7,9 @@ import { user } from "../auth";
  * denies the account admission with no exceptions (ADR 0248) and ends only by
  * its audited lift. Nothing about it reaches Stripe.
  *
- * Append-only apart from the one fact learned afterwards: when it was lifted.
+ * It ends by its lift, or by the Termination that converts it (#630), which
+ * names it. Append-only apart from the one fact learned afterwards: when it
+ * was lifted.
  * The reason is the operator's internal note, never shown to the customer and
  * never journaled. An account holds at most one open suspension.
  */

@@ -1,11 +1,13 @@
 import type { TemporarySuspension } from "@tendnote/db/queries/temporary-suspensions";
 import { type RecoveryJournal, suspensionReviewDeadline } from "@tendnote/domain";
+import { refuseTerminated, type TerminationDependencies } from "./termination";
 
 /**
  * What the Temporary Suspension Operator Actions touch (#629): the suspension
  * records, the Recovery Journal, and the account's sessions. Nothing here can
  * reach Stripe: the subscription stays active, invoices are paid, and dunning
- * runs as usual, because admission is denied by the record alone.
+ * runs as usual, because admission is denied by the record alone. None of
+ * them acts on a terminated account: its Termination ended any suspension.
  */
 export type TemporarySuspensionDependencies = {
   journal: RecoveryJournal;
@@ -25,6 +27,7 @@ export type TemporarySuspensionDependencies = {
     }) => Promise<void>;
     liftSuspension: (input: { id: string; at: Date }) => Promise<TemporarySuspension | null>;
   };
+  terminations: Pick<TerminationDependencies["terminations"], "findTermination">;
   /** Ends every session the account holds. Safe to repeat. */
   revokeSessions: (input: { userId: string }) => Promise<void>;
 };
@@ -47,6 +50,7 @@ export async function suspendAccount(
   const reason = input.reason.trim();
   if (!reason) throw new Error("A suspension needs a reason.");
   const now = input.now ?? new Date();
+  await refuseTerminated(deps.terminations, input.userId);
 
   const open = await deps.suspensions.findOpenSuspension({ userId: input.userId });
   const suspension =
@@ -82,6 +86,7 @@ export async function renewSuspensionReview(
   input: { userId: string; now?: Date },
 ) {
   const now = input.now ?? new Date();
+  await refuseTerminated(deps.terminations, input.userId);
   const open = await deps.suspensions.findOpenSuspension({ userId: input.userId });
   if (!open) throw new Error(`Account ${input.userId} has no open suspension.`);
 
@@ -108,6 +113,7 @@ export async function liftSuspension(
   input: { userId: string; now?: Date },
 ) {
   const now = input.now ?? new Date();
+  await refuseTerminated(deps.terminations, input.userId);
   const open = await deps.suspensions.findOpenSuspension({ userId: input.userId });
   const lifted =
     (open && (await deps.suspensions.liftSuspension({ id: open.id, at: now }))) ??

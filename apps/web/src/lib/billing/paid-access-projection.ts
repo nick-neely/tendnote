@@ -23,6 +23,7 @@ import {
   listClosedDunningWindows,
   recordStripeSubscription,
 } from "@tendnote/db/queries/stripe-subscriptions";
+import { findTermination } from "@tendnote/db/queries/terminations";
 import { anchorUsagePeriod } from "@tendnote/db/queries/usage-bounds";
 import type { PaidAccessFunnelStage } from "@tendnote/domain/account-funnel";
 import Stripe from "stripe";
@@ -121,6 +122,7 @@ export const paidAccessProjection = {
     lapsePaidAccess,
     paysForAccount: async (input: { userId: string; stripeSubscriptionId: string }) =>
       paysForAccount(await getAccessProfile({ userId: input.userId }), input.stripeSubscriptionId),
+    isTerminated: async (input: { userId: string }) => (await findTermination(input)) !== null,
     confirmCancellation: async (input: {
       userId: string;
       stripeSubscriptionId: string;

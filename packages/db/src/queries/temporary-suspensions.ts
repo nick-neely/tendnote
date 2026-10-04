@@ -1,7 +1,7 @@
 import type { AdmissionBlock } from "@tendnote/domain";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, notExists } from "drizzle-orm";
 import { getDb } from "../client";
-import { suspensionDeadlineRenewals, temporarySuspensions } from "../schema";
+import { suspensionDeadlineRenewals, temporarySuspensions, terminations } from "../schema";
 
 /**
  * A Temporary Suspension Operator Action's record (#629). `reviewDeadline` is
@@ -37,15 +37,28 @@ async function withDeadlineInForce(
   return renewal ? { ...suspension, reviewDeadline: renewal.reviewDeadline } : suspension;
 }
 
-/** The account's open suspension, if it has one. A local read; never Stripe. */
+/**
+ * The account's open suspension, if it has one: neither lifted nor converted by
+ * a Termination (#630), which is its audited end. A local read; never Stripe.
+ */
 export async function findOpenSuspension(input: {
   userId: string;
 }): Promise<TemporarySuspension | null> {
-  const [row] = await getDb()
+  const db = getDb();
+  const [row] = await db
     .select(suspensionColumns)
     .from(temporarySuspensions)
     .where(
-      and(eq(temporarySuspensions.userId, input.userId), isNull(temporarySuspensions.liftedAt)),
+      and(
+        eq(temporarySuspensions.userId, input.userId),
+        isNull(temporarySuspensions.liftedAt),
+        notExists(
+          db
+            .select({ id: terminations.id })
+            .from(terminations)
+            .where(eq(terminations.suspensionId, temporarySuspensions.id)),
+        ),
+      ),
     )
     .limit(1);
   return withDeadlineInForce(row);

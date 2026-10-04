@@ -36,11 +36,14 @@ export async function openBillingPortalAction(): Promise<void> {
  * Cancel from the restricted area (#629): a suspended account may cancel its
  * subscription at period end, exactly as it could before the suspension, and
  * nothing else in the portal. The suspension itself never touches Stripe; this
- * is the customer's own request.
+ * is the customer's own request. A terminated account has nothing to cancel:
+ * its Termination already stopped the renewal (#630).
  */
 export async function openSubscriptionCancelAction(): Promise<void> {
   const access = await getCurrentAccess();
-  if (access.state !== "restricted") throw new Error("There is no subscription to cancel here.");
+  if (access.state !== "restricted" || access.restriction.kind !== "suspension") {
+    throw new Error("There is no subscription to cancel here.");
+  }
   const config = readHostedStripeBillingConfig();
   if (!config) throw new Error("Billing is not available right now.");
   const subscription = await getLiveSubscription({ userId: access.user.id });
