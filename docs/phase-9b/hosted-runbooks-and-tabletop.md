@@ -166,7 +166,7 @@ linked from the Hosted Obligations Register.
 
 | Obligation | Status | Review |
 | --- | --- | --- |
-| Service-Wide Hold suspends export and deletion; Privacy Policy wording allows it | Decided, unbuilt | counsel review |
+| Service-Wide Hold suspends export and deletion; Privacy Policy wording allows it | Hold built (#634, [runbook](../operations/service-wide-hold.md)); wording unreviewed | counsel review |
 | Incident records kept three years from closure | Decided, unbuilt | counsel review |
 | Compelled non-user breach notice by email-field extraction only | Decided, unbuilt | counsel review |
 | Pre-launch tabletop passed, report dated | Decided, unrun | owner-decided |

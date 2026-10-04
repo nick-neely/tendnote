@@ -42,6 +42,10 @@ vi.mock("@tendnote/db/queries/restored-email-fences", () => ({ sweepRestoredEmai
 
 const { isOutboundPaused } = vi.hoisted(() => ({ isOutboundPaused: vi.fn(async () => false) }));
 vi.mock("@tendnote/db/queries/outbound-pause", () => ({ isOutboundPaused }));
+const { isServiceWideHoldActive } = vi.hoisted(() => ({
+  isServiceWideHoldActive: vi.fn(async () => false),
+}));
+vi.mock("@tendnote/db/queries/service-wide-hold", () => ({ isServiceWideHoldActive }));
 
 const { carryOutRetentionDeadlines } = vi.hoisted(() => ({
   carryOutRetentionDeadlines: vi.fn(async () => ({ scanned: 0 })),
@@ -133,6 +137,19 @@ describe("background-jobs recovery cron route", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ status: "paused" });
+    expect(reconcileStripe).not.toHaveBeenCalled();
+    expect(runBackgroundJobRecovery).not.toHaveBeenCalled();
+    expect(carryOutRetentionDeadlines).not.toHaveBeenCalled();
+  });
+
+  it("stands the whole pass down while a Service-Wide Hold is in force", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    isServiceWideHoldActive.mockResolvedValueOnce(true);
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ status: "held" });
     expect(reconcileStripe).not.toHaveBeenCalled();
     expect(runBackgroundJobRecovery).not.toHaveBeenCalled();
     expect(carryOutRetentionDeadlines).not.toHaveBeenCalled();

@@ -20,6 +20,10 @@ vi.mock("@vercel/queue", () => ({
 }));
 const { isOutboundPaused } = vi.hoisted(() => ({ isOutboundPaused: vi.fn(async () => false) }));
 vi.mock("@tendnote/db/queries/outbound-pause", () => ({ isOutboundPaused }));
+const { isServiceWideHoldActive } = vi.hoisted(() => ({
+  isServiceWideHoldActive: vi.fn(async () => false),
+}));
+vi.mock("@tendnote/db/queries/service-wide-hold", () => ({ isServiceWideHoldActive }));
 vi.mock("@/lib/rate-limit", () => ({
   getProductRateLimiter: () => ({ check: vi.fn().mockResolvedValue({ allowed: true }) }),
 }));
@@ -144,6 +148,18 @@ describe("a background job queue callback while a restore holds outbound (#623)"
 
     await expect(callback({ message: basePayload, metadata })).rejects.toThrow(/signature/i);
     expect(isOutboundPaused).not.toHaveBeenCalled();
+  });
+});
+
+describe("a background job queue callback during a Service-Wide Hold (#634)", () => {
+  it("redelivers an authentic message later without consuming it", async () => {
+    const { callback, consume } = makeCallback();
+    isServiceWideHoldActive.mockResolvedValueOnce(true);
+
+    await expect(
+      callback({ message: attachBackgroundJobQueueSignature(basePayload, SECRET), metadata }),
+    ).rejects.toThrow(/Service-Wide Hold/);
+    expect(consume).not.toHaveBeenCalled();
   });
 });
 

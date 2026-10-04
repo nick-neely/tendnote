@@ -25,6 +25,7 @@ import {
   type OwnerDataExportJobStore,
 } from "@tendnote/db/queries/owner-data-export";
 import { recoverStaleSemanticEmbeddingJobs } from "@tendnote/db/queries/semantic-retrieval";
+import { findLatestServiceWideHoldLift } from "@tendnote/db/queries/service-wide-hold";
 import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
 import { classifyBackgroundJobFailure } from "./failure-observability";
 import {
@@ -288,6 +289,7 @@ async function completePendingAccountDeletions(input: {
   const { revokeUserSessions } = await import("@/lib/auth/server");
   return runAccountDeletionSweep({
     ...accountDeletionDependencies(revokeUserSessions),
+    holdLiftedAt: await findLatestServiceWideHoldLift(),
     limit: input.limit,
     ...(input.now ? { now: input.now } : {}),
     ...(input.logger ? { logger: input.logger } : {}),

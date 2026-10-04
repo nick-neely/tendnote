@@ -40,7 +40,7 @@ Run the smoke with `pnpm --filter @tendnote/web test -- vercel-queue.smoke`. It 
 
 ## Recovery And Inspection
 
-While a restore holds the Outbound Pause ([restore runbook](operations/restore.md)), the cron returns `{"status":"paused"}` without running anything, and every queue callback throws after authenticating, so the platform redelivers the message once outbound resumes.
+While a restore holds the Outbound Pause ([restore runbook](operations/restore.md)), the cron returns `{"status":"paused"}` without running anything, and every queue callback throws after authenticating, so the platform redelivers the message once outbound resumes. A [Service-Wide Hold](operations/service-wide-hold.md) does the same, with the cron returning `{"status":"held"}`, so export, deletion, and their alerts wait for the lift.
 
 The recovery dispatcher runs bounded work on the same ten-minute cron. It republishes due `pending` or `publish_failed` delivery intents (up to 25 per pass), abandons obsolete delivery intents, and backfills up to 5 jobs per pass each for `extraction`, `embedding`, `action_extraction`, and `context_fact_extraction` through the same shared processors used by queue consumers.
 
