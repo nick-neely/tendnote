@@ -7,6 +7,7 @@ import {
 } from "@tendnote/db/queries/access-profiles";
 import { recordServerFunnelStage } from "@tendnote/db/queries/account-telemetry";
 import { getAuthUserEmail } from "@tendnote/db/queries/auth-users";
+import { findDunningExtension } from "@tendnote/db/queries/dunning-extensions";
 import {
   attachStripeRefund,
   findUnmatchedRefundRecord,
@@ -88,6 +89,7 @@ export const paidAccessProjection = {
       }),
     ),
   listClosedDunningWindows,
+  findDunningExtension,
   cancelSubscription: async (stripeSubscriptionId: string) =>
     subscriptionSnapshot(await configuredStripe().subscriptions.cancel(stripeSubscriptionId)),
   stopRenewal: async (stripeSubscriptionId: string) =>

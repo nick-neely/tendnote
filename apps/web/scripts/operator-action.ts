@@ -7,16 +7,19 @@ import { runOperatorCommand } from "@/lib/billing/operator-actions";
  *
  *   pnpm --filter @tendnote/web operator refund <invoice id> [amount in cents]
  *   pnpm --filter @tendnote/web operator readmit-dispute <dispute id>
+ *   pnpm --filter @tendnote/web operator extend-dunning <invoice id> <days>
+ *   pnpm --filter @tendnote/web operator raise-ceiling <user id> <cost category> <dollars>
  *   pnpm --filter @tendnote/web operator suspend <user id> <reason>
  *   pnpm --filter @tendnote/web operator renew-suspension <user id>
  *   pnpm --filter @tendnote/web operator lift-suspension <user id>
  *   pnpm --filter @tendnote/web operator terminate <user id> <reason>
  *
  * Each writes and journals its record before any Stripe call and prints the
- * outcome. Suspending and renewing make no Stripe call at all. A lift and a
- * termination then issue the Suspension Credit (#631), one credit note per paid
- * invoice the denied time overlapped, and a termination first stops the
- * renewal. Running one again after a failure resumes it.
+ * outcome. Extending dunning (#633), raising the Account Ceiling for the
+ * current Usage Period (#633), suspending, and renewing make no Stripe call at
+ * all. A lift and a termination then issue the Suspension Credit (#631), one
+ * credit note per paid invoice the denied time overlapped, and a termination
+ * first stops the renewal. Running one again after a failure resumes it.
  */
 runOperatorCommand(operatorActionDependencies, process.argv.slice(2)).then(
   (result) => {

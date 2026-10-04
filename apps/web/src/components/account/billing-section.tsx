@@ -9,12 +9,12 @@ import { pastDueNotice } from "@/lib/billing/past-due";
  */
 export function BillingSection({
   endsAt,
-  pastDueSince,
+  pastDueUntil,
 }: {
   endsAt: Date | null;
-  pastDueSince: Date | null;
+  pastDueUntil: Date | null;
 }) {
-  const pastDue = pastDueSince ? pastDueNotice(pastDueSince, new Date()) : null;
+  const pastDue = pastDueUntil ? pastDueNotice(pastDueUntil, new Date()) : null;
   return (
     <section aria-labelledby="billing-heading" className="flex flex-col gap-3">
       <h2

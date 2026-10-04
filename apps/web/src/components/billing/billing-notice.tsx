@@ -17,8 +17,8 @@ export async function BillingNoticeBanner() {
   const ownerUserId = await admittedOwnerOrNull();
   if (!ownerUserId) return null;
   const standing = await getBillingStanding({ userId: ownerUserId }).catch(() => null);
-  const notice = standing?.pastDueSince
-    ? pastDueNotice(standing.pastDueSince, new Date())
+  const notice = standing?.pastDueUntil
+    ? pastDueNotice(standing.pastDueUntil, new Date())
     : standing?.endsAt
       ? {
           headline: `Your subscription ends on ${formatBillingDate(standing.endsAt)}.`,

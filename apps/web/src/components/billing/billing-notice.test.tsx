@@ -22,14 +22,14 @@ async function renderNotice() {
 beforeEach(() => {
   vi.clearAllMocks();
   admittedOwnerOrNull.mockResolvedValue("subscriber-1");
-  getBillingStanding.mockResolvedValue({ endsAt: null, pastDueSince: null });
+  getBillingStanding.mockResolvedValue({ endsAt: null, pastDueUntil: null });
 });
 
 describe("the Ending notice (#609)", () => {
   it("shows when a scheduled cancellation ends, with the way to change it", async () => {
     getBillingStanding.mockResolvedValue({
       endsAt: new Date("2026-04-15T17:04:05.000Z"),
-      pastDueSince: null,
+      pastDueUntil: null,
     });
 
     const html = await renderNotice();
@@ -68,7 +68,7 @@ describe("the Past Due notice (#610)", () => {
   it("shows the days of full access left, with the way to fix the card", async () => {
     getBillingStanding.mockResolvedValue({
       endsAt: null,
-      pastDueSince: new Date("2026-11-01T10:30:00Z"),
+      pastDueUntil: new Date("2026-11-08T10:30:00Z"),
     });
 
     const html = await renderNotice();
@@ -81,7 +81,7 @@ describe("the Past Due notice (#610)", () => {
   it("comes before the Ending notice when a cancelled subscription's renewal also failed", async () => {
     getBillingStanding.mockResolvedValue({
       endsAt: new Date("2026-12-01T10:30:00Z"),
-      pastDueSince: new Date("2026-11-01T10:30:00Z"),
+      pastDueUntil: new Date("2026-11-08T10:30:00Z"),
     });
 
     const html = await renderNotice();

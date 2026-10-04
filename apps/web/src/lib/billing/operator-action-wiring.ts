@@ -1,13 +1,21 @@
 import "server-only";
 
+import {
+  readCeilingOverrides,
+  recordCeilingOverride,
+} from "@tendnote/db/queries/account-ceiling-overrides";
 import { blobRecoveryJournal } from "@tendnote/db/queries/account-deletion";
+import { grantDunningExtension } from "@tendnote/db/queries/dunning-extensions";
 import {
   findRefundRecordForInvoice,
   grantAdmissionException,
   recordRefund,
 } from "@tendnote/db/queries/paid-access-revocations";
 import { getStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
-import { getLiveSubscription } from "@tendnote/db/queries/stripe-subscriptions";
+import {
+  findPastDueSubscription,
+  getLiveSubscription,
+} from "@tendnote/db/queries/stripe-subscriptions";
 import {
   attachSuspensionCreditNote,
   attachSuspensionCreditRefund,
@@ -27,6 +35,7 @@ import {
   findTermination,
   recordTermination,
 } from "@tendnote/db/queries/terminations";
+import { readUsagePeriod } from "@tendnote/db/queries/usage-bounds";
 import { type OperatorActionDependencies, refundableInvoice } from "./operator-actions";
 import { configuredStripe, paidAccessProjection } from "./paid-access-projection";
 import { refundSnapshot } from "./paid-access-revocation";
@@ -40,7 +49,8 @@ import { suspensionCreditStripeCalls } from "./suspension-credit";
  * Temporary Suspension actions (#629) use only the records, the journal, and
  * session revocation; Termination (#630) adds stopping the renewal. The
  * Suspension Credit (#631) issued at a lift or a termination adds its records
- * and the credit note calls.
+ * and the credit note calls. The dunning extension and the Account Ceiling
+ * override (#633) use only their records and the journal.
  */
 export const operatorActionDependencies: OperatorActionDependencies = {
   ...paidAccessProjection,
@@ -55,6 +65,8 @@ export const operatorActionDependencies: OperatorActionDependencies = {
   },
   terminations: { findTermination, recordTermination, attachTerminationSubscription },
   getSuspension,
+  dunning: { findPastDueSubscription, grantDunningExtension },
+  ceilings: { readUsagePeriod, readCeilingOverrides, recordCeilingOverride },
   credits: {
     listSuspensionCreditsForExit,
     recordSuspensionCredit,

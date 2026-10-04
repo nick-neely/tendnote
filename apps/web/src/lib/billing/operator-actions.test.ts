@@ -9,6 +9,7 @@ import { createAdmissionHarness } from "../access/admission-harness";
 import { suspendAccount } from "../access/temporary-suspension";
 import { createTemporarySuspensionsFake } from "../access/temporary-suspensions-fake";
 import { createTerminationsFake } from "../access/terminations-fake";
+import { createCeilingOverridesFake } from "./account-ceiling-overrides-fake";
 import {
   liftSuspensionWithCredit,
   OPERATOR_USAGE,
@@ -68,6 +69,9 @@ async function operator() {
     isTerminated: terminations.isTerminated,
   });
   const revocations = createPaidAccessRevocationsFake({ steps });
+  const ceilingOverrides = createCeilingOverridesFake({
+    period: { start: "2026-09-15", resetsOn: "2026-10-15" },
+  });
   const journaled: RecoveryJournalRecord[] = [];
   const journal = {
     write: vi.fn(async (record: RecoveryJournalRecord) => {
@@ -125,6 +129,8 @@ async function operator() {
     getSuspension: async ({ userId, id }) =>
       suspensions.suspensions.find((each) => each.userId === userId && each.id === id) ?? null,
     credits: revocations.credits,
+    dunning: stripeSubscriptions.dunning,
+    ceilings: ceilingOverrides.ceilings,
     findStripeCustomer: async ({ userId }) => (userId === user.id ? CUSTOMER : null),
     listCreditableInvoices: vi.fn(async (customer: string) =>
       customer === CUSTOMER ? [...paidInvoices] : [],
@@ -188,6 +194,7 @@ async function operator() {
     suspensions,
     terminations,
     stripeSubscriptions,
+    ceilingOverrides,
     disputeStatuses,
     disputed,
     paidInvoices,
@@ -500,6 +507,37 @@ describe("the operator CLI's commands", () => {
     for (const call of stripeCalls) expect(call).not.toHaveBeenCalled();
   });
 
+  it("extends dunning on a failed invoice and raises a ceiling, neither touching Stripe (#633)", async () => {
+    const op = await operator();
+    const failed = { invoiceId: "in_renewal", since: new Date("2026-10-01T12:00:00.000Z") };
+    await op.deps.subscriptions.recordSubscription({
+      userId: user.id,
+      stripeSubscriptionId: "sub_1",
+      cancelAt: null,
+      endedAt: null,
+      pastDue: failed,
+    });
+
+    await expect(
+      runOperatorCommand(op.deps, ["extend-dunning", "in_renewal", "3"]),
+    ).resolves.toMatchObject({
+      invoiceId: "in_renewal",
+      extendedUntil: new Date("2026-10-11T12:00:00.000Z"),
+    });
+    await expect(
+      runOperatorCommand(op.deps, ["raise-ceiling", user.id, "web_search", "1.40"]),
+    ).resolves.toMatchObject({
+      costCategory: "web_search",
+      ceilingUsd: 1.4,
+      expiresOn: "2026-10-15",
+    });
+
+    expect(op.journaled.map((record) => record.kind)).toEqual(["grant", "ceiling-override"]);
+    for (const call of [op.deps.retrieveSubscription, op.deps.cancelSubscription]) {
+      expect(call).not.toHaveBeenCalled();
+    }
+  });
+
   it("refuses anything else with the usage, touching nothing", async () => {
     const op = await operator();
 
@@ -512,6 +550,15 @@ describe("the operator CLI's commands", () => {
       ["toString", "x"],
       ["suspend", user.id],
       ["lift-suspension", user.id, "extra"],
+      ["extend-dunning", "in_renewal"],
+      ["extend-dunning", "in_renewal", "3", "extra"],
+      ["raise-ceiling", user.id, "interactive"],
+      ["raise-ceiling", user.id, "interactive", "20", "extra"],
+      ["extend-dunning", "in_renewal", "2.5"],
+      ["extend-dunning", "in_renewal", ""],
+      ["raise-ceiling", user.id, "interactive", "1e1"],
+      ["raise-ceiling", user.id, "interactive", "-5"],
+      ["raise-ceiling", user.id, "interactive", ""],
     ]) {
       await expect(runOperatorCommand(op.deps, argv)).rejects.toThrow(OPERATOR_USAGE);
     }
