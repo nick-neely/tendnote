@@ -133,6 +133,23 @@ describe("CI workflow optimization contract", () => {
     }
   });
 
+  it("re-verifies main after every merge with every lane, unfiltered", () => {
+    const main = read(".github/workflows/main-verify.yml");
+    const caller = jobBlock(main, "verify");
+
+    // Two pull requests can each pass against their own base and still break
+    // main together (ADR 0264). Path filtering is what let a documentation-only
+    // merge skip the publication gate, so no lane is filtered here.
+    expect(main).toMatch(/on:\n {2}push:\n {4}branches:\n {6}- main\n/);
+    expect(main).not.toContain("pull_request");
+    expect(main).toContain("cancel-in-progress: true");
+    expect(jobIds(main)).toEqual(["verify"]);
+    expect(caller).toContain("uses: ./.github/workflows/reusable-verify.yml");
+    for (const lane of ["quality", "tests", "browser", "instant", "database"]) {
+      expect(caller).toContain(`run_${lane}: true`);
+    }
+  });
+
   it("always calls the reusable workflow so its checks can never hang", () => {
     const pullRequest = read(".github/workflows/pr-verify.yml");
     const caller = jobBlock(pullRequest, "verify");
