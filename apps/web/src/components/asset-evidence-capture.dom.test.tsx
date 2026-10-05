@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { mockFileUploadNetwork } from "@/test/file-upload-network";
 
-vi.mock("@vercel/blob/client", () => ({ upload: vi.fn(async () => ({})) }));
+vi.mock("@vercel/blob/client", () => ({ uploadPresigned: vi.fn(async () => ({})) }));
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssetEvidenceView } from "@/lib/asset-evidence-view";

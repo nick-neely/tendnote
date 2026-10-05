@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { mockFileUploadNetwork } from "@/test/file-upload-network";
 import { submitEvidenceForm } from "./upload";
 
-vi.mock("@vercel/blob/client", () => ({ upload: vi.fn(async () => ({})) }));
+vi.mock("@vercel/blob/client", () => ({ uploadPresigned: vi.fn(async () => ({})) }));
 beforeEach(mockFileUploadNetwork);
 
 it.each(["validation", "exception"])(

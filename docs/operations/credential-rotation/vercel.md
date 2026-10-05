@@ -43,14 +43,49 @@ scope is unknown.
    `BACKGROUND_JOB_QUEUE_SECRET` on the web and Eve projects, and `CRON_SECRET`
    and `FLAGS_SECRET` on the web project. Remove the same variables from
    Preview, then set new Preview values different from Production's.
-4. **Close the Blob store token.** The store is under **Vercel Blob**. Vercel
-   documents no way to rotate or revoke a store's long-lived
-   `BLOB_READ_WRITE_TOKEN`. Its documented answer is OIDC, whose short-lived
-   tokens rotate on their own. If a project still sets the static token and
-   it may be exposed, ask Vercel support to revoke it, and record in the
-   Incident Record that it stays valid until they do. Moving the store to
-   OIDC, so production holds no static token, is
-   [#741](https://github.com/nick-neely/tendnote/issues/741).
+4. **Close Blob access.** Locate each store under **Vercel Blob**. Connect
+   the Web project using OIDC and `BLOB_STORE_ID`; hosted Eve shares that
+   project's connection through `withEve`. If Eve is deployed as a separate
+   project, connect it too. Keep Production's store separate from the shared
+   Development/Preview store. Remove `BLOB_READ_WRITE_TOKEN` from every
+   project environment and redeploy both services. Browser uploads must use
+   the OIDC signed-URL flow (`uploadPresigned` / `handleUploadPresigned`),
+   because the older `handleUpload` requires a static token.
+
+   Review the operator-only `tendnote-recovery` project's Development OIDC
+   connection to the Production store as well. It has no Git connection or
+   deployments, and needs no static token. Remove an unauthorized project
+   connection to close its OIDC access; revoking the old read-write token
+   does not revoke OIDC project authorization.
+
+   **Removing an environment variable does not revoke a copied credential.**
+   After every connected project uses OIDC, the store's **Projects** tab
+   offers **Revoke Token**. Redeploy each project with the new variables
+   before using it for a planned migration. The upgrade dialog explicitly
+   says the old `BLOB_READ_WRITE_TOKEN` keeps working until this later step.
+   Revoke it, then verify the old token is refused without logging it.
+   Never restore the old value.
+
+   If a static-token consumer must remain, use **Settings > Rotate
+   Credentials** instead, with no delayed expiration for exposed old
+   credentials. Check connected project variables again afterwards, since
+   rotation updates their credentials. Redeploy consumers before rotation if this is
+   planned maintenance; during containment, revoke exposed access first.
+   Apply revocation or rotation to both stores and to old deployment/local copies.
+
+   These controls were verified in the Vercel dashboard on October 4, 2026.
+   Rotation offers optional old-credential expiration delayed up to thirty days and
+   warns that active deployments need redeployment. Vercel's
+   [Private Blob GA announcement](https://vercel.com/changelog/vercel-private-blob-is-now-generally-available)
+   explicitly confirms upgrading to OIDC and revoking the old credential
+   from the dashboard. Do not assume enabling OIDC itself revokes a static
+   token; until revocation (or rotation) and a refusal check confirm it, treat it as
+   valid. If the control is unavailable or a rotated token still works,
+   contact Vercel support and keep that gap open in the Incident Record.
+
+   OIDC reduces future exposure: hosted tokens rotate automatically. Operator
+   scripts pull `.env.recovery.local` from `tendnote-recovery` and re-pull on expiry under the
+   [restore preconditions](../restore.md#preconditions).
 5. **Redeploy Production** on every project, the web project last, so that
    both sides of the queue and reconciliation signatures change together.
    Queue messages signed with the old secret are refused. The recovery cron

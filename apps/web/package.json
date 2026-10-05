@@ -14,8 +14,8 @@
     "build:instant": "TENDNOTE_INSTANT_MATRIX=1 next build",
     "test:instant": "pnpm build:instant && TENDNOTE_INSTANT_MATRIX=1 playwright test",
     "test:instant:full": "pnpm build:instant && TENDNOTE_INSTANT_MATRIX=1 TENDNOTE_INSTANT_SCOPE=full playwright test",
-    "operator": "tsx --env-file-if-exists=.env.local --import ./scripts/server-only-stub.mjs scripts/operator-action.ts",
-    "restore": "tsx --env-file-if-exists=.env.local --import ./scripts/server-only-stub.mjs scripts/restore.ts",
+    "operator": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env.recovery.local --import ./scripts/server-only-stub.mjs scripts/operator-action.ts",
+    "restore": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env.recovery.local --import ./scripts/server-only-stub.mjs scripts/restore.ts",
     "service-hold": "tsx --env-file-if-exists=.env.local scripts/service-hold.ts",
     "backup-surfaces": "tsx --env-file-if-exists=.env.local scripts/backup-surfaces.ts",
     "first-value-check": "tsx --env-file-if-exists=.env.local --import ./scripts/server-only-stub.mjs scripts/first-value-check.ts"

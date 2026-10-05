@@ -1,6 +1,6 @@
 "use client";
 import { assertAssetEvidenceFileAccepted } from "@tendnote/domain";
-import { upload } from "@vercel/blob/client";
+import { uploadPresigned } from "@vercel/blob/client";
 
 export type UploadedFile = { id: string; fileName: string; mimeType: string; sizeBytes: number };
 export async function uploadFile(
@@ -16,7 +16,7 @@ export async function uploadFile(
   if (!reservation.ok) throw new Error("Could not start the upload. Try again.");
   const { id, pathname } = (await reservation.json()) as { id: string; pathname: string };
   try {
-    await upload(pathname, file, {
+    await uploadPresigned(pathname, file, {
       access: "private",
       handleUploadUrl: "/api/files/upload",
       clientPayload: id,
