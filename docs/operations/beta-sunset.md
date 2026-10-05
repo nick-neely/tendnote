@@ -13,7 +13,8 @@ applies it to Production through the Production Release Gate. It moves every
 retention deadline. Every other source is untouched. An ex-beta account then
 lands in the pending area, which says the beta ended and its data is intact,
 and offers Subscribe. The migration runs on merge, not when the flag flips, so
-the merge itself is the sunset. Do not merge it ahead of the preconditions.
+the merge itself is the sunset. Do not merge it ahead of the preconditions,
+and open Checkout first so no account is ever pending without a way to pay.
 
 ## Trigger
 
@@ -42,8 +43,10 @@ registered on `app.tendnote.com`.
 
 ## Steps
 
-1. Merge the release. Wait for the Production Release Gate status to pass.
-2. Turn the `checkout` flag on for everyone.
+1. Turn the `checkout` flag on for everyone. Beta accounts are still admitted,
+   so they never see it; a pending account can subscribe from now on.
+2. Merge the release. Wait for the Production Release Gate status to pass. Each
+   ex-beta account lands in the pending area with Subscribe already there.
 
 ## Record produced
 
