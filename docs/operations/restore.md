@@ -39,11 +39,58 @@ runbook. Also the restore drill, run against an isolated copy of production.
    than seven days old when the branch is created.
 2. **The checkout matches production.** Check out the commit Production
    runs, then run `pnpm install`.
-3. **Production's environment is on hand.** From `apps/web`, run
-   `vercel env pull .env.local --environment=production`. The steps read
-   `BLOB_READ_WRITE_TOKEN`, `REDIS_URL`, and `STRIPE_SECRET_KEY` from it.
+3. **Production's environment and the recovery identity are on hand.** From
+   `apps/web`, pull both files:
+
+   ```sh
+   umask 077
+   vercel env pull .env.local --project tendnote-web --environment=production
+   vercel env pull .env.recovery.local --project tendnote-recovery --environment=development
+   ```
+
+   `.env.local` supplies Production's `REDIS_URL` and `STRIPE_SECRET_KEY`.
+   The `restore` and `operator` commands then load `.env.recovery.local`,
+   overriding only the Blob identity and Vercel system variables. This file
+   supplies `BLOB_STORE_ID` and a short-lived `VERCEL_OIDC_TOKEN` from
+   `tendnote-recovery`, an operator-only project with no Git connection or
+   deployments. Its Development OIDC connection authorizes the Production
+   store. Ordinary Web Development and Preview remain connected to their
+   separate store.
+
+   **A Production env pull still issues a development OIDC token.** Using
+   `tendnote-web`'s pulled token with the Production store is refused, because
+   that store authorizes only the Web project's Production identity. Do not
+   broaden that connection or substitute a development store to make a
+   recovery command work. Never configure `BLOB_READ_WRITE_TOKEN`.
+   Before stopping production writes, verify the recovery identity without
+   printing journal contents or credentials:
+
+   ```sh
+   node --env-file=.env.recovery.local --input-type=module -e 'import {list} from "@vercel/blob"; if(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID !== "store_9YUptqkYCQwh1ytD") throw new Error("Expected Production OIDC"); await list({prefix:"journal/",limit:1}); console.log("Production journal OIDC access verified")'
+   ```
+
    `DATABASE_URL` is always given on the command line, which takes precedence
    over the file.
+
+   A fresh local token measured on October 4, 2026 had a twelve-hour lifetime
+   (`exp - iat = 43200` seconds). Check the current token's expiry without
+   printing its value:
+
+   ```sh
+   node --env-file=.env.recovery.local -e 'const c = JSON.parse(Buffer.from(process.env.VERCEL_OIDC_TOKEN.split(".")[1], "base64url")); console.log({project: c.project, environment: c.environment, expiresAt: new Date(c.exp * 1000).toISOString(), remainingMinutes: Math.floor((c.exp * 1000 - Date.now()) / 60000)})'
+   ```
+
+   This exceeds step 3's ten-minute wait, but the runbook has no upper bound
+   on branch preparation or investigating failed records, and outbound may
+   stay held for up to twenty-four hours. Re-pull `.env.recovery.local` if the token expires, or
+   before a journal step when the remaining lifetime will not cover it. Back
+   up local overrides first; re-pulling replaces the named file. Refreshing
+   `.env.recovery.local` leaves Production's database and provider settings in
+   `.env.local` alone. Keep each step's
+   explicit `DATABASE_URL` prefix after refreshing. `cutover`,
+   `apply-deletions`, `mark-fences`, and the journal-writing `operator`
+   commands all use this same SDK OIDC authentication. Hosted Function tokens
+   refresh automatically; a pulled local token does not.
 4. **The Neon CLI is signed in** to the project under **Neon**. Note the
    production branch's connection string as `PROD_URL`.
 5. **Nothing else is changing production.** No deploy, migration, or Operator

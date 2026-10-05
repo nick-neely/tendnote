@@ -40,13 +40,19 @@ private Blob store with short-lived tokens for one server-selected path and a
 bounded size/type. Completion downloads and checks actual size and magic bytes
 before enabling reads. File reads are authenticated, private, and uncached.
 
-Configure the same private store's `BLOB_READ_WRITE_TOKEN` in Web and Agent.
+Connect Web and Agent to the same private store using Vercel OIDC and
+`BLOB_STORE_ID`. Hosted Eve runs inside the Web project through `withEve`, so
+both services inherit that project's store connection. A separate Eve project
+needs its own OIDC connection to the same store for each environment.
 The Recovery Journal (ADR 0250) shares this store: Deletion Records live under
 `journal/` and Effect Fences under `fence/`, which file deletion never touches,
-so the same token is also what lets account deletion complete. A restore's
+so the same OIDC connection also lets account deletion complete. A restore's
 cutover markers live under `journal/_cutover/` ([restore runbook](../operations/restore.md)).
-The token stays server-side. Development must use a separate store from production.
-A development-only store was provisioned for this change; production is not changed.
+Credentials stay server-side. Production has its own store; development and
+preview share a separate store. Do not set `BLOB_READ_WRITE_TOKEN`. Locally,
+use `vercel env pull` from the linked Web project and re-pull when the
+short-lived `VERCEL_OIDC_TOKEN` expires. See the
+[restore preconditions](../operations/restore.md#preconditions) for operator access.
 
 1. Create/connect a private Blob store for each deployment environment.
 2. Apply the additive database migration before deploying the new readers/writers.
