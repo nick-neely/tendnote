@@ -31,6 +31,25 @@ content-free Deletion Record to the Recovery Journal before it deletes.
 Recovery re-applies those records. Deletion Record Retention is thirty days,
 derived from the window plus a detection margin.
 
+**A restore never repeats a completed email or export.** After a Resend email
+send or an owner data export delivery succeeds, an Effect Fence is written
+beside the journal, keyed by a digest of the effect's business idempotency key,
+and a restore marks the matching job complete. Exactly those two effects are
+fenced. Reminders are not: they are never deliberately shed, they are the
+highest-volume effect, and a duplicate reminder after a restore is a far smaller
+harm than a suppressed one. Fence retention is fourteen days, the window plus a
+margin, because a fence is only consulted for effects inside the window.
+
+**A restore holds outbound and marks fenced effects complete in the restored
+data.** The first thing written to a restore branch is an outbound pause, a row
+in the database, so the cron, every queue consumer, push, and email stand down
+on whatever reads that data until the operator resumes them after the swap.
+The restore copies the email fences into the restored data, and a send whose
+key is fenced completes without sending. That marks a completed email complete
+whichever job or state change would repeat it, without a per-email list to
+keep in step. Restored export jobs a fence names are marked delivered directly.
+The procedure is the [restore runbook](../operations/restore.md).
+
 ## Consequences
 
 The deletion tail cannot silently drift. Raising it would take a Neon plan

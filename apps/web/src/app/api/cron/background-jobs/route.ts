@@ -1,13 +1,21 @@
 import { timingSafeEqual } from "node:crypto";
 import { sweepAccountFunnelEvents } from "@tendnote/db/queries/account-telemetry";
+import { sweepEffectFences } from "@tendnote/db/queries/effect-fences";
 import { sweepFileStorage } from "@tendnote/db/queries/file-uploads";
+import { isOutboundPaused } from "@tendnote/db/queries/outbound-pause";
+import { sweepPublicActivityCounts } from "@tendnote/db/queries/public-activity";
+import { sweepDeletionRecords } from "@tendnote/db/queries/recovery-journal";
+import { sweepRestoredEmailFences } from "@tendnote/db/queries/restored-email-fences";
+import { isServiceWideHoldActive } from "@tendnote/db/queries/service-wide-hold";
 import { sweepUsageLedger } from "@tendnote/db/queries/usage-ledger";
 import { parseAdmissionPolicy } from "@tendnote/domain";
 import { type NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { carryOutRetentionDeadlines } from "@/lib/access/account-retention";
 import { runBackgroundJobRecovery } from "@/lib/background-jobs/recovery";
 import { paidAccessProjection } from "@/lib/billing/paid-access-projection";
 import { createStripeReconciliation } from "@/lib/billing/stripe-reconciliation";
+import { runOperatorAlerts } from "@/lib/operator-alerts/pass";
 
 const DELIVERY_LIMIT = 25;
 const EXTRACTION_BACKFILL_LIMIT = 5;
@@ -26,6 +34,12 @@ const ACCOUNT_DELETION_LIMIT = 10;
  * minutes to drain in rather than needing to clear in a single run.
  */
 const HOUSEHOLD_PURGE_LIMIT = 3;
+/**
+ * Accounts given a deletion notice or purged per pass. A purge is one account
+ * deletion; a ten-minute pass against deadlines measured in days drains any
+ * backlog long before a notice is late by more than a pass.
+ */
+const ACCOUNT_RETENTION_LIMIT = 25;
 /** Audit evidence is cheaper than a household purge, but stays bounded per pass. */
 const AUDIT_RETENTION_LIMIT = 100;
 
@@ -42,8 +56,9 @@ function timingSafeEqualStrings(a: string, b: string): boolean {
 
 /**
  * This route triggers expensive and irreversible recovery work (extraction/embedding
- * backfills, owner-export generation, household purges, audit, Usage Ledger, and
- * account funnel retention sweeps), so it must never run unauthenticated.
+ * backfills, owner-export generation, household purges, retention-deadline notices and
+ * purges, audit, Usage Ledger, account funnel, public activity, effect fence, and Deletion
+ * Record retention sweeps, and operator alerts), so it must never run unauthenticated.
  *
  * Vercel Cron invokes it with `Authorization: Bearer $CRON_SECRET`, so a configured
  * secret is compared against that header in constant time.
@@ -68,6 +83,18 @@ function isAuthorized(request: NextRequest) {
 export async function GET(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // A restore holds every pass until the operator resumes outbound (#623). A
+  // missed pass is ordinary for a cron, so nothing here needs to catch up.
+  if (await isOutboundPaused()) {
+    return NextResponse.json({ status: "paused" });
+  }
+  // A Service-Wide Hold (#634) holds every pass too, so export, deletion, and
+  // their alerts wait for the lift. The proxy already refuses this route on a
+  // hosted deployment; this keeps the rule wherever the route is reached.
+  if (await isServiceWideHoldActive()) {
+    return NextResponse.json({ status: "held" });
   }
 
   // First, because it never throws: a failing recovery stage below must not
@@ -97,11 +124,25 @@ export async function GET(request: NextRequest) {
   const files = await sweepFileStorage();
   const usageLedger = await sweepUsageLedger();
   const accountFunnel = await sweepAccountFunnelEvents();
+  const publicActivity = await sweepPublicActivityCounts();
+  const effectFences = await sweepEffectFences();
+  const restoredEmailFences = await sweepRestoredEmailFences();
+  const deletionRecords = await sweepDeletionRecords();
+  // It never throws, so it runs before the retention step, which is last on purpose.
+  const operatorAlerts = await runOperatorAlerts({ stripeReconciliation });
+  // Last, so a failure here never costs the housekeeping sweeps above their pass.
+  const accountRetention = await carryOutRetentionDeadlines({ limit: ACCOUNT_RETENTION_LIMIT });
   return NextResponse.json({
     ...result,
+    accountRetention,
     files,
     usageLedger,
     accountFunnel,
+    publicActivity,
+    effectFences,
+    restoredEmailFences,
+    deletionRecords,
     stripeReconciliation,
+    operatorAlerts,
   });
 }

@@ -10,6 +10,8 @@ import {
   localFallbackOwnerUserId,
   ownerForActionOrThrow,
   REACCEPTANCE_PATH,
+  RESTRICTED_PATH,
+  type Restriction,
   resolveAccessState,
   type SessionUser,
 } from "./access-state";
@@ -424,5 +426,96 @@ describe("Lapsed Account (#609)", () => {
     );
 
     expect(state.state).toBe("reacceptance");
+  });
+});
+
+describe("Temporary Suspension (#629) and Termination (#630)", () => {
+  const deniedDecision: AccessDecision = { ...admittedDecision, admitted: false, status: "denied" };
+  const suspension: Restriction = { kind: "suspension" };
+  const termination: Restriction = {
+    kind: "termination",
+    retentionDeadline: new Date("2027-01-01T12:00:00.000Z"),
+  };
+  const suspended = async () => suspension;
+  const owesTerms = async () => [{ key: "terms" } as unknown as LegalDocument];
+
+  it("lands a suspended account in the restricted area, never admitted", async () => {
+    const state = await resolveAccessState(USER, async () => deniedDecision, undefined, suspended);
+
+    expect(state).toEqual({
+      state: "restricted",
+      user: USER,
+      decision: deniedDecision,
+      restriction: suspension,
+    });
+  });
+
+  it("lands a terminated account there too, carrying its retention deadline", async () => {
+    const state = await resolveAccessState(
+      USER,
+      async () => admittedDecision,
+      undefined,
+      async () => termination,
+    );
+
+    expect(state).toMatchObject({ state: "restricted", restriction: termination });
+  });
+
+  it("outranks Lapsed, guest, and owed re-acceptance alike", async () => {
+    const profile = admittedDecision.profile as NonNullable<AccessDecision["profile"]>;
+    for (const decision of [
+      { ...pendingDecision, profile: { ...profile, retentionDeadline: new Date() } },
+      { ...pendingDecision, guest: { householdId: "household-1" } },
+    ]) {
+      for (const restriction of [suspension, termination]) {
+        await expect(
+          resolveAccessState(
+            USER,
+            async () => decision,
+            owesTerms,
+            async () => restriction,
+          ),
+        ).resolves.toMatchObject({ state: "restricted", restriction });
+      }
+    }
+  });
+
+  it("is exactly what admission decided once no restriction applies", async () => {
+    await expect(
+      resolveAccessState(
+        USER,
+        async () => admittedDecision,
+        undefined,
+        async () => null,
+      ),
+    ).resolves.toMatchObject({ state: "admitted" });
+  });
+
+  it("routes to the restricted area and refuses product actions, never a local fallback owner", () => {
+    for (const restriction of [suspension, termination]) {
+      const state: AccessState = {
+        state: "restricted",
+        user: USER,
+        decision: deniedDecision,
+        restriction,
+      };
+      const route = decideAccessRoute(state, { localFallbackOwnerUserId: "demo-user" });
+
+      expect(route).toEqual({ type: "redirect", to: RESTRICTED_PATH });
+      expect(() => ownerForActionOrThrow(route)).toThrow(/access is restricted/);
+    }
+  });
+
+  it("keeps export and deletion open to the account itself", () => {
+    for (const restriction of [suspension, termination]) {
+      expect(
+        accountOwnerUserId({
+          state: "restricted",
+          user: USER,
+          decision: deniedDecision,
+          restriction,
+        }),
+      ).toBe(USER.id);
+    }
   });
 });

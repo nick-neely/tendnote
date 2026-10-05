@@ -1,8 +1,8 @@
 import { claimableExtractionJobStatuses, createExtractionJobSchema } from "@tendnote/domain";
-import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import { type extractionJobs, sourceRecordPeople, sourceRecords } from "../../schema";
-import type { UpdateJobFields } from "./in-memory-queue";
+import { EXTRACTION_CLAIM_LEASE_MS, type UpdateJobFields } from "./in-memory-queue";
 
 // Postgres-claimable states (ADR 0018): a job can be picked up when freshly queued or
 // after a retryable failure. Shared with the in-memory queue via the domain constant so
@@ -50,6 +50,20 @@ export function createDrizzleExtractionJobQueueOps(
   table: ExtractionJobQueueTable,
   notFoundLabel: string,
 ) {
+  function claimable(now: Date) {
+    const expiredBefore = new Date(now.getTime() - EXTRACTION_CLAIM_LEASE_MS);
+    return and(
+      lte(table.runAfter, now),
+      or(
+        inArray(table.status, CLAIMABLE_STATUSES),
+        and(
+          eq(table.status, "running"),
+          sql`coalesce(${table.claimedAt}, ${table.updatedAt}) <= ${expiredBefore.toISOString()}::timestamptz`,
+        ),
+      ),
+    );
+  }
+
   return {
     // Source-record reads the async processor performs outside a single owner request —
     // identical for both pipelines, which load a record by id and derive owner scope from it.
@@ -104,13 +118,7 @@ export function createDrizzleExtractionJobQueueOps(
           attempts: sql`${table.attempts} + 1`,
           updatedAt: input.now,
         })
-        .where(
-          and(
-            eq(table.id, input.jobId),
-            inArray(table.status, CLAIMABLE_STATUSES),
-            lte(table.runAfter, input.now),
-          ),
-        )
+        .where(and(eq(table.id, input.jobId), claimable(input.now)))
         .returning();
 
       return job ?? null;
@@ -121,7 +129,7 @@ export function createDrizzleExtractionJobQueueOps(
       const nextJob = getDb()
         .select({ id: table.id })
         .from(table)
-        .where(and(inArray(table.status, CLAIMABLE_STATUSES), lte(table.runAfter, input.now)))
+        .where(claimable(input.now))
         .orderBy(asc(table.runAfter))
         .limit(1)
         .for("update", { skipLocked: true });

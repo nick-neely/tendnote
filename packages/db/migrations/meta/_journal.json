@@ -656,8 +656,92 @@
     {
       "idx": 93,
       "version": "7",
-      "when": 1791065863694,
-      "tag": "0093_beta_sunset",
+      "when": 1791066099452,
+      "tag": "0093_public_activity_daily_counts",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1791068678985,
+      "tag": "0094_first_run_and_integration_offer",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1791077973050,
+      "tag": "0095_temporary_suspensions",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1791082055949,
+      "tag": "0096_terminations",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1791086262580,
+      "tag": "0097_suspension_credits",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1791089216925,
+      "tag": "0098_deletion_notices",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1791090069801,
+      "tag": "0099_operator_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1791091244190,
+      "tag": "0100_dunning_extensions_and_ceiling_overrides",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1791124102843,
+      "tag": "0101_restore_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1791129814720,
+      "tag": "0102_legal_holds",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1791133386586,
+      "tag": "0103_service_wide_holds",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1791154055592,
+      "tag": "0104_suspension_renewal_reasons",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1791158134837,
+      "tag": "0105_beta_sunset",
       "breakpoints": true
     }
   ]

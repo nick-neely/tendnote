@@ -63,6 +63,13 @@ export const accessProfiles = pgTable(
     // Why a not-admitted profile lost a grant it had: `beta_ended` from the
     // Beta Sunset migration (#612). Cleared by any later grant.
     pendingReason: accessPendingReason("pending_reason"),
+    // When the first-run prompt was closed without being answered: skipped, or
+    // never owed because the account predates it. Answering needs no column; a
+    // first conversation or a first person is the answer (#639).
+    firstRunClosedAt: timestamp("first_run_closed_at", { withTimezone: true }),
+    // When the owner answered or set aside the integrations offer Home makes
+    // once First Value is reached (#639).
+    integrationOfferClosedAt: timestamp("integration_offer_closed_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [

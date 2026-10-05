@@ -1,12 +1,14 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq, not, sql } from "drizzle-orm";
 import { type DatabaseExecutor, getDb } from "../../client";
 import { accountDeletionIntents, user } from "../../schema";
+import { heldBeyond, isAccountHeld } from "../legal-holds";
 import type { AccountDeletionIntent, AccountDeletionStore } from "./types";
 
 const intentColumns = {
   userId: accountDeletionIntents.userId,
   requestedAt: accountDeletionIntents.requestedAt,
   journaledAt: accountDeletionIntents.journaledAt,
+  reason: accountDeletionIntents.reason,
 };
 
 export function createDrizzleAccountDeletionStore(
@@ -37,10 +39,11 @@ export function createDrizzleAccountDeletionStore(
 
     findIntent,
 
-    async listIntents({ limit }) {
+    async listIntents({ limit, now }) {
       return resolveDb()
         .select(intentColumns)
         .from(accountDeletionIntents)
+        .where(not(heldBeyond(accountDeletionIntents.userId, now)))
         .orderBy(
           sql`${accountDeletionIntents.attemptedAt} asc nulls first`,
           asc(accountDeletionIntents.requestedAt),
@@ -48,6 +51,8 @@ export function createDrizzleAccountDeletionStore(
         )
         .limit(limit);
     },
+
+    isHeld: (input) => isAccountHeld(input, resolveDb()),
 
     async markAttempted({ userId, at }) {
       await resolveDb()
@@ -61,6 +66,15 @@ export function createDrizzleAccountDeletionStore(
         .update(accountDeletionIntents)
         .set({ journaledAt: at })
         .where(eq(accountDeletionIntents.userId, userId));
+    },
+
+    async findAccountEmail({ userId }) {
+      const [row] = await resolveDb()
+        .select({ email: user.email })
+        .from(user)
+        .where(eq(user.id, userId))
+        .limit(1);
+      return row?.email ?? null;
     },
 
     async deleteAccount({ userId }) {

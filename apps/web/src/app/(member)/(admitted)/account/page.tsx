@@ -9,6 +9,7 @@ import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { AccountDeletionSection } from "@/components/account/account-deletion-section";
 import { AssistantApprovalSettings } from "@/components/account/assistant-approval-settings";
 import { BillingSection } from "@/components/account/billing-section";
 import { CalendarPreviewSection } from "@/components/account/calendar-preview-section";
@@ -162,15 +163,26 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
         <TelemetrySettingsStream ownerUserId={ownerUserId} />
       </Suspense>
 
-      <Suspense fallback={<AccountRegionReserve label="Data export" />}>
-        <OwnerDataExportStream ownerUserId={ownerUserId} />
-      </Suspense>
-
       {/* Billing (#609) renders only for an account with a subscription to
             manage, so every self-hosted and never-billed account skips it. */}
       <Suspense fallback={null}>
         <BillingStream ownerUserId={ownerUserId} />
       </Suspense>
+
+      {/* Export sits directly above Delete, so taking a copy first is one step
+            away and never a gate (#619). */}
+      <Suspense fallback={<AccountRegionReserve label="Data export" />}>
+        <OwnerDataExportStream ownerUserId={ownerUserId} />
+      </Suspense>
+
+      {/* Only a signed-in account can delete itself; the local fallback owner
+            has no session to close. */}
+      {usingLocalFallback ? null : (
+        <AccountDeletionSection
+          billingOffered={readHostedStripeBillingConfig() !== null}
+          email={view.email}
+        />
+      )}
 
       {/* Sign out */}
       <section className="flex flex-col gap-3 border-t pt-6">

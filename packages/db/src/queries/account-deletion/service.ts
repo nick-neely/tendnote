@@ -21,6 +21,17 @@ export type AccountDeletionDependencies = {
   journal: RecoveryJournal;
   /** Ends every session the account holds. Safe to repeat. */
   revokeSessions: (input: { userId: string }) => Promise<void>;
+  /**
+   * Cancels the account's live subscriptions at once, with no refund of the
+   * remainder. Safe to repeat, and a no-op for an account that never billed.
+   */
+  cancelSubscriptions: (input: { userId: string }) => Promise<void>;
+  /**
+   * Confirms by email that a retention-deadline purge happened (#621). Called
+   * once the rows are gone, with the address read before they went; the owner's
+   * own deletion is not confirmed.
+   */
+  confirmPurge: (input: { to: string; userId: string; requestedAt: Date }) => Promise<void>;
   logger?: AccountDeletionLogger;
 };
 
@@ -38,23 +49,67 @@ function deletionRecord(intent: AccountDeletionIntent): DeletionRecord {
   };
 }
 
+/**
+ * Finishes an intent, or stops short of the purge while a Legal Hold covers
+ * the account (#632). A held intent stays committed, so the account stays
+ * closed, and the sweep finishes it once the hold ends.
+ */
 async function completeIntent(
   deps: AccountDeletionDependencies,
   intent: AccountDeletionIntent,
   now: Date,
-): Promise<void> {
+): Promise<"deleted" | "held"> {
+  // Billing stops before anything is journaled or deleted: the account closed
+  // at commit, and the Stripe customer the cancellation needs is deleted with
+  // the account. It runs on every attempt, journaled or not, so an intent
+  // journaled before this step existed is never deleted while still billing.
+  // A failure leaves the intent for the sweep. A hold blocks only the purge,
+  // so billing stops even for a held account.
+  await deps.cancelSubscriptions({ userId: intent.userId });
+  // Checked at the last safe point, before the Deletion Record: a record a
+  // restore could re-apply must never exist for held data.
+  if (await deps.store.isHeld({ userId: intent.userId, now })) return "held";
   if (!intent.journaledAt) {
     await deps.journal.write(deletionRecord(intent));
     await deps.store.markJournaled({ userId: intent.userId, at: now });
   }
+  const confirmTo =
+    intent.reason === "retention_deadline"
+      ? await deps.store.findAccountEmail({ userId: intent.userId })
+      : null;
   await deps.store.deleteAccount({ userId: intent.userId });
+  if (confirmTo) await confirmCompletedPurge(deps, intent, confirmTo);
+  return "deleted";
+}
+
+/**
+ * A failed send never undoes or delays the purge it reports. The address left
+ * with the account, so the failure is logged for the operator rather than
+ * retried. Reading the address is different: it reads the row the delete is
+ * about to remove, so a failure there retries with the delete instead of
+ * deleting without the address and losing the confirmation.
+ */
+async function confirmCompletedPurge(
+  deps: AccountDeletionDependencies,
+  intent: AccountDeletionIntent,
+  to: string,
+): Promise<void> {
+  try {
+    await deps.confirmPurge({ to, userId: intent.userId, requestedAt: intent.requestedAt });
+  } catch (error) {
+    deps.logger?.error?.("account_deletion.purge_confirmation_failed", {
+      userId: intent.userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 /**
  * Accept a customer's deletion. The account is closed once the intent commits,
  * whatever happens after: a failed journal write or disposition leaves the
  * intent for {@link runAccountDeletionSweep} and still answers `pending`
- * rather than an error, because the request itself has succeeded.
+ * rather than an error, because the request itself has succeeded. So does a
+ * Legal Hold, which blocks the purge and nothing else about the exit.
  */
 export async function requestAccountDeletion(
   deps: AccountDeletionDependencies,
@@ -76,7 +131,10 @@ export async function requestAccountDeletion(
   }
 
   try {
-    await completeIntent(deps, intent, now);
+    if ((await completeIntent(deps, intent, now)) === "held") {
+      deps.logger?.info?.("account_deletion.held", { userId: input.userId });
+      return { status: "pending" };
+    }
     return { status: "deleted" };
   } catch (error) {
     deps.logger?.error?.("account_deletion.deferred", {
@@ -99,23 +157,29 @@ export type AccountDeletionSweepResult = {
  * One bounded recovery pass over incomplete intents, oldest first. Each intent
  * resumes at the step it stopped at, and one that is still incomplete after
  * twenty-four hours is logged as `account_deletion.intent_stuck` for the
- * operator alert channel.
+ * operator alert channel. An intent under a Legal Hold is left until the hold
+ * ends. `holdLiftedAt` is the latest Service-Wide Hold lift (#634): an intent
+ * that waited through that hold counts from it.
  */
 export async function runAccountDeletionSweep(
-  input: AccountDeletionDependencies & { limit: number; now?: Date },
+  input: AccountDeletionDependencies & { limit: number; now?: Date; holdLiftedAt?: Date | null },
 ): Promise<AccountDeletionSweepResult> {
   const result: AccountDeletionSweepResult = { scanned: 0, completed: 0, failed: 0, stuck: 0 };
   if (input.limit <= 0) return result;
 
   const now = input.now ?? new Date();
-  const intents = await input.store.listIntents({ limit: input.limit });
+  const intents = await input.store.listIntents({ limit: input.limit, now });
 
   for (const intent of intents) {
     result.scanned += 1;
     try {
       await input.store.markAttempted({ userId: intent.userId, at: now });
       await input.revokeSessions({ userId: intent.userId });
-      await completeIntent(input, intent, now);
+      // Held only if the hold was placed after the list was read.
+      if ((await completeIntent(input, intent, now)) === "held") {
+        input.logger?.info?.("account_deletion.held", { userId: intent.userId });
+        continue;
+      }
       result.completed += 1;
       input.logger?.info?.("account_deletion.completed", { userId: intent.userId });
     } catch (error) {
@@ -124,7 +188,13 @@ export async function runAccountDeletionSweep(
         userId: intent.userId,
         error: error instanceof Error ? error.message : String(error),
       });
-      if (isDeletionIntentStuck({ requestedAt: intent.requestedAt, now })) {
+      if (
+        isDeletionIntentStuck({
+          requestedAt: intent.requestedAt,
+          now,
+          holdLiftedAt: input.holdLiftedAt,
+        })
+      ) {
         result.stuck += 1;
         input.logger?.error?.("account_deletion.intent_stuck", {
           userId: intent.userId,

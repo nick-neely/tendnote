@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { lapsedRetentionDeadline } from "./access";
 import { AUDIT_LOG_DEFAULT_RETENTION_YEARS } from "./audit-retention";
 import { householdPurgeCutoff, householdRecoveryDeadline } from "./household-governance";
+import { effectFenceEntry, isEffectFenceExpired } from "./recovery-journal";
 import { publishedRetentionKeys, RETENTION, renderRetentionTable } from "./retention";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -10,9 +11,10 @@ describe("retention constants", () => {
   it("holds every published retention value once", () => {
     expect(RETENTION).toEqual({
       lapsedAccount: { days: 90 },
+      terminatedAccount: { days: 90 },
       backupWindow: { days: 7 },
       deletionRecord: { days: 30 },
-      deletionFence: { days: 14 },
+      effectFence: { days: 14 },
       accountLinkedFunnelEvents: { days: 90 },
       anonymousDailyTotals: { months: 13 },
       usageLedger: { months: 13 },
@@ -37,6 +39,15 @@ describe("retention constants", () => {
     expect(lapsedRetentionDeadline(lapsedAt).getTime() - lapsedAt.getTime()).toBe(
       RETENTION.lapsedAccount.days * DAY_MS,
     );
+  });
+
+  it("drives the effect fence sweep", () => {
+    const at = new Date("2026-01-01T00:00:00.000Z");
+    const { pathname } = effectFenceEntry({ effect: "email", key: "k", at });
+    const due = new Date(at.getTime() + RETENTION.effectFence.days * DAY_MS);
+
+    expect(isEffectFenceExpired({ pathname, now: new Date(due.getTime() - 1) })).toBe(false);
+    expect(isEffectFenceExpired({ pathname, now: due })).toBe(true);
   });
 
   it("drives the audit retention sweep", () => {

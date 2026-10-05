@@ -7,6 +7,7 @@ import {
 } from "@tendnote/db/queries/access-profiles";
 import { recordServerFunnelStage } from "@tendnote/db/queries/account-telemetry";
 import { getAuthUserEmail } from "@tendnote/db/queries/auth-users";
+import { findDunningExtension } from "@tendnote/db/queries/dunning-extensions";
 import {
   attachStripeRefund,
   findUnmatchedRefundRecord,
@@ -23,6 +24,12 @@ import {
   listClosedDunningWindows,
   recordStripeSubscription,
 } from "@tendnote/db/queries/stripe-subscriptions";
+import {
+  attachSuspensionCreditRefund,
+  findUnmatchedSuspensionCredit,
+  getSuspensionCreditByStripeRefund,
+} from "@tendnote/db/queries/suspension-credits";
+import { findTermination } from "@tendnote/db/queries/terminations";
 import { anchorUsagePeriod } from "@tendnote/db/queries/usage-bounds";
 import type { PaidAccessFunnelStage } from "@tendnote/domain/account-funnel";
 import Stripe from "stripe";
@@ -82,6 +89,7 @@ export const paidAccessProjection = {
       }),
     ),
   listClosedDunningWindows,
+  findDunningExtension,
   cancelSubscription: async (stripeSubscriptionId: string) =>
     subscriptionSnapshot(await configuredStripe().subscriptions.cancel(stripeSubscriptionId)),
   stopRenewal: async (stripeSubscriptionId: string) =>
@@ -110,6 +118,9 @@ export const paidAccessProjection = {
     findUnmatchedRefundRecord,
     attachStripeRefund,
     markRefundRevoked,
+    getSuspensionCreditByStripeRefund,
+    findUnmatchedSuspensionCredit,
+    attachSuspensionCreditRefund,
     getDispute,
     recordDispute,
     markDisputeRenewalStopped,
@@ -121,6 +132,7 @@ export const paidAccessProjection = {
     lapsePaidAccess,
     paysForAccount: async (input: { userId: string; stripeSubscriptionId: string }) =>
       paysForAccount(await getAccessProfile({ userId: input.userId }), input.stripeSubscriptionId),
+    isTerminated: async (input: { userId: string }) => (await findTermination(input)) !== null,
     confirmCancellation: async (input: {
       userId: string;
       stripeSubscriptionId: string;

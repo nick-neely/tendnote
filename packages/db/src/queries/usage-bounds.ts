@@ -7,11 +7,13 @@ import {
   type UsagePeriod,
   usageNotices,
   usagePeriod,
+  withCeilingOverrides,
 } from "@tendnote/domain/usage-bounds";
 import { COST_CATEGORIES, usageLedgerDay } from "@tendnote/domain/usage-ledger";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { getDb } from "../client";
 import { accessProfiles, usageLedger } from "../schema";
+import { readCeilingOverrides } from "./account-ceiling-overrides";
 import { readSpendBreakerStage, type SpendBreakerStage } from "./spend-breaker";
 
 export type { UsageNotice, UsageNotices, UsagePeriod };
@@ -39,22 +41,25 @@ export async function anchorUsagePeriod(input: { userId: string; startedAt: Date
 }
 
 /**
- * What the account has spent this Usage Period in each cost category, from one
- * read of the Usage Ledger, or `null` for an account with no subscription
- * anchor: it has no plan, so no plan-derived budget or ceiling applies to it,
- * and that includes every self-hosted account.
+ * The Usage Period `now` falls in for this account, or `null` for an account
+ * with no subscription anchor: it has no plan, so no plan-derived budget or
+ * ceiling applies to it, and that includes every self-hosted account.
  */
-async function readPeriodSpend(input: { userId: string; now?: Date }): Promise<PeriodSpend | null> {
-  const db = getDb();
-  const [profile] = await db
+export async function readUsagePeriod(input: {
+  userId: string;
+  now?: Date;
+}): Promise<UsagePeriod | null> {
+  const [profile] = await getDb()
     .select({ anchor: accessProfiles.usagePeriodAnchor })
     .from(accessProfiles)
     .where(eq(accessProfiles.userId, input.userId))
     .limit(1);
-  if (!profile?.anchor) return null;
+  return profile?.anchor ? usagePeriod(profile.anchor, input.now ?? new Date()) : null;
+}
 
-  const period = usagePeriod(profile.anchor, input.now ?? new Date());
-  const rows = await db
+/** What the account has spent in `period` in each cost category, from one read of the Usage Ledger. */
+async function readPeriodSpend(userId: string, period: UsagePeriod): Promise<PeriodSpend> {
+  const rows = await getDb()
     .select({
       costCategory: usageLedger.costCategory,
       microUsd: sql<string>`coalesce(sum(${usageLedger.costMicroUsd}), 0)`,
@@ -62,7 +67,7 @@ async function readPeriodSpend(input: { userId: string; now?: Date }): Promise<P
     .from(usageLedger)
     .where(
       and(
-        eq(usageLedger.userId, input.userId),
+        eq(usageLedger.userId, userId),
         gte(usageLedger.day, period.start),
         lt(usageLedger.day, period.resetsOn),
       ),
@@ -79,17 +84,36 @@ async function readPeriodSpend(input: { userId: string; now?: Date }): Promise<P
 /**
  * What every metered function shows this account now: interactive Eve, search,
  * background work (capture processing), scheduled workflows, and web search,
- * from the account's own ceilings and the Spend Breaker together.
+ * from the account's own ceilings, as the operator raised them for this Usage
+ * Period (#633), and the Spend Breaker together.
  */
 export async function readUsageNotices(input: {
   userId: string;
   now?: Date;
 }): Promise<UsageNotices> {
-  const [spend, breaker] = await Promise.all([
-    readPeriodSpend(input),
+  const [planned, breaker] = await Promise.all([
+    readPlannedSpend(input),
     readBreakerOrClosed(input.now),
   ]);
-  return usageNotices({ plan: HOSTED_PLAN, spend, breaker });
+  return usageNotices({
+    plan: planned?.plan ?? HOSTED_PLAN,
+    spend: planned?.spend ?? null,
+    breaker,
+  });
+}
+
+/**
+ * The account's spend this Usage Period and its plan with this period's raised
+ * ceilings, or `null` for an account with no Usage Period.
+ */
+async function readPlannedSpend(input: { userId: string; now?: Date }) {
+  const period = await readUsagePeriod(input);
+  if (!period) return null;
+  const [spend, overrides] = await Promise.all([
+    readPeriodSpend(input.userId, period),
+    readCeilingOverrides({ userId: input.userId, period }),
+  ]);
+  return { spend, plan: withCeilingOverrides(HOSTED_PLAN, overrides) };
 }
 
 /**
@@ -126,9 +150,8 @@ export async function readEveOverFairUseBudget(input: {
   userId: string;
   now?: Date;
 }): Promise<boolean> {
-  const spend = await readPeriodSpend(input);
-  return (
-    spend !== null &&
-    overFairUseBudget({ plan: HOSTED_PLAN, spentMicroUsd: spend.spentMicroUsd.interactive })
-  );
+  const period = await readUsagePeriod(input);
+  if (!period) return false;
+  const spend = await readPeriodSpend(input.userId, period);
+  return overFairUseBudget({ plan: HOSTED_PLAN, spentMicroUsd: spend.spentMicroUsd.interactive });
 }

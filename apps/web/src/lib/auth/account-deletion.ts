@@ -5,11 +5,18 @@ import {
   requestAccountDeletion,
 } from "@tendnote/db/queries/account-deletion";
 import { assertHouseholdAccountDeletionAllowed } from "@tendnote/db/queries/households";
+import { getStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
+import { HouseholdValidationError } from "@tendnote/domain";
 import { APIError } from "better-auth/api";
+import { sendPurgeConfirmationEmail } from "@/lib/access/deletion-notice-email";
+import { cancelSubscriptionsForDeletion } from "@/lib/billing/deletion-cancellation";
 
 type RevokeSessions = AccountDeletionDependencies["revokeSessions"];
 
-/** Self-service deletion's production wiring, shared by the request and the recovery cron. */
+/**
+ * Account deletion's production wiring, shared by the owner's request, the
+ * retention-deadline purge, and the recovery cron.
+ */
 export function accountDeletionDependencies(
   revokeSessions: RevokeSessions,
 ): AccountDeletionDependencies {
@@ -17,6 +24,16 @@ export function accountDeletionDependencies(
     store: createDrizzleAccountDeletionStore(),
     journal: blobRecoveryJournal,
     revokeSessions,
+    cancelSubscriptions: async (account) => {
+      // Loaded on use: the Stripe client is server-only, and self-hosted
+      // accounts never hold a Stripe customer, so never reach it.
+      const { configuredStripe } = await import("@/lib/billing/paid-access-projection");
+      await cancelSubscriptionsForDeletion(
+        { stripe: configuredStripe, getStripeCustomerId },
+        account,
+      );
+    },
+    confirmPurge: sendPurgeConfirmationEmail,
     logger: console,
   };
 }
@@ -41,7 +58,16 @@ export function createAccountDeletionHook(input: {
 
   return async function beforeDelete(deletingUser: { id: string }) {
     // Refused before the intent, so a stranded Household leaves the account open.
-    await assertAllowed({ userId: deletingUser.id });
+    // The refusal says what to do next, so it reaches the deletion screen as a
+    // 400 carrying that text rather than Better Auth's opaque server error.
+    try {
+      await assertAllowed({ userId: deletingUser.id });
+    } catch (error) {
+      if (error instanceof HouseholdValidationError) {
+        throw new APIError("BAD_REQUEST", { code: "HOUSEHOLD_REFUSED", message: error.message });
+      }
+      throw error;
+    }
     const { status } = await requestAccountDeletion(input.dependencies(), {
       userId: deletingUser.id,
     });

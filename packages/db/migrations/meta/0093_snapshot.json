@@ -1,5 +1,5 @@
 {
-  "id": "e8733a52-16a8-4f87-a13e-b6b22e1af16e",
+  "id": "380cf516-766e-4793-9304-4cf7d555bb3d",
   "prevId": "b2ae8f2f-6d57-4bc4-984a-0f3f8bfb4f07",
   "version": "7",
   "dialect": "postgresql",
@@ -148,13 +148,6 @@
         "paid_access_subscription_id": {
           "name": "paid_access_subscription_id",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pending_reason": {
-          "name": "pending_reason",
-          "type": "access_pending_reason",
-          "typeSchema": "public",
           "primaryKey": false,
           "notNull": false
         },
@@ -10727,6 +10720,55 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.public_activity_daily_counts": {
+      "name": "public_activity_daily_counts",
+      "schema": "",
+      "columns": {
+        "day": {
+          "name": "day",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event": {
+          "name": "event",
+          "type": "public_activity_event",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "page": {
+          "name": "page",
+          "type": "public_page",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "count": {
+          "name": "count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "public_activity_daily_counts_pkey": {
+          "name": "public_activity_daily_counts_pkey",
+          "columns": [
+            "day",
+            "event",
+            "page"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.refund_records": {
       "name": "refund_records",
       "schema": "",
@@ -14805,13 +14847,6 @@
     }
   },
   "enums": {
-    "public.access_pending_reason": {
-      "name": "access_pending_reason",
-      "schema": "public",
-      "values": [
-        "beta_ended"
-      ]
-    },
     "public.access_source": {
       "name": "access_source",
       "schema": "public",
@@ -15522,6 +15557,32 @@
         "revoked",
         "error",
         "unavailable"
+      ]
+    },
+    "public.public_activity_event": {
+      "name": "public_activity_event",
+      "schema": "public",
+      "values": [
+        "page_viewed",
+        "demo_started",
+        "demo_completed",
+        "signup_clicked"
+      ]
+    },
+    "public.public_page": {
+      "name": "public_page",
+      "schema": "public",
+      "values": [
+        "home",
+        "product",
+        "demo",
+        "pricing",
+        "about",
+        "privacy_and_ai",
+        "support",
+        "fair_use",
+        "terms",
+        "privacy"
       ]
     },
     "public.relationship_type": {

@@ -464,9 +464,21 @@ _Avoid_: User test, demo, beta invite, demand validation
 A content-free, per-account, operator-facing timestamp recording that a newcomer first reached one fixed step toward or at First Value. It is not record content, a user-facing productivity statistic, a third-party analytics event, or a streak.
 _Avoid_: Analytics event, activation metric, funnel step, streak
 
+**Reliability Indicator**:
+One of three operator-facing measures of whether the hosted service keeps its promises: the First Value path is reachable, a reminder is delivered within five minutes of its alert time, and no background job waits more than thirty minutes past when it was due. Each is read on every alert pass and alerts on breach. It is not a published uptime figure, a service credit, or a customer-facing status.
+_Avoid_: SLA, SLO, uptime, health check
+
 **Account Funnel Event**:
 An optional, content-free, account-linked record that an account enrolled from a known-US request first reached one fixed funnel stage, from signup through First Value, stored in Tendnote under a dedicated opaque identifier, honouring the telemetry opt-out, and deleted after ninety days or with the account. It is not an Activation Milestone, a billing or admission record, or a third-party analytics event.
 _Avoid_: Analytics event, tracking event, conversion pixel
+
+**Diagnostic Envelope**:
+The one allowed shape of an error report sent to GlitchTip: a predefined error code, sanitized stack locations, the release, an operation name, and a coarse browser or runtime. It is sent only in hosted mode, for a known-US request, from an account that has not opted out or asked to be deleted. It carries no account, user, or session identifier, message, URL, header, IP address, user agent, or breadcrumb.
+_Avoid_: Error log, crash dump, Sentry event
+
+**Public Activity Count**:
+An anonymous daily total of one fixed public event (page viewed, demo started, demo completed, signup clicked) on one fixed public page, counted only for known-US requests in hosted mode and deleted after thirteen months. It has no visitor identifier, cookie, or row per visit, so it is never joined to an account. Its ratios are approximate activity ratios, not unique-person conversion rates.
+_Avoid_: Visitor, session, page analytics, unique visitors
 
 **Representative Month**:
 A synthetic month of Launch Customer activity, built from the First Value loop plus the Return, replayed through Eve's real session protocol to measure what one account costs to serve. It comes in light, typical, and heavy variants and is not a real account's history, a load test, or an eval case.
@@ -521,7 +533,7 @@ The permanent removal of a hosted account's admission by the operator, cancellin
 _Avoid_: Ban, deactivation, account closure
 
 **Suspension Credit**:
-The compensation a hosted account receives for days it paid for and was denied, issued once at the audited end of a Temporary Suspension against the paid invoices whose periods it overlapped. It is compensation for denied service rather than the unwinding of a sale, and it is not a cancellation proration.
+The compensation a hosted account receives for paid days the operator denied it, issued once at an audited exit against the paid invoices whose periods those days overlap: the lift of a Temporary Suspension credits the suspended days, and a Termination credits any suspended days it ends plus the unused remainder to the period end, or to an earlier cancellation. It is compensation for denied service rather than the unwinding of a sale, and it is not a cancellation proration.
 _Avoid_: Refund, proration, service credit, discount, make-good
 
 **Legal Hold**:
@@ -539,3 +551,11 @@ _Avoid_: Recovery window, PITR window, history retention
 **Recovery Journal**:
 The durable store outside the product database that holds Deletion Records and the records recovery needs to reconcile admission after a restore. It is a recovery aid, not a second authoritative event store.
 _Avoid_: Event store, event log, backup, audit log
+
+**Effect Fence**:
+The content-free fact, written beside the Recovery Journal only after the effect succeeded, that a Resend email send or an owner data export delivery already left the system, keyed by a digest of its business idempotency key. A restore marks the matching job complete instead of repeating it. Reminders are never fenced: a duplicate reminder is a smaller harm than a suppressed one. An email that happens to remind, such as the annual renewal reminder, is an email send and is fenced.
+_Avoid_: Sent flag, delivery receipt, dedupe key, outbox row
+
+**Outbound Pause**:
+The hold a restore places on the recovery cron, every queue consumer (and with them push), and every email send, stored as a row in the database so a restore branch carries it from creation until the operator resumes outbound after the swap. It is not a Service-Wide Hold, which takes the product offline for every account.
+_Avoid_: Maintenance mode, kill switch, outbound flag

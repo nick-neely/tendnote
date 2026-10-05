@@ -39,6 +39,33 @@ export function appLinks(env: Env = process.env) {
   };
 }
 
+/**
+ * The old product entry points that emails and bookmarks still hold on this
+ * origin: Household Invitation links, sign-in, and sign-up. Once marketing takes
+ * `tendnote.com`, only these move permanently (308) to the same path on the app,
+ * query included. Every other path belongs to marketing; an unknown one is a
+ * 404 that links to the app.
+ */
+export function legacyAppRedirects(env: Env = process.env) {
+  const origin = appOrigin(env);
+  return ["/join/:path+", "/sign-in", "/sign-up"].map((source) => ({
+    source,
+    destination: `${origin}${source}`,
+    permanent: true,
+  }));
+}
+
+/**
+ * Where the site reports anonymous public activity (#646), or `undefined` when
+ * it should report nothing. Only a production deployment reports to the
+ * production default; a local or preview build reports only to an app origin
+ * it was explicitly given, so testing the site never moves the real counters.
+ */
+export function publicActivityEndpoint(env: Env = process.env): string | undefined {
+  if (!env.TENDNOTE_APP_ORIGIN?.trim() && env.VERCEL_ENV !== "production") return undefined;
+  return `${appOrigin(env)}/api/public-activity`;
+}
+
 export const primaryNav: SiteLink[] = [
   { label: "Product", href: "/product" },
   { label: "Demo", href: "/demo" },

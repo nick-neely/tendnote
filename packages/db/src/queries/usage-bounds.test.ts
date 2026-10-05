@@ -38,6 +38,10 @@ vi.mock("./spend-breaker", () => ({
   },
 }));
 
+const overrides = vi.hoisted(() => ({ read: vi.fn() }));
+
+vi.mock("./account-ceiling-overrides", () => ({ readCeilingOverrides: overrides.read }));
+
 import {
   anchorUsagePeriod,
   readEveOverFairUseBudget,
@@ -52,6 +56,7 @@ beforeEach(() => {
   db.updated = [];
   breaker.stage = "closed";
   breaker.fails = false;
+  overrides.read.mockReset().mockResolvedValue({});
 });
 
 describe("readEveUsageNotice", () => {
@@ -237,5 +242,42 @@ describe("the Spend Breaker in usage reads", () => {
     db.reads = [[{ anchor: "2026-03-15" }], [{ costCategory: "interactive", microUsd: "1" }]];
 
     await expect(readEveOverFairUseBudget({ userId: "owner-1", now })).resolves.toBe(false);
+  });
+});
+
+describe("the Account Ceiling override in usage reads (#633)", () => {
+  it("reads the overrides in force today and lifts the pause they raise", async () => {
+    db.reads = [
+      [{ anchor: "2026-03-15" }],
+      [{ costCategory: "interactive", microUsd: "12000000" }],
+    ];
+    overrides.read.mockResolvedValue({ interactive: 20_000_000 });
+
+    await expect(readEveUsageNotice({ userId: "u1", now })).resolves.toEqual({
+      state: "reduced",
+      recovery: { kind: "resets_on", date: "2026-11-15" },
+    });
+    expect(overrides.read).toHaveBeenCalledWith({
+      userId: "u1",
+      period: { start: "2026-10-15", resetsOn: "2026-11-15" },
+    });
+  });
+
+  it("reads no overrides for an account with no Usage Period", async () => {
+    db.reads = [[{ anchor: null }]];
+
+    await expect(readEveUsageNotice({ userId: "u1", now })).resolves.toEqual({ state: "normal" });
+    expect(overrides.read).not.toHaveBeenCalled();
+  });
+
+  it("pauses at the plan's ceiling with none in force", async () => {
+    db.reads = [
+      [{ anchor: "2026-03-15" }],
+      [{ costCategory: "interactive", microUsd: "12000000" }],
+    ];
+
+    await expect(readEveUsageNotice({ userId: "u1", now })).resolves.toMatchObject({
+      state: "paused",
+    });
   });
 });

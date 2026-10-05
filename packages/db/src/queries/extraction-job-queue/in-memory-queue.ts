@@ -6,6 +6,8 @@ import {
   type ExtractionJob,
 } from "@tendnote/domain";
 
+export const EXTRACTION_CLAIM_LEASE_MS = 15 * 60 * 1000;
+
 const CLAIMABLE_STATUSES = new Set<ExtractionJob["status"]>(claimableExtractionJobStatuses);
 
 export type UpdateJobFields = {
@@ -69,6 +71,15 @@ export function createInMemoryExtractionJobQueue(notFoundLabel: string) {
     return claimed;
   }
 
+  function claimable(job: ExtractionJob, now: Date) {
+    return (
+      job.runAfter <= now &&
+      (CLAIMABLE_STATUSES.has(job.status) ||
+        (job.status === "running" &&
+          (job.claimedAt ?? job.updatedAt).getTime() <= now.getTime() - EXTRACTION_CLAIM_LEASE_MS))
+    );
+  }
+
   return {
     async createJob(values: CreateExtractionJobInput): Promise<ExtractionJob> {
       const parsed = createExtractionJobSchema.parse(values);
@@ -93,7 +104,7 @@ export function createInMemoryExtractionJobQueue(notFoundLabel: string) {
     async claimJob(input: { jobId: string; now: Date }): Promise<ExtractionJob | null> {
       const job = jobs.get(input.jobId);
 
-      if (!job || !CLAIMABLE_STATUSES.has(job.status) || job.runAfter > input.now) {
+      if (!job || !claimable(job, input.now)) {
         return null;
       }
 
@@ -101,7 +112,7 @@ export function createInMemoryExtractionJobQueue(notFoundLabel: string) {
     },
     async claimNextJob(input: { now: Date }): Promise<ExtractionJob | null> {
       const next = [...jobs.values()]
-        .filter((job) => CLAIMABLE_STATUSES.has(job.status) && job.runAfter <= input.now)
+        .filter((job) => claimable(job, input.now))
         .sort((a, b) => a.runAfter.getTime() - b.runAfter.getTime())[0];
 
       if (!next) {

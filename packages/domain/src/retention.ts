@@ -4,22 +4,26 @@
  * The Privacy Policy's retention table is generated from these values, and
  * every sweep that deletes data reads its period from here (the ADR 0221
  * pattern), so what the policy promises and what actually gets deleted cannot
- * drift apart. Today the household purge, audit, and account funnel retention
- * sweeps and the Lapsed retention deadline read it; the Lapsed, Deletion Record,
- * fence, and anonymous daily total sweeps must when built. Changing a value here is a
- * reviewed change to a published promise: the committed table in
+ * drift apart. Today the household purge, audit, account funnel, anonymous
+ * daily total, effect fence, and Deletion Record retention sweeps and the
+ * Lapsed and Terminated retention deadlines read it, and the retention-deadline
+ * sweep carries those deadlines out.
+ * Changing a value here is a reviewed change to a published promise: the
+ * committed table in
  * `docs/legal/privacy-retention-table.md` fails its test until it is
  * regenerated from here.
  */
 export const RETENTION = {
   /** Content of a Lapsed account, counted from entering Lapsed. */
   lapsedAccount: { days: 90 },
+  /** Content of a terminated account, counted from its Termination. */
+  terminatedAccount: { days: 90 },
   /** The Backup Window (ADR 0250): recovery and the deletion tail in one bound. */
   backupWindow: { days: 7 },
   /** A Deletion Record in the Recovery Journal. */
   deletionRecord: { days: 30 },
   /** A fence that stops a restore from re-sending email or re-running an export. */
-  deletionFence: { days: 14 },
+  effectFence: { days: 14 },
   /** Account-linked funnel events, or sooner when the account is deleted. */
   accountLinkedFunnelEvents: { days: 90 },
   anonymousDailyTotals: { months: 13 },
@@ -64,6 +68,10 @@ const RETENTION_TABLE_ROWS: readonly RetentionTableRow[] = [
     retained: (p) => `${p("lapsedAccount")} from entering Lapsed, then deleted`,
   },
   {
+    data: "Terminated account content",
+    retained: (p) => `${p("terminatedAccount")} from termination, then deleted`,
+  },
+  {
     data: "Deleted account",
     retained: (p) =>
       `The account closes at once and its content leaves the live database within minutes; residual backup copies expire within the Backup Window of ${p("backupWindow")}, and a restore never brings it back`,
@@ -71,7 +79,7 @@ const RETENTION_TABLE_ROWS: readonly RetentionTableRow[] = [
   {
     data: "Deletion Records",
     retained: (p) =>
-      `${p("deletionRecord")}; the restore fences for email and export, ${p("deletionFence")}. Neither holds content`,
+      `${p("deletionRecord")}; the restore fences for email and export, ${p("effectFence")}. Neither holds content`,
   },
   {
     data: "Shared household records after the household ends",

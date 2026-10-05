@@ -4,7 +4,7 @@ import { getDb } from "../client";
 import { householdMemberships, user } from "../schema";
 import { checkAccess } from "./access-profiles";
 import { createLocalAdmissionReader } from "./access-profiles/admission";
-import { listAccountDeletionAdmissionBlocks } from "./account-deletion";
+import { listAccountAdmissionBlocks } from "./admission-blocks";
 import { privatizeGiftPlansForHouseholdAccessEnded } from "./gift-plans";
 import { createAccountDeletionHouseholdGuard } from "./households/account-deletion";
 import { createHouseholdAuthorizationProver } from "./households/authorization";
@@ -125,7 +125,7 @@ export function readGuestHousehold(input: { userId: string }) {
 // Local reads only, so a roster or the pending area never evaluates Flags or grants anything.
 const defaultLocalAdmission = createLocalAdmissionReader({
   accessProfiles: { checkAccess: (input) => checkAccess(input) },
-  listAdmissionBlocks: (input) => listAccountDeletionAdmissionBlocks(input),
+  listAdmissionBlocks: (input) => listAccountAdmissionBlocks(input),
   readGuestHousehold,
   readGuestStanding: createGuestStandingReader(defaultHouseholdStore),
 });

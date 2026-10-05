@@ -1,0 +1,32 @@
+name: Main verify
+
+# Re-verifies main after every merge (ADR 0264). Pull requests are verified
+# against the base they last pushed on, and branches are not required to be up
+# to date, so two pull requests that each pass can still break main together.
+# This run catches that within minutes of the merge, and GitHub notifies whoever
+# merged. Every lane runs, with no path filtering: a documentation-only merge
+# can break a check that scans the tree, such as the publication gate.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+# A newer merge verifies a tree that already contains the older one, so the
+# older run has nothing left to tell us.
+concurrency:
+  group: main-verify
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    uses: ./.github/workflows/reusable-verify.yml
+    with:
+      run_quality: true
+      run_tests: true
+      run_browser: true
+      run_instant: true
+      run_database: true

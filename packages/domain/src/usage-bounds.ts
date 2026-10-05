@@ -44,7 +44,47 @@ export const HOSTED_PLAN = {
   },
 } as const satisfies Plan;
 
-const MICRO_USD_PER_USD = 1_000_000;
+/** The Usage Ledger counts dollars in millionths. */
+export const MICRO_USD_PER_USD = 1_000_000;
+
+/**
+ * Where each cost category's Account Ceiling sits in a plan's allowance. The
+ * Usage Ledger and the operator name categories; the plan names its limits.
+ */
+const CEILING_OF: Record<CostCategory, keyof Plan["allowance"]> = {
+  interactive: "interactive",
+  background: "background",
+  web_search: "webSearch",
+};
+
+/**
+ * The operator's raised Account Ceilings for the current Usage Period (#633),
+ * in millionths of a dollar per cost category. Each expires when the period it
+ * was granted in resets.
+ */
+export type CeilingOverrides = Partial<Record<CostCategory, number>>;
+
+/**
+ * The plan with each overridden Account Ceiling raised to the operator's
+ * figure. An override only ever raises: one at or below the plan's own ceiling
+ * leaves it as it is. The Fair-Use Budget is never overridden.
+ */
+export function withCeilingOverrides(plan: Plan, overrides: CeilingOverrides): Plan {
+  const allowance = structuredClone(plan.allowance);
+  for (const [category, ceilingMicroUsd] of Object.entries(overrides) as [CostCategory, number][]) {
+    const limit = allowance[CEILING_OF[category]];
+    limit.accountCeilingUsd = Math.max(
+      limit.accountCeilingUsd,
+      ceilingMicroUsd / MICRO_USD_PER_USD,
+    );
+  }
+  return { allowance };
+}
+
+/** The plan's own Account Ceiling for one cost category, in millionths of a dollar. */
+export function planCeilingMicroUsd(plan: Plan, category: CostCategory): number {
+  return Math.round(plan.allowance[CEILING_OF[category]].accountCeilingUsd * MICRO_USD_PER_USD);
+}
 
 /**
  * The month an allowance is counted over: from the anchor day (inclusive) to

@@ -33,6 +33,16 @@ sheet, outside the repository, holds what is: provider account ids, contact
 routes, credential locations, and counsel's contact. Runbooks reference the
 sheet by entry name and never copy from it.
 
+As built (#651), the runbooks are indexed in
+[`docs/operations/README.md`](../operations/README.md), which also names the
+sheet's entries, and `scripts/operations-runbooks.test.ts` checks every runbook
+against the template, every Operator Action command against the CLI, and the
+whole directory for secrets and contacts. Credential rotation adds one step
+before sessions for the credentials outside the six providers (OAuth apps,
+Redis, the alert channel, Web Push). Delete on request has no command of its
+own: the operator confirms the holder through a password-reset link, and
+the holder deletes in the app, which journals the Deletion Record.
+
 ## One runbook template
 
 Every runbook, including every Operator Action, has the same sections:
@@ -133,6 +143,25 @@ Four content-free emails for a Lapsed Account, measured from Lapsed entry:
 A Terminated account gets the same schedule without the resubscribe link. A
 Legal Hold pauses the sequence for the data it covers.
 
+As built (#621), the background-jobs cron sends each notice and runs the purge
+(`runAccountRetentionSweep`). Notices are timed from the stored deadline, so day
+60 is thirty days before deletion and day 83 seven days before; a late sweep
+sends only the latest notice owed, and each names the deletion date. A
+Terminated account is read by its termination's deadline. The purge is an
+account deletion with the Deletion Record journaled first, and the confirmation
+goes out once the rows are gone; a failed confirmation logs
+`account_deletion.purge_confirmation_failed`. A purge that would strand a
+Household without an Owner is not started: it logs
+`account_retention.purge_refused` on every pass until the operator resolves the
+household.
+
+A Legal Hold (#632, ADR 0260) is placed with `operator legal-hold <user id>
+<YYYY-MM-DD>` and ends when that date begins in UTC. While it is in force, the
+sweep sends the account no notice and does not purge it. When it ends, the
+sequence resumes from the stage it reached, and a deadline that passed during
+the hold is purged on the next pass. An owner's own deletion under a hold
+closes the account and stops billing, and its rows stay until the hold ends.
+
 ## Pre-launch tabletop
 
 Run once, alone, on a timer, against a written scenario: a Neon connection
@@ -147,7 +176,7 @@ linked from the Hosted Obligations Register.
 
 | Obligation | Status | Review |
 | --- | --- | --- |
-| Service-Wide Hold suspends export and deletion; Privacy Policy wording allows it | Decided, unbuilt | counsel review |
+| Service-Wide Hold suspends export and deletion; Privacy Policy wording allows it | Hold built (#634, [runbook](../operations/service-wide-hold.md)); wording unreviewed | counsel review |
 | Incident records kept three years from closure | Decided, unbuilt | counsel review |
 | Compelled non-user breach notice by email-field extraction only | Decided, unbuilt | counsel review |
 | Pre-launch tabletop passed, report dated | Decided, unrun | owner-decided |

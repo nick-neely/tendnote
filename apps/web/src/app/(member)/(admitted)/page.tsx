@@ -11,10 +11,7 @@ import {
   restoreTodayItemAction,
   suppressTodayItemAction,
 } from "@/app/actions/today";
-import {
-  SelfContextHomeInvitation,
-  type SelfContextHomeInvitationProps,
-} from "@/components/account/self-context-home-invitation";
+import { SelfContextHomeInvitation } from "@/components/account/self-context-home-invitation";
 import {
   appDestination,
   explicitHomePanelForLocation,
@@ -30,7 +27,9 @@ import {
   DashboardGreetingReserve,
   DashboardRailReserve,
 } from "@/components/dashboard-reserve";
+import { FirstRunSkipButton, FirstRunWelcome } from "@/components/first-run-welcome";
 import { HouseholdCheckinSection } from "@/components/household/household-checkin-section";
+import { IntegrationOffer } from "@/components/integration-offer";
 import { MobileHomeReserve } from "@/components/mobile-home-reserve";
 import { MobileTodayDestination } from "@/components/mobile-today-destination";
 import { ReviewQueueFamilySection } from "@/components/review-queue-section";
@@ -58,12 +57,16 @@ import {
   dashboardPeople,
   dashboardSuggestedFollowups,
 } from "@/lib/dashboard-context";
+import { homeFirstRunPrompt, readHomeFirstRun } from "@/lib/first-run";
+import { type FirstRunPrompt, firstRunPlaceholder } from "@/lib/first-run-copy";
 import { toDashboardFollowupView } from "@/lib/followup-view";
 import { defaultRailTab } from "@/lib/rail-tabs";
 import type { ReviewQueueFamily } from "@/lib/review-queue";
 import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
 
-type HomeProps = SelfContextHomeInvitationProps;
+type HomeProps = {
+  searchParams?: Promise<{ firstRun?: string; selfContext?: string; tab?: string }>;
+};
 
 async function homeSearchParams(searchParams: HomeProps["searchParams"]): Promise<URLSearchParams> {
   const params = new URLSearchParams();
@@ -74,6 +77,19 @@ async function homeSearchParams(searchParams: HomeProps["searchParams"]): Promis
 
 async function homeTab(searchParams: HomeProps["searchParams"]): Promise<HomePanel> {
   return homePanelForLocation("/", await homeSearchParams(searchParams));
+}
+
+/** What the first run asks of this render; every region reads the same answer. */
+async function homeFirstRun(
+  searchParams: HomeProps["searchParams"],
+  ownerUserId: string,
+): Promise<FirstRunPrompt> {
+  return homeFirstRunPrompt(ownerUserId, (await searchParams)?.firstRun);
+}
+
+/** The integrations offer, once First Value is reached (#639), on either layout. */
+function homeIntegrationOffer(offered: boolean) {
+  return offered ? <IntegrationOffer /> : null;
 }
 
 /**
@@ -116,7 +132,7 @@ export default function Home(props: HomeProps) {
           }
           greeting={
             <Suspense fallback={<DashboardGreetingReserve />}>
-              <HomeGreeting />
+              <HomeGreeting searchParams={props.searchParams} />
             </Suspense>
           }
           rail={
@@ -134,10 +150,21 @@ export default function Home(props: HomeProps) {
  * The greeting reads the server clock, so it is request-bound and streams into
  * the reserve that holds its two lines. It is deliberately its own boundary: a
  * time-of-day heading must never make the assistant wait.
+ *
+ * On a first run the greeting's place goes to the one first-run prompt (#639):
+ * the most prominent words on Home, directly above the composer they point at.
  */
-async function HomeGreeting() {
+async function HomeGreeting({ searchParams }: HomeProps) {
   if (process.env.NODE_ENV !== "test") await connection();
-  return <DashboardGreeting />;
+  const ownerUserId = await admittedHomeOwner(await homeTab(searchParams));
+  if ((await homeFirstRun(searchParams, ownerUserId)) !== "welcome") return <DashboardGreeting />;
+
+  return (
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between lg:gap-8">
+      <FirstRunWelcome variant="dashboard" />
+      <FirstRunSkipButton className="shrink-0" />
+    </div>
+  );
 }
 
 /**
@@ -150,15 +177,17 @@ async function HomeGreeting() {
 async function HomeAssistant({ searchParams }: HomeProps) {
   if (process.env.NODE_ENV !== "test") await connection();
   const ownerUserId = await admittedHomeOwner(await homeTab(searchParams));
-  const [hints, approvalMode, usage] = await Promise.all([
+  const [hints, approvalMode, usage, firstRun] = await Promise.all([
     dashboardAssistantHints(ownerUserId),
     getEveApprovalMode({ userId: ownerUserId }),
     readEveUsageForDisplay(ownerUserId),
+    homeFirstRun(searchParams, ownerUserId),
   ]);
 
   return (
     <DashboardAssistant
       approvalMode={approvalMode}
+      composerPrompt={firstRunPlaceholder(firstRun)}
       nudges={hints.nudges}
       ownerUserId={ownerUserId}
       suggestPersonName={hints.suggestPersonName}
@@ -187,6 +216,8 @@ async function HomeRail({ searchParams }: HomeProps) {
     weeklyBrief,
     reviewCount,
     backgroundUsage,
+    firstRun,
+    { integrationOffer },
   ] = await Promise.all([
     dashboardPeople(ownerUserId),
     dashboardActiveFollowups(ownerUserId),
@@ -197,6 +228,8 @@ async function HomeRail({ searchParams }: HomeProps) {
     getDashboardBrief(ownerUserId, "weekly"),
     countOwnerReviewQueue(ownerUserId),
     readBackgroundUsageForDisplay(ownerUserId),
+    homeFirstRun(searchParams, ownerUserId),
+    readHomeFirstRun(ownerUserId),
   ]);
   const now = new Date();
   const birthdays = getUpcomingBirthdays(people);
@@ -208,6 +241,7 @@ async function HomeRail({ searchParams }: HomeProps) {
         toCalendarSuggestionReviewView(suggestion),
       )}
       dailyBrief={dailyBrief}
+      firstRunRepeat={firstRun === "repeat"}
       followupReviews={followupReviews.map((review) => toSuggestedFollowupReviewView(review))}
       followups={followups.map((summary) => toDashboardFollowupView(summary, now, ownerUserId))}
       householdCheckin={
@@ -215,6 +249,7 @@ async function HomeRail({ searchParams }: HomeProps) {
           <HomeHouseholdCheckin ownerUserId={ownerUserId} />
         </Suspense>
       }
+      integrationOffer={homeIntegrationOffer(integrationOffer)}
       initialTab={landingRailTab({
         birthdays,
         calendarSuggestions,
@@ -421,19 +456,24 @@ async function HomeMobileDestination({ searchParams }: HomeProps) {
     );
   }
 
-  const [todayContext, approvalMode, usage, backgroundUsage] = await Promise.all([
-    getOwnerTodayContext({ ownerUserId }),
-    // The assistant opens inside this destination rather than on a route of its
-    // own, so the owner's Approval Mode is read here - the one place on the phone
-    // that already has the admitted owner - and handed down as a prop.
-    getEveApprovalMode({ userId: ownerUserId }),
-    readEveUsageForDisplay(ownerUserId),
-    readBackgroundUsageForDisplay(ownerUserId),
-  ]);
+  const [todayContext, approvalMode, usage, backgroundUsage, firstRun, { integrationOffer }] =
+    await Promise.all([
+      getOwnerTodayContext({ ownerUserId }),
+      // The assistant opens inside this destination rather than on a route of its
+      // own, so the owner's Approval Mode is read here - the one place on the phone
+      // that already has the admitted owner - and handed down as a prop.
+      getEveApprovalMode({ userId: ownerUserId }),
+      readEveUsageForDisplay(ownerUserId),
+      readBackgroundUsageForDisplay(ownerUserId),
+      homeFirstRun(searchParams, ownerUserId),
+      readHomeFirstRun(ownerUserId),
+    ]);
 
   return (
     <MobileTodayDestination
+      integrationOffer={homeIntegrationOffer(integrationOffer)}
       approvalMode={approvalMode}
+      firstRun={firstRun}
       ownerUserId={ownerUserId}
       todayHandlers={{
         act: actOnTodayItemAction,

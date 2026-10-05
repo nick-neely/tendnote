@@ -18,7 +18,7 @@ export function requestCountry(headers: Pick<Headers, "get">): string | null {
  *
  * The exemptions are the region page itself and the server-to-server receivers,
  * whose callers (Vercel cron and queues, Eve's signed cache reconcile, Discord
- * interactions, Stripe webhooks) are not visitors and may originate anywhere.
+ * interactions, Stripe and Resend webhooks) are not visitors and may originate anywhere.
  */
 const EXEMPT_PATH_PREFIXES = [
   REGION_PAGE_PATH,
@@ -26,6 +26,7 @@ const EXEMPT_PATH_PREFIXES = [
   "/api/queue",
   "/api/internal",
   "/api/stripe",
+  "/api/resend",
   "/eve/v1/discord",
 ] as const;
 

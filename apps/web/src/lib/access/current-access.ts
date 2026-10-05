@@ -1,6 +1,8 @@
 import "server-only";
 
 import { listOutstandingReacceptance } from "@tendnote/db/queries/acceptance-records";
+import { findOpenSuspension } from "@tendnote/db/queries/temporary-suspensions";
+import { findTermination } from "@tendnote/db/queries/terminations";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
@@ -12,6 +14,7 @@ import {
   decideAccessRoute,
   localFallbackOwnerUserId,
   ownerForActionOrThrow,
+  type Restriction,
   resolveAccessState,
 } from "./access-state";
 import { privateBetaAccess } from "./private-beta-flag";
@@ -62,8 +65,21 @@ export const getCurrentAccess = cache(async function getCurrentAccess(): Promise
     sessionUser,
     (entity) => privateBetaAccess.resolveAccess(entity),
     (userId) => listOutstandingReacceptance({ userId }),
+    readRestriction,
   );
 });
+
+/** The account's restriction, read from its own records: a termination outranks a suspension. */
+async function readRestriction(userId: string): Promise<Restriction | null> {
+  const [termination, suspension] = await Promise.all([
+    findTermination({ userId }),
+    findOpenSuspension({ userId }),
+  ]);
+  if (termination) {
+    return { kind: "termination", retentionDeadline: termination.retentionDeadline };
+  }
+  return suspension ? { kind: "suspension" } : null;
+}
 
 /** Resolve the local-dev fallback owner from the live environment, if any. */
 function currentLocalFallbackOwnerUserId(): string | undefined {

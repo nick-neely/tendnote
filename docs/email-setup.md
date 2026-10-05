@@ -239,10 +239,30 @@ For a deliverability score beyond one inbox, send an invitation to a
   0.1%. Resend suppresses hard bounces automatically.
 - **Resend's event retention is 30 days.** Tendnote's own delivery attempt rows
   are the durable record; a provider dashboard is not the audit log.
-- **Webhooks are not wired yet.** Tendnote records `sent` or `failed` at the
-  moment of the call and does not yet consume `email.delivered`,
+- **Delivery webhooks are not wired yet.** Tendnote records `sent` or `failed`
+  at the moment of the call and does not yet consume `email.delivered`,
   `email.bounced`, or `email.complained`. Wiring them is a separate piece of
   work; until then, a bounce is visible in Resend but not in Tendnote.
+
+## 7. Alert on new support email
+
+The operator alert channel ([ADR 0258](adr/0258-operator-alerts-are-condition-episodes-sent-by-email-and-ntfy.md))
+raises one alert per message the support mailbox receives. It learns of them
+from Resend's inbound mail:
+
+1. Receive the support address through Resend, or have the mailbox forward a
+   copy to a Resend receiving address.
+2. In Resend, add a webhook for the `email.received` event pointing at
+   `https://<app origin>/api/resend/webhook`, and set its signing secret as
+   `RESEND_WEBHOOK_SECRET`. On the hosted service the app origin is
+   `app.tendnote.com`. The apex redirect cannot be relied on to carry webhooks,
+   so an endpoint registered on `tendnote.com` has to move with the product
+   ([the move runbook](operations/app-subdomain-move.md)).
+3. Set `TENDNOTE_OPERATOR_ALERT_EMAIL`, `TENDNOTE_OPERATOR_ALERT_PUSH_URL`, or
+   both (see `apps/web/.env.example`).
+
+Only Resend's id for the message is read. The alert never carries the sender,
+subject, or body, and Tendnote stores nothing about the message.
 
 ## What Tendnote deliberately does not do
 

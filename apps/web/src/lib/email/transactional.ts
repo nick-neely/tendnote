@@ -1,3 +1,5 @@
+import { type EffectFences, effectFenceDigest } from "@tendnote/domain";
+
 /** One rendered message, independent of who is going to carry it. */
 export type TransactionalEmailContent = {
   subject: string;
@@ -195,5 +197,53 @@ export const operatorLogSender: TransactionalSender = async (email) => {
 export function unavailableSender(reason: string): TransactionalSender {
   return async () => {
     throw new EmailTransportUnavailableError(reason);
+  };
+}
+
+/**
+ * Fences each message the sender delivered, keyed by its idempotency key, so a
+ * restore marks the sending job complete instead of sending it again (ADR 0250).
+ * The fence is written only after the send succeeds, and a fence that cannot be
+ * written is logged rather than thrown: the message already left, and failing
+ * here would invite the caller to send it twice.
+ */
+export function fenceDeliveredEmail(
+  sender: TransactionalSender,
+  fences: EffectFences,
+): TransactionalSender {
+  return async (email) => {
+    const sent = await sender(email);
+    try {
+      await fences.write({ effect: "email", key: email.idempotencyKey, at: new Date() });
+    } catch {
+      console.warn("transactional-email: could not fence a delivered message");
+    }
+    return sent;
+  };
+}
+
+/**
+ * Holds every send for a restore (#623, ADR 0250). A send whose key the
+ * restore found fenced completes without sending, paused or not: it already
+ * went, and completing it is how a restore marks a completed email complete
+ * whichever job or transition would repeat it. Otherwise, while outbound is
+ * paused nothing leaves and the transport reads as unavailable, so whatever
+ * sent it fails the attempt and retries after outbound resumes.
+ */
+export function holdForRestore(
+  sender: TransactionalSender,
+  restore: {
+    isPaused: () => Promise<boolean>;
+    isFenced: (input: { digest: string }) => Promise<boolean>;
+  },
+): TransactionalSender {
+  return async (email) => {
+    if (await restore.isFenced({ digest: effectFenceDigest(email.idempotencyKey) })) {
+      return { providerMessageId: null };
+    }
+    if (await restore.isPaused()) {
+      throw new EmailTransportUnavailableError("Outbound email is paused for a restore.");
+    }
+    return sender(email);
   };
 }

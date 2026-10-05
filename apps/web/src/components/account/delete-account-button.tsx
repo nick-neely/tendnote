@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient, signOut } from "@/lib/auth/client";
+import { cn } from "@/lib/utils";
 
 /** What a refused deletion tells the person, by Better Auth's error code. */
 function deletionErrorMessage(error: { code?: string; message?: string }): string {
@@ -27,13 +28,22 @@ function deletionErrorMessage(error: { code?: string; message?: string }): strin
 }
 
 /**
- * Self-service deletion from an area with no deletion screen of its own, such
- * as the pending area (#607). It is always offered, so the exit is never
- * blocked. Better Auth re-checks the session and Tendnote's deletion hook does
- * the deleting (#616); once it is accepted the session is already revoked, so
- * the browser only signs out.
+ * Self-service deletion, on the Account page's deletion screen (#619) and in
+ * every area without one, such as the pending area (#607). It is always
+ * offered, so the exit is never blocked. Better Auth re-checks the session and
+ * Tendnote's deletion hook does the deleting (#616); once it is accepted the
+ * session is already revoked, so the browser only signs out.
  */
-export function DeleteAccountButton({ email }: { email: string }) {
+export function DeleteAccountButton({
+  email,
+  className,
+  variant = "ghost",
+}: {
+  email: string;
+  className?: string;
+  /** Ghost where Delete sits beside Sign out; destructive on the deletion screen. */
+  variant?: "ghost" | "destructive";
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -72,9 +82,12 @@ export function DeleteAccountButton({ email }: { email: string }) {
     >
       <AlertDialogTrigger asChild>
         <Button
-          className="w-full text-muted-foreground hover:text-destructive"
+          className={cn(
+            variant === "ghost" && "w-full text-muted-foreground hover:text-destructive",
+            className,
+          )}
           type="button"
-          variant="ghost"
+          variant={variant}
         >
           <Trash2Icon aria-hidden data-icon="inline-start" />
           Delete account

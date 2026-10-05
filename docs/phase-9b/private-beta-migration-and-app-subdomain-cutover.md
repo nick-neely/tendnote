@@ -89,7 +89,10 @@ origin. No fixed date.
   app-subdomain URIs are added ahead of the move. GitHub's OAuth app holds one
   callback and Discord one interactions endpoint, so both switch during the
   move. The Stripe webhook is created later, directly on `app.tendnote.com`,
-  and never moves.
+  and never moves; so is the Resend webhook for support-email alerts
+  (ADR 0258). The apex redirect cannot be relied on to carry webhooks, so
+  the move runbook checks that none was registered on `tendnote.com` in the
+  meantime.
 - **Verification** runs immediately after the switch, before anything else
   depends on the new origin: GitHub sign-in; Google linking with Calendar,
   Gmail drafts, and Contacts; Discord linking, bot install, and an

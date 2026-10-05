@@ -1,8 +1,13 @@
-import { type AdmissionPolicy, lapsedRetentionDeadline } from "@tendnote/domain";
+import {
+  type AdmissionPolicy,
+  lapsedRetentionDeadline,
+  type RecoveryJournalRecord,
+} from "@tendnote/domain";
 import { ForbiddenError } from "eve/channels/auth";
 import type Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness } from "../access/admission-harness";
+import { extendDunning } from "./dunning-extension";
 import { createPaidAccessRevocationsFake } from "./paid-access-revocations-fake";
 import { createStripeReconciliation, RECONCILIATION_LOOKBACK_MS } from "./stripe-reconciliation";
 import { createStripeSubscriptionsFake } from "./stripe-subscriptions-fake";
@@ -152,6 +157,7 @@ function droppedWebhook(
     retrieveSubscription: stripeSubscriptions.retrieveSubscription,
     subscriptions: stripeSubscriptions.subscriptions,
     listClosedDunningWindows: stripeSubscriptions.listClosedDunningWindows,
+    findDunningExtension: stripeSubscriptions.findDunningExtension,
     cancelSubscription: stripeSubscriptions.cancelSubscription,
     stopRenewal: stripeSubscriptions.stopRenewal,
     revocations: revocations.revocations,
@@ -668,6 +674,99 @@ describe("renewal failure: Past Due for seven days, then Lapsed (#610)", () => {
 
     await subscriber.reconcile(atDay(7.01));
     await subscriber.expectNotAdmitted();
+  });
+
+  describe("extending dunning once (#633, ADR 0248)", () => {
+    function operatorOf(subscriber: Awaited<ReturnType<typeof pastDue>>) {
+      const journaled: RecoveryJournalRecord[] = [];
+      const deps = {
+        dunning: subscriber.stripeSubscriptions.dunning,
+        journal: { write: async (record: RecoveryJournalRecord) => void journaled.push(record) },
+      };
+      return {
+        journaled,
+        extend: (invoiceId: string, days: number, now = atDay(6)) =>
+          extendDunning(deps, { invoiceId, days, now }),
+      };
+    }
+
+    it("holds the named invoice's window open until the grant expires, then lapses the account", async () => {
+      const subscriber = await pastDue();
+      const op = operatorOf(subscriber);
+
+      await expect(op.extend("in_renewal", 5)).resolves.toEqual({
+        grantId: "grant_1",
+        userId: user.id,
+        invoiceId: "in_renewal",
+        extendedUntil: atDay(12),
+      });
+      expect(op.journaled).toEqual([
+        { kind: "grant", accountId: user.id, actionId: "grant_1", at: atDay(6) },
+      ]);
+
+      for (const day of [7, 9, 11.99]) {
+        expect(await subscriber.reconcile(atDay(day))).toMatchObject({ dunningClosed: 0 });
+        await subscriber.expectAdmitted();
+      }
+      expect(subscriber.stripeSubscriptions.cancelSubscription).not.toHaveBeenCalled();
+
+      expect(await subscriber.reconcile(atDay(12))).toMatchObject({ dunningClosed: 1 });
+      await subscriber.expectNotAdmitted();
+      await expect(subscriber.queries.getAccessProfile({ userId: user.id })).resolves.toMatchObject(
+        {
+          retentionDeadline: lapsedRetentionDeadline(atDay(12)),
+        },
+      );
+    });
+
+    it("does not cover a later invoice's failure, which gets only its own seven days", async () => {
+      const subscriber = await pastDue();
+      await operatorOf(subscriber).extend("in_renewal", 30);
+
+      const later = { invoiceId: "in_later", since: atDay(9) };
+      subscriber.stripeSubscriptions.stripeChanges("sub_1", { pastDue: later });
+      await subscriber.reconcile(atDay(15.99));
+      await subscriber.expectAdmitted();
+
+      expect(await subscriber.reconcile(atDay(16))).toMatchObject({ dunningClosed: 1 });
+      await subscriber.expectNotAdmitted();
+    });
+
+    it("extends a window once: a retry resumes its grant, and any other extension is refused", async () => {
+      const subscriber = await pastDue();
+      const op = operatorOf(subscriber);
+      await op.extend("in_renewal", 5);
+
+      await expect(op.extend("in_renewal", 5)).resolves.toMatchObject({ grantId: "grant_1" });
+      await expect(op.extend("in_renewal", 10)).rejects.toThrow(
+        `The dunning window of in_renewal was already extended once, until ${atDay(12).toISOString()}, by grant grant_1.`,
+      );
+      expect(op.journaled).toEqual([
+        expect.objectContaining({ actionId: "grant_1" }),
+        expect.objectContaining({ actionId: "grant_1" }),
+      ]);
+    });
+
+    it("refuses an invoice that is not failing, an extension that would already be over, and a bad number of days", async () => {
+      const subscriber = await pastDue();
+      const op = operatorOf(subscriber);
+
+      await expect(op.extend("in_paid", 5)).rejects.toThrow(
+        "Invoice in_paid is not the failed renewal of a live Past Due subscription.",
+      );
+      await expect(op.extend("in_renewal", 1, atDay(8))).rejects.toThrow(
+        "An extension of 1 days would already have expired.",
+      );
+      for (const days of [0, -3, 2.5, Number.NaN]) {
+        await expect(op.extend("in_renewal", days)).rejects.toThrow(
+          "A dunning extension is a whole number of days, at least one.",
+        );
+      }
+      expect(op.journaled).toEqual([]);
+      expect(
+        await subscriber.stripeSubscriptions.findDunningExtension({ invoiceId: "in_renewal" }),
+      ).toBeNull();
+    });
   });
 });
 

@@ -1,5 +1,7 @@
+import type { DunningExtension } from "@tendnote/db/queries/dunning-extensions";
 import type { AccessProfile } from "@tendnote/domain";
 import { vi } from "vitest";
+import type { DunningExtensionDependencies } from "./dunning-extension";
 import type { PaidAccessAdmissionDependencies } from "./paid-access-admission";
 import { type PastDue, paysForAccount, type SubscriptionSnapshot } from "./subscription-projection";
 
@@ -16,7 +18,13 @@ type AccessProfileWrites = {
  */
 export function createStripeSubscriptionsFake(
   profiles: AccessProfileWrites,
-  input: { stripeCustomerId: string; now?: () => Date; periodEnd?: Date },
+  input: {
+    stripeCustomerId: string;
+    now?: () => Date;
+    periodEnd?: Date;
+    /** Which accounts are terminated (#630); none unless given. */
+    isTerminated?: (input: { userId: string }) => Promise<boolean>;
+  },
 ) {
   const now = input.now ?? (() => new Date());
   const live = (id: string): SubscriptionSnapshot => ({
@@ -50,6 +58,7 @@ export function createStripeSubscriptionsFake(
     // The production rule over the same Access Profile store.
     paysForAccount: async ({ userId, stripeSubscriptionId }) =>
       paysForAccount(await profiles.getAccessProfile({ userId }), stripeSubscriptionId),
+    isTerminated: input.isTerminated ?? (async () => false),
     confirmCancellation,
   };
 
@@ -89,6 +98,32 @@ export function createStripeSubscriptionsFake(
         : [],
     );
 
+  /** Dunning extensions by the failed invoice they name, written once each like the Drizzle store's (#633). */
+  const dunningExtensions = new Map<string, DunningExtension>();
+  const dunning: DunningExtensionDependencies["dunning"] = {
+    findPastDueSubscription: async ({ invoiceId }) => {
+      for (const [stripeSubscriptionId, record] of recorded) {
+        if (!record.endedAt && record.pastDue?.invoiceId === invoiceId) {
+          return {
+            userId: record.userId,
+            stripeSubscriptionId,
+            pastDueSince: record.pastDue.since,
+          };
+        }
+      }
+      return null;
+    },
+    grantDunningExtension: async (grant) => {
+      const existing = dunningExtensions.get(grant.invoiceId);
+      if (existing) return existing;
+      const extension = { id: `grant_${dunningExtensions.size + 1}`, ...grant };
+      dunningExtensions.set(grant.invoiceId, extension);
+      return extension;
+    },
+  };
+  const findDunningExtension = async ({ invoiceId }: { invoiceId: string }) =>
+    dunningExtensions.get(invoiceId)?.expiresAt ?? null;
+
   /** Change Stripe's copy of a subscription, as the portal, a period end, or a failed renewal does. */
   function stripeChanges(id: string, change: Partial<SubscriptionSnapshot>) {
     stripe.set(id, { ...(stripe.get(id) ?? live(id)), ...change });
@@ -101,6 +136,8 @@ export function createStripeSubscriptionsFake(
     stopRenewal,
     resumeRenewal,
     listClosedDunningWindows,
+    dunning,
+    findDunningExtension,
     recorded,
     confirmCancellation,
     stripeChanges,

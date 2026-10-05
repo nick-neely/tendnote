@@ -7,17 +7,18 @@ left with neither a beta grant nor a way to pay. The operator's email and
 dashboard locations are in the private operations sheet; this runbook never
 copies them.
 
-## What the release does
-
-Merging the release that carries `packages/db/migrations/0093_beta_sunset.sql`
+Merging the release that carries `packages/db/migrations/0105_beta_sunset.sql`
 applies it to Production through the Production Release Gate. It moves every
 `beta_flag` grant to pending with the `beta_ended` reason, Unpaid and with no
 retention deadline. Every other source is untouched. An ex-beta account then
 lands in the pending area, which says the beta ended and its data is intact,
-and offers Subscribe.
+and offers Subscribe. The migration runs on merge, not when the flag flips, so
+the merge itself is the sunset. Do not merge it ahead of the preconditions.
 
-The migration runs on merge, not when the flag flips, so the merge itself is
-the sunset. Do not merge it ahead of the steps below.
+## Trigger
+
+The owner starts launch, after Stage 1 and once the live Stripe webhook is
+registered on `app.tendnote.com`.
 
 ## Preconditions
 
@@ -43,6 +44,12 @@ the sunset. Do not merge it ahead of the steps below.
 
 1. Merge the release. Wait for the Production Release Gate status to pass.
 2. Turn the `checkout` flag on for everyone.
+
+## Record produced
+
+None beyond the database itself: each ex-beta profile carries
+`pending_reason = 'beta_ended'` until a later grant clears it. Write the
+sunset date in the operations sheet under **Vercel**.
 
 ## Verification
 

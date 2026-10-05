@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../client";
-import { accessProfiles } from "../../schema";
+import { accessProfiles, accountDeletionIntents } from "../../schema";
 
 /*
  * The opt-out is stored on the Access Profile, the row every signed-up account
@@ -17,6 +17,27 @@ export async function isTelemetryOptedOut(input: { userId: string }): Promise<bo
     .where(eq(accessProfiles.userId, input.userId))
     .limit(1);
   return row?.optedOut ?? false;
+}
+
+/**
+ * Whether this account still allows error reports: it has not switched
+ * optional telemetry off and has not asked to be deleted. Both are read in one
+ * statement, so a reader never sees one half of a change. The error reporter
+ * asks this at capture and again just before forwarding.
+ */
+export async function allowsErrorReports(input: { userId: string }): Promise<boolean> {
+  const [row] = await getDb().execute<{ allowed: boolean }>(sql`
+    select
+      not exists (
+        select 1 from ${accessProfiles}
+        where ${accessProfiles.userId} = ${input.userId} and ${accessProfiles.telemetryOptedOut}
+      )
+      and not exists (
+        select 1 from ${accountDeletionIntents}
+        where ${accountDeletionIntents.userId} = ${input.userId}
+      ) as allowed
+  `);
+  return row?.allowed === true;
 }
 
 /**

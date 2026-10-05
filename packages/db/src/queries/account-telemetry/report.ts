@@ -2,6 +2,7 @@ import { type AccountFunnelReportData, accountFunnelCohort } from "@tendnote/dom
 import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
 import { getDb } from "../../client";
 import { accessProfiles, accountFunnelEvents, user } from "../../schema";
+import { readPublicActivityTotals } from "../public-activity";
 
 /** A `count()` query's one row, read without assuming the row came back. */
 function sumAccounts(rows: { accounts: number }[]): number {
@@ -25,7 +26,7 @@ export async function readAccountFunnelReport(input: {
       ),
     );
 
-  const [stageRows, created, optedOut] = await Promise.all([
+  const [stageRows, created, optedOut, publicActivity] = await Promise.all([
     db
       .select({ stage: accountFunnelEvents.stage, accounts: count() })
       .from(accountFunnelEvents)
@@ -39,6 +40,7 @@ export async function readAccountFunnelReport(input: {
       .select({ accounts: count() })
       .from(accessProfiles)
       .where(eq(accessProfiles.telemetryOptedOut, true)),
+    readPublicActivityTotals(input),
   ]);
 
   return {
@@ -47,5 +49,6 @@ export async function readAccountFunnelReport(input: {
     cohort: accountFunnelCohort(stageRows),
     accountsCreated: sumAccounts(created),
     accountsOptedOut: sumAccounts(optedOut),
+    publicActivity,
   };
 }

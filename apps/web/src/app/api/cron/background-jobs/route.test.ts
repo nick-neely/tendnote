@@ -20,11 +20,48 @@ const { sweepAccountFunnelEvents } = vi.hoisted(() => ({
 }));
 vi.mock("@tendnote/db/queries/account-telemetry", () => ({ sweepAccountFunnelEvents }));
 
+const { sweepPublicActivityCounts } = vi.hoisted(() => ({
+  sweepPublicActivityCounts: vi.fn(async () => ({ deleted: 0 })),
+}));
+vi.mock("@tendnote/db/queries/public-activity", () => ({ sweepPublicActivityCounts }));
+
+const { sweepEffectFences } = vi.hoisted(() => ({
+  sweepEffectFences: vi.fn(async () => ({ deleted: 0, failed: false })),
+}));
+vi.mock("@tendnote/db/queries/effect-fences", () => ({ sweepEffectFences }));
+
+const { sweepDeletionRecords } = vi.hoisted(() => ({
+  sweepDeletionRecords: vi.fn(async () => ({ deleted: 0, failed: false })),
+}));
+vi.mock("@tendnote/db/queries/recovery-journal", () => ({ sweepDeletionRecords }));
+
+const { sweepRestoredEmailFences } = vi.hoisted(() => ({
+  sweepRestoredEmailFences: vi.fn(async () => ({ deleted: 0 })),
+}));
+vi.mock("@tendnote/db/queries/restored-email-fences", () => ({ sweepRestoredEmailFences }));
+
+const { isOutboundPaused } = vi.hoisted(() => ({ isOutboundPaused: vi.fn(async () => false) }));
+vi.mock("@tendnote/db/queries/outbound-pause", () => ({ isOutboundPaused }));
+const { isServiceWideHoldActive } = vi.hoisted(() => ({
+  isServiceWideHoldActive: vi.fn(async () => false),
+}));
+vi.mock("@tendnote/db/queries/service-wide-hold", () => ({ isServiceWideHoldActive }));
+
+const { carryOutRetentionDeadlines } = vi.hoisted(() => ({
+  carryOutRetentionDeadlines: vi.fn(async () => ({ scanned: 0 })),
+}));
+vi.mock("@/lib/access/account-retention", () => ({ carryOutRetentionDeadlines }));
+
 const { reconcileStripe } = vi.hoisted(() => ({ reconcileStripe: vi.fn() }));
 vi.mock("@/lib/billing/stripe-reconciliation", () => ({
   createStripeReconciliation: () => reconcileStripe,
 }));
 vi.mock("@/lib/billing/paid-access-projection", () => ({ paidAccessProjection: {} }));
+
+const { runOperatorAlerts } = vi.hoisted(() => ({
+  runOperatorAlerts: vi.fn(async (): Promise<Record<string, unknown>> => ({ status: "off" })),
+}));
+vi.mock("@/lib/operator-alerts/pass", () => ({ runOperatorAlerts }));
 
 import { GET } from "./route";
 
@@ -85,6 +122,44 @@ describe("background-jobs recovery cron route", () => {
     expect(runBackgroundJobRecovery).toHaveBeenCalledTimes(1);
     expect(sweepUsageLedger).toHaveBeenCalledTimes(1);
     expect(sweepAccountFunnelEvents).toHaveBeenCalledTimes(1);
+    expect(sweepPublicActivityCounts).toHaveBeenCalledTimes(1);
+    expect(sweepEffectFences).toHaveBeenCalledTimes(1);
+    expect(sweepRestoredEmailFences).toHaveBeenCalledTimes(1);
+    expect(sweepDeletionRecords).toHaveBeenCalledTimes(1);
+    expect(carryOutRetentionDeadlines).toHaveBeenCalledWith({ limit: 25 });
+  });
+
+  it("stands the whole pass down while a restore holds outbound", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    isOutboundPaused.mockResolvedValueOnce(true);
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ status: "paused" });
+    expect(reconcileStripe).not.toHaveBeenCalled();
+    expect(runBackgroundJobRecovery).not.toHaveBeenCalled();
+    expect(carryOutRetentionDeadlines).not.toHaveBeenCalled();
+  });
+
+  it("stands the whole pass down while a Service-Wide Hold is in force", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    isServiceWideHoldActive.mockResolvedValueOnce(true);
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ status: "held" });
+    expect(reconcileStripe).not.toHaveBeenCalled();
+    expect(runBackgroundJobRecovery).not.toHaveBeenCalled();
+    expect(carryOutRetentionDeadlines).not.toHaveBeenCalled();
+  });
+
+  it("checks the pause only after authorizing", async () => {
+    const response = await GET(request());
+
+    expect(response.status).toBe(401);
+    expect(isOutboundPaused).not.toHaveBeenCalled();
   });
 
   it("allows the explicit development-only opt-in when no secret is configured", async () => {
@@ -126,5 +201,19 @@ describe("background-jobs recovery cron route", () => {
     await expect(GET(request(`Bearer ${SECRET}`))).rejects.toThrow(/recovery stage failed/);
 
     expect(reconcileStripe).toHaveBeenCalledOnce();
+  });
+
+  it("ends the pass with operator alerts over what the pass found", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    const stripeReconciliation = { status: "ran", failed: 1, unmatchedRefunds: 0 };
+    reconcileStripe.mockResolvedValue(stripeReconciliation);
+    runOperatorAlerts.mockResolvedValue({ status: "ran", sent: 2, failed: 0 });
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+
+    expect(runOperatorAlerts).toHaveBeenCalledWith({ stripeReconciliation });
+    await expect(response.json()).resolves.toMatchObject({
+      operatorAlerts: { status: "ran", sent: 2 },
+    });
   });
 });

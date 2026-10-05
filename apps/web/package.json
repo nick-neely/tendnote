@@ -14,7 +14,11 @@
     "build:instant": "TENDNOTE_INSTANT_MATRIX=1 next build",
     "test:instant": "pnpm build:instant && TENDNOTE_INSTANT_MATRIX=1 playwright test",
     "test:instant:full": "pnpm build:instant && TENDNOTE_INSTANT_MATRIX=1 TENDNOTE_INSTANT_SCOPE=full playwright test",
-    "operator": "tsx --env-file-if-exists=.env.local --import ./scripts/server-only-stub.mjs scripts/operator-action.ts"
+    "operator": "tsx --env-file-if-exists=.env.local --import ./scripts/server-only-stub.mjs scripts/operator-action.ts",
+    "restore": "tsx --env-file-if-exists=.env.local --import ./scripts/server-only-stub.mjs scripts/restore.ts",
+    "service-hold": "tsx --env-file-if-exists=.env.local scripts/service-hold.ts",
+    "backup-surfaces": "tsx --env-file-if-exists=.env.local scripts/backup-surfaces.ts",
+    "first-value-check": "tsx --env-file-if-exists=.env.local --import ./scripts/server-only-stub.mjs scripts/first-value-check.ts"
   },
   "dependencies": {
     "@better-auth/redis-storage": "^1.7.2",
@@ -36,6 +40,7 @@
     "@tiptap/react": "^3.30.5",
     "@tiptap/starter-kit": "^3.30.5",
     "@vercel/blob": "^2.8.0",
+    "@vercel/functions": "^3.7.4",
     "@vercel/queue": "^0.5.1",
     "ai": "7.0.84",
     "better-auth": "^1.7.2",

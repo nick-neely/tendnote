@@ -33,14 +33,16 @@ export function createAdmissionPair(
 
 /**
  * The same pair over a fresh in-memory Access Profile store. `blocks` holds each
- * user's active admission blocks with the exception records that name them, and
- * `households` each user's household with its active Owners.
+ * user's active admission blocks with the exception records that name them,
+ * alongside any `listAdmissionBlocks` records of their own, and `households`
+ * each user's household with its active Owners.
  */
 export function createAdmissionHarness(input: {
   policy: Admission["policy"];
   evaluateFlag: Admission["evaluateFlag"];
   user: { id: string; email: string; emailVerified?: boolean };
   queries?: ReturnType<typeof createAccessProfileQueries>;
+  listAdmissionBlocks?: Admission["listAdmissionBlocks"];
 }) {
   const queries = input.queries ?? createAccessProfileQueries(createInMemoryAccessProfileStore());
   const blocks = new Map<string, readonly AdmissionBlock[]>();
@@ -48,7 +50,10 @@ export function createAdmissionHarness(input: {
   const admission: Admission = {
     accessProfiles: { checkAccess: queries.checkAccess, grantAccess: queries.grantAccess },
     evaluateFlag: input.evaluateFlag,
-    listAdmissionBlocks: async ({ userId }) => blocks.get(userId) ?? [],
+    listAdmissionBlocks: async ({ userId }) => [
+      ...(blocks.get(userId) ?? []),
+      ...((await input.listAdmissionBlocks?.({ userId })) ?? []),
+    ],
     readGuestHousehold: async ({ userId }) => households.get(userId) ?? null,
     policy: input.policy,
   };

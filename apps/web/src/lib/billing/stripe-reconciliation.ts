@@ -54,6 +54,8 @@ export type StripeReconciliationDependencies = PaidAccessAdmissionDependencies &
     listClosedDunningWindows: (input: {
       pastDueAtOrBefore: Date;
     }) => Promise<ClosedDunningWindow[]>;
+    /** When a dunning extension naming this failed invoice expires, if one does (#633). */
+    findDunningExtension: (input: { invoiceId: string }) => Promise<Date | null>;
     /**
      * The "you're in" email (#607), sent only when this pass is what admitted the
      * account. Keyed on the invoice, as for the webhook, so a pass racing a late
@@ -66,7 +68,7 @@ export type StripeReconciliationDependencies = PaidAccessAdmissionDependencies &
     };
   };
 
-type StripeReconciliationResult =
+export type StripeReconciliationResult =
   | { status: "skipped" }
   | {
       status: "ran";
@@ -229,10 +231,12 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
    * End one subscription whose dunning window has closed (#610). Stripe's
    * current copy decides, not the record: a payment that recovered after it was
    * recorded, or a later failure whose own window is still open, is projected as
-   * it stands and nothing is ended. Otherwise the subscription is cancelled in
-   * Stripe, which stops its retries, so a Lapsed account is never charged for
-   * the invoice and can resubscribe, and the ended copy is projected like any
-   * other end, which makes the account Lapsed.
+   * it stands and nothing is ended. A dunning extension naming the invoice
+   * Stripe is retrying holds its window open until the extension expires
+   * (#633); one naming an earlier invoice covers nothing now. Otherwise the
+   * subscription is cancelled in Stripe, which stops its retries, so a Lapsed
+   * account is never charged for the invoice and can resubscribe, and the ended
+   * copy is projected like any other end, which makes the account Lapsed.
    */
   async function closeDunningWindow(
     window: ClosedDunningWindow,
@@ -241,8 +245,13 @@ export function createStripeReconciliation(deps: StripeReconciliationDependencie
   ) {
     try {
       const current = await deps.retrieveSubscription(window.stripeSubscriptionId);
+      const failed = current.endedAt ? null : current.pastDue;
       const closed =
-        !current.endedAt && current.pastDue && dunningWindowEnd(current.pastDue.since) <= now;
+        failed !== null &&
+        dunningWindowEnd(
+          failed.since,
+          await deps.findDunningExtension({ invoiceId: failed.invoiceId }),
+        ) <= now;
       const subscription = closed
         ? await deps.cancelSubscription(window.stripeSubscriptionId)
         : current;

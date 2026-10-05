@@ -1,3 +1,4 @@
+import type { SuspensionCredit } from "@tendnote/db/queries/suspension-credits";
 import {
   type AdmissionPolicy,
   lapsedRetentionDeadline,
@@ -6,14 +7,22 @@ import {
 import { ForbiddenError } from "eve/channels/auth";
 import { describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness } from "../access/admission-harness";
+import { createLegalHoldsFake } from "../access/legal-holds-fake";
+import { suspendAccount } from "../access/temporary-suspension";
+import { createTemporarySuspensionsFake } from "../access/temporary-suspensions-fake";
+import { createTerminationsFake } from "../access/terminations-fake";
+import { createCeilingOverridesFake } from "./account-ceiling-overrides-fake";
 import {
+  liftSuspensionWithCredit,
   OPERATOR_USAGE,
   type OperatorActionDependencies,
   readmitAfterWonDispute,
   refundableInvoice,
   refundInvoice,
   runOperatorCommand,
+  terminateAccountWithCredit,
 } from "./operator-actions";
+import { suspensionCreditMetadata } from "./operator-record-metadata";
 import {
   applyStripeDispute,
   applyStripeRefund,
@@ -21,6 +30,11 @@ import {
 } from "./paid-access-revocation";
 import { createPaidAccessRevocationsFake } from "./paid-access-revocations-fake";
 import { createStripeSubscriptionsFake } from "./stripe-subscriptions-fake";
+import {
+  type CreditableInvoice,
+  creditableInvoice,
+  suspensionCreditStripeCalls,
+} from "./suspension-credit";
 
 const user = { id: "subscriber-1", email: "subscriber@example.com" };
 const CUSTOMER = "cus_subscriber";
@@ -37,17 +51,31 @@ const DISPUTED_AT = new Date("2026-10-02T08:00:00.000Z");
  * `steps` records the order records, the journal, and Stripe were touched in.
  */
 async function operator() {
+  const steps: string[] = [];
+  const terminations = createTerminationsFake({ steps });
+  const suspensions = createTemporarySuspensionsFake({
+    steps,
+    isConverted: (id) => terminations.terminations.some((each) => each.suspensionId === id),
+  });
   const harness = createAdmissionHarness({
     policy: hosted,
     evaluateFlag: vi.fn().mockResolvedValue(false),
     user,
+    listAdmissionBlocks: async (input) => [
+      ...(await suspensions.listAdmissionBlocks(input)),
+      ...(await terminations.listAdmissionBlocks(input)),
+    ],
   });
-  const steps: string[] = [];
   const stripeSubscriptions = createStripeSubscriptionsFake(harness.queries, {
     stripeCustomerId: CUSTOMER,
     now: () => NOW,
+    isTerminated: terminations.isTerminated,
   });
   const revocations = createPaidAccessRevocationsFake({ steps });
+  const ceilingOverrides = createCeilingOverridesFake({
+    period: { start: "2026-09-15", resetsOn: "2026-10-15" },
+  });
+  const legalHolds = createLegalHoldsFake();
   const journaled: RecoveryJournalRecord[] = [];
   const journal = {
     write: vi.fn(async (record: RecoveryJournalRecord) => {
@@ -57,6 +85,8 @@ async function operator() {
   };
   const disputeStatuses = new Map<string, string>();
   const refundsByKey = new Map<string, RefundSnapshot>();
+  const paidInvoices: CreditableInvoice[] = [];
+  const creditNotesByKey = new Map<string, { id: string; stripeRefundId: string | null }>();
   let refundStatus = "succeeded";
 
   const deps: OperatorActionDependencies = {
@@ -98,6 +128,36 @@ async function operator() {
       return refund;
     }),
     retrieveDisputeStatus: async (id) => disputeStatuses.get(id) ?? "needs_response",
+    suspensions: suspensions.records,
+    terminations: terminations.records,
+    getSuspension: async ({ userId, id }) =>
+      suspensions.suspensions.find((each) => each.userId === userId && each.id === id) ?? null,
+    credits: revocations.credits,
+    dunning: stripeSubscriptions.dunning,
+    ceilings: ceilingOverrides.ceilings,
+    legalHolds: legalHolds.legalHolds,
+    findStripeCustomer: async ({ userId }) => (userId === user.id ? CUSTOMER : null),
+    listCreditableInvoices: vi.fn(async (customer: string) =>
+      customer === CUSTOMER ? [...paidInvoices] : [],
+    ),
+    // Stripe Tax adds ten per cent on the credited line.
+    previewCreditNote: vi.fn(async ({ lineAmount }) => lineAmount + Math.floor(lineAmount / 10)),
+    // Stripe's idempotency again: one record, one credit note, and a card one refunds.
+    createCreditNote: vi.fn(async ({ instrument, suspensionCreditId }) => {
+      steps.push("stripe:credit-note");
+      const n = creditNotesByKey.size + 1;
+      const note = creditNotesByKey.get(suspensionCreditId) ?? {
+        id: `cn_${n}`,
+        stripeRefundId: instrument === "card" ? `re_cn_${n}` : null,
+      };
+      creditNotesByKey.set(suspensionCreditId, note);
+      return note;
+    }),
+    findLiveSubscription: async ({ userId }) =>
+      userId === user.id ? { stripeSubscriptionId: "sub_1" } : null,
+    revokeSessions: vi.fn(async () => {
+      steps.push("sessions:revoked");
+    }),
     readAccessProfile: (userId) => harness.queries.getAccessProfile({ userId }),
     grantPaidAccess: (userId, stripeSubscriptionId) =>
       harness.queries.grantAccess({ userId, source: "paid_access", stripeSubscriptionId }),
@@ -136,9 +196,13 @@ async function operator() {
     journaled,
     journal,
     revocations,
+    suspensions,
+    terminations,
     stripeSubscriptions,
+    ceilingOverrides,
     disputeStatuses,
     disputed,
+    paidInvoices,
     refundFails: () => {
       refundStatus = "failed";
     },
@@ -161,6 +225,12 @@ describe("the Refund Operator Action (#617, ADR 0249)", () => {
       paymentIntentId: "pi_first",
       amount: 2000,
       idempotencyKey: `refund:${result.refundRecordId}`,
+      // What a restore that lost the record rebuilds it from (#723).
+      metadata: {
+        refund_record: result.refundRecordId,
+        invoice: "in_first",
+        subscription: "sub_1",
+      },
     });
     expect(result).toMatchObject({ stripeRefundId: "re_1", outcome: "revoked" });
     expect(op.revocations.refunds[0]).toMatchObject({
@@ -349,6 +419,20 @@ describe("re-admission after a won dispute (#617, ADR 0248)", () => {
     await op.expectNotAdmitted();
     expect(op.deps.resumeRenewal).not.toHaveBeenCalled();
   });
+
+  it("refuses a terminated account before writing a grant, leaving its renewal stopped (#630)", async () => {
+    const op = await operator();
+    await op.disputed("du_1", "won");
+    await runOperatorCommand(op.deps, ["terminate", user.id, "Abuse"]);
+
+    await expect(readmitAfterWonDispute(op.deps, { stripeDisputeId: "du_1" })).rejects.toThrow(
+      `Account ${user.id} is terminated; a termination is permanent.`,
+    );
+
+    expect(op.revocations.exceptions).toEqual([]);
+    expect(op.deps.resumeRenewal).not.toHaveBeenCalled();
+    await op.expectNotAdmitted();
+  });
 });
 
 describe("reading a refundable invoice", () => {
@@ -403,12 +487,671 @@ describe("the operator CLI's commands", () => {
     });
   });
 
+  it("suspends and renews without a Stripe call, and a lift with nothing paid credits nothing (#629)", async () => {
+    const op = await operator();
+    const stripeCalls = [
+      op.deps.createRefund,
+      op.deps.resumeRenewal,
+      op.deps.retrieveSubscription,
+      op.deps.cancelSubscription,
+      op.deps.stopRenewal,
+    ];
+
+    await expect(
+      runOperatorCommand(op.deps, ["suspend", user.id, "Reported", "abuse"]),
+    ).resolves.toMatchObject({ resumed: false });
+    await op.expectNotAdmitted();
+    expect(op.suspensions.suspensions[0]).toMatchObject({ reason: "Reported abuse" });
+
+    await expect(
+      runOperatorCommand(op.deps, ["renew-suspension", user.id, "Awaiting", "evidence"]),
+    ).resolves.toMatchObject({ reason: "Awaiting evidence" });
+    await runOperatorCommand(op.deps, ["lift-suspension", user.id]);
+    await op.expectAdmitted();
+
+    expect(op.steps).toEqual([
+      "record:suspension",
+      "sessions:revoked",
+      "journal:suspension",
+      "record:renewal",
+      "record:lift",
+      "journal:suspension-lift",
+    ]);
+    for (const call of stripeCalls) expect(call).not.toHaveBeenCalled();
+  });
+
+  it("extends dunning on a failed invoice and raises a ceiling, neither touching Stripe (#633)", async () => {
+    const op = await operator();
+    const failed = { invoiceId: "in_renewal", since: new Date("2026-10-01T12:00:00.000Z") };
+    await op.deps.subscriptions.recordSubscription({
+      userId: user.id,
+      stripeSubscriptionId: "sub_1",
+      cancelAt: null,
+      endedAt: null,
+      pastDue: failed,
+    });
+
+    await expect(
+      runOperatorCommand(op.deps, ["extend-dunning", "in_renewal", "3"]),
+    ).resolves.toMatchObject({
+      invoiceId: "in_renewal",
+      extendedUntil: new Date("2026-10-11T12:00:00.000Z"),
+    });
+    await expect(
+      runOperatorCommand(op.deps, ["raise-ceiling", user.id, "web_search", "1.40"]),
+    ).resolves.toMatchObject({
+      costCategory: "web_search",
+      ceilingUsd: 1.4,
+      expiresOn: "2026-10-15",
+    });
+
+    expect(op.journaled.map((record) => record.kind)).toEqual(["grant", "ceiling-override"]);
+    for (const call of [op.deps.retrieveSubscription, op.deps.cancelSubscription]) {
+      expect(call).not.toHaveBeenCalled();
+    }
+  });
+
+  it("places a Legal Hold that leaves admission and Stripe alone (#632)", async () => {
+    const op = await operator();
+
+    await expect(
+      runOperatorCommand(op.deps, ["legal-hold", user.id, "2027-01-31"]),
+    ).resolves.toMatchObject({
+      userId: user.id,
+      heldUntil: new Date("2027-01-31T00:00:00.000Z"),
+    });
+
+    expect(op.journaled.map((record) => record.kind)).toEqual(["legal-hold"]);
+    await op.expectAdmitted();
+    for (const call of [op.deps.retrieveSubscription, op.deps.cancelSubscription]) {
+      expect(call).not.toHaveBeenCalled();
+    }
+  });
+
   it("refuses anything else with the usage, touching nothing", async () => {
     const op = await operator();
 
-    for (const argv of [[], ["refund"], ["readmit-dispute", "du_1", "extra"], ["delete", "x"]]) {
+    for (const argv of [
+      [],
+      ["refund"],
+      ["refund", "in_first", "1500", "extra"],
+      ["readmit-dispute", "du_1", "extra"],
+      ["delete", "x"],
+      ["toString", "x"],
+      ["suspend", user.id],
+      ["renew-suspension", user.id],
+      ["lift-suspension", user.id, "extra"],
+      ["extend-dunning", "in_renewal"],
+      ["extend-dunning", "in_renewal", "3", "extra"],
+      ["raise-ceiling", user.id, "interactive"],
+      ["raise-ceiling", user.id, "interactive", "20", "extra"],
+      ["extend-dunning", "in_renewal", "2.5"],
+      ["extend-dunning", "in_renewal", ""],
+      ["raise-ceiling", user.id, "interactive", "1e1"],
+      ["raise-ceiling", user.id, "interactive", "-5"],
+      ["raise-ceiling", user.id, "interactive", ""],
+      ["legal-hold", user.id],
+      ["legal-hold", user.id, "2027-01-31", "extra"],
+    ]) {
       await expect(runOperatorCommand(op.deps, argv)).rejects.toThrow(OPERATOR_USAGE);
     }
     expect(op.steps).toEqual([]);
+  });
+});
+
+describe("the Suspension Credit (#631, ADR 0249)", () => {
+  const SUSPENDED_AT = new Date("2026-10-10T00:00:00.000Z");
+  const LIFTED_AT = new Date("2026-10-16T00:00:00.000Z");
+  /** A thirty-day period for 1500 cents, paid by `pi_oct`. */
+  const october: CreditableInvoice = {
+    invoiceId: "in_oct",
+    stripeSubscriptionId: "sub_1",
+    paymentIntentId: "pi_oct",
+    invoiceLineItemId: "il_oct",
+    periodStart: new Date("2026-10-01T00:00:00.000Z"),
+    periodEnd: new Date("2026-10-31T00:00:00.000Z"),
+    lineAmount: 1500,
+  };
+  const november: CreditableInvoice = {
+    invoiceId: "in_nov",
+    stripeSubscriptionId: "sub_1",
+    paymentIntentId: "pi_nov",
+    invoiceLineItemId: "il_nov",
+    periodStart: october.periodEnd,
+    periodEnd: new Date("2026-11-30T00:00:00.000Z"),
+    // A renewal at a different price: each invoice is credited by its own line.
+    lineAmount: 1200,
+  };
+
+  async function suspended(...invoices: CreditableInvoice[]) {
+    const op = await operator();
+    op.paidInvoices.push(...invoices);
+    await suspendAccount(op.deps, { userId: user.id, reason: "Review", now: SUSPENDED_AT });
+    op.steps.length = 0;
+    return op;
+  }
+
+  it("credits the suspended days to the balance at a lift when a renewal will consume it", async () => {
+    const op = await suspended(october);
+
+    const result = await liftSuspensionWithCredit(op.deps, { userId: user.id, now: LIFTED_AT });
+
+    expect(op.steps).toEqual([
+      "record:lift",
+      "journal:suspension-lift",
+      "record:suspension-credit",
+      "journal:suspension-credit",
+      "stripe:credit-note",
+    ]);
+    // Six of thirty days of 1500, and the previewed tax on top.
+    expect(op.deps.createCreditNote).toHaveBeenCalledExactlyOnceWith({
+      invoiceId: "in_oct",
+      invoiceLineItemId: "il_oct",
+      lineAmount: 300,
+      suspensionCreditId: "suspension-credit-1",
+      instrument: "balance",
+      amount: 330,
+      // The whole record, for a restore that lost it to rebuild (#723).
+      metadata: suspensionCreditMetadata(op.revocations.suspensionCredits[0] as SuspensionCredit),
+    });
+    expect(result.suspensionCredits).toEqual([
+      {
+        suspensionCreditId: "suspension-credit-1",
+        invoiceId: "in_oct",
+        suspendedAmount: 300,
+        remainderAmount: 0,
+        amount: 330,
+        instrument: "balance",
+        stripeCreditNoteId: "cn_1",
+      },
+    ]);
+    expect(op.revocations.suspensionCredits[0]).toMatchObject({
+      suspensionId: result.suspensionId,
+      terminationId: null,
+      requestedAt: LIFTED_AT,
+    });
+    expect(op.journaled.at(-1)).toEqual({
+      kind: "suspension-credit",
+      accountId: user.id,
+      actionId: "suspension-credit-1",
+      at: LIFTED_AT,
+    });
+    await op.expectAdmitted();
+  });
+
+  it("issues one credit note per paid invoice the suspension overlapped, each by its own net", async () => {
+    const op = await suspended(november, october);
+
+    const result = await liftSuspensionWithCredit(op.deps, {
+      userId: user.id,
+      now: new Date("2026-11-15T00:00:00.000Z"),
+    });
+
+    // Twenty-one days of October's 1500, fifteen of November's 1200.
+    expect(
+      result.suspensionCredits.map(({ invoiceId, suspendedAmount }) => [
+        invoiceId,
+        suspendedAmount,
+      ]),
+    ).toEqual([
+      ["in_oct", 1050],
+      ["in_nov", 600],
+    ]);
+    expect(op.deps.createCreditNote).toHaveBeenCalledTimes(2);
+  });
+
+  it("credits nothing for an invoice the suspension did not overlap, or under a cent", async () => {
+    // Ten seconds of October is far under a cent; November is not overlapped at all.
+    const op = await suspended(october, november);
+
+    const result = await liftSuspensionWithCredit(op.deps, {
+      userId: user.id,
+      now: new Date("2026-10-10T00:00:10.000Z"),
+    });
+
+    expect(result.suspensionCredits).toEqual([]);
+    expect(op.revocations.suspensionCredits).toEqual([]);
+    expect(op.deps.createCreditNote).not.toHaveBeenCalled();
+  });
+
+  it("refunds a cancelled customer to the card, and that refund never revokes", async () => {
+    const op = await suspended(october);
+    op.stripeSubscriptions.stripeChanges("sub_1", { cancelAt: october.periodEnd });
+
+    await liftSuspensionWithCredit(op.deps, { userId: user.id, now: LIFTED_AT });
+
+    expect(op.deps.createCreditNote).toHaveBeenCalledWith(
+      expect.objectContaining({ instrument: "card", amount: 330 }),
+    );
+    expect(op.revocations.suspensionCredits[0]).toMatchObject({
+      stripeCreditNoteId: "cn_1",
+      stripeRefundId: "re_cn_1",
+    });
+    const outcome = await applyStripeRefund(op.deps, {
+      id: "re_cn_1",
+      paymentIntentId: "pi_oct",
+      amount: 330,
+      createdAt: LIFTED_AT,
+      status: "succeeded",
+    });
+    expect(outcome).toBe("suspension_credit");
+    expect(op.deps.cancelSubscription).not.toHaveBeenCalled();
+    expect(op.deps.confirmRefund).not.toHaveBeenCalled();
+    await op.expectAdmitted();
+  });
+
+  it("caps the credited time at a cancellation that took effect during the review", async () => {
+    const op = await suspended(october);
+    op.stripeSubscriptions.stripeChanges("sub_1", {
+      cancelAt: new Date("2026-10-13T00:00:00.000Z"),
+      endedAt: new Date("2026-10-13T00:00:00.000Z"),
+    });
+
+    const result = await liftSuspensionWithCredit(op.deps, { userId: user.id, now: LIFTED_AT });
+
+    // Three days, not six, and back to the card: no renewal is coming.
+    expect(result.suspensionCredits).toMatchObject([{ suspendedAmount: 150, instrument: "card" }]);
+  });
+
+  it("matches a card refund Stripe announced before the credit note call returned, and resumes once", async () => {
+    const op = await suspended(october);
+    op.stripeSubscriptions.stripeChanges("sub_1", { cancelAt: october.periodEnd });
+    vi.mocked(op.deps.createCreditNote).mockImplementationOnce(async (input) => {
+      await op.deps.createCreditNote(input);
+      throw new Error("connection reset after Stripe created the credit note");
+    });
+    await expect(
+      liftSuspensionWithCredit(op.deps, { userId: user.id, now: LIFTED_AT }),
+    ).rejects.toThrow(/connection reset/);
+
+    // The refund's webhook finds the record by payment, amount, and time.
+    await expect(
+      applyStripeRefund(op.deps, {
+        id: "re_cn_1",
+        paymentIntentId: "pi_oct",
+        amount: 330,
+        createdAt: new Date(LIFTED_AT.getTime() - 500),
+        status: "succeeded",
+      }),
+    ).resolves.toBe("suspension_credit");
+    expect(op.revocations.suspensionCredits[0]).toMatchObject({ stripeRefundId: "re_cn_1" });
+
+    const rerun = await liftSuspensionWithCredit(op.deps, { userId: user.id });
+
+    expect(rerun).toMatchObject({
+      resumed: true,
+      suspensionCredits: [{ stripeCreditNoteId: "cn_1" }],
+    });
+    expect(op.revocations.suspensionCredits).toHaveLength(1);
+    const records = vi
+      .mocked(op.deps.createCreditNote)
+      .mock.calls.map(([call]) => call.suspensionCreditId);
+    expect(new Set(records)).toEqual(new Set(["suspension-credit-1"]));
+    await op.expectAdmitted();
+  });
+
+  it("never credits an exit twice when run again after it finished", async () => {
+    const op = await suspended(october);
+    await liftSuspensionWithCredit(op.deps, { userId: user.id, now: LIFTED_AT });
+
+    await liftSuspensionWithCredit(op.deps, { userId: user.id });
+
+    expect(op.revocations.suspensionCredits).toHaveLength(1);
+    expect(op.deps.createCreditNote).toHaveBeenCalledOnce();
+  });
+
+  it("makes no credit note when the journal write fails, after the lift already restored access", async () => {
+    const op = await suspended(october);
+    op.journal.write.mockImplementation(async (record) => {
+      if (record.kind === "suspension-credit") throw new Error("journal down");
+      op.journaled.push(record);
+    });
+
+    await expect(
+      liftSuspensionWithCredit(op.deps, { userId: user.id, now: LIFTED_AT }),
+    ).rejects.toThrow(/journal down/);
+
+    expect(op.deps.createCreditNote).not.toHaveBeenCalled();
+    await op.expectAdmitted();
+  });
+
+  it("puts a termination's unused remainder on the same credit note, back to the card", async () => {
+    const op = await suspended(october);
+
+    const result = await terminateAccountWithCredit(op.deps, {
+      userId: user.id,
+      reason: "Abuse",
+      now: LIFTED_AT,
+    });
+
+    expect(op.steps.slice(-3)).toEqual([
+      "record:suspension-credit",
+      "journal:suspension-credit",
+      "stripe:credit-note",
+    ]);
+    // Six suspended days and fifteen unused: 300 + 750, with tax.
+    expect(op.deps.createCreditNote).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ lineAmount: 1050, instrument: "card", amount: 1155 }),
+    );
+    expect(result.suspensionCredits).toMatchObject([
+      { suspendedAmount: 300, remainderAmount: 750, instrument: "card" },
+    ]);
+    expect(op.revocations.suspensionCredits[0]).toMatchObject({
+      suspensionId: result.convertedSuspensionId,
+      terminationId: result.terminationId,
+    });
+  });
+
+  it("returns the unused remainder to the card when a termination converts no suspension (#739)", async () => {
+    const op = await operator();
+    const september: CreditableInvoice = {
+      ...october,
+      invoiceId: "in_sep",
+      paymentIntentId: "pi_sep",
+      invoiceLineItemId: "il_sep",
+      periodStart: new Date("2026-09-01T00:00:00.000Z"),
+      periodEnd: october.periodStart,
+    };
+    op.paidInvoices.push(september, october);
+    const TERMINATED_AT = new Date("2026-10-25T00:00:00.000Z");
+
+    const result = await terminateAccountWithCredit(op.deps, {
+      userId: user.id,
+      reason: "Abuse",
+      now: TERMINATED_AT,
+    });
+
+    expect(result.convertedSuspensionId).toBeNull();
+    expect(op.steps.slice(-3)).toEqual([
+      "record:suspension-credit",
+      "journal:suspension-credit",
+      "stripe:credit-note",
+    ]);
+    // Six unused days of October's 1500, with tax; September was used in full.
+    expect(op.deps.createCreditNote).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        invoiceId: "in_oct",
+        lineAmount: 300,
+        instrument: "card",
+        amount: 330,
+      }),
+    );
+    expect(result.suspensionCredits).toMatchObject([
+      { invoiceId: "in_oct", suspendedAmount: 0, remainderAmount: 300, instrument: "card" },
+    ]);
+    const record = op.revocations.suspensionCredits[0] as SuspensionCredit;
+    expect(record).toMatchObject({
+      suspensionId: null,
+      terminationId: result.terminationId,
+      requestedAt: TERMINATED_AT,
+    });
+    // The note carries the record without a suspension, so a restore rebuilds it.
+    expect(suspensionCreditMetadata(record)).not.toHaveProperty("suspension");
+    expect(op.journaled.at(-1)).toEqual({
+      kind: "suspension-credit",
+      accountId: user.id,
+      actionId: record.id,
+      at: TERMINATED_AT,
+    });
+
+    const again = await terminateAccountWithCredit(op.deps, { userId: user.id, reason: "Abuse" });
+
+    expect(again.resumed).toBe(true);
+    expect(again.suspensionCredits).toEqual(result.suspensionCredits);
+    expect(op.revocations.suspensionCredits).toHaveLength(1);
+    expect(op.deps.createCreditNote).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns nothing when a termination ends a Past Due subscription, whose last paid period already ended (#739)", async () => {
+    const op = await operator();
+    await op.deps.subscriptions.recordSubscription({
+      userId: user.id,
+      stripeSubscriptionId: "sub_1",
+      cancelAt: null,
+      endedAt: null,
+      pastDue: { invoiceId: "in_nov", since: october.periodEnd },
+    });
+    // The last paid period was October; November's renewal failed.
+    op.paidInvoices.push(october);
+
+    const result = await terminateAccountWithCredit(op.deps, {
+      userId: user.id,
+      reason: "Abuse",
+      now: new Date("2026-11-03T00:00:00.000Z"),
+    });
+
+    expect(result.stripeSubscriptionId).toBe("sub_1");
+    expect(result.suspensionCredits).toEqual([]);
+    expect(op.deps.createCreditNote).not.toHaveBeenCalled();
+  });
+
+  it("is not blocked by an invoice with no single line it never needed to credit", async () => {
+    const op = await suspended({ ...november, invoiceLineItemId: null }, october);
+
+    const result = await liftSuspensionWithCredit(op.deps, { userId: user.id, now: LIFTED_AT });
+
+    expect(result.suspensionCredits).toMatchObject([{ invoiceId: "in_oct" }]);
+  });
+
+  it("refuses to guess at an invoice with no single line it must credit, writing nothing", async () => {
+    const op = await suspended({ ...october, invoiceLineItemId: null });
+
+    await expect(
+      liftSuspensionWithCredit(op.deps, { userId: user.id, now: LIFTED_AT }),
+    ).rejects.toThrow(/more than one subscription line/);
+    expect(op.revocations.suspensionCredits).toEqual([]);
+    await op.expectAdmitted();
+  });
+
+  it("alerts on a lost-id refund that fits both a Refund record and a Suspension Credit", async () => {
+    const op = await suspended(october);
+    op.stripeSubscriptions.stripeChanges("sub_1", { cancelAt: october.periodEnd });
+    vi.mocked(op.deps.createCreditNote).mockRejectedValueOnce(new Error("connection reset"));
+    await expect(
+      liftSuspensionWithCredit(op.deps, { userId: user.id, now: LIFTED_AT }),
+    ).rejects.toThrow(/connection reset/);
+    await op.revocations.records.recordRefund({
+      userId: user.id,
+      stripeSubscriptionId: "sub_1",
+      invoiceId: "in_oct",
+      paymentIntentId: "pi_oct",
+      amount: 330,
+      requestedAt: LIFTED_AT,
+    });
+
+    await expect(
+      applyStripeRefund(op.deps, {
+        id: "re_ambiguous",
+        paymentIntentId: "pi_oct",
+        amount: 330,
+        createdAt: LIFTED_AT,
+        status: "succeeded",
+      }),
+    ).resolves.toBe("unmatched");
+    expect(op.revocations.refunds[0]).toMatchObject({ stripeRefundId: null });
+    expect(op.revocations.suspensionCredits[0]).toMatchObject({ stripeRefundId: null });
+    await op.expectAdmitted();
+  });
+});
+
+describe("reading a creditable invoice (#631)", () => {
+  const line = (overrides: Record<string, unknown> = {}) => ({
+    id: "il_renewal",
+    amount: 1500,
+    discount_amounts: [{ amount: 300, discount: "di_1" }],
+    period: { start: 1_790_812_800, end: 1_793_404_800 },
+    parent: {
+      type: "subscription_item_details",
+      subscription_item_details: { proration: false, subscription_item: "si_1" },
+    },
+    ...overrides,
+  });
+  const invoice = (overrides: Record<string, unknown> = {}) =>
+    ({
+      id: "in_renewal",
+      status: "paid",
+      customer: CUSTOMER,
+      // The invoice's own period is the one before; the line's is the one paid for.
+      period_start: 1_788_220_800,
+      period_end: 1_790_812_800,
+      parent: { subscription_details: { subscription: "sub_1" } },
+      lines: { data: [line()] },
+      payments: { data: [{ status: "paid", payment: { payment_intent: "pi_renewal" } }] },
+      ...overrides,
+    }) as unknown as Parameters<typeof creditableInvoice>[0];
+
+  it("reads the renewal line's own period and its amount before discounts, which Stripe applies", () => {
+    expect(creditableInvoice(invoice())).toEqual({
+      invoiceId: "in_renewal",
+      stripeSubscriptionId: "sub_1",
+      paymentIntentId: "pi_renewal",
+      invoiceLineItemId: "il_renewal",
+      periodStart: new Date(1_790_812_800 * 1000),
+      periodEnd: new Date(1_793_404_800 * 1000),
+      lineAmount: 1500,
+    });
+  });
+
+  it("ignores prorations and skips an invoice with no renewal line", () => {
+    const proration = line({
+      id: "il_proration",
+      parent: {
+        type: "subscription_item_details",
+        subscription_item_details: { proration: true, subscription_item: "si_1" },
+      },
+    });
+
+    expect(creditableInvoice(invoice({ lines: { data: [proration, line()] } }))).toMatchObject({
+      invoiceLineItemId: "il_renewal",
+    });
+    expect(creditableInvoice(invoice({ lines: { data: [proration] } }))).toBeNull();
+  });
+
+  it("is not creditable unpaid or outside a subscription, and names no line when two renew", () => {
+    expect(creditableInvoice(invoice({ status: "open" }))).toBeNull();
+    expect(creditableInvoice(invoice({ parent: null }))).toBeNull();
+    expect(
+      creditableInvoice(invoice({ lines: { data: [line(), line({ id: "il_second" })] } })),
+    ).toMatchObject({ invoiceLineItemId: null });
+  });
+});
+
+type StripeClient = Parameters<typeof suspensionCreditStripeCalls>[0];
+
+describe("the Suspension Credit's Stripe calls (#631)", () => {
+  const line = { invoiceId: "in_oct", invoiceLineItemId: "il_oct", lineAmount: 300 };
+
+  /** Stripe's credit notes on one invoice, listed and created like the client does. */
+  function stripeWith(existing: Record<string, unknown>[] = []) {
+    const creditNotes = {
+      list: vi.fn(async function* () {
+        yield* existing;
+      }),
+      preview: vi.fn(async () => ({ total: 330 })),
+      create: vi.fn(async () => ({ id: "cn_new", refunds: [{ refund: { id: "re_new" } }] })),
+    };
+    const invoices = {
+      list: vi.fn(async function* () {
+        yield {
+          id: "in_oct",
+          status: "paid",
+          customer: CUSTOMER,
+          parent: { subscription_details: { subscription: "sub_1" } },
+          lines: {
+            data: [
+              {
+                id: "il_oct",
+                amount: 1500,
+                period: { start: 1_790_812_800, end: 1_793_404_800 },
+                parent: {
+                  type: "subscription_item_details",
+                  subscription_item_details: { proration: false },
+                },
+              },
+            ],
+          },
+          payments: { data: [{ status: "paid", payment: { payment_intent: "pi_oct" } }] },
+        };
+        yield { id: "in_one_off", status: "paid", customer: CUSTOMER, parent: null };
+      }),
+    };
+    const calls = suspensionCreditStripeCalls(
+      () => ({ creditNotes, invoices }) as unknown as ReturnType<StripeClient>,
+    );
+    return { calls, creditNotes, invoices };
+  }
+
+  it("lists only the customer's paid subscription invoices", async () => {
+    const { calls, invoices } = stripeWith();
+
+    await expect(calls.listCreditableInvoices(CUSTOMER)).resolves.toMatchObject([
+      { invoiceId: "in_oct", invoiceLineItemId: "il_oct", paymentIntentId: "pi_oct" },
+    ]);
+    expect(invoices.list).toHaveBeenCalledWith(
+      expect.objectContaining({ customer: CUSTOMER, status: "paid" }),
+    );
+  });
+
+  it("previews the total for the subscription line credited by amount", async () => {
+    const { calls, creditNotes } = stripeWith();
+
+    await expect(calls.previewCreditNote(line)).resolves.toBe(330);
+    expect(creditNotes.preview).toHaveBeenCalledWith({
+      invoice: "in_oct",
+      lines: [{ type: "invoice_line_item", invoice_line_item: "il_oct", amount: 300 }],
+    });
+  });
+
+  it("creates the credit note under the record's key, refunding the card or crediting the balance", async () => {
+    const { calls, creditNotes } = stripeWith();
+
+    await expect(
+      calls.createCreditNote({
+        ...line,
+        suspensionCreditId: "sc-1",
+        instrument: "card",
+        amount: 330,
+        metadata: { suspension_credit: "sc-1", instrument: "card" },
+      }),
+    ).resolves.toEqual({ id: "cn_new", stripeRefundId: "re_new" });
+    expect(creditNotes.create).toHaveBeenCalledWith(
+      {
+        invoice: "in_oct",
+        lines: [{ type: "invoice_line_item", invoice_line_item: "il_oct", amount: 300 }],
+        refund_amount: 330,
+        metadata: { suspension_credit: "sc-1", instrument: "card" },
+      },
+      { idempotencyKey: "suspension-credit:sc-1" },
+    );
+
+    await calls.createCreditNote({
+      ...line,
+      suspensionCreditId: "sc-2",
+      instrument: "balance",
+      amount: 330,
+      metadata: { suspension_credit: "sc-2" },
+    });
+    expect(creditNotes.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ credit_amount: 330 }),
+      { idempotencyKey: "suspension-credit:sc-2" },
+    );
+  });
+
+  it("returns the credit note a lost response left behind instead of creating another", async () => {
+    const { calls, creditNotes } = stripeWith([
+      { id: "cn_other", metadata: {}, refunds: [] },
+      { id: "cn_lost", metadata: { suspension_credit: "sc-1" }, refunds: [{ refund: "re_lost" }] },
+    ]);
+
+    await expect(
+      calls.createCreditNote({
+        ...line,
+        suspensionCreditId: "sc-1",
+        instrument: "card",
+        amount: 330,
+        metadata: { suspension_credit: "sc-1" },
+      }),
+    ).resolves.toEqual({ id: "cn_lost", stripeRefundId: "re_lost" });
+    expect(creditNotes.create).not.toHaveBeenCalled();
   });
 });

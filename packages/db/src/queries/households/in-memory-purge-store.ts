@@ -4,7 +4,6 @@ import type {
   HouseholdPurgeTombstone,
   HouseholdPurgeTransaction,
   HouseholdReleasedCounts,
-  PurgeableHousehold,
 } from "./purge";
 import { HOUSEHOLD_PURGE_FENCED_FAMILIES } from "./purge";
 
@@ -245,6 +244,10 @@ export function createInMemoryHouseholdPurgeStore(
           store.tombstones.push(tombstone);
         },
       };
+    },
+
+    async findHousehold(query) {
+      return remaining.find((household) => household.householdId === query.householdId) ?? null;
     },
 
     async listPurgeableHouseholds(query) {

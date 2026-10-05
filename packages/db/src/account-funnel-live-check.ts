@@ -1,6 +1,6 @@
 /**
- * Live verification of the account funnel's eligibility, run by hand against
- * the disposable dev database.
+ * Live verification of the account funnel's eligibility, and the error
+ * reporter's, run by hand against the disposable dev database.
  *
  * Not in the suite because every guarantee here is a clause Postgres enforces:
  * the append re-reads the opt-out and any pending deletion inside the insert,
@@ -16,6 +16,7 @@ import { eq, inArray } from "drizzle-orm";
 import { getDb } from "./client";
 import { check, reportLiveCheckResult } from "./live-check";
 import {
+  allowsErrorReports,
   readAccountFunnelReport,
   recordRequestFunnelStage,
   recordServerFunnelStage,
@@ -105,6 +106,14 @@ async function main() {
     await setTelemetryOptedOut({ userId: optedOut, optedOut: true });
     await recordRequestFunnelStage({ userId: optedOut, stage: "signup_completed" });
     check("an opted-out request records nothing", (await stagesOf(optedOut)).length === 0);
+    check(
+      "an account that never opted out allows error reports",
+      await allowsErrorReports({ userId: collecting }),
+    );
+    check(
+      "an opted-out account allows no error reports",
+      !(await allowsErrorReports({ userId: optedOut })),
+    );
     await setTelemetryOptedOut({ userId: collecting, optedOut: true });
     await recordServerFunnelStage({ userId: collecting, stage: "paid_access_granted" });
     check(
@@ -116,6 +125,10 @@ async function main() {
       (await stagesOf(collecting)).join() === "checkout_started,payment_confirmed,signup_completed",
     );
     await setTelemetryOptedOut({ userId: collecting, optedOut: false });
+    check(
+      "opting back in allows error reports again",
+      await allowsErrorReports({ userId: collecting }),
+    );
     await recordServerFunnelStage({ userId: collecting, stage: "first_person_created" });
     check(
       "opting back in records only what happens next",
@@ -130,6 +143,10 @@ async function main() {
     check(
       "nothing is recorded once deletion is requested",
       (await stagesOf(deleting)).join() === "checkout_started",
+    );
+    check(
+      "an account asked to be deleted allows no error reports",
+      !(await allowsErrorReports({ userId: deleting })),
     );
     await db.delete(user).where(eq(user.id, deleting));
     const [erased] = await db

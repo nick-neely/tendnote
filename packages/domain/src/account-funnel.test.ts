@@ -8,6 +8,7 @@ import {
   renderAccountFunnelReport,
 } from "./account-funnel";
 import { ACTIVATION_MILESTONES } from "./activation-milestones";
+import { publicActivityTotals } from "./public-activity";
 
 describe("the account funnel stage set", () => {
   it("is closed, in funnel order, and ends with the Activation Milestones", () => {
@@ -64,6 +65,14 @@ function report(overrides: Partial<AccountFunnelReportData> = {}): string {
     cohort: { ...cohort, signup_completed: 8, checkout_started: 6, first_value_reached: 2 },
     accountsCreated: 10,
     accountsOptedOut: 1,
+    publicActivity: publicActivityTotals([
+      { event: "page_viewed", page: "home", count: 40 },
+      { event: "page_viewed", page: "pricing", count: 20 },
+      { event: "demo_started", page: "demo", count: 8 },
+      { event: "demo_completed", page: "demo", count: 6 },
+      { event: "signup_clicked", page: "pricing", count: 3 },
+      { event: "signup_clicked", page: "home", count: 2 },
+    ]),
     ...overrides,
   });
 }
@@ -100,6 +109,22 @@ describe("the saved operator report", () => {
     expect(text).toMatch(/Events are deleted after 90 days/);
     expect(text).toMatch(/not a billing or admission ledger/);
     expect(text).toMatch(/first enrolled at checkout has no\s+signup event/);
+  });
+
+  it("counts public activity by event, with page views per fixed page", () => {
+    const text = report();
+    const section = text.slice(text.indexOf("PUBLIC ACTIVITY"));
+
+    expect(section).toMatch(/Pages viewed\s+60/);
+    expect(section).toMatch(/Pricing\s+20/);
+    expect(section).toMatch(/Privacy & AI\s+0/);
+    expect(section).toMatch(/Signup clicked\s+5/);
+    expect(section).toMatch(/Demo completed per demo started: 75%/);
+    expect(section).toMatch(/Signup clicked on any page per Pricing view: 25%/);
+    expect(section).toMatch(/known to come from the US/);
+    expect(section).toMatch(/a write that fails, is not retried/);
+    expect(section).toMatch(/a count can also run high/);
+    expect(section).toMatch(/kept 13 months/);
   });
 
   it("shows no ratio for an empty cohort", () => {
