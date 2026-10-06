@@ -33,7 +33,7 @@ jobs:
       should_release: ${{ steps.validate.outputs.should_release }}
     steps:
       - name: Set up RunsOn
-        uses: runs-on/action@efac073ea2507ec18797de3a81704201ade11d9d # v2.3.1
+        uses: runs-on/action@17b59092eb37ebfdbb034460892887c09100eaa3 # v2.5.0
 
       - name: Checkout validation script
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,7 +57,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Set up RunsOn
-        uses: runs-on/action@efac073ea2507ec18797de3a81704201ade11d9d # v2.3.1
+        uses: runs-on/action@17b59092eb37ebfdbb034460892887c09100eaa3 # v2.5.0
 
       # Do not publish a Vercel status here. The status action keys the commit
       # status by SHA and context, so a different Vercel project sharing this
@@ -81,7 +81,7 @@ jobs:
       DEPLOY_SHA: ${{ github.event.client_payload.git.sha }}
     steps:
       - name: Set up RunsOn
-        uses: runs-on/action@efac073ea2507ec18797de3a81704201ade11d9d # v2.3.1
+        uses: runs-on/action@17b59092eb37ebfdbb034460892887c09100eaa3 # v2.5.0
 
       - name: Report migration status to Vercel
         uses: vercel/repository-dispatch/actions/status@30f760c6640485cd92f8c785ef361382555fb712 # v1

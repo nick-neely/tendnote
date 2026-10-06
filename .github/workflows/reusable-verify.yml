@@ -86,7 +86,7 @@ jobs:
       # `setup-node` pnpm cache silently keep talking to GitHub instead.
       - name: Set up RunsOn
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        uses: runs-on/action@efac073ea2507ec18797de3a81704201ade11d9d # v2.3.1
+        uses: runs-on/action@17b59092eb37ebfdbb034460892887c09100eaa3 # v2.5.0
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -125,7 +125,7 @@ jobs:
     steps:
       - name: Set up RunsOn
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        uses: runs-on/action@efac073ea2507ec18797de3a81704201ade11d9d # v2.3.1
+        uses: runs-on/action@17b59092eb37ebfdbb034460892887c09100eaa3 # v2.5.0
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -203,7 +203,7 @@ jobs:
     steps:
       - name: Set up RunsOn
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        uses: runs-on/action@efac073ea2507ec18797de3a81704201ade11d9d # v2.3.1
+        uses: runs-on/action@17b59092eb37ebfdbb034460892887c09100eaa3 # v2.5.0
         with:
           show_costs: summary
 
@@ -318,7 +318,7 @@ jobs:
     steps:
       - name: Set up RunsOn
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
-        uses: runs-on/action@efac073ea2507ec18797de3a81704201ade11d9d # v2.3.1
+        uses: runs-on/action@17b59092eb37ebfdbb034460892887c09100eaa3 # v2.5.0
         with:
           show_costs: summary
 
