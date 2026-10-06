@@ -133,6 +133,75 @@ describe("checkFirstValuePath", () => {
     expect(network.urls().at(-1)).toBe(`${APP}/api/auth/sign-out`);
   });
 
+  it("signs out with the JSON request Better Auth accepts, as the signed-in session", async () => {
+    const { run, network } = check({ claimGroundedAnswer: async () => false });
+    await run;
+
+    const signOut = network.requests.find((request) => request.url.endsWith("/sign-out"));
+    const headers = new Headers(signOut?.init?.headers);
+    expect(signOut?.init?.method).toBe("POST");
+    expect(headers.get("content-type")).toBe("application/json");
+    expect(signOut?.init?.body).toBe("{}");
+    expect(headers.get("cookie")).toBe("tendnote.session_token=abc; tendnote.session_data=xyz");
+    expect(headers.get("origin")).toBe(APP);
+    expect(signOut?.init?.redirect).toBe("manual");
+    expect(signOut?.init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it.each([
+    {
+      failure: "a refusal",
+      route: { status: 415, body: { code: "UNSUPPORTED_MEDIA_TYPE" } },
+      reason: "http_415",
+    },
+    { failure: "a server error", route: { status: 500 }, reason: "http_500" },
+    {
+      failure: "a transport error",
+      error: new TypeError("fetch failed"),
+      reason: "TypeError",
+    },
+    {
+      failure: "a timeout",
+      error: new DOMException("The operation timed out.", "TimeoutError"),
+      reason: "TimeoutError",
+    },
+  ])(
+    "logs a sign-out lost to $failure by its kind alone, keeping the pass's result",
+    async ({ route, error: thrown, reason }) => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const network = fakeNetwork(route ? { [`${APP}/api/auth/sign-out`]: route } : {});
+      const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        if (thrown && String(input).endsWith("/sign-out")) throw thrown;
+        return network.fetch(input, init);
+      }) as unknown as typeof globalThis.fetch;
+      const { run } = check({ fetch, claimGroundedAnswer: async () => true });
+
+      await expect(run).resolves.toEqual({ status: "ran", failed: [], groundedAnswer: true });
+      expect(error.mock.calls).toEqual([["first_value_check.cleanup_failed", { reason }]]);
+      expect(JSON.stringify(error.mock.calls)).not.toMatch(
+        /abc|xyz|synthetic-user|synthetic-check|secret-password|UNSUPPORTED_MEDIA_TYPE/,
+      );
+    },
+  );
+
+  it("signs out after a failed step, and its own failure leaves that step reported", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { run, network } = check({
+      claimGroundedAnswer: async () => true,
+      network: { [`${APP}/api/auth/sign-out`]: { status: 503 } },
+      askEve: vi.fn(async () => {
+        throw new Error("Eve turn timed out");
+      }),
+    });
+
+    await expect(run).resolves.toEqual({ status: "ran", failed: [], groundedAnswer: false });
+    expect(network.urls().at(-1)).toBe(`${APP}/api/auth/sign-out`);
+    expect(error.mock.calls).toEqual([
+      ["first_value_check.failed", { step: "grounded_answer", reason: "Error" }],
+      ["first_value_check.cleanup_failed", { reason: "http_503" }],
+    ]);
+  });
+
   it("asks Eve the fixture question when told to, and passes only on the grounded answer", async () => {
     const grounded = check({ claimGroundedAnswer: async () => true });
     await expect(grounded.run).resolves.toEqual({
@@ -161,7 +230,7 @@ describe("checkFirstValuePath", () => {
 
   it("reports every cheap step that fails and logs only the step", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { run } = check({
+    const { run, network } = check({
       network: { [MARKETING_URL]: { status: 503 } },
       priceIsActive: vi.fn(async ({ priceId }) => priceId !== "price_annual"),
       callModel: vi.fn(async () => {
@@ -194,6 +263,7 @@ describe("checkFirstValuePath", () => {
       ],
     ]);
     expect(JSON.stringify(error.mock.calls)).not.toMatch(/synthetic-check|secret-password/);
+    expect(network.urls().at(-1)).toBe(`${APP}/api/auth/sign-out`);
   });
 
   it("fails checkout when Stripe is not configured", async () => {

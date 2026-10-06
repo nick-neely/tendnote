@@ -67,6 +67,12 @@ while waiting to retry, and otherwise the error class. An attempt with
 gateway's `status`, `type`, `retryable`, and `generationId`, the gateway's own
 id for the call.
 
+A pass that could not sign out logs `first_value_check.cleanup_failed` with an
+HTTP status (`http_415`) or an error class (`TimeoutError`). It does not change
+the pass's reading or alert. The synthetic session it left open lasts until
+Better Auth's seven-day expiry, so a run of them means every ten-minute pass is
+leaving one behind: find the cause before they pile up.
+
 ## Rollback
 
 Unset the two environment variables and redeploy. Every pass then gives no

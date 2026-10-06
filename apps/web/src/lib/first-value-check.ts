@@ -180,13 +180,28 @@ async function signIn(
   return typeof body.user?.id === "string" && cookie ? { cookie, accountId: body.user.id } : null;
 }
 
+/**
+ * Ends the pass's session. A failure is logged as
+ * `first_value_check.cleanup_failed` with only an HTTP status or error class,
+ * and never changes the pass's result or alerts.
+ */
 async function signOut(doFetch: typeof fetch, appUrl: string, cookie: string) {
-  await doFetch(`${appUrl}/api/auth/sign-out`, {
-    method: "POST",
-    headers: { cookie, origin: appUrl },
-    redirect: "manual",
-    signal: AbortSignal.timeout(STEP_TIMEOUT_MS),
-  }).catch(() => undefined);
+  let reason: string;
+  try {
+    const response = await doFetch(`${appUrl}/api/auth/sign-out`, {
+      method: "POST",
+      // Better Auth accepts only JSON request bodies (#746).
+      headers: { "content-type": "application/json", cookie, origin: appUrl },
+      body: "{}",
+      redirect: "manual",
+      signal: AbortSignal.timeout(STEP_TIMEOUT_MS),
+    });
+    if (response.ok) return;
+    reason = `http_${response.status}`;
+  } catch (error) {
+    reason = error instanceof Error ? error.name : "unknown";
+  }
+  console.error("first_value_check.cleanup_failed", { reason });
 }
 
 /**
