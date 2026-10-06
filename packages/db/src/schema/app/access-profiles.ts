@@ -2,7 +2,13 @@ import { sql } from "drizzle-orm";
 import { boolean, date, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
-import { accessSource, accessStatus, eveApprovalMode, selfContextOnboardingStatus } from "./enums";
+import {
+  accessPendingReason,
+  accessSource,
+  accessStatus,
+  eveApprovalMode,
+  selfContextOnboardingStatus,
+} from "./enums";
 
 /**
  * Tendnote-owned account/access profile. Records durable Private Beta Access for
@@ -54,6 +60,9 @@ export const accessProfiles = pgTable(
     // The Stripe subscription whose first paid invoice granted Paid Access.
     // Only its end lapses the account (#609).
     paidAccessSubscriptionId: text("paid_access_subscription_id"),
+    // Why a not-admitted profile lost a grant it had: `beta_ended` from the
+    // Beta Sunset migration (#612). Cleared by any later grant.
+    pendingReason: accessPendingReason("pending_reason"),
     // When the first-run prompt was closed without being answered: skipped, or
     // never owed because the account predates it. Answering needs no column; a
     // first conversation or a first person is the answer (#639).

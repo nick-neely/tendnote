@@ -22,6 +22,7 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       eveApprovalMode: "ask",
       retentionDeadline: null,
       paidAccessSubscriptionId: input.paidAccessSubscriptionId ?? null,
+      pendingReason: null,
       createdAt: now,
       updatedAt: now,
     };

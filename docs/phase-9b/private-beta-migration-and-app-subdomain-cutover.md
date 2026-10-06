@@ -107,6 +107,9 @@ origin. No fixed date.
 
 ### Stage 2: launch
 
+The [Beta Sunset runbook](../operations/beta-sunset.md) is the executable
+procedure for the Checkout and Beta Sunset release.
+
 In order: the author's account moves to `manual_grant` (any time before); the
 live Stripe webhook and reconciliation are registered and verified on
 `app.tendnote.com`; one release turns on Checkout and runs the Beta Sunset;
