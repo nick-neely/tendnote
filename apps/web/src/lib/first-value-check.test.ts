@@ -241,12 +241,18 @@ describe("checkFirstValuePath", () => {
 });
 
 it("fails the model step when Eve does not name its model", async () => {
-  vi.spyOn(console, "error").mockImplementation(() => {});
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
   const { run, callModel } = check({
     network: { [`${APP}/eve/v1/info`]: { status: 200, body: { agent: {} } } },
   });
   await expect(run).resolves.toMatchObject({ failed: ["model"] });
   expect(callModel).not.toHaveBeenCalled();
+  expect(error).toHaveBeenCalledWith("first_value_check.failed", {
+    step: "model",
+    reason: "unexpected_result",
+    elapsedMs: 0,
+    attempts: [],
+  });
   vi.restoreAllMocks();
 });
 
@@ -448,6 +454,45 @@ describe("the model step", () => {
     });
   });
 
+  it("gives up on a call that ignores the deadline", async () => {
+    const { result, callModel, modelLogs } = await runModelStep([() => new Promise(() => {})]);
+    expect(result).toMatchObject({ failed: ["model"] });
+    expect(callModel).toHaveBeenCalledOnce();
+    expect(modelLogs[0]?.[1]).toEqual({
+      step: "model",
+      reason: "deadline",
+      elapsedMs: 15_000,
+      attempts: [{ outcome: "deadline", elapsedMs: 15_000 }],
+    });
+  });
+
+  it("makes one model call per attempt, leaving retries to the step", async () => {
+    vi.useFakeTimers();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const doGenerate = vi.spyOn(gatewayModel, "doGenerate").mockImplementation(async () => {
+      throw new APICallError({
+        message: "Service Unavailable",
+        url: "https://gateway.example.test",
+        requestBodyValues: {},
+        statusCode: 503,
+        isRetryable: true,
+      });
+    });
+    const run = checkFirstValuePath({
+      env: ENV,
+      fetch: fakeNetwork().fetch,
+      priceIsActive: async () => true,
+    });
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({ failed: ["model"] });
+    // The AI SDK's own default would make three calls per attempt, nine in all.
+    expect(doGenerate).toHaveBeenCalledTimes(3);
+    expect(error).toHaveBeenCalledWith(
+      "first_value_check.failed",
+      expect.objectContaining({ step: "model", reason: "AI_APICallError" }),
+    );
+  });
+
   it("logs only allowlisted fields, dropping anything that is not a short token", async () => {
     const { modelLogs } = await runModelStep([
       async () => {
@@ -468,35 +513,6 @@ describe("the model step", () => {
       attempts: [{ outcome: "failed", elapsedMs: 0, retryable: false }],
     });
   });
-});
-
-it("makes one model call per attempt, leaving retries to the step", async () => {
-  vi.useFakeTimers();
-  const error = vi.spyOn(console, "error").mockImplementation(() => {});
-  gatewayModel.doGenerate = vi.fn(async () => {
-    throw new APICallError({
-      message: "Service Unavailable",
-      url: "https://gateway.example.test",
-      requestBodyValues: {},
-      statusCode: 503,
-      isRetryable: true,
-    });
-  });
-  const run = checkFirstValuePath({
-    env: ENV,
-    fetch: fakeNetwork().fetch,
-    priceIsActive: async () => true,
-  });
-  await vi.runAllTimersAsync();
-  await expect(run).resolves.toMatchObject({ failed: ["model"] });
-  // The AI SDK's own default would make three calls per attempt, nine in all.
-  expect(gatewayModel.doGenerate).toHaveBeenCalledTimes(3);
-  expect(error).toHaveBeenCalledWith(
-    "first_value_check.failed",
-    expect.objectContaining({ step: "model", reason: "AI_APICallError" }),
-  );
-  vi.useRealTimers();
-  vi.restoreAllMocks();
 });
 
 describe("claimDailyGroundedAnswer", () => {

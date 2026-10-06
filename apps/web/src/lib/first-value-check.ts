@@ -233,6 +233,18 @@ function failedAttempt(error: unknown, elapsedMs: number): FailedModelAttempt {
   ) as FailedModelAttempt;
 }
 
+/** Settles with `work`, or rejects once `signal` fires, whichever comes first. */
+function untilAborted(work: Promise<void>, signal: AbortSignal): Promise<void> {
+  // A call that ignores its signal settles later, unobserved.
+  work.catch(() => undefined);
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    if (signal.aborted) return onAbort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 /** Waits `ms`, or less when `signal` fires first; whether the wait ran its course. */
 function wait(ms: number, signal: AbortSignal): Promise<boolean> {
   return new Promise((resolve) => {
@@ -271,7 +283,7 @@ async function modelStep(call: (abortSignal: AbortSignal) => Promise<void>): Pro
       }
       const attemptStarted = Date.now();
       try {
-        await call(deadline.signal);
+        await untilAborted(call(deadline.signal), deadline.signal);
         attempts.push({ outcome: "passed", elapsedMs: Date.now() - attemptStarted });
         console.info("first_value_check.passed", {
           step: "model",
@@ -286,10 +298,10 @@ async function modelStep(call: (abortSignal: AbortSignal) => Promise<void>): Pro
           reason = "deadline";
           break;
         }
-        const attempt = failedAttempt(error, elapsedMs);
-        attempts.push(attempt);
-        reason = attempt.error ?? "unknown";
-        if (!attempt.retryable) break;
+        const failure = failedAttempt(error, elapsedMs);
+        attempts.push(failure);
+        reason = failure.error ?? "unknown";
+        if (!failure.retryable) break;
       }
     }
   } finally {
@@ -390,9 +402,17 @@ export async function checkFirstValuePath(
     if (!info) failed.push("admission");
     const modelId = info?.modelId;
     const callModel = input.callModel ?? defaultCallModel;
-    const model = modelId
-      ? await modelStep((abortSignal) => callModel({ accountId, modelId, abortSignal }))
-      : await passes("model", async () => false);
+    if (!modelId) {
+      console.error("first_value_check.failed", {
+        step: "model",
+        reason: "unexpected_result",
+        elapsedMs: 0,
+        attempts: [],
+      });
+    }
+    const model =
+      !!modelId &&
+      (await modelStep((abortSignal) => callModel({ accountId, modelId, abortSignal })));
     if (!model) failed.push("model");
 
     if (!info || !(await input.claimGroundedAnswer?.())) {

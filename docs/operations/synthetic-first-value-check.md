@@ -44,7 +44,8 @@ account or its fixture changed.
 
 The synthetic account, its `manual_grant` Access Profile, and its fixture. Each
 pass then records a session that it signs out of, and one capped model call in
-the account's Usage Ledger. Each daily answer adds a retired Eve session.
+the account's Usage Ledger, or up to three when the gateway fails and the step
+retries. Each daily answer adds a retired Eve session.
 
 ## Verification
 
