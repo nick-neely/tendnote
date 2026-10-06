@@ -58,6 +58,12 @@ It prints `"failed": []` and `"groundedAnswer": true` and exits 0. Exit 1
 names the failing steps; the server log has `first_value_check.failed` with the
 same step. `--grounded` runs one real Eve turn, so run it once, not in a loop.
 
+A pass that could not sign out logs `first_value_check.cleanup_failed` with an
+HTTP status (`http_415`) or an error class (`TimeoutError`). It does not change
+the pass's reading or alert. The synthetic session it left open lasts until
+Better Auth's seven-day expiry, so a run of them means every ten-minute pass is
+leaving one behind: find the cause before they pile up.
+
 ## Rollback
 
 Unset the two environment variables and redeploy. Every pass then gives no
