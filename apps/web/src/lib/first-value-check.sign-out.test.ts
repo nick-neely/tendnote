@@ -104,7 +104,7 @@ describe("First Value check sign-out against Better Auth", () => {
         env: ENV,
         fetch,
         priceIsActive: async () => true,
-        pingModel: async () => {},
+        callModel: async () => {},
         claimGroundedAnswer: async () => false,
       }),
     ).resolves.toEqual({ status: "ran", failed: [], groundedAnswer: null });

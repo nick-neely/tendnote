@@ -44,7 +44,8 @@ account or its fixture changed.
 
 The synthetic account, its `manual_grant` Access Profile, and its fixture. Each
 pass then records a session that it signs out of, and one capped model call in
-the account's Usage Ledger. Each daily answer adds a retired Eve session.
+the account's Usage Ledger, or up to three when the gateway fails and the step
+retries. Each daily answer adds a retired Eve session.
 
 ## Verification
 
@@ -57,6 +58,14 @@ pnpm --filter @tendnote/web first-value-check --grounded
 It prints `"failed": []` and `"groundedAnswer": true` and exits 0. Exit 1
 names the failing steps; the server log has `first_value_check.failed` with the
 same step. `--grounded` runs one real Eve turn, so run it once, not in a loop.
+
+The model step also logs `first_value_check.passed` when it passes. Both lines
+carry `elapsedMs` for the step and one entry per call in `attempts`. A failed
+step's `reason` is `deadline` when its 15 seconds ran out, during a call or
+while waiting to retry, and otherwise the error class. An attempt with
+`outcome: "deadline"` was cut short; one with `outcome: "failed"` keeps the
+gateway's `status`, `type`, `retryable`, and `generationId`, the gateway's own
+id for the call.
 
 A pass that could not sign out logs `first_value_check.cleanup_failed` with an
 HTTP status (`http_415`) or an error class (`TimeoutError`). It does not change
