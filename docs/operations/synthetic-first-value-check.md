@@ -58,6 +58,14 @@ It prints `"failed": []` and `"groundedAnswer": true` and exits 0. Exit 1
 names the failing steps; the server log has `first_value_check.failed` with the
 same step. `--grounded` runs one real Eve turn, so run it once, not in a loop.
 
+The model step also logs `first_value_check.passed` when it passes. Both lines
+carry `elapsedMs` for the step and one entry per call in `attempts`. A failed
+step's `reason` is `deadline` when its 15 seconds ran out, during a call or
+while waiting to retry, and otherwise the error class. An attempt with
+`outcome: "deadline"` was cut short; one with `outcome: "failed"` keeps the
+gateway's `status`, `type`, `retryable`, and `generationId`, the gateway's own
+id for the call.
+
 ## Rollback
 
 Unset the two environment variables and redeploy. Every pass then gives no

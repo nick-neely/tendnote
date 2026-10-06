@@ -54,7 +54,10 @@ conditions, and a read that fails gives no reading, so an open alert holds.
   its cookie, which runs the channel's whole auth policy, admission included,
   without a turn, and the route names the model Eve runs. Last, one capped
   call on that model goes through the model-call entry point, metered to that
-  account. The pass then signs out.
+  account. The step retries it at most twice, two then four seconds apart,
+  while the gateway calls the error retryable, all inside one 15-second
+  deadline, and logs every attempt whether it passes or fails (#745). The pass
+  then signs out.
 - **The grounded Eve answer** (`grounded_eve_answer`) is asked on one pass a
   day: the first at or after 15:00 UTC (9:00 or 10:00 Central, inside the
   operator's waking hours) whose account Eve admitted. That pass claims the UTC

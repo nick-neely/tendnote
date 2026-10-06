@@ -81,14 +81,27 @@ type FirstValueCheckDependencies = {
   fetch?: typeof fetch;
   /** Whether a Stripe price is active, keyed by its id. */
   priceIsActive?: (input: { secretKey: string; priceId: string }) => Promise<boolean>;
-  /** One tiny metered call on the model Eve runs, as the synthetic account. */
-  pingModel?: (input: { accountId: string; modelId: string }) => Promise<void>;
+  /**
+   * One attempt at a tiny metered call on the model Eve runs, as the synthetic
+   * account, abandoned when `abortSignal` fires. It must not retry itself.
+   */
+  callModel?: (input: {
+    accountId: string;
+    modelId: string;
+    abortSignal: AbortSignal;
+  }) => Promise<void>;
   /** Eve's whole reply to one question in a fresh session, as the signed-in account. */
   askEve?: (input: { appUrl: string; cookie: string; question: string }) => Promise<string>;
 };
 
 const STEP_TIMEOUT_MS = 15_000;
 const EVE_TURN_TIMEOUT_MS = 120_000;
+/**
+ * The model step's retry policy, the AI SDK's default made explicit: at most
+ * three calls, two then four seconds apart, all inside the step's deadline. A
+ * gateway's `Retry-After`, which the SDK would honour past the deadline, is not.
+ */
+const MODEL_RETRY_DELAYS_MS = [2_000, 4_000];
 
 function readConfig(env: FirstValueCheckEnvironment) {
   const email = env.TENDNOTE_SYNTHETIC_CHECK_EMAIL?.trim();
@@ -102,15 +115,18 @@ const defaultPriceIsActive: NonNullable<FirstValueCheckDependencies["priceIsActi
   priceId,
 }) => (await new Stripe(secretKey).prices.retrieve(priceId)).active;
 
-const defaultPingModel: NonNullable<FirstValueCheckDependencies["pingModel"]> = async ({
+const defaultCallModel: NonNullable<FirstValueCheckDependencies["callModel"]> = async ({
   accountId,
   modelId,
+  abortSignal,
 }) => {
   await generateText({
     model: hostedModel({ modelId, costCategory: "interactive", account: accountId }),
     prompt: "Reply with the single word OK.",
     maxOutputTokens: 16,
-    abortSignal: AbortSignal.timeout(STEP_TIMEOUT_MS),
+    // The model step retries, so each failed call reaches it and is recorded.
+    maxRetries: 0,
+    abortSignal,
   });
 };
 
@@ -171,6 +187,121 @@ async function signOut(doFetch: typeof fetch, appUrl: string, cookie: string) {
     redirect: "manual",
     signal: AbortSignal.timeout(STEP_TIMEOUT_MS),
   }).catch(() => undefined);
+}
+
+/**
+ * One model call's outcome, in allowlisted fields only. `deadline` means the
+ * step's deadline cut the call short; `failed` keeps what the gateway said.
+ */
+type FailedModelAttempt = {
+  outcome: "failed";
+  elapsedMs: number;
+  error?: string;
+  status?: number;
+  type?: string;
+  retryable: boolean;
+  generationId?: string;
+};
+type ModelAttempt = { outcome: "passed" | "deadline"; elapsedMs: number } | FailedModelAttempt;
+
+/** A short identifier-like string, or nothing: free text never reaches the log. */
+function token(value: unknown): string | undefined {
+  return typeof value === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(value) ? value : undefined;
+}
+
+/**
+ * What a failed call says, from the fields the AI SDK's gateway and API errors
+ * carry. The message and response body are never read.
+ */
+function failedAttempt(error: unknown, elapsedMs: number): FailedModelAttempt {
+  const fields = (typeof error === "object" && error !== null ? error : {}) as Record<
+    string,
+    unknown
+  >;
+  const status = fields.statusCode;
+  const attempt: FailedModelAttempt = {
+    outcome: "failed",
+    elapsedMs,
+    error: token(fields.name),
+    status: Number.isInteger(status) ? (status as number) : undefined,
+    type: token(fields.type),
+    retryable: fields.isRetryable === true,
+    generationId: token(fields.generationId),
+  };
+  return Object.fromEntries(
+    Object.entries(attempt).filter(([, value]) => value !== undefined),
+  ) as FailedModelAttempt;
+}
+
+/** Waits `ms`, or less when `signal` fires first; whether the wait ran its course. */
+function wait(ms: number, signal: AbortSignal): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve(false);
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve(true);
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve(false);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * The model step: one capped call, retried by `MODEL_RETRY_DELAYS_MS` while
+ * the gateway calls its error retryable, all under one deadline. It logs every
+ * attempt whether the step passes or fails, so a pass that needed a retry and
+ * the latency of a clean pass both stay visible (#745). The gateway reports
+ * its own deadline as a retryable 500, so a call cut short is named by the
+ * deadline the step owns, never by its error.
+ */
+async function modelStep(call: (abortSignal: AbortSignal) => Promise<void>): Promise<boolean> {
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), STEP_TIMEOUT_MS);
+  const started = Date.now();
+  const attempts: ModelAttempt[] = [];
+  let reason = "unknown";
+  try {
+    for (const [index, delayMs] of [0, ...MODEL_RETRY_DELAYS_MS].entries()) {
+      if (index > 0 && !(await wait(delayMs, deadline.signal))) {
+        reason = "deadline";
+        break;
+      }
+      const attemptStarted = Date.now();
+      try {
+        await call(deadline.signal);
+        attempts.push({ outcome: "passed", elapsedMs: Date.now() - attemptStarted });
+        console.info("first_value_check.passed", {
+          step: "model",
+          elapsedMs: Date.now() - started,
+          attempts,
+        });
+        return true;
+      } catch (error) {
+        const elapsedMs = Date.now() - attemptStarted;
+        if (deadline.signal.aborted) {
+          attempts.push({ outcome: "deadline", elapsedMs });
+          reason = "deadline";
+          break;
+        }
+        const attempt = failedAttempt(error, elapsedMs);
+        attempts.push(attempt);
+        reason = attempt.error ?? "unknown";
+        if (!attempt.retryable) break;
+      }
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+  console.error("first_value_check.failed", {
+    step: "model",
+    reason,
+    elapsedMs: Date.now() - started,
+    attempts,
+  });
+  return false;
 }
 
 /**
@@ -257,11 +388,11 @@ export async function checkFirstValuePath(
       return { modelId: typeof body.agent?.model?.id === "string" ? body.agent.model.id : null };
     });
     if (!info) failed.push("admission");
-    const model = await passes("model", async () => {
-      if (!info?.modelId) return false;
-      await (input.pingModel ?? defaultPingModel)({ accountId, modelId: info.modelId });
-      return true;
-    });
+    const modelId = info?.modelId;
+    const callModel = input.callModel ?? defaultCallModel;
+    const model = modelId
+      ? await modelStep((abortSignal) => callModel({ accountId, modelId, abortSignal }))
+      : await passes("model", async () => false);
     if (!model) failed.push("model");
 
     if (!info || !(await input.claimGroundedAnswer?.())) {
