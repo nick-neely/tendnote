@@ -1,6 +1,5 @@
 import { hasStuckAccountDeletionIntent } from "@tendnote/db/queries/account-deletion";
 import {
-  type ClaimedOperatorAlertNotice,
   createDrizzleOperatorAlertStore,
   runOperatorAlertPass,
 } from "@tendnote/db/queries/operator-alerts";
@@ -9,7 +8,7 @@ import {
   hasLateReminderDelivery,
 } from "@tendnote/db/queries/reliability-indicators";
 import { readSpendBreakerStage } from "@tendnote/db/queries/spend-breaker";
-import { type OperatorAlertReading, operatorAlertMessage } from "@tendnote/domain/operator-alerts";
+import type { OperatorAlertReading } from "@tendnote/domain/operator-alerts";
 import type { SpendBreakerStage } from "@tendnote/domain/usage-bounds";
 import { type BackupSurfaceCheck, backupSurfaceReading } from "@/lib/backup-surfaces";
 import type { StripeReconciliationResult } from "@/lib/billing/stripe-reconciliation";
@@ -18,11 +17,8 @@ import {
   claimDailyGroundedAnswer,
   type FirstValueCheck,
 } from "@/lib/first-value-check";
-import {
-  createOperatorAlertSender,
-  type OperatorAlertMessage,
-  operatorAlertDestinations,
-} from "./channel";
+import { createOperatorAlertSender, operatorAlertDestinations } from "./channel";
+import { noticeMessage } from "./notice-message";
 
 /**
  * What one cron pass observed about each condition it can read. A read that
@@ -71,14 +67,6 @@ export function operatorAlertReadings(input: {
   return readings;
 }
 
-function noticeMessage(notice: ClaimedOperatorAlertNotice): OperatorAlertMessage {
-  return {
-    ...operatorAlertMessage(notice),
-    urgent: notice.kind === "alert",
-    key: `operator-alert:${notice.episodeId}:${notice.kind}`,
-  };
-}
-
 /**
  * The alert pass at the end of the recovery cron (#648). Off when no
  * destination is configured. It never throws: an alert pass that fails is
@@ -121,7 +109,8 @@ export async function runOperatorAlerts(input: {
         firstValue,
       }),
       breaker,
-      notify: (notice) => send(noticeMessage(notice)),
+      notify: (notice, observedInThisPass) =>
+        send(noticeMessage(notice, { firstValue, observedInThisPass })),
       now,
       logger: console,
     });

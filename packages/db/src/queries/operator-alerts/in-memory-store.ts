@@ -18,15 +18,17 @@ export function createInMemoryOperatorAlertStore() {
 
   const store: OperatorAlertStore = {
     async open({ condition, at }) {
-      if (openEpisode(condition)) return;
+      if (openEpisode(condition)) return null;
+      const id = `episode-${episodes.length + 1}`;
       episodes.push({
-        id: `episode-${episodes.length + 1}`,
+        id,
         condition,
         openedAt: at,
         alertedAt: null,
         clearedAt: null,
         recoveredAt: null,
       });
+      return id;
     },
 
     async clear({ condition, at }) {
@@ -39,13 +41,25 @@ export function createInMemoryOperatorAlertStore() {
       for (const episode of episodes) {
         if (episode.clearedAt && episode.alertedAt && !episode.recoveredAt) {
           episode.recoveredAt = at;
-          claimed.push({ episodeId: episode.id, condition: episode.condition, kind: "recovery" });
+          claimed.push({
+            episodeId: episode.id,
+            condition: episode.condition,
+            openedAt: episode.openedAt,
+            clearedAt: episode.clearedAt,
+            kind: "recovery",
+          });
         }
       }
       for (const episode of episodes) {
         if (!episode.clearedAt && !episode.alertedAt) {
           episode.alertedAt = at;
-          claimed.push({ episodeId: episode.id, condition: episode.condition, kind: "alert" });
+          claimed.push({
+            episodeId: episode.id,
+            condition: episode.condition,
+            openedAt: episode.openedAt,
+            clearedAt: episode.clearedAt,
+            kind: "alert",
+          });
         }
       }
       return claimed;

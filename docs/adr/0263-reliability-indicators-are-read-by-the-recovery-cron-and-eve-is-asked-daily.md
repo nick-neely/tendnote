@@ -54,10 +54,16 @@ conditions, and a read that fails gives no reading, so an open alert holds.
   its cookie, which runs the channel's whole auth policy, admission included,
   without a turn, and the route names the model Eve runs. Last, one capped
   call on that model goes through the model-call entry point, metered to that
-  account. The step retries it at most twice, two then four seconds apart,
-  while the gateway calls the error retryable, all inside one 15-second
-  deadline, and logs every attempt whether it passes or fails (#745). The pass
-  then signs out.
+  account. The step permits at most three calls, two then four seconds apart,
+  with a 15-second per-attempt allowance and a 32-second total deadline. It
+  retries explicitly retryable gateway errors and a generation timeout, so a
+  single deadline can be confirmed in the same pass. It does not repeat a
+  generation after usage persistence starts. Every attempt remains in the
+  final pass/fail diagnostic, including a failure followed by a successful
+  confirmation. A terminal failure still alerts in this pass; a later clean
+  sample recovers it. Missing readings hold existing episodes. The pass then
+  signs out. See the [runbook](../operations/synthetic-first-value-check.md)
+  for notification context, budgets and passive verification.
 - **The grounded Eve answer** (`grounded_eve_answer`) is asked on one pass a
   day: the first at or after 15:00 UTC (9:00 or 10:00 Central, inside the
   operator's waking hours) whose account Eve admitted. That pass claims the UTC
@@ -75,6 +81,25 @@ conditions, and a read that fails gives no reading, so an open alert holds.
 off unless the deployment is hosted and `TENDNOTE_SYNTHETIC_CHECK_EMAIL` and
 `TENDNOTE_SYNTHETIC_CHECK_PASSWORD` are set. The same check runs on demand as
 `pnpm --filter @tendnote/web first-value-check [--grounded]`.
+
+### October 11, 2026: confirm generation timeouts within the pass
+
+The October 6 diagnostics classified four subsequent model-step failures as a
+single attempt reaching its 15-second deadline. In the retained 23-hour sample,
+136 of 138 checks passed; the median successful duration was 933 ms, p95 2185 ms,
+p99 11240 ms, and maximum 12046 ms. Every sample had one attempt. The deadline
+also covers usage persistence, so this is not proof of provider latency or a
+false positive. Recovery emails reflect the next ten-minute sample, not a
+measured outage lasting that long.
+
+Keep the first attempt's allowance and confirm a timed-out generation under a
+finite same-pass budget instead of requiring consecutive failed cron passes.
+The added model-step budget is at most 17 seconds, the existing three-call cost
+cap stays intact, and permanent errors still fail immediately. Phase diagnostics
+distinguish the generation wait from usage persistence on future failures.
+Repeated intermittent failures remain visible in successful retry diagnostics;
+all failed attempts remain available even if no alert episode opens. This is a
+bounded confirmation policy, not evidence that the underlying latency is fixed.
 
 ## Consequences
 

@@ -1,5 +1,5 @@
 import { resolveBetterAuthBaseUrl } from "@tendnote/auth";
-import { hostedModel } from "@tendnote/db/queries/model-calls";
+import { hostedModel, type ModelGenerationPhase } from "@tendnote/db/queries/model-calls";
 import { parseAdmissionPolicy } from "@tendnote/domain";
 import { generateText } from "ai";
 import { Client } from "eve/client";
@@ -72,6 +72,8 @@ export type FirstValueCheck =
       failed: FirstValuePathStep[];
       /** `null` when the grounded answer was not asked this pass, or could not be. */
       groundedAnswer: boolean | null;
+      /** Content-free evidence from this pass's model step, when it ran. */
+      model?: ModelStepResult;
     };
 
 type FirstValueCheckEnvironment = Record<string, string | undefined>;
@@ -89,6 +91,7 @@ type FirstValueCheckDependencies = {
     accountId: string;
     modelId: string;
     abortSignal: AbortSignal;
+    onGeneratePhase: (phase: ModelGenerationPhase) => void;
   }) => Promise<void>;
   /** Eve's whole reply to one question in a fresh session, as the signed-in account. */
   askEve?: (input: { appUrl: string; cookie: string; question: string }) => Promise<string>;
@@ -97,10 +100,12 @@ type FirstValueCheckDependencies = {
 const STEP_TIMEOUT_MS = 15_000;
 const EVE_TURN_TIMEOUT_MS = 120_000;
 /**
- * The model step's retry policy, the AI SDK's default made explicit: at most
- * three calls, two then four seconds apart, all inside the step's deadline. A
- * gateway's `Retry-After`, which the SDK would honour past the deadline, is not.
+ * Retain the full 15-second allowance per attempt. A timed-out call gets one
+ * same-pass confirmation within 32 seconds total (15 + 2 + 15), rather than
+ * waiting for the next ten-minute sample. Fast retryable failures retain the
+ * existing three-call cap and 2s/4s backoff. SDK retries remain disabled.
  */
+const MODEL_STEP_TIMEOUT_MS = 32_000;
 const MODEL_RETRY_DELAYS_MS = [2_000, 4_000];
 
 function readConfig(env: FirstValueCheckEnvironment) {
@@ -119,9 +124,15 @@ const defaultCallModel: NonNullable<FirstValueCheckDependencies["callModel"]> = 
   accountId,
   modelId,
   abortSignal,
+  onGeneratePhase,
 }) => {
   await generateText({
-    model: hostedModel({ modelId, costCategory: "interactive", account: accountId }),
+    model: hostedModel({
+      modelId,
+      costCategory: "interactive",
+      account: accountId,
+      onGeneratePhase,
+    }),
     prompt: "Reply with the single word OK.",
     maxOutputTokens: 16,
     // The model step retries, so each failed call reaches it and is recorded.
@@ -217,7 +228,16 @@ type FailedModelAttempt = {
   retryable: boolean;
   generationId?: string;
 };
-type ModelAttempt = { outcome: "passed" | "deadline"; elapsedMs: number } | FailedModelAttempt;
+type ModelAttempt = ({ outcome: "passed" | "deadline"; elapsedMs: number } | FailedModelAttempt) & {
+  phase: ModelGenerationPhase | "model_call";
+};
+
+export type ModelStepResult = {
+  passed: boolean;
+  reason?: string;
+  elapsedMs: number;
+  attempts: ModelAttempt[];
+};
 
 /** A short identifier-like string, or nothing: free text never reaches the log. */
 function token(value: unknown): string | undefined {
@@ -276,59 +296,97 @@ function wait(ms: number, signal: AbortSignal): Promise<boolean> {
   });
 }
 
-/**
- * The model step: one capped call, retried by `MODEL_RETRY_DELAYS_MS` while
- * the gateway calls its error retryable, all under one deadline. It logs every
- * attempt whether the step passes or fails, so a pass that needed a retry and
- * the latency of a clean pass both stay visible (#745). The gateway reports
- * its own deadline as a retryable 500, so a call cut short is named by the
- * deadline the step owns, never by its error.
- */
-async function modelStep(call: (abortSignal: AbortSignal) => Promise<void>): Promise<boolean> {
+type ModelCall = (
+  abortSignal: AbortSignal,
+  onPhase: (phase: ModelGenerationPhase) => void,
+) => Promise<void>;
+
+/** One attempt owns its abort signal, and also stops at the total deadline. */
+async function modelAttempt(
+  call: ModelCall,
+  deadline: AbortSignal,
+  progress: { phase: ModelAttempt["phase"] },
+): Promise<ModelAttempt> {
+  const started = Date.now();
+  const attempt = new AbortController();
+  const abort = () => attempt.abort();
+  deadline.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(abort, STEP_TIMEOUT_MS);
+  try {
+    await untilAborted(
+      call(attempt.signal, (phase) => {
+        progress.phase = phase;
+      }),
+      attempt.signal,
+    );
+    return { outcome: "passed", elapsedMs: Date.now() - started, phase: progress.phase };
+  } catch (error) {
+    const elapsedMs = Date.now() - started;
+    const result = attempt.signal.aborted
+      ? { outcome: "deadline" as const, elapsedMs }
+      : failedAttempt(error, elapsedMs);
+    return { ...result, phase: progress.phase };
+  } finally {
+    clearTimeout(timer);
+    deadline.removeEventListener("abort", abort);
+  }
+}
+
+/** Never buy another generation to hide a usage-persistence failure. */
+function canRetryModelAttempt(attempt: ModelAttempt): boolean {
+  if (attempt.phase === "usage_ledger" || attempt.phase === "complete") return false;
+  return attempt.outcome === "deadline" || (attempt.outcome === "failed" && attempt.retryable);
+}
+
+/** Confirm a transient failure in this pass, retaining all attempts under one budget. */
+async function modelStep(call: ModelCall): Promise<ModelStepResult> {
   const deadline = new AbortController();
-  const timer = setTimeout(() => deadline.abort(), STEP_TIMEOUT_MS);
+  const timer = setTimeout(() => deadline.abort(), MODEL_STEP_TIMEOUT_MS);
   const started = Date.now();
   const attempts: ModelAttempt[] = [];
   let reason = "unknown";
+  let mayRetry = () => true;
   try {
     for (const [index, delayMs] of [0, ...MODEL_RETRY_DELAYS_MS].entries()) {
       if (index > 0 && !(await wait(delayMs, deadline.signal))) {
         reason = "deadline";
         break;
       }
-      const attemptStarted = Date.now();
-      try {
-        await untilAborted(call(deadline.signal), deadline.signal);
-        attempts.push({ outcome: "passed", elapsedMs: Date.now() - attemptStarted });
+      // A canceled generation may reach metering while backoff is running.
+      if (!mayRetry()) break;
+      // Injected calls may not expose phases; never guess that it is the gateway.
+      const progress: { phase: ModelAttempt["phase"] } = { phase: "model_call" };
+      const attempt = await modelAttempt(call, deadline.signal, progress);
+      mayRetry = () => canRetryModelAttempt({ ...attempt, phase: progress.phase });
+      attempts.push(attempt);
+      if (attempt.outcome === "passed") {
+        const result: ModelStepResult = { passed: true, elapsedMs: Date.now() - started, attempts };
         console.info("first_value_check.passed", {
           step: "model",
-          elapsedMs: Date.now() - started,
+          elapsedMs: result.elapsedMs,
           attempts,
         });
-        return true;
-      } catch (error) {
-        const elapsedMs = Date.now() - attemptStarted;
-        if (deadline.signal.aborted) {
-          attempts.push({ outcome: "deadline", elapsedMs });
-          reason = "deadline";
-          break;
-        }
-        const failure = failedAttempt(error, elapsedMs);
-        attempts.push(failure);
-        reason = failure.error ?? "unknown";
-        if (!failure.retryable) break;
+        return result;
       }
+      reason = attempt.outcome === "failed" ? (attempt.error ?? "unknown") : "deadline";
+      if (deadline.signal.aborted || !mayRetry()) break;
     }
   } finally {
     clearTimeout(timer);
   }
-  console.error("first_value_check.failed", {
-    step: "model",
+  const result: ModelStepResult = {
+    passed: false,
     reason,
     elapsedMs: Date.now() - started,
     attempts,
+  };
+  console.error("first_value_check.failed", {
+    step: "model",
+    reason,
+    elapsedMs: result.elapsedMs,
+    attempts,
   });
-  return false;
+  return result;
 }
 
 /**
@@ -425,13 +483,15 @@ export async function checkFirstValuePath(
         attempts: [],
       });
     }
-    const model =
-      !!modelId &&
-      (await modelStep((abortSignal) => callModel({ accountId, modelId, abortSignal })));
-    if (!model) failed.push("model");
+    const model = modelId
+      ? await modelStep((abortSignal, onGeneratePhase) =>
+          callModel({ accountId, modelId, abortSignal, onGeneratePhase }),
+        )
+      : undefined;
+    if (!model?.passed) failed.push("model");
 
     if (!info || !(await input.claimGroundedAnswer?.())) {
-      return { status: "ran", failed, groundedAnswer: null };
+      return { status: "ran", failed, groundedAnswer: null, model };
     }
     const groundedAnswer = await passes("grounded_answer", async () => {
       const reply = await (input.askEve ?? defaultAskEve)({
@@ -441,7 +501,7 @@ export async function checkFirstValuePath(
       });
       return FIRST_VALUE_FIXTURE.answer.test(reply);
     });
-    return { status: "ran", failed, groundedAnswer };
+    return { status: "ran", failed, groundedAnswer, model };
   } finally {
     await signOut(doFetch, config.appUrl, cookie);
   }

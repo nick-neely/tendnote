@@ -107,7 +107,7 @@ describe("First Value check sign-out against Better Auth", () => {
         callModel: async () => {},
         claimGroundedAnswer: async () => false,
       }),
-    ).resolves.toEqual({ status: "ran", failed: [], groundedAnswer: null });
+    ).resolves.toMatchObject({ status: "ran", failed: [], groundedAnswer: null });
 
     const signOut = requests.find((request) => request.url === `${APP}/api/auth/sign-out`);
     expect(signOut?.status).toBe(200);

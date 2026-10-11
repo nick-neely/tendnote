@@ -173,3 +173,109 @@ describe("runOperatorAlertPass", () => {
     expect(alerts.sent).toEqual([]);
   });
 });
+
+describe("First Value episode stability", () => {
+  it("deduplicates sustained failure, holds unread samples, and reports alternating episodes", async () => {
+    const alerts = harness();
+    await alerts.pass([firing("first_value_path"), firing("grounded_eve_answer")]);
+    await alerts.pass([firing("first_value_path")]);
+    await alerts.pass([]);
+    await alerts.pass([clear("first_value_path")]);
+    await alerts.pass([firing("first_value_path")]);
+    await alerts.pass([clear("first_value_path")]);
+    expect(alerts.sent).toEqual([
+      { kind: "alert", condition: "first_value_path" },
+      { kind: "alert", condition: "grounded_eve_answer" },
+      { kind: "recovery", condition: "first_value_path" },
+      { kind: "alert", condition: "first_value_path" },
+      { kind: "recovery", condition: "first_value_path" },
+    ]);
+    expect(
+      alerts.episodes.find((e) => e.condition === "grounded_eve_answer")?.clearedAt,
+    ).toBeNull();
+  });
+
+  it("claims one notice across concurrent passes and retains original sample dates on redelivery", async () => {
+    const { store } = createInMemoryOperatorAlertStore();
+    const openedAt = new Date("2026-10-11T17:50:00Z");
+    const clearedAt = new Date("2026-10-11T18:00:00Z");
+    const notices: unknown[] = [];
+    const pass = (readings: OperatorAlertReading[], now: Date) =>
+      runOperatorAlertPass({
+        store,
+        readings,
+        now,
+        breaker: null,
+        notify: async (notice) => {
+          notices.push(notice);
+        },
+      });
+    await Promise.all([
+      pass([firing("first_value_path")], openedAt),
+      pass([firing("first_value_path")], openedAt),
+    ]);
+    expect(notices).toEqual([
+      {
+        condition: "first_value_path",
+        kind: "alert",
+        episodeId: "episode-1",
+        openedAt,
+        clearedAt: null,
+      },
+    ]);
+    await pass([clear("first_value_path")], clearedAt);
+    expect(notices[1]).toEqual({
+      condition: "first_value_path",
+      kind: "recovery",
+      episodeId: "episode-1",
+      openedAt,
+      clearedAt,
+    });
+    expect(await store.claimNotices({ at: clearedAt })).toEqual([]);
+    await store.releaseNotice({
+      condition: "first_value_path",
+      kind: "recovery",
+      episodeId: "episode-1",
+      openedAt,
+      clearedAt,
+    });
+    expect(await store.claimNotices({ at: new Date(clearedAt.getTime() + 600_000) })).toEqual([
+      notices[1],
+    ]);
+  });
+});
+
+it("attaches current evidence only to the episode this pass actually opened", async () => {
+  const { store } = createInMemoryOperatorAlertStore();
+  const at = new Date("2026-10-11T17:50:00Z");
+  // Another concurrent pass won the insert, even with the identical timestamp.
+  await store.open({ condition: "first_value_path", at });
+  const matches: boolean[] = [];
+  await runOperatorAlertPass({
+    store,
+    readings: [firing("first_value_path")],
+    breaker: null,
+    now: at,
+    notify: async (_notice, observedInThisPass) => {
+      matches.push(observedInThisPass);
+    },
+  });
+  expect(matches).toEqual([false]);
+  await runOperatorAlertPass({
+    store,
+    readings: [clear("first_value_path")],
+    breaker: null,
+    notify: async () => {},
+    now: new Date(at.getTime() + 600_000),
+  });
+  await runOperatorAlertPass({
+    store,
+    readings: [firing("first_value_path")],
+    breaker: null,
+    notify: async (_notice, observedInThisPass) => {
+      matches.push(observedInThisPass);
+    },
+    now: new Date(at.getTime() + 1_200_000),
+  });
+  expect(matches).toEqual([false, true]);
+});
