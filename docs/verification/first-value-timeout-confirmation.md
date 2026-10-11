@@ -82,3 +82,12 @@ October 11 noon dunning expiry was already in the past by this investigation.
 The unchanged test reproduced the failure alone. Pinning only that test's Date
 clock to its existing October 3 fixture makes it deterministic; no billing
 production behavior changed. The isolated 42-test file then passed.
+
+## PR review follow-up
+
+Greptile identified a cancellation race: a generation that ignores abort can
+enter usage persistence during the retry backoff. The retry gate now checks
+that attempt's live phase again after backoff; the recorded deadline phase
+remains the phase observed at the deadline. Regressions cover late
+`usage_ledger` and `complete` phases, preserving a failed reading and making
+only one generation call. The focused 39 tests, typecheck, and lint passed.

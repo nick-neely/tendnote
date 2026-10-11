@@ -526,6 +526,29 @@ describe("the model step", () => {
     });
   });
 
+  it.each(["usage_ledger", "complete"] as const)(
+    "does not retry a canceled call that reaches %s during backoff",
+    async (phase) => {
+      const { result, callModel } = await runModelStep([
+        async ({ onGeneratePhase }) => {
+          onGeneratePhase("gateway");
+          await new Promise((resolve) => setTimeout(resolve, 16_000));
+          onGeneratePhase(phase);
+          return new Promise<void>(() => {});
+        },
+      ]);
+      expect(callModel).toHaveBeenCalledOnce();
+      expect(result).toMatchObject({
+        failed: ["model"],
+        model: {
+          passed: false,
+          elapsedMs: 17_000,
+          attempts: [{ outcome: "deadline", elapsedMs: 15_000, phase: "gateway" }],
+        },
+      });
+    },
+  );
+
   it("does not retry a bookkeeping error even if it is marked retryable", async () => {
     const { result, callModel } = await runModelStep([
       async ({ onGeneratePhase }) => {

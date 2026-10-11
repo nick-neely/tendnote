@@ -302,14 +302,16 @@ type ModelCall = (
 ) => Promise<void>;
 
 /** One attempt owns its abort signal, and also stops at the total deadline. */
-async function modelAttempt(call: ModelCall, deadline: AbortSignal): Promise<ModelAttempt> {
+async function modelAttempt(
+  call: ModelCall,
+  deadline: AbortSignal,
+  progress: { phase: ModelAttempt["phase"] },
+): Promise<ModelAttempt> {
   const started = Date.now();
   const attempt = new AbortController();
   const abort = () => attempt.abort();
   deadline.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(abort, STEP_TIMEOUT_MS);
-  // An injected call may not expose phases; never guess that it is the gateway.
-  const progress: { phase: ModelAttempt["phase"] } = { phase: "model_call" };
   try {
     await untilAborted(
       call(attempt.signal, (phase) => {
@@ -343,13 +345,19 @@ async function modelStep(call: ModelCall): Promise<ModelStepResult> {
   const started = Date.now();
   const attempts: ModelAttempt[] = [];
   let reason = "unknown";
+  let mayRetry = () => true;
   try {
     for (const [index, delayMs] of [0, ...MODEL_RETRY_DELAYS_MS].entries()) {
       if (index > 0 && !(await wait(delayMs, deadline.signal))) {
         reason = "deadline";
         break;
       }
-      const attempt = await modelAttempt(call, deadline.signal);
+      // A canceled generation may reach metering while backoff is running.
+      if (!mayRetry()) break;
+      // Injected calls may not expose phases; never guess that it is the gateway.
+      const progress: { phase: ModelAttempt["phase"] } = { phase: "model_call" };
+      const attempt = await modelAttempt(call, deadline.signal, progress);
+      mayRetry = () => canRetryModelAttempt({ ...attempt, phase: progress.phase });
       attempts.push(attempt);
       if (attempt.outcome === "passed") {
         const result: ModelStepResult = { passed: true, elapsedMs: Date.now() - started, attempts };
@@ -361,7 +369,7 @@ async function modelStep(call: ModelCall): Promise<ModelStepResult> {
         return result;
       }
       reason = attempt.outcome === "failed" ? (attempt.error ?? "unknown") : "deadline";
-      if (deadline.signal.aborted || !canRetryModelAttempt(attempt)) break;
+      if (deadline.signal.aborted || !mayRetry()) break;
     }
   } finally {
     clearTimeout(timer);
