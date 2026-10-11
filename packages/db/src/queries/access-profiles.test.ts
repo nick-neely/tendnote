@@ -21,6 +21,7 @@ function grantedProfileFixture(userId: string): AccessProfile {
     eveApprovalMode: "ask",
     retentionDeadline: null,
     paidAccessSubscriptionId: null,
+    pendingReason: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -275,6 +276,25 @@ describe("access profile queries", () => {
         stripeSubscriptionId: "sub_2",
       }),
     ).resolves.toMatchObject({ status: "granted", source: "paid_access", retentionDeadline: null });
+  });
+
+  it("clears the beta-ended reason when an ex-beta account is admitted again (#612)", async () => {
+    const exBeta: AccessProfile = {
+      ...grantedProfileFixture(FIRST_USER),
+      status: "pending",
+      source: null,
+      grantedAt: null,
+      pendingReason: "beta_ended",
+    };
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore([exBeta]));
+
+    await expect(
+      queries.grantAccess({
+        userId: FIRST_USER,
+        source: "paid_access",
+        stripeSubscriptionId: "sub_1",
+      }),
+    ).resolves.toMatchObject({ status: "granted", source: "paid_access", pendingReason: null });
   });
 
   it("durably upgrades a pending user when access is granted", async () => {

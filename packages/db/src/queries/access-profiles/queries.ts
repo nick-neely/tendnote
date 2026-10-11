@@ -364,13 +364,15 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
     try {
       updated = await store.update({
         userId: existing.userId,
-        // Admission clears a Lapsed account's retention deadline (#609).
+        // Admission clears a Lapsed account's retention deadline (#609) and
+        // an ex-beta account's reason for waiting (#612).
         patch: {
           status: "granted",
           source,
           grantedAt: new Date(),
           retentionDeadline: null,
           paidAccessSubscriptionId,
+          pendingReason: null,
         },
       });
     } catch (error) {

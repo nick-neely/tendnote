@@ -30,6 +30,7 @@ vi.mock("@tendnote/db/queries/access-profiles", async () => {
         eveApprovalMode: "ask",
         retentionDeadline: null,
         paidAccessSubscriptionId: null,
+        pendingReason: null,
         createdAt: new Date("2026-01-01T00:00:00.000Z"),
         updatedAt: new Date("2026-01-01T00:00:00.000Z"),
       },

@@ -99,4 +99,5 @@ select id from "user" where lower(email) = lower('<email>');
 ## Launch and checks
 
 - [Move to the app subdomain](app-subdomain-move.md)
+- [Open Checkout and run the Beta Sunset](beta-sunset.md)
 - [Provision the synthetic First Value check](synthetic-first-value-check.md)
