@@ -28,7 +28,24 @@ type HostedEmbeddingModelProvider = (
  */
 type MeteredAccount = string | (() => string | null);
 
-type HostedModelInput = { modelId: string; costCategory: CostCategory; account: MeteredAccount };
+/** Content-free phases of a non-streaming call, for synthetic diagnostics only. */
+export type ModelGenerationPhase = "gateway" | "usage_ledger" | "complete";
+
+type HostedModelInput = {
+  modelId: string;
+  costCategory: CostCategory;
+  account: MeteredAccount;
+  onGeneratePhase?: (phase: ModelGenerationPhase) => void;
+};
+
+function observeGeneratePhase(input: HostedModelInput, phase: ModelGenerationPhase) {
+  // Diagnostics must never interrupt generation or its metering.
+  try {
+    input.onGeneratePhase?.(phase);
+  } catch {
+    // No observer payload is safe to log.
+  }
+}
 
 /**
  * Which background work a background call is: capture processing and the rest
@@ -324,7 +341,9 @@ function meteredModel(
       wrapGenerate: async ({ doGenerate }) => {
         await refuseWhenPaused(input, backgroundNotice);
         const meter = startMeter(input, recordUsage);
+        observeGeneratePhase(input, "gateway");
         const result = await doGenerate();
+        observeGeneratePhase(input, "usage_ledger");
         await meter?.call({
           input: result.usage.inputTokens.total,
           output: result.usage.outputTokens.total,
@@ -333,6 +352,7 @@ function meteredModel(
         for (const part of result.content) {
           if (isWebSearch(part)) await meter?.webSearch();
         }
+        observeGeneratePhase(input, "complete");
         return result;
       },
       wrapStream: async ({ doStream }) => {

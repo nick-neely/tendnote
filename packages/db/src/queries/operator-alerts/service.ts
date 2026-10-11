@@ -20,20 +20,23 @@ export async function runOperatorAlertPass(input: {
   readings: readonly OperatorAlertReading[];
   /** The Spend Breaker's stage, or `null` when it could not be read. */
   breaker: SpendBreakerStage | null;
-  notify: (notice: ClaimedOperatorAlertNotice) => Promise<void>;
+  notify: (notice: ClaimedOperatorAlertNotice, observedInThisPass: boolean) => Promise<void>;
   now?: Date;
   logger?: { error?: (message: string, context?: Record<string, unknown>) => void };
 }): Promise<OperatorAlertPassResult> {
   const at = input.now ?? new Date();
+  const openedHere = new Set<string>();
   for (const reading of actionableOperatorAlertReadings(input.readings, input.breaker)) {
-    if (reading.firing) await input.store.open({ condition: reading.condition, at });
-    else await input.store.clear({ condition: reading.condition, at });
+    if (reading.firing) {
+      const id = await input.store.open({ condition: reading.condition, at });
+      if (id) openedHere.add(id);
+    } else await input.store.clear({ condition: reading.condition, at });
   }
 
   const result: OperatorAlertPassResult = { sent: 0, failed: 0 };
   for (const notice of await input.store.claimNotices({ at })) {
     try {
-      await input.notify(notice);
+      await input.notify(notice, notice.kind === "alert" && openedHere.has(notice.episodeId));
       result.sent += 1;
     } catch (error) {
       result.failed += 1;

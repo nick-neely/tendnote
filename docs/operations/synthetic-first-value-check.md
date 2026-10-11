@@ -61,11 +61,60 @@ same step. `--grounded` runs one real Eve turn, so run it once, not in a loop.
 
 The model step also logs `first_value_check.passed` when it passes. Both lines
 carry `elapsedMs` for the step and one entry per call in `attempts`. A failed
-step's `reason` is `deadline` when its 15 seconds ran out, during a call or
-while waiting to retry, and otherwise the error class. An attempt with
+step's `reason` is `deadline` when an attempt's 15 seconds or the total
+32-second budget ran out, during a call or while waiting to retry, and
+otherwise the error class. An attempt with
 `outcome: "deadline"` was cut short; one with `outcome: "failed"` keeps the
 gateway's `status`, `type`, `retryable`, and `generationId`, the gateway's own
-id for the call.
+id for the call. Each attempt also names its last observed `phase`: `gateway`
+(waiting for generation), `usage_ledger` (generation returned and usage is being
+persisted), `complete`, or `model_call` when phase instrumentation is unavailable.
+A deadline alone is not evidence of a provider outage.
+
+### Timeout confirmation and alert policy
+
+The first call keeps its 15-second allowance; successful production samples
+have taken over 12 seconds. A timed-out generation can be confirmed with a fresh
+attempt after two seconds, within a **32-second total model-step deadline**.
+Fast gateway errors explicitly marked retryable retain the two-/four-second
+backoff. There are **at most three calls**, each requesting at most 16 output
+tokens, with SDK retries disabled. A timeout or error after generation has
+returned (usage persistence or completion) is **not retried**. We do not buy
+another generation to conceal a bookkeeping failure. Abandoned calls receive
+abort signals; if a dependency ignores cancellation it can outlive the local
+wait, but cannot trigger further retries or alter the recorded result.
+
+A confirmation success gives a passing model reading, with the original failed
+attempt retained in `first_value_check.passed.attempts`. Count passes with failed
+or deadline attempts as intermittent degradation when reviewing logs; do not
+count only the final `first_value_check.failed` records. All attempts failing
+still raises the alert in this cron pass. Non-retryable failures and other cheap
+step failures still alert without waiting for another cron sample. This adds at
+most 17 seconds to the model-step budget; hard failures are still detected in
+one scheduled pass (up to ten minutes until the next pass, plus its execution).
+The cron's existing 300-second limit covers all work, not just this probe; other
+unbounded dependencies may still prevent a completed reading.
+
+The next completed clean cheap-path sample clears its episode. Missing, off, or
+failed readings hold it. The grounded answer remains independent and daily.
+Sustained failures send one alert, then one recovery; a new failed episode alerts
+again. There is no cross-pass debounce that could erase alternating failures.
+
+First Value emails identify failed steps, model attempt durations and phases for
+an episode opened by that pass. Retried deliveries or a concurrently claimed
+notice do not substitute another pass's evidence: they explicitly say original
+details are unavailable and provide the first sample timestamp for log lookup.
+Recovery includes the episode's stored failing/passing sample times, even when
+its delivery is delayed. Those times do **not** measure a continuous outage, and
+neither notice claims measured customer impact. No error messages, account data,
+provider payloads, or credentials enter the email.
+
+After an authorized deployment, verify passively through normal cron logs:
+compare the latency distribution and phase on deadline attempts; count recovered
+retries as well as terminal failures; confirm sign-outs stay successful; and
+check alert/recovery timestamps and delivery failures. A failed push destination
+with successful email is a separate delivery problem, not a model-step failure.
+Do not run extra paid probes merely to reproduce a rare timeout.
 
 A pass that could not sign out logs `first_value_check.cleanup_failed` with an
 HTTP status (`http_415`) or an error class (`TimeoutError`). It does not change

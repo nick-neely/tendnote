@@ -5,7 +5,7 @@ import {
   type RecoveryJournalRecord,
 } from "@tendnote/domain";
 import { ForbiddenError } from "eve/channels/auth";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAdmissionHarness } from "../access/admission-harness";
 import { createLegalHoldsFake } from "../access/legal-holds-fake";
 import { suspendAccount } from "../access/temporary-suspension";
@@ -469,6 +469,7 @@ describe("reading a refundable invoice", () => {
 });
 
 describe("the operator CLI's commands", () => {
+  afterEach(() => vi.useRealTimers());
   it("refunds an invoice, in full or by an amount", async () => {
     const op = await operator();
 
@@ -521,6 +522,9 @@ describe("the operator CLI's commands", () => {
   });
 
   it("extends dunning on a failed invoice and raises a ceiling, neither touching Stripe (#633)", async () => {
+    // The fixture's extension expires October 11; its clock must not be today's.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
     const op = await operator();
     const failed = { invoiceId: "in_renewal", since: new Date("2026-10-01T12:00:00.000Z") };
     await op.deps.subscriptions.recordSubscription({

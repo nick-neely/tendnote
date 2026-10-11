@@ -1,11 +1,15 @@
 import type { OperatorAlertCondition, OperatorAlertNotice } from "@tendnote/domain/operator-alerts";
 
 /** A notice claimed for sending, named by the episode it belongs to. */
-export type ClaimedOperatorAlertNotice = OperatorAlertNotice & { episodeId: string };
+export type ClaimedOperatorAlertNotice = OperatorAlertNotice & {
+  episodeId: string;
+  openedAt: Date;
+  clearedAt: Date | null;
+};
 
 export type OperatorAlertStore = {
-  /** Opens an episode for the condition, unless one is already open. */
-  open: (input: { condition: OperatorAlertCondition; at: Date }) => Promise<void>;
+  /** Returns the new episode id, or null if an episode was already open. */
+  open: (input: { condition: OperatorAlertCondition; at: Date }) => Promise<string | null>;
   /** Clears the condition's open episode, if there is one. */
   clear: (input: { condition: OperatorAlertCondition; at: Date }) => Promise<void>;
   /**

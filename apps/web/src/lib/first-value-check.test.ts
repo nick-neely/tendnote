@@ -10,14 +10,22 @@ import { MARKETING_URL } from "./public-links";
 
 /** What the default call's model does: it never reaches the gateway or pays. */
 const gatewayModel = vi.hoisted(() => ({
-  doGenerate: async (): Promise<never> => {
+  doGenerate: async (): Promise<Awaited<ReturnType<MockLanguageModelV4["doGenerate"]>>> => {
     throw new Error("no model call expected");
   },
 }));
 
-vi.mock("@tendnote/db/queries/model-calls", () => ({
-  hostedModel: () => new MockLanguageModelV4({ doGenerate: () => gatewayModel.doGenerate() }),
-}));
+const usageLedger = vi.hoisted(() => ({ recordUsage: async (): Promise<void> => {} }));
+vi.mock("@tendnote/db/queries/model-calls", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tendnote/db/queries/model-calls")>();
+  return {
+    hostedModel: (input: Parameters<typeof actual.hostedModel>[0]) =>
+      actual.hostedModel(input, {
+        provider: () => new MockLanguageModelV4({ doGenerate: () => gatewayModel.doGenerate() }),
+        recordUsage: () => usageLedger.recordUsage(),
+      }),
+  };
+});
 
 const APP = "https://app.example.test";
 const EMAIL = "synthetic-check@example.test";
@@ -101,7 +109,7 @@ describe("checkFirstValuePath", () => {
         TENDNOTE_SELF_HOSTED_BOOTSTRAP_OWNER_EMAIL: "owner@example.test",
       },
     ]) {
-      await expect(checkFirstValuePath({ env, fetch })).resolves.toEqual({ status: "off" });
+      await expect(checkFirstValuePath({ env, fetch })).resolves.toMatchObject({ status: "off" });
     }
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -110,7 +118,7 @@ describe("checkFirstValuePath", () => {
     const { run, network, callModel, askEve, priceIsActive } = check({
       claimGroundedAnswer: async () => false,
     });
-    await expect(run).resolves.toEqual({ status: "ran", failed: [], groundedAnswer: null });
+    await expect(run).resolves.toMatchObject({ status: "ran", failed: [], groundedAnswer: null });
 
     expect(priceIsActive.mock.calls.map(([input]) => input)).toEqual([
       { secretKey: "sk_test_synthetic", priceId: "price_monthly" },
@@ -128,6 +136,7 @@ describe("checkFirstValuePath", () => {
       accountId: "synthetic-user",
       modelId: "google/eve-model",
       abortSignal: expect.any(AbortSignal),
+      onGeneratePhase: expect.any(Function),
     });
     expect(askEve).not.toHaveBeenCalled();
     expect(network.urls().at(-1)).toBe(`${APP}/api/auth/sign-out`);
@@ -176,7 +185,7 @@ describe("checkFirstValuePath", () => {
       }) as unknown as typeof globalThis.fetch;
       const { run } = check({ fetch, claimGroundedAnswer: async () => true });
 
-      await expect(run).resolves.toEqual({ status: "ran", failed: [], groundedAnswer: true });
+      await expect(run).resolves.toMatchObject({ status: "ran", failed: [], groundedAnswer: true });
       expect(error.mock.calls).toEqual([["first_value_check.cleanup_failed", { reason }]]);
       expect(JSON.stringify(error.mock.calls)).not.toMatch(
         /abc|xyz|synthetic-user|synthetic-check|secret-password|UNSUPPORTED_MEDIA_TYPE/,
@@ -194,7 +203,7 @@ describe("checkFirstValuePath", () => {
       }),
     });
 
-    await expect(run).resolves.toEqual({ status: "ran", failed: [], groundedAnswer: false });
+    await expect(run).resolves.toMatchObject({ status: "ran", failed: [], groundedAnswer: false });
     expect(network.urls().at(-1)).toBe(`${APP}/api/auth/sign-out`);
     expect(error.mock.calls).toEqual([
       ["first_value_check.failed", { step: "grounded_answer", reason: "Error" }],
@@ -204,7 +213,7 @@ describe("checkFirstValuePath", () => {
 
   it("asks Eve the fixture question when told to, and passes only on the grounded answer", async () => {
     const grounded = check({ claimGroundedAnswer: async () => true });
-    await expect(grounded.run).resolves.toEqual({
+    await expect(grounded.run).resolves.toMatchObject({
       status: "ran",
       failed: [],
       groundedAnswer: true,
@@ -220,7 +229,7 @@ describe("checkFirstValuePath", () => {
       claimGroundedAnswer: async () => true,
       askEve: vi.fn(async () => "I don't have anything saved about Marlow."),
     });
-    await expect(ungrounded.run).resolves.toEqual({
+    await expect(ungrounded.run).resolves.toMatchObject({
       status: "ran",
       failed: [],
       groundedAnswer: false,
@@ -237,7 +246,7 @@ describe("checkFirstValuePath", () => {
         throw new TypeError("gateway unavailable");
       }),
     });
-    await expect(run).resolves.toEqual({
+    await expect(run).resolves.toMatchObject({
       status: "ran",
       failed: ["landing", "checkout", "model"],
       groundedAnswer: null,
@@ -254,6 +263,7 @@ describe("checkFirstValuePath", () => {
           attempts: [
             {
               outcome: "failed",
+              phase: "model_call",
               elapsedMs: expect.any(Number),
               error: "TypeError",
               retryable: false,
@@ -280,7 +290,7 @@ describe("checkFirstValuePath", () => {
       claimGroundedAnswer,
       network: { [`${APP}/api/auth/sign-in/email`]: { status: 401 } },
     });
-    await expect(run).resolves.toEqual({
+    await expect(run).resolves.toMatchObject({
       status: "ran",
       failed: ["sign_in"],
       groundedAnswer: null,
@@ -298,7 +308,7 @@ describe("checkFirstValuePath", () => {
       claimGroundedAnswer,
       network: { [`${APP}/eve/v1/info`]: { status: 403 } },
     });
-    await expect(run).resolves.toEqual({
+    await expect(run).resolves.toMatchObject({
       status: "ran",
       failed: ["admission", "model"],
       groundedAnswer: null,
@@ -383,16 +393,26 @@ describe("the model step", () => {
 
   /** Runs the check under fake timers until it settles, with every log captured. */
   async function runModelStep(
-    attempts: Array<(input: { abortSignal: AbortSignal }) => Promise<void>>,
+    attempts: Array<
+      (input: {
+        abortSignal: AbortSignal;
+        onGeneratePhase: (phase: "gateway" | "usage_ledger" | "complete") => void;
+      }) => Promise<void>
+    >,
   ) {
     vi.useFakeTimers();
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
-    const callModel = vi.fn(async (input: { abortSignal: AbortSignal }) => {
-      const attempt = attempts[callModel.mock.calls.length - 1];
-      if (!attempt) throw new Error("called more often than the test allows");
-      return attempt(input);
-    });
+    const callModel = vi.fn(
+      async (input: {
+        abortSignal: AbortSignal;
+        onGeneratePhase: (phase: "gateway" | "usage_ledger" | "complete") => void;
+      }) => {
+        const attempt = attempts[callModel.mock.calls.length - 1];
+        if (!attempt) throw new Error("called more often than the test allows");
+        return attempt(input);
+      },
+    );
     const { run } = check({ callModel });
     await vi.runAllTimersAsync();
     const result = await run;
@@ -409,57 +429,112 @@ describe("the model step", () => {
     expect(modelLogs).toEqual([
       [
         "first_value_check.passed",
-        { step: "model", elapsedMs: 1_200, attempts: [{ outcome: "passed", elapsedMs: 1_200 }] },
-      ],
-    ]);
-  });
-
-  it("names a hung call as the deadline, not the masked gateway error", async () => {
-    const { result, callModel, modelLogs } = await runModelStep([hangs]);
-    expect(result).toMatchObject({ failed: ["model"] });
-    expect(callModel).toHaveBeenCalledOnce();
-    expect(modelLogs).toEqual([
-      [
-        "first_value_check.failed",
         {
           step: "model",
-          reason: "deadline",
-          elapsedMs: 15_000,
-          attempts: [{ outcome: "deadline", elapsedMs: 15_000 }],
+          elapsedMs: 1_200,
+          attempts: [{ outcome: "passed", phase: "model_call", elapsedMs: 1_200 }],
         },
       ],
     ]);
   });
 
-  it("keeps an upstream failure when the deadline fires during the retry's wait", async () => {
-    const { result, callModel, modelLogs } = await runModelStep([
-      settlesAfter(14_000, () => {
-        throw gatewayError(UNAVAILABLE);
-      }),
-    ]);
-    expect(result).toMatchObject({ failed: ["model"] });
-    expect(callModel).toHaveBeenCalledOnce();
+  it("confirms a hung call in the same pass and retains both deadline attempts", async () => {
+    const { result, callModel, modelLogs } = await runModelStep([hangs, hangs]);
+    expect(result).toMatchObject({
+      failed: ["model"],
+      model: { passed: false, reason: "deadline" },
+    });
+    expect(callModel).toHaveBeenCalledTimes(2);
+    expect(callModel.mock.calls[0]?.[0].abortSignal).not.toBe(
+      callModel.mock.calls[1]?.[0].abortSignal,
+    );
+    expect(callModel.mock.calls.every(([input]) => input.abortSignal.aborted)).toBe(true);
     expect(modelLogs).toEqual([
       [
         "first_value_check.failed",
         {
           step: "model",
           reason: "deadline",
-          elapsedMs: 15_000,
+          elapsedMs: 32_000,
           attempts: [
-            {
-              outcome: "failed",
-              elapsedMs: 14_000,
-              error: "GatewayInternalServerError",
-              status: 503,
-              type: "internal_server_error",
-              retryable: true,
-              generationId: "gen_01K9Z3",
-            },
+            { outcome: "deadline", phase: "model_call", elapsedMs: 15_000 },
+            { outcome: "deadline", phase: "model_call", elapsedMs: 15_000 },
           ],
         },
       ],
     ]);
+  });
+
+  it("keeps failed attempts when the total deadline cuts off backoff", async () => {
+    const unavailable = settlesAfter(14_000, () => {
+      throw gatewayError(UNAVAILABLE);
+    });
+    const { result, callModel, modelLogs } = await runModelStep([unavailable, unavailable]);
+    expect(result).toMatchObject({ failed: ["model"] });
+    expect(callModel).toHaveBeenCalledTimes(2);
+    expect(modelLogs[0]?.[1]).toMatchObject({
+      reason: "deadline",
+      elapsedMs: 32_000,
+      attempts: [
+        { outcome: "failed", status: 503, elapsedMs: 14_000, generationId: "gen_01K9Z3" },
+        { outcome: "failed", status: 503, elapsedMs: 14_000, generationId: "gen_01K9Z3" },
+      ],
+    });
+  });
+
+  it("keeps an isolated timeout visible when confirmation succeeds", async () => {
+    const { result, callModel, modelLogs } = await runModelStep([
+      hangs,
+      settlesAfter(800, () => {}),
+    ]);
+    expect(result).toMatchObject({ failed: [], model: { passed: true, elapsedMs: 17_800 } });
+    expect(callModel).toHaveBeenCalledTimes(2);
+    expect(modelLogs).toEqual([
+      [
+        "first_value_check.passed",
+        {
+          step: "model",
+          elapsedMs: 17_800,
+          attempts: [
+            { outcome: "deadline", phase: "model_call", elapsedMs: 15_000 },
+            { outcome: "passed", phase: "model_call", elapsedMs: 800 },
+          ],
+        },
+      ],
+    ]);
+  });
+
+  it("allows the observed 12-second successful calls without a retry", async () => {
+    const { result, callModel } = await runModelStep([settlesAfter(12_046, () => {})]);
+    expect(result).toMatchObject({ failed: [], model: { elapsedMs: 12_046 } });
+    expect(callModel).toHaveBeenCalledOnce();
+  });
+
+  it("does not repeat generation when usage persistence reaches its deadline", async () => {
+    const { result, callModel, modelLogs } = await runModelStep([
+      async ({ abortSignal, onGeneratePhase }) => {
+        onGeneratePhase("usage_ledger");
+        return hangs({ abortSignal });
+      },
+    ]);
+    expect(result).toMatchObject({ failed: ["model"] });
+    expect(callModel).toHaveBeenCalledOnce();
+    expect(modelLogs[0]?.[1]).toMatchObject({
+      reason: "deadline",
+      elapsedMs: 15_000,
+      attempts: [{ outcome: "deadline", phase: "usage_ledger" }],
+    });
+  });
+
+  it("does not retry a bookkeeping error even if it is marked retryable", async () => {
+    const { result, callModel } = await runModelStep([
+      async ({ onGeneratePhase }) => {
+        onGeneratePhase("usage_ledger");
+        throw gatewayError(UNAVAILABLE);
+      },
+    ]);
+    expect(result).toMatchObject({ failed: ["model"] });
+    expect(callModel).toHaveBeenCalledOnce();
   });
 
   it("does not retry an error the gateway marks permanent", async () => {
@@ -478,7 +553,7 @@ describe("the model step", () => {
     expect(modelLogs[0]?.[1]).toMatchObject({
       reason: "GatewayAuthenticationError",
       elapsedMs: 0,
-      attempts: [{ outcome: "failed", status: 401, retryable: false }],
+      attempts: [{ outcome: "failed", phase: "model_call", status: 401, retryable: false }],
     });
   });
 
@@ -498,8 +573,8 @@ describe("the model step", () => {
           step: "model",
           elapsedMs: 2_800,
           attempts: [
-            expect.objectContaining({ outcome: "failed", status: 503 }),
-            { outcome: "passed", elapsedMs: 800 },
+            expect.objectContaining({ outcome: "failed", phase: "model_call", status: 503 }),
+            { outcome: "passed", phase: "model_call", elapsedMs: 800 },
           ],
         },
       ],
@@ -524,16 +599,18 @@ describe("the model step", () => {
     });
   });
 
-  it("gives up on a call that ignores the deadline", async () => {
-    const { result, callModel, modelLogs } = await runModelStep([() => new Promise(() => {})]);
+  it("bounds work even when both calls ignore cancellation", async () => {
+    const ignoreSignal = () => new Promise<void>(() => {});
+    const { result, callModel, modelLogs } = await runModelStep([ignoreSignal, ignoreSignal]);
     expect(result).toMatchObject({ failed: ["model"] });
-    expect(callModel).toHaveBeenCalledOnce();
-    expect(modelLogs[0]?.[1]).toEqual({
-      step: "model",
-      reason: "deadline",
-      elapsedMs: 15_000,
-      attempts: [{ outcome: "deadline", elapsedMs: 15_000 }],
-    });
+    expect(callModel).toHaveBeenCalledTimes(2);
+    expect(modelLogs[0]?.[1]).toMatchObject({ reason: "deadline", elapsedMs: 32_000 });
+  });
+
+  it("does not mistake a late abandoned success for confirmation", async () => {
+    const { result, callModel } = await runModelStep([settlesAfter(20_000, () => {}), hangs]);
+    expect(result).toMatchObject({ failed: ["model"], model: { elapsedMs: 32_000 } });
+    expect(callModel).toHaveBeenCalledTimes(2);
   });
 
   it("makes one model call per attempt, leaving retries to the step", async () => {
@@ -563,6 +640,44 @@ describe("the model step", () => {
     );
   });
 
+  it("attributes a real wrapped generation's metering timeout without another paid call", async () => {
+    vi.useFakeTimers();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const doGenerate = vi.spyOn(gatewayModel, "doGenerate").mockResolvedValue({
+      content: [{ type: "text", text: "OK" }],
+      finishReason: { unified: "stop", raw: "stop" },
+      usage: {
+        inputTokens: { total: 3, noCache: 3, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+      providerMetadata: { gateway: { cost: "0.000001" } },
+      warnings: [],
+    });
+    const persist = vi
+      .spyOn(usageLedger, "recordUsage")
+      .mockImplementation(() => new Promise(() => {}));
+    const run = checkFirstValuePath({
+      env: ENV,
+      fetch: fakeNetwork().fetch,
+      priceIsActive: async () => true,
+    });
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({
+      failed: ["model"],
+      model: {
+        passed: false,
+        elapsedMs: 15_000,
+        attempts: [{ outcome: "deadline", phase: "usage_ledger" }],
+      },
+    });
+    expect(doGenerate).toHaveBeenCalledOnce();
+    expect(persist).toHaveBeenCalledOnce();
+    expect(error).toHaveBeenCalledWith(
+      "first_value_check.failed",
+      expect.objectContaining({ reason: "deadline" }),
+    );
+  });
+
   it("logs only allowlisted fields, dropping anything that is not a short token", async () => {
     const { modelLogs } = await runModelStep([
       async () => {
@@ -580,7 +695,7 @@ describe("the model step", () => {
       step: "model",
       reason: "unknown",
       elapsedMs: 0,
-      attempts: [{ outcome: "failed", elapsedMs: 0, retryable: false }],
+      attempts: [{ outcome: "failed", phase: "model_call", elapsedMs: 0, retryable: false }],
     });
   });
 });

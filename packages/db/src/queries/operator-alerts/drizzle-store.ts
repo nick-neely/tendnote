@@ -8,10 +8,12 @@ export function createDrizzleOperatorAlertStore(): OperatorAlertStore {
     async open({ condition, at }) {
       // The partial unique index on open episodes makes this a no-op while one
       // is open, however many passes or readers race to open it.
-      await getDb()
+      const opened = await getDb()
         .insert(operatorAlerts)
         .values({ condition, openedAt: at })
-        .onConflictDoNothing();
+        .onConflictDoNothing()
+        .returning({ id: operatorAlerts.id });
+      return opened[0]?.id ?? null;
     },
 
     async clear({ condition, at }) {
@@ -22,7 +24,12 @@ export function createDrizzleOperatorAlertStore(): OperatorAlertStore {
     },
 
     async claimNotices({ at }) {
-      const columns = { episodeId: operatorAlerts.id, condition: operatorAlerts.condition };
+      const columns = {
+        episodeId: operatorAlerts.id,
+        condition: operatorAlerts.condition,
+        openedAt: operatorAlerts.openedAt,
+        clearedAt: operatorAlerts.clearedAt,
+      };
       const recoveries = await getDb()
         .update(operatorAlerts)
         .set({ recoveredAt: at })

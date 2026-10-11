@@ -771,3 +771,48 @@ describe("web searches", () => {
     expect(eve.ledger.entries.map((entry) => entry.costCategory)).toEqual(["interactive"]);
   });
 });
+
+describe("non-streaming model phase diagnostics", () => {
+  it("reports generation then usage persistence without exposing content", async () => {
+    const fake = fakeGatewayProvider();
+    const phases: string[] = [];
+    await generateText({
+      model: hostedModel(
+        {
+          modelId: "google/gemini-3.7-flash",
+          costCategory: "interactive",
+          account: "user-1",
+          onGeneratePhase: (phase) => phases.push(phase),
+        },
+        {
+          provider: fake.provider,
+          recordUsage: async () => {
+            expect(phases).toEqual(["gateway", "usage_ledger"]);
+          },
+        },
+      ),
+      prompt: "hi",
+    });
+    expect(phases).toEqual(["gateway", "usage_ledger", "complete"]);
+  });
+
+  it("does not let a broken observer prevent generation or metering", async () => {
+    const fake = fakeGatewayProvider();
+    const recordUsage = vi.fn(ignoreUsage);
+    await generateText({
+      model: hostedModel(
+        {
+          modelId: "google/gemini-3.7-flash",
+          costCategory: "interactive",
+          account: "user-1",
+          onGeneratePhase: () => {
+            throw new Error("private observer failure");
+          },
+        },
+        { provider: fake.provider, recordUsage },
+      ),
+      prompt: "hi",
+    });
+    expect(recordUsage).toHaveBeenCalledOnce();
+  });
+});
