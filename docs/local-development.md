@@ -4,7 +4,7 @@ Detailed setup for running Tendnote locally. For a high-level overview, start wi
 
 ## Prerequisites
 
-- Node.js 24 (`volta` pins `24.18.0`; CI uses Node 24)
+- Node.js 24 (`volta` pins `24.22.1`; CI uses `>=24.22.1 <25`)
 - pnpm 10.32.1 (pinned by `packageManager`; `corepack enable` picks it up automatically)
 - Docker (for local Postgres and Redis)
 

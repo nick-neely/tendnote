@@ -377,11 +377,15 @@ describe("extraction job suggested-memory creation", () => {
     const mark = await createPerson("Mark");
     const sourceRecord = await captureRecord({ retainedContent: "Mark may be moving." });
     await link(sourceRecord.id, mark.id);
-    const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+    const now = new Date("2026-10-20T12:00:00Z");
+    const { job } = await processor.enqueueExtractionJob({
+      sourceRecordId: sourceRecord.id,
+      runAfter: now,
+    });
 
     const deferred = await processor.processExtractionJob({
       jobId: job.id,
-      now: new Date("2026-10-20T12:00:00Z"),
+      now,
     });
 
     expect(deferred.outcome).toBe("deferred");
@@ -428,11 +432,15 @@ describe("extraction job suggested-memory creation", () => {
     const mark = await createPerson("Mark");
     const sourceRecord = await captureRecord({ retainedContent: "Mark may be moving." });
     await link(sourceRecord.id, mark.id);
-    const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+    const now = new Date("2026-10-20T12:00:00Z");
+    const { job } = await processor.enqueueExtractionJob({
+      sourceRecordId: sourceRecord.id,
+      runAfter: now,
+    });
 
     const deferred = await processor.processExtractionJob({
       jobId: job.id,
-      now: new Date("2026-10-20T12:00:00Z"),
+      now,
     });
 
     expect(deferred.outcome).toBe("deferred");
