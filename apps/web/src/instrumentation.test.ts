@@ -10,6 +10,7 @@ afterEach(() => {
   delete runtime[runtimeVersionLogged];
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+  vi.doUnmock("@/lib/diagnostics/node-runtime-version");
   vi.resetModules();
 });
 
@@ -75,6 +76,16 @@ describe("Node runtime startup evidence", () => {
     await expect(register()).resolves.toBeUndefined();
     await register();
     expect(log).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps startup available if the diagnostic module cannot load or initialize", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    vi.doMock("@/lib/diagnostics/node-runtime-version", () => {
+      throw new Error("diagnostic module unavailable");
+    });
+    const { register } = await import("./instrumentation");
+    await expect(register()).resolves.toBeUndefined();
+    expect(runtime[runtimeVersionLogged]).toBeUndefined();
   });
 
   it("leaves the existing server error reporter behind its Node runtime guard", async () => {
