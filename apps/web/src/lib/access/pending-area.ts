@@ -24,6 +24,8 @@ export type PendingAreaFacts = {
    * never had one.
    */
   guestStanding: GuestStanding | null;
+  /** The Beta Sunset ended this account's beta grant (#612). */
+  betaEnded: boolean;
 };
 
 export type PendingAreaView = {
@@ -32,6 +34,7 @@ export type PendingAreaView = {
     | "awaiting_access"
     | "never_subscribed"
     | "checkout_unfinished"
+    | "beta_ended"
     | "household_inactive"
     | "membership_ended";
   title: string;
@@ -76,6 +79,20 @@ export function pendingAreaView(facts: PendingAreaFacts): PendingAreaView {
       line: facts.checkoutOpen
         ? "Your subscription hasn't started yet. Just paid? You'll be let in as soon as it's confirmed."
         : "Just paid? You'll be let in as soon as it's confirmed. Otherwise, subscribing isn't available right now.",
+      subscribe: facts.checkoutOpen,
+      exportData,
+    };
+  }
+
+  // An ex-beta account had the product and still has everything in it; Unpaid,
+  // so no retention date is shown because none applies (#612).
+  if (facts.betaEnded) {
+    return {
+      state: "beta_ended",
+      title: "The private beta has ended",
+      line: facts.checkoutOpen
+        ? "Your account and everything in it are intact. Subscribe to pick up where you left off."
+        : "Your account and everything in it are intact. Subscribing isn't available right now.",
       subscribe: facts.checkoutOpen,
       exportData,
     };

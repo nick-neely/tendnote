@@ -26,6 +26,7 @@ function admittedState(sourceLabelSource: "bootstrap" | "beta_flag" | "paid_acce
       eveApprovalMode: "ask",
       retentionDeadline: null,
       paidAccessSubscriptionId: null,
+      pendingReason: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     },

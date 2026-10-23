@@ -33,6 +33,7 @@ export type AccessProfilePatch = Partial<
     | "eveApprovalMode"
     | "retentionDeadline"
     | "paidAccessSubscriptionId"
+    | "pendingReason"
   >
 >;
 

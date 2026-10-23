@@ -4,6 +4,7 @@ import {
   ownerHasExportableData,
 } from "@tendnote/db/queries/owner-data-export";
 import { getStripeCustomerId } from "@tendnote/db/queries/stripe-customers";
+import type { AccessPendingReason } from "@tendnote/domain";
 import { connection } from "next/server";
 import { AccountIdentity } from "@/components/account/account-identity";
 import { DeleteAccountButton } from "@/components/account/delete-account-button";
@@ -17,8 +18,11 @@ import { requirePendingAccess } from "@/lib/access/pending-access";
 import { pendingAreaView } from "@/lib/access/pending-area";
 import { isCheckoutOpen } from "@/lib/billing/checkout-availability";
 
-/** Checkout state, owned data, and any past guest membership, read only from Tendnote's own records. */
-async function readPendingAreaFacts(user: { id: string; email: string }) {
+/** Checkout state, owned data, and any past guest membership or beta grant, read only from Tendnote's own records. */
+async function readPendingAreaFacts(
+  user: { id: string; email: string },
+  pendingReason: AccessPendingReason | null,
+) {
   const [checkoutOpen, startedCheckout, ownsExportableData, guestStanding] = await Promise.all([
     isCheckoutOpen(user),
     getStripeCustomerId({ userId: user.id }).then(Boolean),
@@ -27,7 +31,13 @@ async function readPendingAreaFacts(user: { id: string; email: string }) {
   ]);
   const exportJob = ownsExportableData ? await getLatestOwnerDataExportJob(user.id) : null;
   return {
-    facts: { checkoutOpen, startedCheckout, ownsExportableData, guestStanding },
+    facts: {
+      checkoutOpen,
+      startedCheckout,
+      ownsExportableData,
+      guestStanding,
+      betaEnded: pendingReason === "beta_ended",
+    },
     exportJob,
   };
 }
@@ -43,7 +53,10 @@ export default async function PendingPage() {
   const access = await requirePendingAccess();
 
   const { user } = access;
-  const { facts, exportJob } = await readPendingAreaFacts(user);
+  const { facts, exportJob } = await readPendingAreaFacts(
+    user,
+    access.decision.profile?.pendingReason ?? null,
+  );
   const view = pendingAreaView(facts);
 
   return (
