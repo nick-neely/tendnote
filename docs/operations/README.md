@@ -43,6 +43,8 @@ the runbook is done.
   status page and the in-app banner.
 - [Restore](restore.md): restore the whole service to a point in the Backup
   Window.
+- [Node runtime evidence](node-runtime-evidence.md): locate temporary startup
+  diagnostics for the patch actually running each service, then remove them.
 
 ### Credential rotation
 

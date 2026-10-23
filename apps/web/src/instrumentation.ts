@@ -1,5 +1,16 @@
 import type { Instrumentation } from "next";
 
+/** One server-only startup record per runtime, including cron and billing functions. */
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  try {
+    const { logNodeRuntimeVersion } = await import("@/lib/diagnostics/node-runtime-version");
+    logNodeRuntimeVersion();
+  } catch {
+    // Temporary diagnostics must not block startup if their module cannot load.
+  }
+}
+
 /**
  * Server errors Next catches go to GlitchTip through the one allowed
  * diagnostic envelope (#641), when this deployment and the request are
