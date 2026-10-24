@@ -191,6 +191,17 @@ pnpm format:check   # formatter check only
 pnpm format         # formatter writes only
 ```
 
+### Synthetic push DNS in tests
+
+Reminder lifecycle tests use `createReminderTestService` to inject the DNS answer
+for the synthetic `push.example.test` service. They still run the production URL,
+allowlist, and address policy. They never rely on the host machine resolving a
+reserved `.test` name. DNS failure, rebinding, private-address and timeout cases
+remain covered by the explicit lookups in `push-endpoint.test.ts`. This avoids
+resolver-specific test delays in cloud environments without changing production
+DNS, network settings, assertions, or test timeouts. No `RES_OPTIONS` workaround
+is required for these tests.
+
 ### Fallow
 
 `pnpm verify` does **not** run Fallow, but every code pull request does, so a clean local `verify` can still fail the PR gate. The `Test and Fallow` job runs `pnpm coverage:ci` (V8 coverage, which Fallow consumes), then `pnpm fallow:coverage:check`, then `pnpm fallow:ci`. To see what that gate sees before pushing:

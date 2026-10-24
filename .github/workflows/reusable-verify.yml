@@ -112,6 +112,11 @@ jobs:
       - name: Replay migrations
         run: pnpm db:migrate
 
+      - name: Check First Value durable alert transitions
+        env:
+          TENDNOTE_FIRST_VALUE_TEST_DATABASE_URL: postgresql://tendnote:tendnote@localhost:5432/tendnote_first_value_test
+        run: pnpm --filter @tendnote/db exec vitest run src/queries/operator-alerts/first-value.postgres.test.ts
+
   quality:
     name: Quality
     if: inputs.run_quality

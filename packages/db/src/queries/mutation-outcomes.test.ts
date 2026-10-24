@@ -9,7 +9,7 @@ import {
 import { createInMemoryMemoryStore, createMemoryCapture, memoryMutationOutcome } from "./memories";
 import { accountMutationOutcome, reminderMutationOutcome } from "./reminders";
 import { createInMemoryReminderStore } from "./reminders/in-memory-store";
-import { createReminderService } from "./reminders/service";
+import { createReminderTestService as createReminderService } from "./reminders/test-fixtures";
 
 const OWNER = "owner-1";
 const memorySource = readFileSync(join(import.meta.dirname, "memories.ts"), "utf8");

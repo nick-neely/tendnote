@@ -1,6 +1,9 @@
-import type { OperatorAlertCondition } from "@tendnote/domain/operator-alerts";
+import type {
+  FirstValueAlertContext,
+  OperatorAlertCondition,
+} from "@tendnote/domain/operator-alerts";
 import { sql } from "drizzle-orm";
-import { pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * One episode of an operator alert condition (#648): from when it started
@@ -19,6 +22,7 @@ export const operatorAlerts = pgTable(
     clearedAt: timestamp("cleared_at", { withTimezone: true }),
     /** When the recovery notice was claimed for sending, likewise. */
     recoveredAt: timestamp("recovered_at", { withTimezone: true }),
+    firstValueContext: jsonb("first_value_context").$type<FirstValueAlertContext>(),
   },
   (table) => [
     uniqueIndex("operator_alerts_open_condition_idx")

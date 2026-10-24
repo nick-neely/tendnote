@@ -19,6 +19,8 @@ export type OperatorAlertMessage = {
   body: string;
   /** An alert is urgent; a recovery notice or a new support email is not. */
   urgent: boolean;
+  /** Degradation summaries use the push service's low-priority delivery. */
+  priority?: "low";
   key: string;
 };
 
@@ -76,7 +78,7 @@ export function createOperatorAlertSender(input: {
           body: message.body,
           headers: {
             Title: message.title,
-            Priority: message.urgent ? "high" : "default",
+            Priority: message.priority ?? (message.urgent ? "high" : "default"),
             ...(push.token ? { Authorization: `Bearer ${push.token}` } : {}),
           },
           signal: AbortSignal.timeout(PUSH_TIMEOUT_MS),

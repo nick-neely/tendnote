@@ -70,6 +70,13 @@ function firstValueBody(notice: ClaimedOperatorAlertNotice, sample: Sample): str
       "A later synthetic sample passed. These samples do not measure continuous outage duration or establish customer impact.",
     );
   } else {
+    if (notice.firstValueContext) {
+      const context = notice.firstValueContext;
+      lines.push(
+        `Observed scheduled sample: ${context.sampledAt}.`,
+        `Recent scheduled samples: ${context.samples}; transient model failures: ${context.failed}; retry-recovered checks: ${context.retried}. Attempts within a sample are not independent checks.`,
+      );
+    }
     lines.push(...currentEvidence(sample));
     lines.push(
       "Customer impact is unverified. The check samples a synthetic account, not customer traffic. Inspect first_value_check.failed and first_value_check.passed in the logs.",
@@ -84,9 +91,18 @@ export function noticeMessage(
 ): OperatorAlertMessage {
   const message = operatorAlertMessage(notice);
   if (notice.condition === "first_value_path") message.body = firstValueBody(notice, sample);
+  if (notice.condition === "first_value_degradation" && notice.firstValueContext) {
+    const context = notice.firstValueContext;
+    message.body = [
+      `Scheduled sample: ${context.sampledAt}.`,
+      `In the last six scheduled slots: ${context.samples} completed readings, ${context.failed} failed model checks, ${context.retried} retry-recovered checks.`,
+      "This low-priority summary is limited to once per six hours. Individual attempts are not independent checks. Customer impact is unverified. Inspect first_value_check.passed and first_value_check.failed.",
+    ].join("\n");
+  }
   return {
     ...message,
-    urgent: notice.kind === "alert",
+    urgent: notice.kind === "alert" && notice.condition !== "first_value_degradation",
+    ...(notice.condition === "first_value_degradation" ? { priority: "low" as const } : {}),
     key: `operator-alert:${notice.episodeId}:${notice.kind}`,
   };
 }

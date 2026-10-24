@@ -102,4 +102,23 @@ describe("First Value alert messages", () => {
       ),
     ).toMatchObject({ title: "Spend Breaker tripped", key: "operator-alert:one:alert" });
   });
+
+  it("sends an immutable low-priority summary even on redelivery during another sample", () => {
+    const message = noticeMessage(
+      {
+        ...notice,
+        condition: "first_value_degradation",
+        firstValueContext: { sampledAt: at.toISOString(), samples: 6, failed: 1, retried: 2 },
+      },
+      { firstValue: failed, observedInThisPass: false },
+    );
+    expect(message).toMatchObject({
+      urgent: false,
+      priority: "low",
+      key: "operator-alert:one:alert",
+    });
+    expect(message.body).toContain("1 failed model checks, 2 retry-recovered checks");
+    expect(message.body).toContain("once per six hours");
+    expect(message.body).not.toContain("Attempt 1");
+  });
 });

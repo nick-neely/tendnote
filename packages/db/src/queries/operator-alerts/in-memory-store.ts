@@ -1,4 +1,11 @@
-import type { OperatorAlertCondition } from "@tendnote/domain/operator-alerts";
+import {
+  advanceFirstValueHealth,
+  emptyFirstValueHealth,
+  type FirstValueAlertContext,
+  type FirstValueHealthState,
+  type OperatorAlertCondition,
+} from "@tendnote/domain/operator-alerts";
+import { applyFirstValueDecision } from "./first-value-decision";
 import type { ClaimedOperatorAlertNotice, OperatorAlertStore } from "./types";
 
 type Episode = {
@@ -8,16 +15,21 @@ type Episode = {
   alertedAt: Date | null;
   clearedAt: Date | null;
   recoveredAt: Date | null;
+  firstValueContext?: FirstValueAlertContext;
 };
 
+type MemoryState = { episodes: Episode[]; firstValue: FirstValueHealthState };
+
 /** The alert store without a database, with its episodes readable by a test. */
-export function createInMemoryOperatorAlertStore() {
-  const episodes: Episode[] = [];
+export function createInMemoryOperatorAlertStore(
+  state: MemoryState = { episodes: [], firstValue: emptyFirstValueHealth() },
+) {
+  const { episodes } = state;
   const openEpisode = (condition: OperatorAlertCondition) =>
     episodes.find((episode) => episode.condition === condition && !episode.clearedAt);
 
   const store: OperatorAlertStore = {
-    async open({ condition, at }) {
+    async open({ condition, at, firstValueContext }) {
       if (openEpisode(condition)) return null;
       const id = `episode-${episodes.length + 1}`;
       episodes.push({
@@ -27,13 +39,29 @@ export function createInMemoryOperatorAlertStore() {
         alertedAt: null,
         clearedAt: null,
         recoveredAt: null,
+        ...(firstValueContext ? { firstValueContext } : {}),
       });
       return id;
     },
 
     async clear({ condition, at }) {
       const episode = openEpisode(condition);
-      if (episode) episode.clearedAt = at;
+      if (episode) {
+        episode.clearedAt = at;
+        if (condition === "first_value_degradation") episode.recoveredAt = at;
+      }
+    },
+
+    async observeFirstValue({ sample, at }) {
+      const decision = advanceFirstValueHealth({
+        state: state.firstValue,
+        sample,
+        now: at,
+        incidentOpen: Boolean(openEpisode("first_value_path")),
+      });
+      if (decision.state === state.firstValue) return [];
+      state.firstValue = decision.state;
+      return applyFirstValueDecision(decision, sample.at, store);
     },
 
     async claimNotices({ at }) {
@@ -47,6 +75,7 @@ export function createInMemoryOperatorAlertStore() {
             openedAt: episode.openedAt,
             clearedAt: episode.clearedAt,
             kind: "recovery",
+            ...(episode.firstValueContext ? { firstValueContext: episode.firstValueContext } : {}),
           });
         }
       }
@@ -59,6 +88,7 @@ export function createInMemoryOperatorAlertStore() {
             openedAt: episode.openedAt,
             clearedAt: episode.clearedAt,
             kind: "alert",
+            ...(episode.firstValueContext ? { firstValueContext: episode.firstValueContext } : {}),
           });
         }
       }
@@ -73,5 +103,5 @@ export function createInMemoryOperatorAlertStore() {
     },
   };
 
-  return { store, episodes };
+  return { store, episodes, state };
 }

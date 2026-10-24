@@ -13,7 +13,7 @@ import { createAffectedGeneralActionLifecycle } from "./general-actions/mutation
 import { createGlobalRecall } from "./global-recall/queries";
 import { createExplicitCaptureReminderScheduler } from "./reminders";
 import { createInMemoryReminderStore } from "./reminders/in-memory-store";
-import { createReminderService } from "./reminders/service";
+import { createReminderTestService as createReminderService } from "./reminders/test-fixtures";
 import { createInMemorySavedItemLifecycleStore } from "./saved-items/in-memory-store";
 import { createSavedItemLifecycle } from "./saved-items/lifecycle";
 import { createTodayCandidateLoaders } from "./today/candidate-loaders";
