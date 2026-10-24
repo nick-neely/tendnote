@@ -32,6 +32,13 @@ type HealthDecision = {
   summary?: FirstValueAlertContext;
 };
 
+type HealthInput = {
+  state: FirstValueHealthState;
+  sample: FirstValueHealthSample;
+  now: Date;
+  incidentOpen: boolean;
+};
+
 export function emptyFirstValueHealth(): FirstValueHealthState {
   return { history: [], lastSummaryAt: null };
 }
@@ -41,70 +48,72 @@ export function emptyFirstValueHealth(): FirstValueHealthState {
  * stale samples cannot advance counters. Missing slots break consecutive streaks;
  * the rolling window is six scheduled slots, never six arbitrarily old reads.
  */
-export function advanceFirstValueHealth(input: {
-  state: FirstValueHealthState;
-  sample: FirstValueHealthSample;
-  now: Date;
-  incidentOpen: boolean;
-}): HealthDecision {
+export function advanceFirstValueHealth(input: HealthInput): HealthDecision {
   const { state, sample } = input;
   const at = sample.at.getTime();
-  const age = input.now.getTime() - at;
   const slot = Math.floor(at / FIRST_VALUE_INTERVAL_MS) * FIRST_VALUE_INTERVAL_MS;
-  const last = state.history.at(-1);
-  // First completion wins for counting. Fresh serious evidence in that same
-  // slot may escalate it, so a racing clean/unknown read cannot hide a hard failure.
-  const escalate =
-    last?.slot === slot && sample.outcome === "serious" && last.outcome !== "serious";
-  if (
-    !Number.isFinite(age) ||
-    age < 0 ||
-    age > MAX_SAMPLE_AGE_MS ||
-    (last && slot <= last.slot && !escalate)
-  ) {
-    return { state, availability: "hold" };
-  }
+  if (!acceptsSample(input, slot)) return { state, availability: "hold" };
   const history = [
     ...state.history.filter(
       (entry) => entry.slot !== slot && slot - entry.slot < WINDOW_SLOTS * FIRST_VALUE_INTERVAL_MS,
     ),
     { at, slot, outcome: sample.outcome },
   ];
-  const previous = history.at(-2);
-  const adjacent = previous?.slot === slot - FIRST_VALUE_INTERVAL_MS;
-  const failed = history.filter((entry) => entry.outcome === "failed");
-  const retried = history.filter((entry) => entry.outcome === "retried");
   const context: FirstValueAlertContext = {
     sampledAt: sample.at.toISOString(),
     samples: history.filter((entry) => entry.outcome !== "unknown").length,
-    failed: failed.length,
-    retried: retried.length,
+    failed: history.filter((entry) => entry.outcome === "failed").length,
+    retried: history.filter((entry) => entry.outcome === "retried").length,
   };
   const decision: HealthDecision = {
     state: { ...state, history },
-    availability: "hold",
+    availability: availability(sample.outcome, history.at(-2), slot, context.failed),
   };
-  if (
-    sample.outcome === "serious" ||
-    (sample.outcome === "failed" &&
-      ((adjacent && previous.outcome === "failed") || failed.length >= 3))
-  ) {
-    decision.availability = "open";
-    decision.openedAt = new Date(sample.outcome === "serious" ? at : (failed[0]?.at ?? at));
+  if (decision.availability === "open") {
+    const firstFailure = history.find((entry) => entry.outcome === "failed");
+    decision.openedAt = new Date(sample.outcome === "serious" ? at : (firstFailure?.at ?? at));
     decision.context = context;
-  } else if (sample.outcome === "clean" && adjacent && previous.outcome === "clean") {
-    decision.availability = "clear";
   }
-
-  if (
-    !input.incidentOpen &&
-    decision.availability !== "open" &&
-    (sample.outcome === "failed" || sample.outcome === "retried") &&
-    failed.length + retried.length >= 3 &&
-    (state.lastSummaryAt === null || slot - state.lastSummaryAt >= SUMMARY_INTERVAL_MS)
-  ) {
+  if (summaryDue(input, decision.availability, context, slot)) {
     decision.summary = context;
     decision.state.lastSummaryAt = slot;
   }
   return decision;
+}
+
+function acceptsSample(input: HealthInput, slot: number): boolean {
+  const age = input.now.getTime() - input.sample.at.getTime();
+  if (!Number.isFinite(age) || age < 0 || age > MAX_SAMPLE_AGE_MS) return false;
+  const last = input.state.history.at(-1);
+  if (!last || slot > last.slot) return true;
+  // A racing serious result escalates the same slot without counting another check.
+  return slot === last.slot && input.sample.outcome === "serious" && last.outcome !== "serious";
+}
+
+function availability(
+  outcome: FirstValueOutcome,
+  previous: Observation | undefined,
+  slot: number,
+  failed: number,
+): HealthDecision["availability"] {
+  if (outcome === "serious") return "open";
+  const consecutive =
+    previous?.slot === slot - FIRST_VALUE_INTERVAL_MS && previous.outcome === outcome;
+  if (outcome === "clean" && consecutive) return "clear";
+  if (outcome === "failed" && (consecutive || failed >= 3)) return "open";
+  return "hold";
+}
+
+function summaryDue(
+  input: HealthInput,
+  action: HealthDecision["availability"],
+  context: FirstValueAlertContext,
+  slot: number,
+): boolean {
+  if (input.incidentOpen || action === "open") return false;
+  if (input.sample.outcome !== "failed" && input.sample.outcome !== "retried") return false;
+  if (context.failed + context.retried < 3) return false;
+  return (
+    input.state.lastSummaryAt === null || slot - input.state.lastSummaryAt >= SUMMARY_INTERVAL_MS
+  );
 }
