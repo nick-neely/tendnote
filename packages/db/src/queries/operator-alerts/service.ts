@@ -1,5 +1,6 @@
 import {
   actionableOperatorAlertReadings,
+  type FirstValueHealthSample,
   type OperatorAlertReading,
 } from "@tendnote/domain/operator-alerts";
 import type { SpendBreakerStage } from "@tendnote/domain/usage-bounds";
@@ -18,6 +19,7 @@ export type OperatorAlertPassResult = { sent: number; failed: number };
 export async function runOperatorAlertPass(input: {
   store: OperatorAlertStore;
   readings: readonly OperatorAlertReading[];
+  firstValue?: FirstValueHealthSample;
   /** The Spend Breaker's stage, or `null` when it could not be read. */
   breaker: SpendBreakerStage | null;
   notify: (notice: ClaimedOperatorAlertNotice, observedInThisPass: boolean) => Promise<void>;
@@ -26,6 +28,21 @@ export async function runOperatorAlertPass(input: {
 }): Promise<OperatorAlertPassResult> {
   const at = input.now ?? new Date();
   const openedHere = new Set<string>();
+  const result: OperatorAlertPassResult = { sent: 0, failed: 0 };
+  if (input.firstValue) {
+    try {
+      for (const id of await input.store.observeFirstValue({ sample: input.firstValue, at })) {
+        openedHere.add(id);
+      }
+    } catch (error) {
+      // A failed policy write holds this indicator; other conditions and due
+      // deliveries still run. Never fall back to treating the sample as clear.
+      result.failed += 1;
+      input.logger?.error?.("first_value_check.policy_failed", {
+        reason: error instanceof Error ? error.name : "unknown",
+      });
+    }
+  }
   for (const reading of actionableOperatorAlertReadings(input.readings, input.breaker)) {
     if (reading.firing) {
       const id = await input.store.open({ condition: reading.condition, at });
@@ -33,7 +50,6 @@ export async function runOperatorAlertPass(input: {
     } else await input.store.clear({ condition: reading.condition, at });
   }
 
-  const result: OperatorAlertPassResult = { sent: 0, failed: 0 };
   for (const notice of await input.store.claimNotices({ at })) {
     try {
       await input.notify(notice, notice.kind === "alert" && openedHere.has(notice.episodeId));

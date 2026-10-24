@@ -1,16 +1,17 @@
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { getDb } from "../../client";
 import { operatorAlerts } from "../../schema";
+import { observeFirstValue } from "./first-value";
 import type { OperatorAlertStore } from "./types";
 
 export function createDrizzleOperatorAlertStore(): OperatorAlertStore {
-  return {
-    async open({ condition, at }) {
+  const store: OperatorAlertStore = {
+    async open({ condition, at, firstValueContext }) {
       // The partial unique index on open episodes makes this a no-op while one
       // is open, however many passes or readers race to open it.
       const opened = await getDb()
         .insert(operatorAlerts)
-        .values({ condition, openedAt: at })
+        .values({ condition, openedAt: at, firstValueContext })
         .onConflictDoNothing()
         .returning({ id: operatorAlerts.id });
       return opened[0]?.id ?? null;
@@ -19,8 +20,15 @@ export function createDrizzleOperatorAlertStore(): OperatorAlertStore {
     async clear({ condition, at }) {
       await getDb()
         .update(operatorAlerts)
-        .set({ clearedAt: at })
+        .set({
+          clearedAt: at,
+          ...(condition === "first_value_degradation" ? { recoveredAt: at } : {}),
+        })
         .where(and(eq(operatorAlerts.condition, condition), isNull(operatorAlerts.clearedAt)));
+    },
+
+    observeFirstValue(input) {
+      return observeFirstValue(input, store);
     },
 
     async claimNotices({ at }) {
@@ -29,6 +37,7 @@ export function createDrizzleOperatorAlertStore(): OperatorAlertStore {
         condition: operatorAlerts.condition,
         openedAt: operatorAlerts.openedAt,
         clearedAt: operatorAlerts.clearedAt,
+        firstValueContext: operatorAlerts.firstValueContext,
       };
       const recoveries = await getDb()
         .update(operatorAlerts)
@@ -49,7 +58,10 @@ export function createDrizzleOperatorAlertStore(): OperatorAlertStore {
       return [
         ...recoveries.map((notice) => ({ ...notice, kind: "recovery" as const })),
         ...alerts.map((notice) => ({ ...notice, kind: "alert" as const })),
-      ];
+      ].map(({ firstValueContext, ...notice }) => ({
+        ...notice,
+        ...(firstValueContext ? { firstValueContext } : {}),
+      }));
     },
 
     async releaseNotice({ episodeId, kind }) {
@@ -59,4 +71,5 @@ export function createDrizzleOperatorAlertStore(): OperatorAlertStore {
         .where(eq(operatorAlerts.id, episodeId));
     },
   };
+  return store;
 }

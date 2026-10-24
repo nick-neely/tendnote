@@ -1,17 +1,29 @@
-import type { OperatorAlertCondition, OperatorAlertNotice } from "@tendnote/domain/operator-alerts";
+import type {
+  FirstValueAlertContext,
+  FirstValueHealthSample,
+  OperatorAlertCondition,
+  OperatorAlertNotice,
+} from "@tendnote/domain/operator-alerts";
 
 /** A notice claimed for sending, named by the episode it belongs to. */
 export type ClaimedOperatorAlertNotice = OperatorAlertNotice & {
   episodeId: string;
   openedAt: Date;
   clearedAt: Date | null;
+  firstValueContext?: FirstValueAlertContext;
 };
 
 export type OperatorAlertStore = {
   /** Returns the new episode id, or null if an episode was already open. */
-  open: (input: { condition: OperatorAlertCondition; at: Date }) => Promise<string | null>;
+  open: (input: {
+    condition: OperatorAlertCondition;
+    at: Date;
+    firstValueContext?: FirstValueAlertContext;
+  }) => Promise<string | null>;
   /** Clears the condition's open episode, if there is one. */
   clear: (input: { condition: OperatorAlertCondition; at: Date }) => Promise<void>;
+  /** Atomically records one scheduled sample and its incident/summary transitions. */
+  observeFirstValue: (input: { sample: FirstValueHealthSample; at: Date }) => Promise<string[]>;
   /**
    * Claims every notice that is due, recoveries first: an alert for an open
    * episode not yet alerted, and a recovery for a cleared episode that was

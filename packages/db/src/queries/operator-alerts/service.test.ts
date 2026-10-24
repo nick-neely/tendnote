@@ -1,4 +1,8 @@
-import type { OperatorAlertNotice, OperatorAlertReading } from "@tendnote/domain/operator-alerts";
+import type {
+  FirstValueOutcome,
+  OperatorAlertNotice,
+  OperatorAlertReading,
+} from "@tendnote/domain/operator-alerts";
 import type { SpendBreakerStage } from "@tendnote/domain/usage-bounds";
 import { describe, expect, it } from "vitest";
 import { createInMemoryOperatorAlertStore } from "./in-memory-store";
@@ -39,6 +43,93 @@ function harness() {
 
 const firing = (condition: OperatorAlertReading["condition"]) => ({ condition, firing: true });
 const clear = (condition: OperatorAlertReading["condition"]) => ({ condition, firing: false });
+
+describe("scheduled First Value episodes", () => {
+  const at = (slot: number) => new Date(Date.parse("2026-10-23T20:00:00Z") + slot * 600_000);
+
+  it("survives an adapter restart, deduplicates slots, and confirms recovery", async () => {
+    const memory = createInMemoryOperatorAlertStore();
+    let store = memory.store;
+    const notices: string[] = [];
+    const sample = (outcome: FirstValueOutcome, slot: number) =>
+      runOperatorAlertPass({
+        store,
+        readings: [],
+        breaker: "closed",
+        now: at(slot),
+        firstValue: { at: at(slot), outcome },
+        notify: async (notice) => {
+          notices.push(`${notice.condition}:${notice.kind}`);
+        },
+      });
+    await Promise.all([sample("failed", 0), sample("failed", 0)]);
+    expect(notices).toEqual([]);
+    store = createInMemoryOperatorAlertStore(memory.state).store;
+    await sample("failed", 1);
+    await sample("clean", 2);
+    await sample("clean", 0);
+    expect(notices).toEqual(["first_value_path:alert"]);
+    await sample("clean", 3);
+    expect(notices).toEqual(["first_value_path:alert", "first_value_path:recovery"]);
+  });
+
+  it("retries a failed summary with its original counts and no recovery notice", async () => {
+    const memory = createInMemoryOperatorAlertStore();
+    let fail = true;
+    const sent: unknown[] = [];
+    const sample = (outcome: FirstValueOutcome, slot: number) =>
+      runOperatorAlertPass({
+        store: memory.store,
+        readings: [],
+        breaker: "closed",
+        now: at(slot),
+        firstValue: { at: at(slot), outcome },
+        notify: async (notice) => {
+          if (fail) throw new Error("delivery unavailable");
+          sent.push(notice);
+        },
+      });
+    await sample("retried", 0);
+    await sample("retried", 1);
+    expect(await sample("retried", 2)).toEqual({ sent: 0, failed: 1 });
+    fail = false;
+    await sample("unknown", 3);
+    expect(sent).toMatchObject([
+      {
+        kind: "alert",
+        condition: "first_value_degradation",
+        firstValueContext: { sampledAt: at(2).toISOString(), samples: 3, retried: 3 },
+      },
+    ]);
+    await sample("clean", 4);
+    await sample("clean", 5);
+    for (const slot of [36, 37, 38]) await sample("retried", slot);
+    expect(sent).toHaveLength(2);
+  });
+
+  it("holds a failed policy write while still delivering another serious condition", async () => {
+    const { store } = createInMemoryOperatorAlertStore();
+    const notify = async () => {};
+    const errors: string[] = [];
+    expect(
+      await runOperatorAlertPass({
+        store: {
+          ...store,
+          observeFirstValue: async () => {
+            throw new Error("database unavailable");
+          },
+        },
+        readings: [firing("spend_breaker")],
+        breaker: "interactive",
+        now: at(0),
+        firstValue: { at: at(0), outcome: "clean" },
+        notify,
+        logger: { error: (message) => errors.push(message) },
+      }),
+    ).toEqual({ sent: 1, failed: 1 });
+    expect(errors).toEqual(["first_value_check.policy_failed"]);
+  });
+});
 
 describe("runOperatorAlertPass", () => {
   it("alerts once while a condition keeps firing, then sends one recovery notice", async () => {

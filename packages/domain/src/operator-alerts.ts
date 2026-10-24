@@ -1,6 +1,15 @@
 import { RETENTION } from "./retention";
 import { type SpendBreakerStage, sheds } from "./usage-bounds";
 
+export {
+  advanceFirstValueHealth,
+  emptyFirstValueHealth,
+  type FirstValueAlertContext,
+  type FirstValueHealthSample,
+  type FirstValueHealthState,
+  type FirstValueOutcome,
+} from "./first-value-health";
+
 type ShedStage = Exclude<SpendBreakerStage, "closed">;
 
 /**
@@ -74,6 +83,13 @@ export const OPERATOR_ALERT_CONDITIONS = {
     recovery: "First Value path check passing",
     detail:
       "The synthetic First Value check could not load the landing page, read the Checkout prices, sign in its account and be admitted by Eve, or get a reply from the model. See first_value_check.failed in the logs for the step.",
+  },
+  first_value_degradation: {
+    alert: "First Value model intermittently degraded",
+    // Summary episodes close silently; only availability incidents recover.
+    recovery: "First Value degradation summary closed",
+    detail:
+      "Repeated scheduled synthetic samples needed a retry or exhausted the model budget. Customer impact is unverified. Inspect first_value_check.passed and first_value_check.failed; attempts within a sample are not independent checks.",
   },
   grounded_eve_answer: {
     alert: "Synthetic Eve answer failing",

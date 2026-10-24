@@ -117,7 +117,6 @@ describe("operatorAlertReadings", () => {
     ).toEqual([
       { condition: "background_backlog", firing: true },
       { condition: "reminder_lateness", firing: false },
-      { condition: "first_value_path", firing: true },
     ]);
     expect(
       operatorAlertReadings({
@@ -129,7 +128,6 @@ describe("operatorAlertReadings", () => {
     ).toEqual([
       { condition: "background_backlog", firing: false },
       { condition: "reminder_lateness", firing: true },
-      { condition: "first_value_path", firing: false },
       { condition: "grounded_eve_answer", firing: true },
     ]);
     expect(

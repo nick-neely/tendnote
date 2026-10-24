@@ -18,6 +18,7 @@ import {
   type FirstValueCheck,
 } from "@/lib/first-value-check";
 import { createOperatorAlertSender, operatorAlertDestinations } from "./channel";
+import { firstValueOutcome } from "./first-value-outcome";
 import { noticeMessage } from "./notice-message";
 
 /**
@@ -59,7 +60,6 @@ export function operatorAlertReadings(input: {
     readings.push({ condition: "reminder_lateness", firing: input.remindersLate });
   }
   if (input.firstValue?.status === "ran") {
-    readings.push({ condition: "first_value_path", firing: input.firstValue.failed.length > 0 });
     if (input.firstValue.groundedAnswer !== null) {
       readings.push({ condition: "grounded_eve_answer", firing: !input.firstValue.groundedAnswer });
     }
@@ -99,6 +99,7 @@ export async function runOperatorAlerts(input: {
     const send = createOperatorAlertSender({ destinations });
     const result = await runOperatorAlertPass({
       store: createDrizzleOperatorAlertStore(),
+      firstValue: { at: now, outcome: firstValueOutcome(firstValue) },
       readings: operatorAlertReadings({
         ...input,
         deletionStuck,
@@ -111,7 +112,7 @@ export async function runOperatorAlerts(input: {
       breaker,
       notify: (notice, observedInThisPass) =>
         send(noticeMessage(notice, { firstValue, observedInThisPass })),
-      now,
+      now: new Date(),
       logger: console,
     });
     return { status: "ran" as const, ...result };

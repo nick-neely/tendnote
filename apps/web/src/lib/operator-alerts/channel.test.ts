@@ -88,6 +88,16 @@ describe("createOperatorAlertSender", () => {
     vi.restoreAllMocks();
   });
 
+  it("delivers degradation summaries at low push priority", async () => {
+    const h = harness();
+    await createOperatorAlertSender({ destinations, sendEmail: h.sendEmail, fetch: h.fetch })({
+      ...MESSAGE,
+      urgent: false,
+      priority: "low",
+    });
+    expect(h.pushes[0]?.init.headers).toMatchObject({ Priority: "low" });
+  });
+
   it("counts a message delivered when one destination took it, and logs the other", async () => {
     const h = harness({ emailFails: true });
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
