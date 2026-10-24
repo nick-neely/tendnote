@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createInMemoryGeneralActionLifecycleStore } from "../general-actions/in-memory-store";
 import { createGeneralActionLifecycle } from "../general-actions/lifecycle";
 import { createInMemoryReminderStore } from "./in-memory-store";
-import { createReminderService } from "./service";
+import { createReminderTestService as createReminderService } from "./test-fixtures";
 
 const OWNER = "owner-1";
 const ACTION = "11111111-1111-1111-1111-111111111111";

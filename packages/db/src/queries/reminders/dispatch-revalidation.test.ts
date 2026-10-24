@@ -11,8 +11,8 @@ import { createInMemorySavedItemLifecycleStore } from "../saved-items/in-memory-
 import { createSavedItemLifecycle } from "../saved-items/lifecycle";
 import { createInMemoryReminderStore } from "./in-memory-store";
 import { createReminderRecordLoader } from "./record-loaders";
-import { createReminderService } from "./service";
 import { createReminderSubscriptionAuthorizer } from "./subscription-authorization";
+import { createReminderTestService as createReminderService } from "./test-fixtures";
 
 /**
  * What dispatch does at the last safe point, for every kind that can hold a
