@@ -115,6 +115,23 @@ describe.skipIf(!configured)("First Value durable Postgres contract", () => {
     expect(row?.state.history).toMatchObject([{ outcome: "serious" }]);
   });
 
+  it("persists a recovery boundary without discarding degradation-summary evidence", async () => {
+    const h = harness();
+    await h.sample("failed", 0);
+    await h.sample("failed", 1);
+    await h.sample("clean", 2);
+    await h.sample("clean", 3);
+    await closeDb();
+    const restarted = harness();
+    await restarted.sample("failed", 4);
+    expect(restarted.sent.map((notice) => notice.condition)).toEqual(["first_value_degradation"]);
+    expect(restarted.sent[0]?.firstValueContext?.failed).toBe(3);
+    await restarted.sample("failed", 5);
+    const incident = restarted.sent.find((notice) => notice.condition === "first_value_path");
+    expect(incident?.openedAt).toEqual(at(4));
+    expect(incident?.firstValueContext).toMatchObject({ failed: 2, samples: 2 });
+  });
+
   it("holds a pre-migration incident through unknowns, retries, and gaps", async () => {
     const h = harness();
     await h.store.open({ condition: "first_value_path", at: at(0) });

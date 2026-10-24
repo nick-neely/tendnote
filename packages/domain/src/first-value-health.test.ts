@@ -96,6 +96,44 @@ describe("First Value scheduled-sample policy", () => {
     expect(h.sample("clean", 0).availability).toBe("hold");
   });
 
+  it("starts a new incident confirmation after recovery while retaining summary evidence", () => {
+    const h = harness();
+    h.sample("failed", 0);
+    expect(h.sample("failed", 1).availability).toBe("open");
+    h.sample("clean", 2);
+    expect(h.sample("clean", 3).availability).toBe("clear");
+    const isolated = h.sample("failed", 4);
+    expect(isolated.availability).toBe("hold");
+    expect(isolated.summary).toMatchObject({ failed: 3, samples: 5 });
+    expect(h.state().history).toHaveLength(5);
+    expect(h.sample("failed", 5)).toMatchObject({
+      availability: "open",
+      openedAt: new Date(start + 4 * FIRST_VALUE_INTERVAL_MS),
+      context: { failed: 2, samples: 2 },
+    });
+  });
+
+  it("does not reset unconfirmed failures just because two healthy slots occur", () => {
+    const h = harness();
+    h.sample("failed", 0);
+    h.sample("clean", 1);
+    h.sample("clean", 2);
+    h.sample("failed", 3);
+    h.sample("clean", 4);
+    expect(h.sample("failed", 5).availability).toBe("open");
+  });
+
+  it("still reports fresh serious evidence racing the recovery slot", () => {
+    const h = harness();
+    h.sample("serious", 0);
+    h.sample("clean", 1);
+    expect(h.sample("clean", 2).availability).toBe("clear");
+    expect(h.sample("serious", 2)).toMatchObject({
+      availability: "open",
+      context: { samples: 1 },
+    });
+  });
+
   it("summarizes repeated degradation once per six hours and never duplicates an incident", () => {
     const h = harness();
     h.sample("failed", 0);

@@ -29,6 +29,11 @@ advance counters. Fresh serious evidence can escalate a racing same-slot success
 without counting a second check. Stale means more than five minutes from check start to policy read,
 matching the cron's maximum execution allowance.
 
+Confirmed recovery advances a durable incident-confirmation boundary. A subsequent
+incident needs new failures after that boundary, including for its first-failure
+timestamp. The full six-slot degradation history remains available for summaries;
+two clean slots while no incident is open do not discard unconfirmed failures.
+
 Three degraded samples (terminal transient failures plus retry-recovered passes)
 in six slots produce one low-priority summary, at most once per six hours, while
 no availability episode is open. Summaries close silently rather than generating

@@ -12,6 +12,8 @@ type Observation = { slot: number; at: number; outcome: FirstValueOutcome };
 export type FirstValueHealthState = {
   history: Observation[];
   lastSummaryAt: number | null;
+  /** Older persisted rows have no boundary until their first confirmed recovery. */
+  recoveredThroughSlot?: number | null;
 };
 
 /** Immutable counts belonging to the notice, including on delayed delivery. */
@@ -40,7 +42,7 @@ type HealthInput = {
 };
 
 export function emptyFirstValueHealth(): FirstValueHealthState {
-  return { history: [], lastSummaryAt: null };
+  return { history: [], lastSummaryAt: null, recoveredThroughSlot: null };
 }
 
 /**
@@ -59,26 +61,37 @@ export function advanceFirstValueHealth(input: HealthInput): HealthDecision {
     ),
     { at, slot, outcome: sample.outcome },
   ];
-  const context: FirstValueAlertContext = {
-    sampledAt: sample.at.toISOString(),
+  const confirmation = history.filter(
+    (entry) => entry.slot > (state.recoveredThroughSlot ?? -Infinity) || entry.slot === slot,
+  );
+  const context = sampleContext(confirmation, sample.at);
+  const decision: HealthDecision = {
+    state: { ...state, history },
+    availability: availability(sample.outcome, confirmation.at(-2), slot, context.failed),
+  };
+  if (decision.availability === "open") {
+    const firstFailure = confirmation.find((entry) => entry.outcome === "failed");
+    decision.openedAt = new Date(sample.outcome === "serious" ? at : (firstFailure?.at ?? at));
+    decision.context = context;
+  }
+  if (decision.availability === "clear" && input.incidentOpen) {
+    decision.state.recoveredThroughSlot = slot;
+  }
+  const degradation = sampleContext(history, sample.at);
+  if (summaryDue(input, decision.availability, degradation, slot)) {
+    decision.summary = degradation;
+    decision.state.lastSummaryAt = slot;
+  }
+  return decision;
+}
+
+function sampleContext(history: Observation[], at: Date): FirstValueAlertContext {
+  return {
+    sampledAt: at.toISOString(),
     samples: history.filter((entry) => entry.outcome !== "unknown").length,
     failed: history.filter((entry) => entry.outcome === "failed").length,
     retried: history.filter((entry) => entry.outcome === "retried").length,
   };
-  const decision: HealthDecision = {
-    state: { ...state, history },
-    availability: availability(sample.outcome, history.at(-2), slot, context.failed),
-  };
-  if (decision.availability === "open") {
-    const firstFailure = history.find((entry) => entry.outcome === "failed");
-    decision.openedAt = new Date(sample.outcome === "serious" ? at : (firstFailure?.at ?? at));
-    decision.context = context;
-  }
-  if (summaryDue(input, decision.availability, context, slot)) {
-    decision.summary = context;
-    decision.state.lastSummaryAt = slot;
-  }
-  return decision;
 }
 
 function acceptsSample(input: HealthInput, slot: number): boolean {

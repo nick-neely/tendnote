@@ -114,6 +114,11 @@ Missing slots and unknown samples break consecutive streaks. The six-slot window
 expires by clock time, so six reads across a long gap cannot masquerade as an
 hour of monitoring. The grounded answer remains independent and daily.
 
+Confirmed recovery resets the availability-confirmation boundary, so failures
+from a closed incident cannot make one new failure reopen it. Summary history is
+retained: this does not erase evidence of recurring degradation from the six-slot
+window. The boundary survives restarts along with the other policy state.
+
 Three degraded samples (terminal transient failures or retry-recovered passes)
 in six slots produce a low-priority `first_value_degradation` summary when no
 availability incident is open. The summary is limited to once per six hours,
