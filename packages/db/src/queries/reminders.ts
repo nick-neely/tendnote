@@ -10,7 +10,10 @@ import {
   affectedScopesForReminder,
   type MutationOutcome,
 } from "./affected-scopes";
-import { createDrizzleBackgroundJobDeliveryStore } from "./background-job-deliveries";
+import {
+  createDrizzleBackgroundJobDeliveryStore,
+  registeredBackgroundJobQueueTransport,
+} from "./background-job-deliveries";
 import type {
   CaptureOutcomeResult,
   ConversationalCaptureResult,
@@ -20,7 +23,7 @@ import { createDrizzleGeneralActionLifecycleStore } from "./general-actions/driz
 import { createHouseholdAuthorizationProver } from "./households/authorization";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createDrizzleReminderStore } from "./reminders/drizzle-store";
-import { scheduleReminderDeliveryOutbox } from "./reminders/outbox";
+import { armReminderDelivery } from "./reminders/outbox";
 import { createReminderRecordLoader } from "./reminders/record-loaders";
 import { createReminderService } from "./reminders/service";
 import { createReminderSubscriptionAuthorizer } from "./reminders/subscription-authorization";
@@ -46,8 +49,27 @@ export const reminderService = createReminderService({
     savedItemStore,
     sourceRecordStore,
   }),
-  scheduleDelivery: (input) => scheduleReminderDeliveryOutbox(outboxStore, input).then(() => {}),
+  scheduleDelivery: (input) =>
+    armReminderDelivery({
+      store: outboxStore,
+      queue: registeredBackgroundJobQueueTransport(),
+      ownerUserId: input.ownerUserId,
+      jobId: input.jobId,
+      deliverAt: input.nextAttemptAt,
+      publishAhead: reminderDeliveryPublishesAhead(process.env),
+      logger: console,
+    }).then(() => {}),
 });
+
+/**
+ * Whether reminder wake-ups are published to the queue as soon as they are
+ * scheduled, delayed to the alert time (ADR 0267). `off` is the rollback
+ * switch: deliveries then wait for the recovery cron to publish them when due,
+ * as before, while pointers already in flight still resolve safely.
+ */
+export function reminderDeliveryPublishesAhead(env: Record<string, string | undefined>): boolean {
+  return env.REMINDER_DELIVERY_PUBLISH_AHEAD?.trim().toLowerCase() !== "off";
+}
 
 export const saveGeneralActionReminder = reminderService.saveGeneralActionReminder;
 export const reconcileReminderRecordForSubscribers =

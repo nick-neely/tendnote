@@ -31,6 +31,7 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
       lastError: null,
       nextAttemptAt: input.nextAttemptAt ?? now,
       publishedAt: null,
+      revision: 0,
       createdAt: now,
       updatedAt: now,
     };
@@ -77,6 +78,7 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
       if (!delivery || delivery.ownerUserId !== input.ownerUserId) {
         throw new Error("Background job delivery not found.");
       }
+      if (input.revision !== undefined && delivery.revision !== input.revision) return delivery;
       const now = input.publishedAt ?? new Date();
       const updated: BackgroundJobDelivery = {
         ...delivery,
@@ -94,6 +96,7 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
       if (!delivery || delivery.ownerUserId !== input.ownerUserId) {
         throw new Error("Background job delivery not found.");
       }
+      if (input.revision !== undefined && delivery.revision !== input.revision) return delivery;
       const updated: BackgroundJobDelivery = {
         ...delivery,
         status: "publish_failed",
@@ -105,6 +108,24 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
       deliveries.set(updated.id, updated);
 
       return updated;
+    },
+    async reviseBackgroundJobDelivery(input) {
+      const delivery = deliveries.get(input.deliveryId);
+      if (!delivery || delivery.ownerUserId !== input.ownerUserId) {
+        throw new Error("Background job delivery not found.");
+      }
+      const revised: BackgroundJobDelivery = {
+        ...delivery,
+        status: "pending",
+        lastError: null,
+        nextAttemptAt: input.nextAttemptAt,
+        publishedAt: null,
+        revision: delivery.revision + 1,
+        updatedAt: new Date(),
+      };
+      deliveries.set(revised.id, revised);
+
+      return revised;
     },
     async updateBackgroundJobDelivery(input) {
       const delivery = deliveries.get(input.deliveryId);

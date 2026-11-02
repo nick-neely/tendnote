@@ -18,6 +18,14 @@ export const backgroundJobDeliveries = pgTable(
     lastError: text("last_error"),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
+    /**
+     * Which scheduling of this delivery a queue pointer belongs to. Zero for a
+     * delivery that is published once; every re-arm of a scheduled delivery
+     * (an edit, a retry, a checkpoint hop) bumps it, so each gets its own
+     * authenticated pointer and idempotency key and an older pointer can tell
+     * it has been superseded (ADR 0267).
+     */
+    revision: integer("revision").notNull().default(0),
     ...timestamps,
   },
   (table) => [

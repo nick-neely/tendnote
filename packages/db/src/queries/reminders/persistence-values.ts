@@ -46,3 +46,18 @@ export function reminderDeliveryJobPersistenceValues(
     updatedAt: input.now,
   };
 }
+
+/** The columns one `updateDeliveryJob` call changes, omitting what it leaves as is. */
+export function reminderDeliveryJobUpdateValues(
+  input: Parameters<ReminderStore["updateDeliveryJob"]>[0],
+) {
+  return {
+    status: input.status,
+    outcome: input.outcome,
+    ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
+    ...(input.nextAttemptAt !== undefined ? { nextAttemptAt: input.nextAttemptAt } : {}),
+    ...(input.lastErrorCode !== undefined ? { lastErrorCode: input.lastErrorCode } : {}),
+    ...(input.acceptedAt !== undefined ? { acceptedAt: input.acceptedAt } : {}),
+    updatedAt: input.now,
+  };
+}

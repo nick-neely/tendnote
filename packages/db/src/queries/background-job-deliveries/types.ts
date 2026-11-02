@@ -13,6 +13,8 @@ export type BackgroundJobDelivery = {
   lastError?: string | null;
   nextAttemptAt: Date;
   publishedAt?: Date | null;
+  /** Bumped by every re-arm of a scheduled delivery; zero for one-shot work. */
+  revision: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -28,12 +30,26 @@ export type MarkBackgroundJobDeliveryPublishedInput = {
   ownerUserId: string;
   deliveryId: string;
   publishedAt?: Date;
+  /**
+   * The revision that was sent. When given, a delivery re-armed since then is
+   * left untouched, so a slow publish never marks a newer revision published.
+   */
+  revision?: number;
 };
 
 export type MarkBackgroundJobDeliveryPublishFailedInput = {
   ownerUserId: string;
   deliveryId: string;
   error: string;
+  nextAttemptAt: Date;
+  /** As for {@link MarkBackgroundJobDeliveryPublishedInput.revision}. */
+  revision?: number;
+};
+
+export type ReviseBackgroundJobDeliveryInput = {
+  ownerUserId: string;
+  deliveryId: string;
+  /** When recovery should next try publishing this revision if nothing else does. */
   nextAttemptAt: Date;
 };
 
@@ -66,6 +82,13 @@ export type BackgroundJobDeliveryStore = {
   ) => Promise<BackgroundJobDelivery>;
   markBackgroundJobDeliveryPublishFailed: (
     input: MarkBackgroundJobDeliveryPublishFailedInput,
+  ) => Promise<BackgroundJobDelivery>;
+  /**
+   * Starts a new revision of a scheduled delivery: pending, unpublished, and
+   * with the revision bumped atomically so concurrent re-arms each get their own.
+   */
+  reviseBackgroundJobDelivery: (
+    input: ReviseBackgroundJobDeliveryInput,
   ) => Promise<BackgroundJobDelivery>;
   updateBackgroundJobDelivery: (
     input: UpdateBackgroundJobDeliveryInput & { ownerUserId: string },

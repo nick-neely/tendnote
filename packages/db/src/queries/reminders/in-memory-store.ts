@@ -8,8 +8,10 @@ import type {
 } from "@tendnote/domain/reminders";
 import {
   reminderDeliveryJobPersistenceValues,
+  reminderDeliveryJobUpdateValues,
   reminderSchedulePersistenceValues,
 } from "./persistence-values";
+import { isReminderDeliveryJobClaimable } from "./policy";
 import type { ReminderStore } from "./types";
 
 export function createInMemoryReminderStore(): ReminderStore {
@@ -311,30 +313,31 @@ export function createInMemoryReminderStore(): ReminderStore {
     async claimDeliveryJob(input) {
       const entry = [...deliveryJobs.entries()].find(([, job]) => job.id === input.jobId);
       const job = entry?.[1];
-      if (
-        !entry ||
-        !job ||
-        !["pending", "failed"].includes(job.status) ||
-        job.nextAttemptAt.getTime() > input.now.getTime()
-      ) {
+      if (!entry || !job || !isReminderDeliveryJobClaimable(job, input.now)) {
         return null;
       }
       const claimed = { ...job, status: "running" as const, updatedAt: input.now };
       deliveryJobs.set(entry[0], claimed);
       return claimed;
     },
+    async listOverdueDeliveryJobs(input) {
+      return [...deliveryJobs.values()]
+        .filter(
+          (job) =>
+            ((job.status === "pending" || job.status === "failed") &&
+              job.nextAttemptAt.getTime() <= input.dueBefore.getTime()) ||
+            (job.status === "running" &&
+              job.updatedAt.getTime() <= input.leaseExpiredBefore.getTime()),
+        )
+        .sort((left, right) => left.nextAttemptAt.getTime() - right.nextAttemptAt.getTime())
+        .slice(0, Math.max(0, input.limit));
+    },
     async updateDeliveryJob(input) {
       const entry = [...deliveryJobs.entries()].find(([, job]) => job.id === input.jobId);
       if (!entry) throw new Error("Reminder delivery job not found.");
       const updated: ReminderDeliveryJob = {
         ...entry[1],
-        status: input.status,
-        outcome: input.outcome,
-        ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
-        ...(input.nextAttemptAt !== undefined ? { nextAttemptAt: input.nextAttemptAt } : {}),
-        ...(input.lastErrorCode !== undefined ? { lastErrorCode: input.lastErrorCode } : {}),
-        ...(input.acceptedAt !== undefined ? { acceptedAt: input.acceptedAt } : {}),
-        updatedAt: input.now,
+        ...reminderDeliveryJobUpdateValues(input),
       };
       deliveryJobs.set(entry[0], updated);
       return updated;

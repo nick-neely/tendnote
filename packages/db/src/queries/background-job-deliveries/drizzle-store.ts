@@ -25,6 +25,15 @@ function valuesFor(input: CreateBackgroundJobDeliveryInput) {
   };
 }
 
+/** Owner-scoped, and fenced to one revision when the caller names the one it sent. */
+function deliveryTarget(input: { deliveryId: string; ownerUserId: string; revision?: number }) {
+  return and(
+    eq(backgroundJobDeliveries.id, input.deliveryId),
+    eq(backgroundJobDeliveries.ownerUserId, input.ownerUserId),
+    input.revision === undefined ? undefined : eq(backgroundJobDeliveries.revision, input.revision),
+  );
+}
+
 function updateValues(input: UpdateBackgroundJobDeliveryInput) {
   const updates: Record<string, unknown> = { updatedAt: new Date() };
 
@@ -34,6 +43,22 @@ function updateValues(input: UpdateBackgroundJobDeliveryInput) {
   if ("publishedAt" in input) updates.publishedAt = input.publishedAt;
 
   return updates;
+}
+
+/**
+ * A revision-fenced write that matched nothing: either the delivery is gone,
+ * or it was re-armed after this revision was sent and is returned unchanged
+ * for the caller to see as superseded.
+ */
+async function supersededDelivery(input: { deliveryId: string; ownerUserId: string }) {
+  const [current] = await getDb()
+    .select()
+    .from(backgroundJobDeliveries)
+    // Unfenced on purpose: the point is to find the newer revision.
+    .where(deliveryTarget({ deliveryId: input.deliveryId, ownerUserId: input.ownerUserId }))
+    .limit(1);
+  if (!current) throw new Error("Background job delivery not found.");
+  return current;
 }
 
 export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDeliveryStore {
@@ -118,19 +143,10 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
           publishedAt,
           updatedAt: publishedAt,
         })
-        .where(
-          and(
-            eq(backgroundJobDeliveries.id, input.deliveryId),
-            eq(backgroundJobDeliveries.ownerUserId, input.ownerUserId),
-          ),
-        )
+        .where(deliveryTarget(input))
         .returning();
 
-      if (!delivery) {
-        throw new Error("Background job delivery not found.");
-      }
-
-      return delivery;
+      return delivery ?? supersededDelivery(input);
     },
     async markBackgroundJobDeliveryPublishFailed(input) {
       const [delivery] = await getDb()
@@ -142,12 +158,23 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
           nextAttemptAt: input.nextAttemptAt,
           updatedAt: new Date(),
         })
-        .where(
-          and(
-            eq(backgroundJobDeliveries.id, input.deliveryId),
-            eq(backgroundJobDeliveries.ownerUserId, input.ownerUserId),
-          ),
-        )
+        .where(deliveryTarget(input))
+        .returning();
+
+      return delivery ?? supersededDelivery(input);
+    },
+    async reviseBackgroundJobDelivery(input) {
+      const [delivery] = await getDb()
+        .update(backgroundJobDeliveries)
+        .set({
+          status: "pending",
+          lastError: null,
+          nextAttemptAt: input.nextAttemptAt,
+          publishedAt: null,
+          revision: sql`${backgroundJobDeliveries.revision} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(deliveryTarget(input))
         .returning();
 
       if (!delivery) {

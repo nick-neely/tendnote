@@ -138,7 +138,23 @@ export type ReminderStore = {
   }) => Promise<{ job: ReminderDeliveryJob; created: boolean; changed: boolean }>;
   listDeliveryJobs: (input: { ownerUserId: string }) => Promise<ReminderDeliveryJob[]>;
   getDeliveryJob: (jobId: string) => Promise<ReminderDeliveryJob | null>;
+  /**
+   * Claims a due pending or retrying job, or one whose claimant's lease has
+   * expired (see `REMINDER_DELIVERY_LEASE_MS`). Atomic: of two concurrent
+   * claimants, one gets the job and the other null.
+   */
   claimDeliveryJob: (input: { jobId: string; now: Date }) => Promise<ReminderDeliveryJob | null>;
+  /**
+   * Jobs across owners that should already have been dispatched: due before
+   * `dueBefore`, or claimed by a process whose lease expired before
+   * `leaseExpiredBefore`. The recovery sweep's input for wake-ups that were
+   * lost, expired in the queue, or never published. Oldest first, bounded.
+   */
+  listOverdueDeliveryJobs: (input: {
+    dueBefore: Date;
+    leaseExpiredBefore: Date;
+    limit: number;
+  }) => Promise<ReminderDeliveryJob[]>;
   updateDeliveryJob: (input: {
     jobId: string;
     now: Date;

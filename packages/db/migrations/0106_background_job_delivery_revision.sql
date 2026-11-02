@@ -1,0 +1,1 @@
+ALTER TABLE "background_job_deliveries" ADD COLUMN "revision" integer DEFAULT 0 NOT NULL;

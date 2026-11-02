@@ -125,6 +125,8 @@
     "db:account-retention:check": "TMPDIR=/tmp tsx src/account-retention-live-check.ts",
     "db:owner-data-export:check": "TMPDIR=/tmp tsx src/owner-data-export-live-check.ts",
     "db:restore:check": "TMPDIR=/tmp tsx src/restore-live-check.ts",
+    "db:reminder-wakeups:check": "TMPDIR=/tmp tsx src/reminder-wakeup-live-check.ts",
+    "db:reminder-wakeups:rollback": "TMPDIR=/tmp tsx src/reminder-wakeup-rollback.ts",
     "db:account-funnel:check": "TMPDIR=/tmp tsx src/account-funnel-live-check.ts",
     "report:funnel": "TMPDIR=/tmp tsx src/account-funnel-report.ts",
     "db:eval:reset": "TMPDIR=/tmp tsx src/eval/reset.ts",

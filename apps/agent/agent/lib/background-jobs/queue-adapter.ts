@@ -1,6 +1,7 @@
 import {
   attachBackgroundJobQueueSignature,
   type BackgroundJobQueueSendAdapter,
+  backgroundJobQueueSendOptions,
   resolveBackgroundJobQueueSecret,
 } from "@tendnote/db/queries/background-job-deliveries";
 import { send as sendVercelQueueMessage } from "@vercel/queue";
@@ -10,6 +11,9 @@ import { send as sendVercelQueueMessage } from "@vercel/queue";
  * in @tendnote/db (queue injected); only this thin adapter, which imports
  * `@vercel/queue`, stays app-side. Mirrors the web adapter so the data layer never
  * imports the queue provider (ADR-0068).
+ *
+ * Delay and retention pass straight through: Eve's reminder mutations publish
+ * wake-ups delayed to the alert time, exactly as the web adapter does.
  *
  * Eve enqueues extraction/embedding work that the web deployment's consumer routes
  * process, so it signs every published payload with the same shared secret the web
@@ -28,18 +32,16 @@ export function createVercelBackgroundJobQueueAdapter(): BackgroundJobQueueSendA
             "Background job queue signing secret is not configured; cannot publish signed delivery.",
           );
         }
-        return sendVercelQueueMessage(input.topic, input.payload, {
-          idempotencyKey: input.idempotencyKey,
-          headers: input.headers,
-        });
+        return sendVercelQueueMessage(
+          input.topic,
+          input.payload,
+          backgroundJobQueueSendOptions(input),
+        );
       }
       return sendVercelQueueMessage(
         input.topic,
         attachBackgroundJobQueueSignature(input.payload, secret),
-        {
-          idempotencyKey: input.idempotencyKey,
-          headers: input.headers,
-        },
+        backgroundJobQueueSendOptions(input),
       );
     },
   };
