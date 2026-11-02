@@ -21,8 +21,8 @@ export type BriefScheduleStore = {
     enabled: boolean;
   }) => Promise<BriefSchedule>;
   // Atomically claims up to `limit` due rows: enabled, nextRunAt <= now, and lease
-  // absent or expired. Sets a fresh lease and increments attempts, so overlapping
-  // dispatcher runs never claim the same row (at-least-once without duplication).
+  // absent or expired (including a failed run's retry hold). Sets a fresh lease
+  // and increments attempts, so overlapping runs never claim the same row.
   claimDueBriefSchedules: (input: {
     now: Date;
     leaseMs: number;
@@ -35,12 +35,14 @@ export type BriefScheduleStore = {
     nextRunAt: Date;
     ranAt: Date;
   }) => Promise<BriefSchedule>;
-  // Failure: clear the lease and record the error. When `nextRunAt` is provided the
-  // occurrence is given up and rolled forward (attempts reset); otherwise the row
-  // stays due for retry on the next dispatcher tick.
+  // Failure: record the error and clear the lease, or hold it until `retryAt`.
+  // The hold spaces retries without changing the occurrence's local date or attempts.
+  // When `nextRunAt` is provided the occurrence is given up and rolled forward
+  // (attempts reset); otherwise it stays due for retry after any hold expires.
   releaseBriefSchedule: (input: {
     id: string;
     lastError: string;
     nextRunAt?: Date;
+    retryAt?: Date;
   }) => Promise<BriefSchedule>;
 };

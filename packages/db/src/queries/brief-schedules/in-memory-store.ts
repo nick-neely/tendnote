@@ -107,7 +107,7 @@ export function createInMemoryBriefScheduleStore(): BriefScheduleStore {
       const givingUp = input.nextRunAt !== undefined;
       const updated: BriefSchedule = {
         ...schedule,
-        leaseExpiresAt: null,
+        leaseExpiresAt: givingUp ? null : (input.retryAt ?? null),
         lastError: input.lastError,
         ...(givingUp ? { nextRunAt: input.nextRunAt as Date, attempts: 0 } : {}),
         updatedAt: new Date(),

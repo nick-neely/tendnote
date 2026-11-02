@@ -126,9 +126,11 @@ export function createDrizzleBriefScheduleStore(): BriefScheduleStore {
       const [schedule] = await getDb()
         .update(briefSchedules)
         .set({
-          leaseExpiresAt: null,
+          leaseExpiresAt: input.retryAt ?? null,
           lastError: input.lastError,
-          ...(input.nextRunAt ? { nextRunAt: input.nextRunAt, attempts: 0 } : {}),
+          ...(input.nextRunAt
+            ? { nextRunAt: input.nextRunAt, attempts: 0, leaseExpiresAt: null }
+            : {}),
           updatedAt: new Date(),
         })
         .where(eq(briefSchedules.id, input.id))

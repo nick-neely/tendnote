@@ -1,5 +1,5 @@
 import { type CreateBriefScheduleInput, computeNextBriefRun } from "@tendnote/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createBriefScheduleDispatcher, type ScheduledBriefGenerator } from "./dispatcher";
 import { createInMemoryBriefScheduleStore } from "./in-memory-store";
 
@@ -149,6 +149,106 @@ describe("brief schedule dispatcher", () => {
 
     await dispatcher.runDueBriefSchedules({ now: new Date("2026-06-28T07:00:00Z") });
     expect(calls[0]?.localDate).toBe("2026-06-27");
+  });
+
+  it("holds failed runs across faster and duplicate ticks, retaining five attempts over at least an hour", async () => {
+    const generate = vi.fn<ScheduledBriefGenerator>().mockRejectedValue(new Error("offline"));
+    const { store } = setup(generate);
+    const created = await store.createBriefSchedule(dailyRow({ nextRunAt: NOW }));
+    const minute = (value: number) => new Date(NOW.getTime() + value * 60_000);
+
+    for (let elapsed = 0; elapsed <= 80; elapsed += 10) {
+      // Recreating the dispatcher proves that retry state survives an invocation.
+      const dispatcher = createBriefScheduleDispatcher(store, generate);
+      await dispatcher.runDueBriefSchedules({ now: minute(elapsed), retryDelayMs: 900_000 });
+      await dispatcher.runDueBriefSchedules({ now: minute(elapsed), retryDelayMs: 900_000 });
+      expect(generate).toHaveBeenCalledTimes(Math.floor(elapsed / 20) + 1);
+      if (elapsed < 80) {
+        const row = await store.getBriefScheduleForOwner({ ownerUserId: OWNER, cadence: "daily" });
+        expect(row?.nextRunAt).toEqual(created.nextRunAt);
+      }
+    }
+
+    expect(generate.mock.calls.map(([input]) => input.now)).toEqual(
+      [0, 20, 40, 60, 80].map(minute),
+    );
+    const row = await store.getBriefScheduleForOwner({ ownerUserId: OWNER, cadence: "daily" });
+    expect(row?.leaseExpiresAt).toBeNull();
+    expect(row?.attempts).toBe(0);
+    expect(row?.nextRunAt).toEqual(computeNextBriefRun(created, minute(80)));
+  });
+
+  it("clears the retry hold on success without changing the scheduled local date", async () => {
+    const generate = vi
+      .fn<ScheduledBriefGenerator>()
+      .mockRejectedValueOnce(new Error("temporary"))
+      .mockResolvedValue(undefined);
+    const { store, dispatcher } = setup(generate);
+    await store.createBriefSchedule(dailyRow());
+    await dispatcher.runDueBriefSchedules({ now: NOW, retryDelayMs: 900_000 });
+    const later = new Date(NOW.getTime() + 20 * 60_000);
+    await dispatcher.runDueBriefSchedules({ now: later, retryDelayMs: 900_000 });
+    expect(generate.mock.calls.map(([input]) => input.localDate)).toEqual([
+      "2026-06-27",
+      "2026-06-27",
+    ]);
+    const row = await store.getBriefScheduleForOwner({ ownerUserId: OWNER, cadence: "daily" });
+    expect(row).toMatchObject({
+      attempts: 0,
+      lastError: null,
+      leaseExpiresAt: null,
+      lastRunAt: later,
+    });
+  });
+
+  it("starts a later row's retry hold at its own attempt, not at batch claim time", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const generate = vi
+      .fn<ScheduledBriefGenerator>()
+      .mockImplementation(async ({ ownerUserId }) => {
+        if (ownerUserId === OWNER) {
+          vi.setSystemTime(new Date(NOW.getTime() + 2 * 60_000));
+          return;
+        }
+        throw new Error("later owner's failure");
+      });
+    const { store, dispatcher } = setup(generate);
+    await store.createBriefSchedule(dailyRow());
+    await store.createBriefSchedule(dailyRow({ ownerUserId: OTHER_OWNER }));
+    try {
+      await dispatcher.runDueBriefSchedules({ retryDelayMs: 900_000 });
+      const row = await store.getBriefScheduleForOwner({
+        ownerUserId: OTHER_OWNER,
+        cadence: "daily",
+      });
+      expect(row?.leaseExpiresAt).toEqual(new Date(NOW.getTime() + 17 * 60_000));
+      vi.setSystemTime(new Date(NOW.getTime() + 16 * 60_000));
+      await dispatcher.runDueBriefSchedules({ retryDelayMs: 900_000 });
+      expect(generate).toHaveBeenCalledTimes(2);
+      vi.setSystemTime(new Date(NOW.getTime() + 17 * 60_000));
+      await dispatcher.runDueBriefSchedules({ retryDelayMs: 900_000 });
+      expect(generate).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets healthy owners run when another owner's generation fails and retries are held", async () => {
+    const generate = vi
+      .fn<ScheduledBriefGenerator>()
+      .mockImplementation(async ({ ownerUserId }) => {
+        if (ownerUserId === OWNER) throw new Error("owner-specific failure");
+      });
+    const { store, dispatcher } = setup(generate);
+    await store.createBriefSchedule(dailyRow());
+    await store.createBriefSchedule(dailyRow({ ownerUserId: OTHER_OWNER }));
+    expect(await dispatcher.runDueBriefSchedules({ now: NOW, retryDelayMs: 900_000 })).toEqual({
+      claimed: 2,
+      generated: 1,
+      skipped: 0,
+      failed: 1,
+    });
   });
 
   it("generates each owner's brief under their own scope", async () => {

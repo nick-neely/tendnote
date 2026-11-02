@@ -4,6 +4,7 @@ import {
   type BirthdayGiftPlanningArtifact,
   type BirthdayGiftPlanningSchedule,
   type BirthdayGiftPlanningStore,
+  createBirthdayGiftPlanningDispatch,
   createBirthdayGiftPlanningWorkflow,
 } from "./birthday-gift-planning";
 import type { RelationshipAgendaCandidate } from "./relationship-agenda";
@@ -144,7 +145,7 @@ function memoryStore(seed: BirthdayGiftPlanningArtifact[] = []): BirthdayGiftPla
       if (!schedule) throw new Error("Birthday gift planning schedule not found.");
       const released = {
         ...schedule,
-        leaseExpiresAt: null,
+        leaseExpiresAt: input.nextRunAt ? null : (input.retryAt ?? null),
         lastError: input.lastError,
         ...(input.nextRunAt ? { nextRunAt: input.nextRunAt, attempts: 0 } : {}),
       };
@@ -179,6 +180,75 @@ function setupWorkflow(
 }
 
 describe("Birthday Gift Planning workflow", () => {
+  it("retains five attempts over at least an hour across failed, duplicate and idle ticks", async () => {
+    const store = memoryStore();
+    const generate = vi.fn().mockRejectedValue(new Error("temporary failure"));
+    const dispatch = createBirthdayGiftPlanningDispatch({ store, generate });
+    const minute = (value: number) => new Date(NOW.getTime() + value * 60_000);
+    for (let elapsed = 0; elapsed <= 80; elapsed += 10) {
+      const run = () =>
+        dispatch({ ownerUserId: OWNER, now: minute(elapsed), retryDelayMs: 900_000 });
+      if (elapsed % 20 === 0) await expect(run()).rejects.toThrow("temporary failure");
+      else await expect(run()).resolves.toBeNull();
+      await expect(run()).resolves.toBeNull();
+      expect(generate).toHaveBeenCalledTimes(Math.floor(elapsed / 20) + 1);
+    }
+    const schedule = await store.ensureSchedule({ ownerUserId: OWNER, timezone: "UTC", now: NOW });
+    expect(schedule).toMatchObject({ attempts: 0, leaseExpiresAt: null });
+    expect(schedule.nextRunAt.getTime()).toBeGreaterThan(minute(80).getTime());
+  });
+
+  it("starts the birthday retry hold after schedule lookup and claiming", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const store = memoryStore();
+    const claim = store.claimDueSchedule;
+    store.claimDueSchedule = async (input) => {
+      const schedule = await claim(input);
+      vi.setSystemTime(new Date(NOW.getTime() + 2 * 60_000));
+      return schedule;
+    };
+    const generate = vi.fn().mockRejectedValue(new Error("temporary"));
+    const dispatch = createBirthdayGiftPlanningDispatch({ store, generate });
+    try {
+      await expect(dispatch({ ownerUserId: OWNER, retryDelayMs: 900_000 })).rejects.toThrow(
+        "temporary",
+      );
+      const row = await store.ensureSchedule({ ownerUserId: OWNER, timezone: "UTC", now: NOW });
+      expect(row.leaseExpiresAt).toEqual(new Date(NOW.getTime() + 17 * 60_000));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("advances a successful retry once and keeps the occurrence date across local midnight", async () => {
+    const store = memoryStore();
+    const generate = vi.fn().mockRejectedValueOnce(new Error("temporary")).mockResolvedValue({});
+    const dispatch = createBirthdayGiftPlanningDispatch({ store, generate });
+    const first = new Date("2026-07-03T04:50:00Z"); // July 2, 23:50 in Chicago.
+    const timezone = "America/Chicago";
+    await expect(
+      dispatch({ ownerUserId: OWNER, timezone, now: first, retryDelayMs: 900_000 }),
+    ).rejects.toThrow("temporary");
+    const later = new Date(first.getTime() + 20 * 60_000); // After local midnight.
+    await dispatch({ ownerUserId: OWNER, timezone, now: later, retryDelayMs: 900_000 });
+    await expect(
+      dispatch({ ownerUserId: OWNER, now: later, retryDelayMs: 900_000 }),
+    ).resolves.toBeNull();
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate.mock.calls.map(([input]) => input.localDate)).toEqual([
+      "2026-07-02",
+      "2026-07-02",
+    ]);
+    const schedule = await store.ensureSchedule({ ownerUserId: OWNER, timezone: "UTC", now: NOW });
+    expect(schedule).toMatchObject({
+      attempts: 0,
+      lastError: null,
+      leaseExpiresAt: null,
+      lastRunAt: later,
+    });
+  });
+
   it("selects upcoming birthdays early through the relationship agenda birthday seam", async () => {
     const { workflow, getRelationshipAgenda } = setupWorkflow();
 
