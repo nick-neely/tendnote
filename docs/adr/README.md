@@ -94,6 +94,7 @@ the bounded publication evidence path.
 - [0263 - Reliability Indicators are read by the recovery cron, and Eve is asked daily](0263-reliability-indicators-are-read-by-the-recovery-cron-and-eve-is-asked-daily.md)
 - [0264 - Main is re-verified after every merge](0264-main-is-re-verified-after-every-merge.md)
 - [0265 - First Value model alerts confirm scheduled samples](0265-first-value-model-alerts-confirm-scheduled-samples.md)
+- [0266 - Scheduled workflows share recovery wake-ups](0266-scheduled-workflows-share-recovery-wakeups.md)
 
 The catalog intentionally omits the Phase 9a planning workspace. That
 workspace remains useful to maintainers, but it is not a newcomer evidence

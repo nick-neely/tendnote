@@ -24,6 +24,7 @@ import {
   type DiscordProactiveDeliverySender,
   type DiscordScheduledArtifactDeliveryResult,
 } from "./scheduled-workflow-deliveries";
+import { scheduledWorkflowRetryHold } from "./scheduled-workflow-retry";
 
 export type { DiscordProactiveDeliverySender };
 
@@ -130,6 +131,8 @@ export type BirthdayGiftPlanningStore = {
     id: string;
     lastError: string;
     nextRunAt?: Date;
+    /** Retain the existing lease as a retry hold, without advancing the occurrence. */
+    retryAt?: Date;
   }) => Promise<BirthdayGiftPlanningSchedule>;
 };
 
@@ -489,9 +492,11 @@ export function createDrizzleBirthdayGiftPlanningStore(): BirthdayGiftPlanningSt
       const [row] = await getDb()
         .update(birthdayGiftPlanningSchedules)
         .set({
-          leaseExpiresAt: null,
+          leaseExpiresAt: input.retryAt ?? null,
           lastError: input.lastError,
-          ...(input.nextRunAt ? { nextRunAt: input.nextRunAt, attempts: 0 } : {}),
+          ...(input.nextRunAt
+            ? { nextRunAt: input.nextRunAt, attempts: 0, leaseExpiresAt: null }
+            : {}),
         })
         .where(eq(birthdayGiftPlanningSchedules.id, input.id))
         .returning();
@@ -520,50 +525,62 @@ export type DispatchBirthdayGiftPlanningInput = {
   now?: Date;
   timezone?: string;
   discordSender?: DiscordProactiveDeliverySender;
+  retryDelayMs?: number;
 };
 
-export async function dispatchBirthdayGiftPlanning(input: DispatchBirthdayGiftPlanningInput) {
-  const now = input.now ?? new Date();
-  const timezone = input.timezone ?? "UTC";
-  const store = createDrizzleBirthdayGiftPlanningStore();
-  await store.ensureSchedule({ ownerUserId: input.ownerUserId, timezone, now });
-  const schedule = await store.claimDueSchedule({
-    ownerUserId: input.ownerUserId,
-    now,
-    leaseMs: DEFAULT_LEASE_MS,
-  });
-
-  if (!schedule) return null;
-
-  try {
-    const result = await generateBirthdayGiftPlanning({
-      ownerUserId: schedule.ownerUserId,
-      localDate: formatLocalDate(schedule.timezone, schedule.nextRunAt),
+export function createBirthdayGiftPlanningDispatch(deps: {
+  store: BirthdayGiftPlanningStore;
+  generate: typeof generateBirthdayGiftPlanning;
+}) {
+  return async (input: DispatchBirthdayGiftPlanningInput) => {
+    const now = input.now ?? new Date();
+    const timezone = input.timezone ?? "UTC";
+    const { store } = deps;
+    await store.ensureSchedule({ ownerUserId: input.ownerUserId, timezone, now });
+    const schedule = await store.claimDueSchedule({
+      ownerUserId: input.ownerUserId,
       now,
-      ...(input.discordSender
-        ? {
-            deliverDiscord: true,
-            sender: input.discordSender,
-          }
-        : {}),
+      leaseMs: DEFAULT_LEASE_MS,
     });
-    await store.completeSchedule({
-      id: schedule.id,
-      nextRunAt: computeNextBirthdayPlanningRun(schedule.timezone, now),
-      ranAt: now,
-    });
-    return result;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const giveUp = schedule.attempts >= DEFAULT_MAX_ATTEMPTS;
-    await store.releaseSchedule({
-      id: schedule.id,
-      lastError: message,
-      ...(giveUp ? { nextRunAt: computeNextBirthdayPlanningRun(schedule.timezone, now) } : {}),
-    });
-    throw error;
-  }
+
+    if (!schedule) return null;
+
+    try {
+      const result = await deps.generate({
+        ownerUserId: schedule.ownerUserId,
+        localDate: formatLocalDate(schedule.timezone, schedule.nextRunAt),
+        now,
+        ...(input.discordSender
+          ? {
+              deliverDiscord: true,
+              sender: input.discordSender,
+            }
+          : {}),
+      });
+      await store.completeSchedule({
+        id: schedule.id,
+        nextRunAt: computeNextBirthdayPlanningRun(schedule.timezone, now),
+        ranAt: now,
+      });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const giveUp = schedule.attempts >= DEFAULT_MAX_ATTEMPTS;
+      await store.releaseSchedule({
+        id: schedule.id,
+        lastError: message,
+        ...scheduledWorkflowRetryHold(now, input.retryDelayMs),
+        ...(giveUp ? { nextRunAt: computeNextBirthdayPlanningRun(schedule.timezone, now) } : {}),
+      });
+      throw error;
+    }
+  };
 }
+
+export const dispatchBirthdayGiftPlanning = createBirthdayGiftPlanningDispatch({
+  store: createDrizzleBirthdayGiftPlanningStore(),
+  generate: generateBirthdayGiftPlanning,
+});
 
 function computeNextBirthdayPlanningRun(timezone: string, from: Date): Date {
   return computeNextBriefRun(

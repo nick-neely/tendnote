@@ -4,6 +4,7 @@ import {
   computeNextBriefRun,
   formatLocalDate,
 } from "@tendnote/domain";
+import { scheduledWorkflowRetryHold } from "../scheduled-workflow-retry";
 import type { BriefScheduleStore } from "./types";
 
 /**
@@ -27,6 +28,9 @@ export type RunDueBriefSchedulesInput = {
   // Consecutive failures after which the occurrence is given up and rolled to the
   // next scheduled run rather than retried again.
   maxAttempts?: number;
+  // Minimum interval from a failed attempt's start. Stored in the lease so a
+  // faster root cadence cannot spend the retry budget in a shorter window.
+  retryDelayMs?: number;
   // Max rows to claim in one dispatcher tick.
   limit?: number;
   // Whether an owner's scheduled delivery is skipped this time, because it is
@@ -111,6 +115,7 @@ export function createBriefScheduleDispatcher(
           await store.releaseBriefSchedule({
             id: schedule.id,
             lastError: message,
+            ...scheduledWorkflowRetryHold(now, input.retryDelayMs),
             ...(giveUp ? { nextRunAt: computeNextBriefRun(schedule, now) } : {}),
           });
           failed += 1;

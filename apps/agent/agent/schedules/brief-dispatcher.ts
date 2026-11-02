@@ -13,6 +13,9 @@ import { resolveScheduledOwnerUserIds } from "../lib/schedule-owners";
 import { createScheduledDeliveryPause } from "../lib/scheduled-delivery-pause";
 
 const timezone = process.env.TENDNOTE_BRIEF_TIMEZONE ?? "UTC";
+// Keep the existing five-attempt budget and at least the previous retry spacing.
+// Ten-minute ticks pick a failed occurrence up on the first tick after this hold.
+const RETRY_DELAY_MS = 15 * 60 * 1000;
 
 type DiscordProactiveDeliverySender = ReturnType<typeof createDiscordProactiveDeliverySender>;
 
@@ -41,15 +44,16 @@ function briefDiscordOptions(sender: DiscordProactiveDeliverySender) {
  * in-app brief persistence is a direct database write, and external delivery is
  * out of scope for Phase 1F.
  *
- * Vercel evaluates cron in UTC; waking every 15 minutes lets the application rows'
- * timezone-derived next-run times fire close to each owner's local schedule.
+ * Vercel evaluates cron in UTC. Match the web recovery cron's ten-minute ticks so
+ * empty checks share database wake-ups rather than waking a sleeping compute at
+ * :15 and :45. Per-owner timezone-derived next-run times still govern delivery.
  *
  * An owner whose scheduled workflows are paused, at their Account Ceiling or by
  * the Spend Breaker, skips the delivery: a due brief or review rolls forward to
  * its next run, and aftercare does not run this tick.
  */
 export default defineSchedule({
-  cron: "*/15 * * * *",
+  cron: "*/10 * * * *",
   run({ waitUntil }) {
     const discordSender = createDiscordProactiveDeliverySender();
     const deliveryPaused = createScheduledDeliveryPause();
@@ -76,6 +80,7 @@ export default defineSchedule({
 
           await Promise.all([
             dispatchDueBriefs({
+              retryDelayMs: RETRY_DELAY_MS,
               ...briefDiscordOptions(discordSender),
               calendarReaderFor: createOwnerCalendarReader,
               skipOwner: deliveryPaused,
@@ -98,6 +103,7 @@ export default defineSchedule({
               dispatchBirthdayGiftPlanning({
                 ownerUserId,
                 timezone,
+                retryDelayMs: RETRY_DELAY_MS,
                 ...discordDeliveryOption(discordSender),
               }).catch((error) => {
                 console.error("Birthday gift planning dispatch failed.", error);

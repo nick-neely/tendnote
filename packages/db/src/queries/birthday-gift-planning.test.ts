@@ -4,6 +4,7 @@ import {
   type BirthdayGiftPlanningArtifact,
   type BirthdayGiftPlanningSchedule,
   type BirthdayGiftPlanningStore,
+  createBirthdayGiftPlanningDispatch,
   createBirthdayGiftPlanningWorkflow,
 } from "./birthday-gift-planning";
 import type { RelationshipAgendaCandidate } from "./relationship-agenda";
@@ -144,7 +145,7 @@ function memoryStore(seed: BirthdayGiftPlanningArtifact[] = []): BirthdayGiftPla
       if (!schedule) throw new Error("Birthday gift planning schedule not found.");
       const released = {
         ...schedule,
-        leaseExpiresAt: null,
+        leaseExpiresAt: input.nextRunAt ? null : (input.retryAt ?? null),
         lastError: input.lastError,
         ...(input.nextRunAt ? { nextRunAt: input.nextRunAt, attempts: 0 } : {}),
       };
@@ -179,6 +180,46 @@ function setupWorkflow(
 }
 
 describe("Birthday Gift Planning workflow", () => {
+  it("retains five attempts over at least an hour across failed, duplicate and idle ticks", async () => {
+    const store = memoryStore();
+    const generate = vi.fn().mockRejectedValue(new Error("temporary failure"));
+    const dispatch = createBirthdayGiftPlanningDispatch({ store, generate });
+    const minute = (value: number) => new Date(NOW.getTime() + value * 60_000);
+    for (let elapsed = 0; elapsed <= 80; elapsed += 10) {
+      const run = () =>
+        dispatch({ ownerUserId: OWNER, now: minute(elapsed), retryDelayMs: 900_000 });
+      if (elapsed % 20 === 0) await expect(run()).rejects.toThrow("temporary failure");
+      else await expect(run()).resolves.toBeNull();
+      await expect(run()).resolves.toBeNull();
+      expect(generate).toHaveBeenCalledTimes(Math.floor(elapsed / 20) + 1);
+    }
+    const schedule = await store.ensureSchedule({ ownerUserId: OWNER, timezone: "UTC", now: NOW });
+    expect(schedule).toMatchObject({ attempts: 0, leaseExpiresAt: null });
+    expect(schedule.nextRunAt.getTime()).toBeGreaterThan(minute(80).getTime());
+  });
+
+  it("advances a successful retry once and clears its hold", async () => {
+    const store = memoryStore();
+    const generate = vi.fn().mockRejectedValueOnce(new Error("temporary")).mockResolvedValue({});
+    const dispatch = createBirthdayGiftPlanningDispatch({ store, generate });
+    await expect(dispatch({ ownerUserId: OWNER, now: NOW, retryDelayMs: 900_000 })).rejects.toThrow(
+      "temporary",
+    );
+    const later = new Date(NOW.getTime() + 20 * 60_000);
+    await dispatch({ ownerUserId: OWNER, now: later, retryDelayMs: 900_000 });
+    await expect(
+      dispatch({ ownerUserId: OWNER, now: later, retryDelayMs: 900_000 }),
+    ).resolves.toBeNull();
+    expect(generate).toHaveBeenCalledTimes(2);
+    const schedule = await store.ensureSchedule({ ownerUserId: OWNER, timezone: "UTC", now: NOW });
+    expect(schedule).toMatchObject({
+      attempts: 0,
+      lastError: null,
+      leaseExpiresAt: null,
+      lastRunAt: later,
+    });
+  });
+
   it("selects upcoming birthdays early through the relationship agenda birthday seam", async () => {
     const { workflow, getRelationshipAgenda } = setupWorkflow();
 

@@ -34,7 +34,7 @@ export const briefSchedules = pgTable(
     weekday: integer("weekday"),
     nextRunAt: timestamp("next_run_at", { withTimezone: true }).notNull(),
     enabled: boolean("enabled").notNull().default(true),
-    // Lease held while a dispatcher run generates this brief; null when free.
+    // Holds an active generation or a failed run's retry delay; null when free.
     leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
