@@ -545,6 +545,7 @@ export function createBirthdayGiftPlanningDispatch(deps: {
 
     if (!schedule) return null;
 
+    const attemptStartedAt = input.now ?? new Date();
     try {
       const result = await deps.generate({
         ownerUserId: schedule.ownerUserId,
@@ -569,7 +570,7 @@ export function createBirthdayGiftPlanningDispatch(deps: {
       await store.releaseSchedule({
         id: schedule.id,
         lastError: message,
-        ...scheduledWorkflowRetryHold(now, input.retryDelayMs),
+        ...scheduledWorkflowRetryHold(attemptStartedAt, input.retryDelayMs),
         ...(giveUp ? { nextRunAt: computeNextBirthdayPlanningRun(schedule.timezone, now) } : {}),
       });
       throw error;

@@ -90,6 +90,9 @@ export function createBriefScheduleDispatcher(
         // The brief covers the local date of its scheduled run, not the (possibly
         // later) dispatch instant, so a late tick still produces the right day.
         const localDate = formatLocalDate(schedule.timezone, schedule.nextRunAt);
+        // Earlier rows and usage checks may take time. Hold this attempt from its
+        // own start; supplied logical times still keep explicit-time callers fixed.
+        const attemptStartedAt = input.now ?? new Date();
 
         try {
           await generate({
@@ -115,7 +118,7 @@ export function createBriefScheduleDispatcher(
           await store.releaseBriefSchedule({
             id: schedule.id,
             lastError: message,
-            ...scheduledWorkflowRetryHold(now, input.retryDelayMs),
+            ...scheduledWorkflowRetryHold(attemptStartedAt, input.retryDelayMs),
             ...(giveUp ? { nextRunAt: computeNextBriefRun(schedule, now) } : {}),
           });
           failed += 1;

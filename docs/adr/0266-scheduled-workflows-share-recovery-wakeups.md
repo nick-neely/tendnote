@@ -19,9 +19,10 @@ deduplication stay authoritative. Background queue delivery is unchanged. The
 dispatcher still does no generation for a future or disabled schedule.
 
 Failed briefs and birthday planning retain five attempts. The scheduled entry
-point supplies a fifteen-minute minimum interval from the attempt's start;
-release stores the retry
-hold in the existing `lease_expires_at`. Claiming already excludes a live lease,
+point supplies a fifteen-minute minimum interval from each attempt's own start,
+after earlier rows and owner checks; explicit logical `now` callers remain fixed.
+Release stores the retry hold in the existing `lease_expires_at`.
+Claiming already excludes a live lease,
 so duplicate ticks and a new invocation cannot spend another attempt early. The
 original `next_run_at` remains unchanged during the hold, preserving the local
 date of the occurrence. Success, usage-paused roll-forward, and final failure

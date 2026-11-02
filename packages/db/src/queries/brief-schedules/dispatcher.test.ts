@@ -201,6 +201,39 @@ describe("brief schedule dispatcher", () => {
     });
   });
 
+  it("starts a later row's retry hold at its own attempt, not at batch claim time", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const generate = vi
+      .fn<ScheduledBriefGenerator>()
+      .mockImplementation(async ({ ownerUserId }) => {
+        if (ownerUserId === OWNER) {
+          vi.setSystemTime(new Date(NOW.getTime() + 2 * 60_000));
+          return;
+        }
+        throw new Error("later owner's failure");
+      });
+    const { store, dispatcher } = setup(generate);
+    await store.createBriefSchedule(dailyRow());
+    await store.createBriefSchedule(dailyRow({ ownerUserId: OTHER_OWNER }));
+    try {
+      await dispatcher.runDueBriefSchedules({ retryDelayMs: 900_000 });
+      const row = await store.getBriefScheduleForOwner({
+        ownerUserId: OTHER_OWNER,
+        cadence: "daily",
+      });
+      expect(row?.leaseExpiresAt).toEqual(new Date(NOW.getTime() + 17 * 60_000));
+      vi.setSystemTime(new Date(NOW.getTime() + 16 * 60_000));
+      await dispatcher.runDueBriefSchedules({ retryDelayMs: 900_000 });
+      expect(generate).toHaveBeenCalledTimes(2);
+      vi.setSystemTime(new Date(NOW.getTime() + 17 * 60_000));
+      await dispatcher.runDueBriefSchedules({ retryDelayMs: 900_000 });
+      expect(generate).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("lets healthy owners run when another owner's generation fails and retries are held", async () => {
     const generate = vi
       .fn<ScheduledBriefGenerator>()

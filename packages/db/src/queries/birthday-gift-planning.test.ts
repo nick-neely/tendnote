@@ -198,19 +198,48 @@ describe("Birthday Gift Planning workflow", () => {
     expect(schedule.nextRunAt.getTime()).toBeGreaterThan(minute(80).getTime());
   });
 
-  it("advances a successful retry once and clears its hold", async () => {
+  it("starts the birthday retry hold after schedule lookup and claiming", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const store = memoryStore();
+    const claim = store.claimDueSchedule;
+    store.claimDueSchedule = async (input) => {
+      const schedule = await claim(input);
+      vi.setSystemTime(new Date(NOW.getTime() + 2 * 60_000));
+      return schedule;
+    };
+    const generate = vi.fn().mockRejectedValue(new Error("temporary"));
+    const dispatch = createBirthdayGiftPlanningDispatch({ store, generate });
+    try {
+      await expect(dispatch({ ownerUserId: OWNER, retryDelayMs: 900_000 })).rejects.toThrow(
+        "temporary",
+      );
+      const row = await store.ensureSchedule({ ownerUserId: OWNER, timezone: "UTC", now: NOW });
+      expect(row.leaseExpiresAt).toEqual(new Date(NOW.getTime() + 17 * 60_000));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("advances a successful retry once and keeps the occurrence date across local midnight", async () => {
     const store = memoryStore();
     const generate = vi.fn().mockRejectedValueOnce(new Error("temporary")).mockResolvedValue({});
     const dispatch = createBirthdayGiftPlanningDispatch({ store, generate });
-    await expect(dispatch({ ownerUserId: OWNER, now: NOW, retryDelayMs: 900_000 })).rejects.toThrow(
-      "temporary",
-    );
-    const later = new Date(NOW.getTime() + 20 * 60_000);
-    await dispatch({ ownerUserId: OWNER, now: later, retryDelayMs: 900_000 });
+    const first = new Date("2026-07-03T04:50:00Z"); // July 2, 23:50 in Chicago.
+    const timezone = "America/Chicago";
+    await expect(
+      dispatch({ ownerUserId: OWNER, timezone, now: first, retryDelayMs: 900_000 }),
+    ).rejects.toThrow("temporary");
+    const later = new Date(first.getTime() + 20 * 60_000); // After local midnight.
+    await dispatch({ ownerUserId: OWNER, timezone, now: later, retryDelayMs: 900_000 });
     await expect(
       dispatch({ ownerUserId: OWNER, now: later, retryDelayMs: 900_000 }),
     ).resolves.toBeNull();
     expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate.mock.calls.map(([input]) => input.localDate)).toEqual([
+      "2026-07-02",
+      "2026-07-02",
+    ]);
     const schedule = await store.ensureSchedule({ ownerUserId: OWNER, timezone: "UTC", now: NOW });
     expect(schedule).toMatchObject({
       attempts: 0,
