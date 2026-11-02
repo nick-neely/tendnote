@@ -12,6 +12,7 @@ import {
   isReminderDeliveryJobClaimable,
   type ReminderPushSender,
   rearmReminderDeliveryJob,
+  reminderDeliveryPublishesAhead,
 } from "@tendnote/db/queries/reminders";
 import { reminderOpenDeepLink } from "@/components/app-destinations";
 import type { ProductRateLimiter } from "@/lib/rate-limit";
@@ -19,15 +20,13 @@ import {
   type BackgroundJobQueueLogger,
   type BackgroundJobQueueSendAdapter,
   consumeBackgroundJobQueueMessage,
-  createVercelBackgroundJobQueueAdapter,
 } from "./queue-runtime";
+import { createVercelBackgroundJobQueueAdapter } from "./vercel-queue-transport";
 import { getWebPushSender } from "./web-push";
 
 type ReminderJob = Awaited<
   ReturnType<ReturnType<typeof createDrizzleReminderStore>["getDeliveryJob"]>
 >;
-
-type DispatchOutcome = { status: string; reason?: string };
 
 function wholeSecondsBetween(later: Date, earlier: Date) {
   return Math.round((later.getTime() - earlier.getTime()) / 1000);
@@ -36,12 +35,7 @@ function wholeSecondsBetween(later: Date, earlier: Date) {
 function createReminderQueueProcessor(input: {
   now: Date;
   getJob: (jobId: string) => Promise<ReminderJob>;
-  dispatch: (input: {
-    jobId: string;
-    now: Date;
-    sender: ReminderPushSender;
-    deepLink: typeof reminderOpenDeepLink;
-  }) => Promise<unknown>;
+  dispatch: typeof dispatchReminder;
   sender: ReminderPushSender;
   rearm: (jobId: string) => Promise<unknown>;
   logger?: BackgroundJobQueueLogger;
@@ -73,23 +67,26 @@ function createReminderQueueProcessor(input: {
       return { status: "not_claimable", reason: `Reminder delivery job is ${job.status}.` };
     },
     async processJob({ jobId, metadata }) {
-      const outcome = (await input.dispatch({
+      const outcome = await input.dispatch({
         jobId,
         now: input.now,
         sender: input.sender,
         deepLink: reminderOpenDeepLink,
-      })) as DispatchOutcome | undefined;
+      });
       // Reliability evidence without content or identifiers: how late the
-      // pointer woke us (queue lag) and how late the alert reached the push
-      // provider. Provider acceptance is not display on the device.
+      // pointer woke us (queue lag) and, for an accepted send, how long after
+      // the alert time the push provider accepted it. Provider acceptance is
+      // not display on the device.
       input.logger?.info?.("reminder_delivery.dispatched", {
-        status: outcome?.status ?? "unknown",
-        ...(outcome?.reason ? { reason: outcome.reason } : {}),
+        status: outcome.status,
+        ...("reason" in outcome ? { reason: outcome.reason } : {}),
         ...(claimed
           ? {
               queueLagSeconds: wholeSecondsBetween(input.now, claimed.nextAttemptAt),
-              secondsAfterAlertTime: wholeSecondsBetween(input.now, claimed.intendedAt),
               attempts: claimed.attempts,
+              ...(outcome.status === "accepted"
+                ? { alertToAcceptanceSeconds: wholeSecondsBetween(new Date(), claimed.intendedAt) }
+                : {}),
             }
           : {}),
         ...(metadata?.deliveryCount ? { deliveryCount: metadata.deliveryCount } : {}),
@@ -134,6 +131,7 @@ export async function consumeReminderQueueMessage(input: {
             queue,
             jobId,
             now,
+            publishAhead: reminderDeliveryPublishesAhead(process.env),
             logger: input.logger,
           }),
         logger: input.logger,

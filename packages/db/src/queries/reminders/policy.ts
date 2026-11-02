@@ -11,18 +11,8 @@ import type { ReminderRecord } from "./types";
  */
 export const REMINDER_DELIVERY_LEASE_MS = 5 * 60_000;
 
-/** Whether a delivery job may be claimed for dispatch at `now`. */
-export function isReminderDeliveryJobClaimable(
-  job: Pick<ReminderDeliveryJob, "status" | "nextAttemptAt" | "updatedAt">,
-  now: Date,
-): boolean {
-  if (job.status === "running") {
-    return job.updatedAt.getTime() <= now.getTime() - REMINDER_DELIVERY_LEASE_MS;
-  }
-  return (
-    (job.status === "pending" || job.status === "failed") &&
-    job.nextAttemptAt.getTime() <= now.getTime()
-  );
+function claimLeaseExpired(job: Pick<ReminderDeliveryJob, "updatedAt">, now: Date): boolean {
+  return job.updatedAt.getTime() <= now.getTime() - REMINDER_DELIVERY_LEASE_MS;
 }
 
 /** Pending or retrying work still owed a wake-up, due now or later. */
@@ -33,9 +23,39 @@ export function isReminderDeliveryJobAwaiting(
   return (
     job.status === "pending" ||
     job.status === "failed" ||
-    (job.status === "running" &&
-      job.updatedAt.getTime() <= now.getTime() - REMINDER_DELIVERY_LEASE_MS)
+    (job.status === "running" && claimLeaseExpired(job, now))
   );
+}
+
+/** Whether a delivery job may be claimed for dispatch at `now`. */
+export function isReminderDeliveryJobClaimable(
+  job: Pick<ReminderDeliveryJob, "status" | "nextAttemptAt" | "updatedAt">,
+  now: Date,
+): boolean {
+  if (!isReminderDeliveryJobAwaiting(job, now)) return false;
+  return job.status === "running" || job.nextAttemptAt.getTime() <= now.getTime();
+}
+
+/**
+ * When a job should next be woken, or null when it is owed no wake-up: it is
+ * finished, or a live claimant is dispatching it. An abandoned claim is due now.
+ */
+export function reminderDeliveryWakeupTime(
+  job: Pick<ReminderDeliveryJob, "status" | "nextAttemptAt" | "updatedAt"> | null,
+  now: Date,
+): Date | null {
+  if (!job || !isReminderDeliveryJobAwaiting(job, now)) return null;
+  return job.status === "running" ? now : job.nextAttemptAt;
+}
+
+/**
+ * Whether reminder wake-ups are published to the queue as soon as they are
+ * scheduled, delayed to the alert time (ADR 0267). `off` is the rollback
+ * switch: deliveries then wait for the recovery cron to publish them when due,
+ * as before, while pointers already in flight still resolve safely.
+ */
+export function reminderDeliveryPublishesAhead(env: Record<string, string | undefined>): boolean {
+  return env.REMINDER_DELIVERY_PUBLISH_AHEAD?.trim().toLowerCase() !== "off";
 }
 
 export function isEligibleReminderRecord(

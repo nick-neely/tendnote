@@ -7,8 +7,9 @@ import type {
   BackgroundJobQueueLogger,
   BackgroundJobQueueSendAdapter,
 } from "../background-job-deliveries";
+import { suppressReminderDelivery } from "./dispatch";
 import { armReminderDelivery } from "./outbox";
-import { isReminderDeliveryJobAwaiting, REMINDER_DELIVERY_LEASE_MS } from "./policy";
+import { REMINDER_DELIVERY_LEASE_MS, reminderDeliveryWakeupTime } from "./policy";
 import type { ReminderStore } from "./types";
 
 /**
@@ -24,6 +25,11 @@ type WakeupDependencies = {
   deliveryStore: BackgroundJobDeliveryStore;
   queue: BackgroundJobQueueSendAdapter;
   now: Date;
+  /**
+   * Off (`REMINDER_DELIVERY_PUBLISH_AHEAD=off`) leaves the re-armed revision
+   * for the recovery cron to publish when due instead of sending it now.
+   */
+  publishAhead?: boolean;
   logger?: BackgroundJobQueueLogger;
 };
 
@@ -40,19 +46,27 @@ export async function rearmReminderDeliveryJob(
   input: WakeupDependencies & { jobId: string },
 ): Promise<BackgroundJobDelivery | null> {
   const job = await input.reminderStore.getDeliveryJob(input.jobId);
-  if (!job || !isReminderDeliveryJobAwaiting(job, input.now)) return null;
+  const deliverAt = reminderDeliveryWakeupTime(job, input.now);
+  if (!job || !deliverAt) return null;
   return armReminderDelivery({
     store: input.deliveryStore,
     queue: input.queue,
     ownerUserId: job.ownerUserId,
     jobId: job.id,
-    deliverAt: job.status === "running" ? input.now : job.nextAttemptAt,
+    deliverAt,
     now: input.now,
+    publishAhead: input.publishAhead,
     logger: input.logger,
   });
 }
 
-export type LostReminderWakeupResult = { scanned: number; rearmed: number; failed: number };
+export type LostReminderWakeupResult = {
+  scanned: number;
+  rearmed: number;
+  /** Overdue jobs whose freshness had passed, closed as stale without a wake-up. */
+  expired: number;
+  failed: number;
+};
 
 /**
  * Whether a delivery row shows a wake-up that should have fired by now.
@@ -83,11 +97,14 @@ function wakeupLost(delivery: BackgroundJobDelivery | null, now: Date): boolean 
  */
 export async function recoverLostReminderWakeups(
   input: Omit<WakeupDependencies, "reminderStore"> & {
-    reminderStore: Pick<ReminderStore, "getDeliveryJob" | "listOverdueDeliveryJobs">;
+    reminderStore: Pick<
+      ReminderStore,
+      "getDeliveryJob" | "listOverdueDeliveryJobs" | "updateDeliveryJob" | "appendAuditEntry"
+    >;
     limit: number;
   },
 ): Promise<LostReminderWakeupResult> {
-  const result: LostReminderWakeupResult = { scanned: 0, rearmed: 0, failed: 0 };
+  const result: LostReminderWakeupResult = { scanned: 0, rearmed: 0, expired: 0, failed: 0 };
   if (input.limit <= 0) return result;
   const jobs = await input.reminderStore.listOverdueDeliveryJobs({
     dueBefore: new Date(input.now.getTime() - REMINDER_LOST_WAKEUP_GRACE_MS),
@@ -102,14 +119,24 @@ export async function recoverLostReminderWakeups(
       jobId: job.id,
     });
     if (!wakeupLost(delivery, input.now)) continue;
+    // Past its freshness, the only outcome left is suppressing the stale
+    // alert, so it is decided here rather than by another wake-up. This is
+    // also what bounds a job whose dispatch keeps failing: it is re-armed
+    // only until its freshness ends, never forever.
+    if (job.freshUntil.getTime() <= input.now.getTime()) {
+      await suppressReminderDelivery(input.reminderStore, job, input.now, "suppressed_stale");
+      result.expired += 1;
+      continue;
+    }
     const rearmed = await rearmReminderDeliveryJob({ ...input, jobId: job.id });
-    if (rearmed?.status === "published") result.rearmed += 1;
-    else if (rearmed) result.failed += 1;
+    if (rearmed?.status === "publish_failed") result.failed += 1;
+    else if (rearmed) result.rearmed += 1;
   }
-  if (result.rearmed || result.failed) {
+  if (result.rearmed || result.expired || result.failed) {
     input.logger?.info?.("reminder_delivery.lost_wakeups_rearmed", {
       scanned: result.scanned,
       rearmed: result.rearmed,
+      expired: result.expired,
       failed: result.failed,
     });
   }
@@ -127,8 +154,9 @@ export async function recoverLostReminderWakeups(
  * left `published` behind a checkpoint, or `pending` at the time it was armed,
  * would never be delivered by it. Pointers already in the queue then meet a
  * pending row and are dropped harmlessly while the cron publishes each job when
- * due. Resetting the revision to zero lets the pointers that older code
- * publishes still match if the change is later rolled forward again.
+ * due. The revision is kept, so a later roll-forward never reuses a key the
+ * provider may still be deduplicating; pointers older code published then
+ * carry no revision and no-op, and the lost-wake-up sweep re-arms those jobs.
  */
 export async function resetReminderDeliveriesToCronOnly(): Promise<{ reset: number }> {
   const awaiting = getDb()
@@ -139,7 +167,6 @@ export async function resetReminderDeliveriesToCronOnly(): Promise<{ reset: numb
     .update(backgroundJobDeliveries)
     .set({
       status: "pending",
-      revision: 0,
       publishedAt: null,
       lastError: null,
       nextAttemptAt: sql`(select ${reminderDeliveryJobs.nextAttemptAt} from ${reminderDeliveryJobs} where ${reminderDeliveryJobs.id} = ${backgroundJobDeliveries.jobId})`,

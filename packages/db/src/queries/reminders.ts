@@ -24,6 +24,7 @@ import { createHouseholdAuthorizationProver } from "./households/authorization";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createDrizzleReminderStore } from "./reminders/drizzle-store";
 import { armReminderDelivery } from "./reminders/outbox";
+import { reminderDeliveryPublishesAhead } from "./reminders/policy";
 import { createReminderRecordLoader } from "./reminders/record-loaders";
 import { createReminderService } from "./reminders/service";
 import { createReminderSubscriptionAuthorizer } from "./reminders/subscription-authorization";
@@ -60,16 +61,6 @@ export const reminderService = createReminderService({
       logger: console,
     }).then(() => {}),
 });
-
-/**
- * Whether reminder wake-ups are published to the queue as soon as they are
- * scheduled, delayed to the alert time (ADR 0267). `off` is the rollback
- * switch: deliveries then wait for the recovery cron to publish them when due,
- * as before, while pointers already in flight still resolve safely.
- */
-export function reminderDeliveryPublishesAhead(env: Record<string, string | undefined>): boolean {
-  return env.REMINDER_DELIVERY_PUBLISH_AHEAD?.trim().toLowerCase() !== "off";
-}
 
 export const saveGeneralActionReminder = reminderService.saveGeneralActionReminder;
 export const reconcileReminderRecordForSubscribers =

@@ -94,7 +94,7 @@ describe("Reminder wake-up recovery", () => {
       limit: 25,
     });
 
-    expect(result).toEqual({ scanned: 4, rearmed: 2, failed: 0 });
+    expect(result).toEqual({ scanned: 4, rearmed: 2, expired: 0, failed: 0 });
     const woken = vi.mocked(recovery.send).mock.calls.map(([call]) => call.payload.jobId);
     expect(woken.sort()).toEqual([lost.id, missing.id].sort());
     expect(vi.mocked(recovery.send).mock.calls.every(([call]) => call.delaySeconds === 0)).toBe(
@@ -114,7 +114,7 @@ describe("Reminder wake-up recovery", () => {
       limit: 25,
     });
 
-    expect(result).toEqual({ scanned: 0, rearmed: 0, failed: 0 });
+    expect(result).toEqual({ scanned: 0, rearmed: 0, expired: 0, failed: 0 });
   });
 
   it("counts a re-arm the provider refused as failed, leaving it for the next pass", async () => {
@@ -135,8 +135,73 @@ describe("Reminder wake-up recovery", () => {
       logger: { info },
     });
 
-    expect(result).toEqual({ scanned: 1, rearmed: 0, failed: 1 });
+    expect(result).toEqual({ scanned: 1, rearmed: 0, expired: 0, failed: 1 });
     expect(info).toHaveBeenCalledWith("reminder_delivery.lost_wakeups_rearmed", result);
+  });
+
+  it("closes a job past its freshness as stale instead of waking it, which bounds retries", async () => {
+    const { store, job } = await seededJob();
+    // A dispatch that keeps dying mid-flight leaves the job claimed forever.
+    await store.claimDeliveryJob({ jobId: job.id, now: DUE });
+    const deliveries = createInMemoryBackgroundJobDeliveryStore();
+    const recovery = queue();
+    const afterFreshness = new Date(job.freshUntil.getTime() + MINUTE);
+
+    const result = await recoverLostReminderWakeups({
+      reminderStore: store,
+      deliveryStore: deliveries,
+      queue: recovery,
+      now: afterFreshness,
+      limit: 25,
+    });
+
+    expect(result).toEqual({ scanned: 1, rearmed: 0, expired: 1, failed: 0 });
+    expect(recovery.send).not.toHaveBeenCalled();
+    await expect(store.getDeliveryJob(job.id)).resolves.toMatchObject({
+      status: "skipped",
+      outcome: "suppressed_stale",
+    });
+    await expect(store.listAuditEntries({ ownerUserId: OWNER })).resolves.toEqual([
+      expect.objectContaining({
+        action: "reminder.delivery_suppressed",
+        metadata: expect.objectContaining({ outcome: "suppressed_stale" }),
+      }),
+    ]);
+    // Closed for good: the next pass has nothing left to retry.
+    await expect(
+      recoverLostReminderWakeups({
+        reminderStore: store,
+        deliveryStore: deliveries,
+        queue: recovery,
+        now: new Date(afterFreshness.getTime() + 10 * MINUTE),
+        limit: 25,
+      }),
+    ).resolves.toMatchObject({ scanned: 0 });
+  });
+
+  it("with publishing ahead off, leaves a re-armed wake-up for the cron", async () => {
+    const { store } = await seededJob();
+    const deliveries = createInMemoryBackgroundJobDeliveryStore();
+    const recovery = queue();
+
+    const result = await recoverLostReminderWakeups({
+      reminderStore: store,
+      deliveryStore: deliveries,
+      queue: recovery,
+      now: new Date(DUE.getTime() + 10 * MINUTE),
+      publishAhead: false,
+      limit: 25,
+    });
+
+    expect(result).toMatchObject({ rearmed: 1 });
+    expect(recovery.send).not.toHaveBeenCalled();
+    await expect(
+      deliveries.listDueBackgroundJobDeliveries({
+        statuses: ["pending"],
+        now: new Date(DUE.getTime() + 10 * MINUTE),
+        limit: 10,
+      }),
+    ).resolves.toHaveLength(1);
   });
 
   it("takes no budget when given none", async () => {
@@ -149,7 +214,7 @@ describe("Reminder wake-up recovery", () => {
         now: new Date(DUE.getTime() + 10 * MINUTE),
         limit: 0,
       }),
-    ).resolves.toEqual({ scanned: 0, rearmed: 0, failed: 0 });
+    ).resolves.toEqual({ scanned: 0, rearmed: 0, expired: 0, failed: 0 });
   });
 
   it("re-arms a job that has completed with nothing", async () => {

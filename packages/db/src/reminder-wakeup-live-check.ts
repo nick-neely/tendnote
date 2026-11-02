@@ -266,7 +266,7 @@ async function checkReminderPublishedOnSave() {
   const recoveryAt = new Date(takeoverAt.getTime() + REMINDER_DELIVERY_LEASE_MS + 1_000);
   const recovered = await recoverLostReminderWakeups({
     reminderStore: {
-      getDeliveryJob: reminders.getDeliveryJob,
+      ...reminders,
       listOverdueDeliveryJobs: async (input) =>
         (await reminders.listOverdueDeliveryJobs({ ...input, limit: 1_000 })).filter(
           (candidate) => candidate.id === job.id,
@@ -298,9 +298,9 @@ async function checkReminderPublishedOnSave() {
     .from(backgroundJobDeliveries)
     .where(eq(backgroundJobDeliveries.jobId, job.id));
   check(
-    "rollback resets the delivery to a pending, unrevised row due with its job",
+    "rollback resets the delivery to a pending row due with its job, keeping its revision",
     reset?.status === "pending" &&
-      reset.revision === 0 &&
+      reset.revision === 2 &&
       reset.nextAttemptAt.getTime() === recoveryAt.getTime() + 5 * 60_000,
     reset,
   );

@@ -79,6 +79,7 @@ export async function armReminderDelivery(input: {
         ownerUserId: input.ownerUserId,
         deliveryId: delivery.id,
         deliverAt: input.deliverAt,
+        revision: delivery.revision,
         now: input.now ?? new Date(),
         logger: input.logger,
       });

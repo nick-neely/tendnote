@@ -279,6 +279,12 @@ export async function publishBackgroundJobDelivery(input: {
    * see {@link scheduledQueueTiming} for how a far-future time is handled.
    */
   deliverAt?: Date;
+  /**
+   * The revision the caller armed. If the delivery has been re-armed since,
+   * nothing is sent: the newer revision publishes its own pointer, and this
+   * caller's `deliverAt` may be out of date.
+   */
+  revision?: number;
   retryDelayMs?: number;
   logger?: BackgroundJobQueueLogger;
 }) {
@@ -290,6 +296,10 @@ export async function publishBackgroundJobDelivery(input: {
 
   if (!delivery) {
     throw new Error("Background job delivery not found.");
+  }
+
+  if (input.revision !== undefined && delivery.revision !== input.revision) {
+    return { ok: true as const, delivery, superseded: true };
   }
 
   if (delivery.topic !== topicForBackgroundJob(delivery.jobKind)) {
@@ -356,5 +366,5 @@ export async function publishBackgroundJobDelivery(input: {
     ...(superseded ? { superseded } : {}),
   });
 
-  return { ok: true as const, delivery: published, superseded, timing };
+  return { ok: true as const, delivery: published, superseded };
 }

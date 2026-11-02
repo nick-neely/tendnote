@@ -26,6 +26,16 @@ web from `instrumentation.ts`, Eve from a hook - through a `globalThis` registry
 in `@tendnote/db`, which still never imports `@vercel/queue`. Unregistered, a
 runtime behaves as before: the cron publishes.
 
+This narrows ADR 0068 for reminders only. That ADR has the runtime edge
+compose "create the job, then publish". Here the runtime still owns and
+supplies the transport and its credentials, but the shared reminder module
+decides when to publish, because only it knows a schedule changed. Every other
+job family still publishes from its runtime edge as before.
+
+Publishing is internal transport, so it is not held by an Outbound Pause or a
+Service-Wide Hold; delivery is. Every callback refuses while either is in force
+and the message is redelivered, or, if it expires first, recovered as below.
+
 ## Revisions
 
 Every re-arm - a new job, an edit, a deferral, a retry, a reinstall, a
@@ -36,7 +46,9 @@ the provider's 24-hour deduplication window reused the first message's key and
 was silently never sent; that latent retry bug is fixed by the same change.
 A pointer whose revision is not the row's current one returns without any
 write, so an old callback can neither process nor disturb a newer revision. A
-status write from a slow publish is fenced to the revision it sent. One-shot
+status write from a slow publish is fenced to the revision it sent, and a
+publish that runs after a newer revision was armed sends nothing, since its
+delivery time is out of date. One-shot
 families never re-arm, stay at revision zero, and keep byte-identical payloads
 and keys.
 
@@ -69,7 +81,9 @@ pointer published more than five minutes ago. That covers provider outages,
 messages that expired during a long hold, crashes between commit and send, and
 rollback leftovers. A `running` claim older than five minutes belongs to a dead
 process and may be taken over; the push tag keeps a repeated notification to one
-on the device.
+on the device. An overdue job whose freshness has already passed is closed as
+stale by the sweep itself rather than woken again, which also bounds a job
+whose dispatch keeps failing: it is retried only until its freshness ends.
 
 This change does not slow the cron or any synthetic, backup-surface, retention
 or deletion schedule. ADR 0265's First Value confirmation assumes ten-minute
@@ -82,8 +96,9 @@ callback, plus one hop per six days of lead time.
 
 ## Evidence
 
-The consumer logs `reminder_delivery.dispatched` with the queue lag, the seconds
-from alert time to provider acceptance, and the attempt count, and
+The consumer logs `reminder_delivery.dispatched` with the outcome, the queue
+lag, the attempt count and, for an accepted send, the seconds from alert time
+to provider acceptance, and
 `reminder_delivery.checkpoint` when it re-arms early; recovery logs
 `reminder_delivery.lost_wakeups_rearmed` with counts. None carries content or
 owner identifiers. Provider acceptance is not display on the device. The
@@ -91,10 +106,15 @@ five-minute Reliability Indicator remains the rollout acceptance target.
 
 ## Rollback
 
-`REMINDER_DELIVERY_PUBLISH_AHEAD=off` restores cron-only publication without a
-deploy of older code: new revisions wait in the outbox until due, and pointers
+`REMINDER_DELIVERY_PUBLISH_AHEAD=off`, set identically on web and Eve, restores
+cron-only publication without a deploy of older code: every re-arm, including
+consumer checkpoints and recovery, waits in the outbox until due, and pointers
 already in flight still resolve or no-op safely. To deploy code that predates
 this change, set the switch off first, then run
 `pnpm --filter @tendnote/db db:reminder-wakeups:rollback`, which returns every
-live reminder delivery to a pending, revision-zero row due with its job - the
-contract that code relies on - and then deploy.
+live reminder delivery to a pending row due with its job - the contract that
+code relies on - and then deploy. Revisions are kept, so rolling forward again
+never reuses an idempotency key the provider may still be deduplicating. The
+pointers older code published carry no revision and no-op after a roll-forward;
+the lost-wake-up sweep re-arms those jobs, so a reminder due in that window can
+be up to one pass plus the five-minute grace late.

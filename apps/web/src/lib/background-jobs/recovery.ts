@@ -26,10 +26,11 @@ import {
 } from "@tendnote/db/queries/owner-data-export";
 import {
   createDrizzleReminderStore,
-  isReminderDeliveryJobAwaiting,
   type LostReminderWakeupResult,
   type ReminderStore,
   recoverLostReminderWakeups,
+  reminderDeliveryPublishesAhead,
+  reminderDeliveryWakeupTime,
 } from "@tendnote/db/queries/reminders";
 import { recoverStaleSemanticEmbeddingJobs } from "@tendnote/db/queries/semantic-retrieval";
 import { findLatestServiceWideHoldLift } from "@tendnote/db/queries/service-wide-hold";
@@ -67,7 +68,10 @@ export type DeliveryRecoveryResult = {
   lostReminderWakeups?: LostReminderWakeupResult;
 };
 
-type ReminderWakeupStore = Pick<ReminderStore, "getDeliveryJob" | "listOverdueDeliveryJobs">;
+type ReminderWakeupStore = Pick<
+  ReminderStore,
+  "getDeliveryJob" | "listOverdueDeliveryJobs" | "updateDeliveryJob" | "appendAuditEntry"
+>;
 
 export type ProcessorBackfillResult = {
   scanned: number;
@@ -117,9 +121,11 @@ async function reminderWakeupTarget(
   now: Date,
   reminderStore: Pick<ReminderStore, "getDeliveryJob">,
 ): Promise<{ validity: JobValidity; deliverAt?: Date }> {
-  const job = await reminderStore.getDeliveryJob(delivery.jobId);
-  if (!job || !isReminderDeliveryJobAwaiting(job, now)) return { validity: "obsolete" };
-  return { validity: "active", deliverAt: job.status === "running" ? now : job.nextAttemptAt };
+  const deliverAt = reminderDeliveryWakeupTime(
+    await reminderStore.getDeliveryJob(delivery.jobId),
+    now,
+  );
+  return deliverAt ? { validity: "active", deliverAt } : { validity: "obsolete" };
 }
 
 export async function recoverBackgroundJobDeliveries(input: {
@@ -138,7 +144,7 @@ export async function recoverBackgroundJobDeliveries(input: {
   const queue = input.queue ?? createVercelBackgroundJobQueueAdapter();
   const inspectJob = input.inspectJob ?? inspectDeliveryProcessorJob;
   let reminderStore = input.reminderStore;
-  const reminders = () => {
+  const getReminderStore = () => {
     reminderStore ??= createDrizzleReminderStore();
     return reminderStore;
   };
@@ -150,14 +156,23 @@ export async function recoverBackgroundJobDeliveries(input: {
   };
 
   if (input.limit > 0) {
-    await republishDueDeliveries({ ...input, now, store, queue, inspectJob, reminders, result });
+    await republishDueDeliveries({
+      ...input,
+      now,
+      store,
+      queue,
+      inspectJob,
+      getReminderStore,
+      result,
+    });
   }
   if ((input.lostReminderWakeupLimit ?? 0) > 0) {
     result.lostReminderWakeups = await recoverLostReminderWakeups({
-      reminderStore: reminders(),
+      reminderStore: getReminderStore(),
       deliveryStore: store,
       queue,
       now,
+      publishAhead: reminderDeliveryPublishesAhead(process.env),
       limit: input.lostReminderWakeupLimit ?? 0,
       logger: input.logger,
     });
@@ -172,7 +187,7 @@ async function republishDueDeliveries(input: {
   store: BackgroundJobDeliveryStore;
   queue: BackgroundJobQueueSendAdapter;
   inspectJob: DeliveryJobInspector;
-  reminders: () => Pick<ReminderStore, "getDeliveryJob">;
+  getReminderStore: () => Pick<ReminderStore, "getDeliveryJob">;
   logger?: BackgroundJobQueueLogger;
   result: DeliveryRecoveryResult;
 }) {
@@ -187,7 +202,7 @@ async function republishDueDeliveries(input: {
     result.scanned += 1;
     const target =
       delivery.jobKind === "reminder_push"
-        ? await reminderWakeupTarget(delivery, now, input.reminders())
+        ? await reminderWakeupTarget(delivery, now, input.getReminderStore())
         : { validity: await input.inspectJob(delivery) };
     const jobValidity = target.validity;
 

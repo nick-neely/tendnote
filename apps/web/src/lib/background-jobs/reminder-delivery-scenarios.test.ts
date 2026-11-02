@@ -167,7 +167,8 @@ function createHarness(input: { occursAt: Date; startAt: Date }) {
             (message) =>
               message.deliveries === 0 &&
               message.visibleAt <= target &&
-              message.expiresAt > message.visibleAt,
+              // Gone once retention passes, however late the consumer looks.
+              message.expiresAt > Math.max(clock, message.visibleAt),
           )
           .sort((left, right) => left.visibleAt - right.visibleAt)[0];
         if (!next) break;
@@ -581,6 +582,58 @@ describe("Reminder wake-up recovery", () => {
 
     expect(harness.pushes).toEqual([
       { endpoint: "https://push.example.test/a", at: dueAt + 20 * MINUTE },
+    ]);
+  });
+
+  it("recovers a wake-up whose message expired during a hold longer than its retention", async () => {
+    const harness = createHarness({ occursAt, startAt });
+    await savedWithOneInstallation(harness, "09:00");
+    const [pointer] = harness.messages;
+    if (!pointer) throw new Error("expected a pointer");
+
+    // A Service-Wide Hold refuses every callback and pauses the cron until it
+    // lifts; by then the provider has dropped the message.
+    harness.setClock(pointer.expiresAt + MINUTE);
+    await harness.runUntil(pointer.expiresAt + MINUTE);
+    expect(pointer.deliveries).toBe(0);
+    expect(harness.pushes).toEqual([]);
+    await expect(harness.recover()).resolves.toMatchObject({
+      lostReminderWakeups: { scanned: 1, expired: 1 },
+    });
+
+    // The stale alert is suppressed, once, and the reminder itself stays.
+    const [job] = await harness.jobs();
+    expect(job).toMatchObject({ status: "skipped", outcome: "suppressed_stale" });
+    await expect(
+      harness.reminders.listSchedules({
+        ownerUserId: OWNER,
+        recordKind: "follow_up",
+        recordId: FOLLOW_UP,
+      }),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("with publishing ahead off, an early callback leaves its next wake-up to the cron", async () => {
+    const harness = createHarness({ occursAt, startAt });
+    await savedWithOneInstallation(harness, "09:00");
+    harness.transport.publishAhead = false;
+    const [pointer] = harness.messages;
+    if (!pointer) throw new Error("expected a pointer");
+    vi.stubEnv("REMINDER_DELIVERY_PUBLISH_AHEAD", "off");
+    try {
+      harness.setClock(dueAt - MINUTE);
+      await harness.consume(pointer);
+      expect(harness.messages).toHaveLength(1);
+
+      harness.setClock(dueAt + 10 * MINUTE);
+      await harness.recover();
+      await harness.runUntil(dueAt + 11 * MINUTE);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    expect(harness.pushes).toEqual([
+      { endpoint: "https://push.example.test/a", at: dueAt + 10 * MINUTE },
     ]);
   });
 });

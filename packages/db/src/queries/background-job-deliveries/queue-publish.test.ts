@@ -231,6 +231,32 @@ describe("scheduled, revisioned publication", () => {
     ).resolves.toMatchObject({ revision: 2, status: "pending", publishedAt: null });
   });
 
+  it("sends nothing for a revision that was re-armed before its publish ran", async () => {
+    const { store, delivery } = await revisedReminderDelivery();
+    // A second edit commits before the first edit's after-commit publish runs.
+    await store.reviseBackgroundJobDelivery({
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      nextAttemptAt: now,
+    });
+    const queue = okQueue();
+
+    const result = await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      deliverAt: new Date(now.getTime() + 60 * 60_000),
+      revision: delivery.revision,
+      now,
+    });
+
+    // Otherwise it would send revision 2's key timed to revision 1's alert,
+    // and revision 2's own send would then be deduplicated away.
+    expect(result).toMatchObject({ ok: true, superseded: true });
+    expect(queue.send).not.toHaveBeenCalled();
+  });
+
   it("leaves an unrevised pointer exactly as it always was", async () => {
     const store = createInMemoryBackgroundJobDeliveryStore();
     const { delivery } = await store.createBackgroundJobDelivery({
