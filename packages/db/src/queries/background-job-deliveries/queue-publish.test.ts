@@ -98,6 +98,7 @@ describe("scheduled, revisioned publication", () => {
       deliveryId: delivery.id,
       nextAttemptAt: now,
     });
+    if (!revised) throw new Error("expected an unfenced revision");
     return { store, delivery: revised };
   }
 

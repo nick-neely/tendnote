@@ -22,7 +22,19 @@ import {
 export async function scheduleReminderDeliveryOutbox(
   store: BackgroundJobDeliveryStore,
   input: { ownerUserId: string; jobId: string; nextAttemptAt: Date },
-): Promise<BackgroundJobDelivery> {
+): Promise<BackgroundJobDelivery>;
+/**
+ * With `revision`, the re-arm is fenced on the revision the caller observed
+ * before reading the job, and is null if another re-arm got there first.
+ */
+export async function scheduleReminderDeliveryOutbox(
+  store: BackgroundJobDeliveryStore,
+  input: { ownerUserId: string; jobId: string; nextAttemptAt: Date; revision: number | undefined },
+): Promise<BackgroundJobDelivery | null>;
+export async function scheduleReminderDeliveryOutbox(
+  store: BackgroundJobDeliveryStore,
+  input: { ownerUserId: string; jobId: string; nextAttemptAt: Date; revision?: number },
+): Promise<BackgroundJobDelivery | null> {
   const { delivery } = await store.createBackgroundJobDelivery({
     ownerUserId: input.ownerUserId,
     jobKind: "reminder_push",
@@ -33,8 +45,22 @@ export async function scheduleReminderDeliveryOutbox(
     ownerUserId: input.ownerUserId,
     deliveryId: delivery.id,
     nextAttemptAt: input.nextAttemptAt,
+    ...(input.revision !== undefined ? { revision: input.revision } : {}),
   });
 }
+
+type ArmInput = {
+  store: BackgroundJobDeliveryStore;
+  queue?: BackgroundJobQueueSendAdapter;
+  ownerUserId: string;
+  jobId: string;
+  /** When the job is next due; the consumer is woken then and not before. */
+  deliverAt: Date;
+  now?: Date;
+  /** Off restores cron-only delivery: recovery publishes when the job is due. */
+  publishAhead?: boolean;
+  logger?: BackgroundJobQueueLogger;
+};
 
 /**
  * Records a Reminder delivery's wake-up and, when it can, publishes it now as
@@ -48,27 +74,30 @@ export async function scheduleReminderDeliveryOutbox(
  * wake-up. Postgres stays authoritative: the pointer only wakes the consumer,
  * which reloads the job and decides again.
  */
-export async function armReminderDelivery(input: {
-  store: BackgroundJobDeliveryStore;
-  queue?: BackgroundJobQueueSendAdapter;
-  ownerUserId: string;
-  jobId: string;
-  /** When the job is next due; the consumer is woken then and not before. */
-  deliverAt: Date;
-  now?: Date;
-  /** Off restores cron-only delivery: recovery publishes when the job is due. */
-  publishAhead?: boolean;
-  logger?: BackgroundJobQueueLogger;
-}): Promise<BackgroundJobDelivery> {
-  const publishAhead = input.publishAhead ?? true;
-  const now = input.now ?? new Date();
+export async function armReminderDelivery(input: ArmInput): Promise<BackgroundJobDelivery> {
   const delivery = await scheduleReminderDeliveryOutbox(input.store, {
     ownerUserId: input.ownerUserId,
     jobId: input.jobId,
-    nextAttemptAt: publishAhead ? now : input.deliverAt,
+    nextAttemptAt: firstPublishAttemptAt(input),
   });
+  return publishArmedReminderDelivery(input, delivery);
+}
+
+/** Now when publishing ahead, else the alert time, when the cron will publish it. */
+export function firstPublishAttemptAt(input: Pick<ArmInput, "deliverAt" | "now" | "publishAhead">) {
+  return (input.publishAhead ?? true) ? (input.now ?? new Date()) : input.deliverAt;
+}
+
+/**
+ * Publishes one armed revision once the surrounding transaction commits,
+ * fenced to that revision. See {@link armReminderDelivery}.
+ */
+export async function publishArmedReminderDelivery(
+  input: ArmInput,
+  delivery: BackgroundJobDelivery,
+): Promise<BackgroundJobDelivery> {
   const queue = input.queue;
-  if (!publishAhead || !queue) return delivery;
+  if (!(input.publishAhead ?? true) || !queue) return delivery;
 
   let published: BackgroundJobDelivery = delivery;
   await runAfterDatabaseCommit(async () => {

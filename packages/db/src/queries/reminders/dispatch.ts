@@ -164,7 +164,7 @@ function suppressionReason(
 }
 
 /** Skips one delivery job with an audited reason, leaving its record untouched. */
-export async function suppressReminderDelivery(
+async function suppressReminderDelivery(
   store: Pick<ReminderStore, "updateDeliveryJob" | "appendAuditEntry">,
   claimed: ReminderDeliveryJob,
   now: Date,

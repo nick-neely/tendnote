@@ -70,7 +70,7 @@ export type DeliveryRecoveryResult = {
 
 type ReminderWakeupStore = Pick<
   ReminderStore,
-  "getDeliveryJob" | "listOverdueDeliveryJobs" | "updateDeliveryJob" | "appendAuditEntry"
+  "getDeliveryJob" | "listOverdueDeliveryJobs" | "suppressStaleDeliveryJob" | "appendAuditEntry"
 >;
 
 export type ProcessorBackfillResult = {
@@ -233,7 +233,9 @@ async function republishDueDeliveries(input: {
       ownerUserId: delivery.ownerUserId,
       deliveryId: delivery.id,
       now,
-      ...(target.deliverAt ? { deliverAt: target.deliverAt } : {}),
+      // Fenced to the revision inspected above, so a concurrent edit's newer
+      // revision is never sent with this pass's stale delivery time.
+      ...(target.deliverAt ? { deliverAt: target.deliverAt, revision: delivery.revision } : {}),
       logger: input.logger,
     });
 

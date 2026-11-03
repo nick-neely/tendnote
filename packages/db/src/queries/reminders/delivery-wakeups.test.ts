@@ -179,6 +179,41 @@ describe("Reminder wake-up recovery", () => {
     ).resolves.toMatchObject({ scanned: 0 });
   });
 
+  it("never closes a job an edit refreshed after the sweep listed it", async () => {
+    const { store, job } = await seededJob();
+    const deliveries = createInMemoryBackgroundJobDeliveryStore();
+    const afterFreshness = new Date(job.freshUntil.getTime() + MINUTE);
+    const list = store.listOverdueDeliveryJobs;
+    store.listOverdueDeliveryJobs = async (input) => {
+      const listed = await list(input);
+      // The owner moves the alert later while the sweep holds its snapshot.
+      await store.upsertDeliveryJob({
+        ownerUserId: OWNER,
+        occurrenceIntent: {
+          ...intent("intent-1"),
+          id: "intent-1-edited",
+          intendedAt: new Date(afterFreshness.getTime() + 60 * MINUTE),
+          freshUntil: new Date(afterFreshness.getTime() + 120 * MINUTE),
+        },
+        installationId: "installation-intent-1",
+        now: afterFreshness,
+      });
+      return listed;
+    };
+
+    const result = await recoverLostReminderWakeups({
+      reminderStore: store,
+      deliveryStore: deliveries,
+      queue: queue(),
+      now: afterFreshness,
+      limit: 25,
+    });
+
+    expect(result).toMatchObject({ scanned: 1, expired: 0 });
+    await expect(store.getDeliveryJob(job.id)).resolves.toMatchObject({ status: "pending" });
+    await expect(store.listAuditEntries({ ownerUserId: OWNER })).resolves.toEqual([]);
+  });
+
   it("with publishing ahead off, leaves a re-armed wake-up for the cron", async () => {
     const { store } = await seededJob();
     const deliveries = createInMemoryBackgroundJobDeliveryStore();

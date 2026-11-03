@@ -42,6 +42,15 @@ function createHarness(input: { occursAt: Date; startAt: Date }) {
   const now = () => new Date(clock);
   const reminders = createInMemoryReminderStore();
   const deliveries = createInMemoryBackgroundJobDeliveryStore();
+  // Lets a scenario land a concurrent change just after some reader loaded a
+  // job, so the reader goes on to act on what is by then a stale snapshot.
+  const readJob = reminders.getDeliveryJob;
+  const raceAfterNextJobRead: Array<() => Promise<unknown>> = [];
+  reminders.getDeliveryJob = async (jobId) => {
+    const job = await readJob(jobId);
+    await raceAfterNextJobRead.shift()?.();
+    return job;
+  };
   const messages: QueuedMessage[] = [];
   const transport = { up: true, registered: true, publishAhead: true, failNextStatusWrite: false };
   const markPublished = deliveries.markBackgroundJobDeliveryPublished;
@@ -134,6 +143,10 @@ function createHarness(input: { occursAt: Date; startAt: Date }) {
     record,
     standing,
     transport,
+    /** Runs `change` right after the next job read returns its (soon stale) result. */
+    afterNextJobRead(change: () => Promise<unknown>) {
+      raceAfterNextJobRead.push(change);
+    },
     /** One recovery cron pass at the current time. */
     recover() {
       return recoverBackgroundJobDeliveries({
@@ -635,5 +648,45 @@ describe("Reminder wake-up recovery", () => {
     expect(harness.pushes).toEqual([
       { endpoint: "https://push.example.test/a", at: dueAt + 10 * MINUTE },
     ]);
+  });
+
+  it("never sends an edit's newer revision with recovery's stale delivery time", async () => {
+    const harness = createHarness({ occursAt, startAt });
+    harness.transport.registered = false;
+    await savedWithOneInstallation(harness, "13:00");
+    harness.transport.registered = true;
+    harness.setClock(startAt.getTime() + 10 * MINUTE);
+    // Recovery reads the job (due 13:00); the owner then moves it to 09:00 on
+    // a runtime whose own publish has not happened yet, so recovery's send
+    // would otherwise claim the new revision's key with the old time first.
+    harness.afterNextJobRead(async () => {
+      harness.transport.registered = false;
+      await harness.save("09:00");
+      harness.transport.registered = true;
+    });
+
+    await harness.recover();
+    harness.setClock(startAt.getTime() + 20 * MINUTE);
+    await harness.recover();
+    await harness.runUntil(dueAt + 5 * 60 * MINUTE);
+
+    expect(harness.pushes).toEqual([{ endpoint: "https://push.example.test/a", at: dueAt }]);
+  });
+
+  it("never lets a checkpoint re-arm supersede an edit made while it read the job", async () => {
+    const harness = createHarness({ occursAt, startAt });
+    const job = await savedWithOneInstallation(harness, "13:00");
+    const [pointer] = harness.messages;
+    if (!pointer) throw new Error("expected a pointer");
+    harness.setClock(startAt.getTime() + MINUTE);
+    // The early callback's checkpoint reads the job (due 13:00) on its second
+    // read; the owner moves it to 09:00 before the checkpoint re-arms.
+    harness.afterNextJobRead(async () => undefined);
+    harness.afterNextJobRead(() => harness.save("09:00"));
+
+    await harness.consume(pointer);
+    await harness.runUntil(job.intendedAt.getTime() + MINUTE);
+
+    expect(harness.pushes).toEqual([{ endpoint: "https://push.example.test/a", at: dueAt }]);
   });
 });

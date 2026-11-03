@@ -37,13 +37,13 @@ function createReminderQueueProcessor(input: {
   getJob: (jobId: string) => Promise<ReminderJob>;
   dispatch: typeof dispatchReminder;
   sender: ReminderPushSender;
-  rearm: (jobId: string) => Promise<unknown>;
+  rearm: (jobId: string, observedRevision: number | undefined) => Promise<unknown>;
   logger?: BackgroundJobQueueLogger;
 }): BackgroundJobQueueProcessor {
   let claimed: NonNullable<ReminderJob> | null = null;
   return {
     jobKind: "reminder_push",
-    async claimJob({ jobId }) {
+    async claimJob({ jobId, deliveryRevision }) {
       const job = await input.getJob(jobId);
       if (!job) return { status: "not_found", reason: "Reminder delivery job not found." };
       if (job.status === "completed" || job.status === "skipped") {
@@ -58,7 +58,9 @@ function createReminderQueueProcessor(input: {
         // alert, a retry not yet due, or a callback that arrived early. This
         // may be the job's only wake-up, so arm the next one from current
         // state instead of dropping it.
-        await input.rearm(jobId);
+        // Fenced on the revision this message was validated against, read
+        // before the job: an edit landing meanwhile re-arms from fresher state.
+        await input.rearm(jobId, deliveryRevision);
         input.logger?.info?.("reminder_delivery.checkpoint", {
           secondsUntilDue: wholeSecondsBetween(job.nextAttemptAt, input.now),
         });
@@ -124,12 +126,13 @@ export async function consumeReminderQueueMessage(input: {
         getJob: input.getJob ?? reminderStore.getDeliveryJob,
         dispatch: input.dispatch ?? dispatchReminder,
         sender: input.sender ?? getWebPushSender(),
-        rearm: (jobId) =>
+        rearm: (jobId, observedRevision) =>
           rearmReminderDeliveryJob({
             reminderStore,
             deliveryStore,
             queue,
             jobId,
+            observedRevision,
             now,
             publishAhead: reminderDeliveryPublishesAhead(process.env),
             logger: input.logger,

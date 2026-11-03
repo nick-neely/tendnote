@@ -177,11 +177,11 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
         .where(deliveryTarget(input))
         .returning();
 
-      if (!delivery) {
-        throw new Error("Background job delivery not found.");
-      }
-
-      return delivery;
+      if (delivery) return delivery;
+      if (input.revision === undefined) throw new Error("Background job delivery not found.");
+      // Fenced out by a newer revision, unless the row is gone altogether.
+      await supersededDelivery(input);
+      return null;
     },
     async updateBackgroundJobDelivery(input) {
       const [delivery] = await getDb()

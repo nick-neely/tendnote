@@ -320,6 +320,27 @@ export function createInMemoryReminderStore(): ReminderStore {
       deliveryJobs.set(entry[0], claimed);
       return claimed;
     },
+    async suppressStaleDeliveryJob(input) {
+      const entry = [...deliveryJobs.entries()].find(([, job]) => job.id === input.jobId);
+      const job = entry?.[1];
+      const awaiting =
+        job &&
+        (job.status === "pending" ||
+          job.status === "failed" ||
+          (job.status === "running" &&
+            job.updatedAt.getTime() <= input.leaseExpiredBefore.getTime()));
+      if (!entry || !job || !awaiting || job.freshUntil.getTime() > input.now.getTime()) {
+        return null;
+      }
+      const suppressed = {
+        ...job,
+        status: "skipped" as const,
+        outcome: "suppressed_stale" as const,
+        updatedAt: input.now,
+      };
+      deliveryJobs.set(entry[0], suppressed);
+      return suppressed;
+    },
     async listOverdueDeliveryJobs(input) {
       return [...deliveryJobs.values()]
         .filter(

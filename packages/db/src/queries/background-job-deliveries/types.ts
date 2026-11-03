@@ -51,6 +51,12 @@ export type ReviseBackgroundJobDeliveryInput = {
   deliveryId: string;
   /** When recovery should next try publishing this revision if nothing else does. */
   nextAttemptAt: Date;
+  /**
+   * The revision the caller based its decision on. When given, the bump only
+   * happens if the delivery is still at it, so a re-arm computed from state
+   * read before a concurrent edit cannot supersede that edit.
+   */
+  revision?: number;
 };
 
 export type UpdateBackgroundJobDeliveryInput = {
@@ -86,10 +92,11 @@ export type BackgroundJobDeliveryStore = {
   /**
    * Starts a new revision of a scheduled delivery: pending, unpublished, and
    * with the revision bumped atomically so concurrent re-arms each get their own.
+   * Null only when `revision` was given and the delivery has moved past it.
    */
   reviseBackgroundJobDelivery: (
     input: ReviseBackgroundJobDeliveryInput,
-  ) => Promise<BackgroundJobDelivery>;
+  ) => Promise<BackgroundJobDelivery | null>;
   updateBackgroundJobDelivery: (
     input: UpdateBackgroundJobDeliveryInput & { ownerUserId: string },
   ) => Promise<BackgroundJobDelivery>;

@@ -82,7 +82,8 @@ messages that expired during a long hold, crashes between commit and send, and
 rollback leftovers. A `running` claim older than five minutes belongs to a dead
 process and may be taken over; the push tag keeps a repeated notification to one
 on the device. An overdue job whose freshness has already passed is closed as
-stale by the sweep itself rather than woken again, which also bounds a job
+stale by the sweep itself (conditionally, so an edit that lands meanwhile wins)
+rather than woken again, which also bounds a job
 whose dispatch keeps failing: it is retried only until its freshness ends.
 
 This change does not slow the cron or any synthetic, backup-surface, retention
@@ -109,12 +110,18 @@ five-minute Reliability Indicator remains the rollout acceptance target.
 `REMINDER_DELIVERY_PUBLISH_AHEAD=off`, set identically on web and Eve, restores
 cron-only publication without a deploy of older code: every re-arm, including
 consumer checkpoints and recovery, waits in the outbox until due, and pointers
-already in flight still resolve or no-op safely. To deploy code that predates
-this change, set the switch off first, then run
-`pnpm --filter @tendnote/db db:reminder-wakeups:rollback`, which returns every
-live reminder delivery to a pending row due with its job - the contract that
-code relies on - and then deploy. Revisions are kept, so rolling forward again
-never reuses an idempotency key the provider may still be deduplicating. The
-pointers older code published carry no revision and no-op after a roll-forward;
-the lost-wake-up sweep re-arms those jobs, so a reminder due in that window can
-be up to one pass plus the five-minute grace late.
+already in flight still resolve or no-op safely.
+
+To deploy code that predates this change, set the switch off first, then run
+`pnpm --filter @tendnote/db db:reminder-wakeups:rollback` twice, at least five
+minutes apart, and then deploy. Older code publishes only pending rows that are
+due, drops early pointers and never reclaims a `running` job, so the reset
+returns every live reminder delivery to a pending row due with its job and
+turns any claim whose lease has expired into a retry due now; the second run
+catches claims that were still live during the first. It also bumps each
+revision, which fences out any publish still in flight so it cannot mark the
+reset row `published` again, and means rolling forward later never reuses an
+idempotency key the provider may still be deduplicating. The pointers older
+code publishes carry no revision and no-op after a roll-forward; the
+lost-wake-up sweep re-arms those jobs, so a reminder due in that window can be
+up to one pass plus the five-minute grace late.

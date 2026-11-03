@@ -1,5 +1,5 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
-import { getDb } from "../../client";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { getDb, withDatabaseTransaction } from "../../client";
 import { backgroundJobDeliveries, reminderDeliveryJobs } from "../../schema";
 import type {
   BackgroundJobDelivery,
@@ -7,8 +7,11 @@ import type {
   BackgroundJobQueueLogger,
   BackgroundJobQueueSendAdapter,
 } from "../background-job-deliveries";
-import { suppressReminderDelivery } from "./dispatch";
-import { armReminderDelivery } from "./outbox";
+import {
+  firstPublishAttemptAt,
+  publishArmedReminderDelivery,
+  scheduleReminderDeliveryOutbox,
+} from "./outbox";
 import { REMINDER_DELIVERY_LEASE_MS, reminderDeliveryWakeupTime } from "./policy";
 import type { ReminderStore } from "./types";
 
@@ -43,12 +46,20 @@ type WakeupDependencies = {
  * job that has since completed, been skipped or been deleted gets none.
  */
 export async function rearmReminderDeliveryJob(
-  input: WakeupDependencies & { jobId: string },
+  input: WakeupDependencies & {
+    jobId: string;
+    /**
+     * The delivery revision read before this call reads the job. The re-arm
+     * happens only if nothing has re-armed since, because a concurrent edit
+     * re-arms from fresher state than the job this call is about to read.
+     */
+    observedRevision?: number;
+  },
 ): Promise<BackgroundJobDelivery | null> {
   const job = await input.reminderStore.getDeliveryJob(input.jobId);
   const deliverAt = reminderDeliveryWakeupTime(job, input.now);
   if (!job || !deliverAt) return null;
-  return armReminderDelivery({
+  const arm = {
     store: input.deliveryStore,
     queue: input.queue,
     ownerUserId: job.ownerUserId,
@@ -57,7 +68,14 @@ export async function rearmReminderDeliveryJob(
     now: input.now,
     publishAhead: input.publishAhead,
     logger: input.logger,
+  };
+  const delivery = await scheduleReminderDeliveryOutbox(input.deliveryStore, {
+    ownerUserId: job.ownerUserId,
+    jobId: job.id,
+    nextAttemptAt: firstPublishAttemptAt(arm),
+    revision: input.observedRevision,
   });
+  return delivery ? publishArmedReminderDelivery(arm, delivery) : null;
 }
 
 export type LostReminderWakeupResult = {
@@ -85,6 +103,33 @@ function wakeupLost(delivery: BackgroundJobDelivery | null, now: Date): boolean 
 }
 
 /**
+ * Closes one stale job, conditionally: an edit, claim or dispatch that landed
+ * after the sweep listed it wins, and nothing is written or audited.
+ */
+async function suppressStaleJob(
+  input: {
+    reminderStore: Pick<ReminderStore, "suppressStaleDeliveryJob" | "appendAuditEntry">;
+    now: Date;
+  },
+  jobId: string,
+): Promise<boolean> {
+  const suppressed = await input.reminderStore.suppressStaleDeliveryJob({
+    jobId,
+    now: input.now,
+    leaseExpiredBefore: new Date(input.now.getTime() - REMINDER_DELIVERY_LEASE_MS),
+  });
+  if (!suppressed) return false;
+  await input.reminderStore.appendAuditEntry({
+    ownerUserId: suppressed.ownerUserId,
+    action: "reminder.delivery_suppressed",
+    entityId: suppressed.id,
+    metadata: { outcome: "suppressed_stale", installationId: suppressed.installationId },
+    createdAt: input.now,
+  });
+  return true;
+}
+
+/**
  * The safety net for wake-ups the queue will never deliver.
  *
  * A delayed pointer can still be lost: it may expire during a hold longer than
@@ -99,7 +144,7 @@ export async function recoverLostReminderWakeups(
   input: Omit<WakeupDependencies, "reminderStore"> & {
     reminderStore: Pick<
       ReminderStore,
-      "getDeliveryJob" | "listOverdueDeliveryJobs" | "updateDeliveryJob" | "appendAuditEntry"
+      "getDeliveryJob" | "listOverdueDeliveryJobs" | "suppressStaleDeliveryJob" | "appendAuditEntry"
     >;
     limit: number;
   },
@@ -124,11 +169,14 @@ export async function recoverLostReminderWakeups(
     // also what bounds a job whose dispatch keeps failing: it is re-armed
     // only until its freshness ends, never forever.
     if (job.freshUntil.getTime() <= input.now.getTime()) {
-      await suppressReminderDelivery(input.reminderStore, job, input.now, "suppressed_stale");
-      result.expired += 1;
+      if (await suppressStaleJob(input, job.id)) result.expired += 1;
       continue;
     }
-    const rearmed = await rearmReminderDeliveryJob({ ...input, jobId: job.id });
+    const rearmed = await rearmReminderDeliveryJob({
+      ...input,
+      jobId: job.id,
+      observedRevision: delivery?.revision,
+    });
     if (rearmed?.status === "publish_failed") result.failed += 1;
     else if (rearmed) result.rearmed += 1;
   }
@@ -145,39 +193,65 @@ export async function recoverLostReminderWakeups(
 
 /**
  * Returns every live reminder delivery to the cron-only contract the code
- * before ADR 0267 relies on: pending, unrevised, and due for publication at
- * the job's own next attempt time.
+ * before ADR 0267 relies on: pending, and due for publication at the job's own
+ * next attempt time, with every job in a state that code can claim.
  *
- * Run once, after setting `REMINDER_DELIVERY_PUBLISH_AHEAD=off` and before
- * deploying code that predates delayed wake-ups. That code publishes only
- * pending rows that are due and drops a pointer that arrives early, so a row
- * left `published` behind a checkpoint, or `pending` at the time it was armed,
- * would never be delivered by it. Pointers already in the queue then meet a
- * pending row and are dropped harmlessly while the cron publishes each job when
- * due. The revision is kept, so a later roll-forward never reuses a key the
- * provider may still be deduplicating; pointers older code published then
- * carry no revision and no-op, and the lost-wake-up sweep re-arms those jobs.
+ * Run after setting `REMINDER_DELIVERY_PUBLISH_AHEAD=off` everywhere, and
+ * again once a claim lease (five minutes) has passed, before deploying code
+ * that predates delayed wake-ups. That code publishes only pending rows that
+ * are due, drops a pointer that arrives early, and never reclaims a `running`
+ * job, so:
+ *
+ * - each delivery's revision is bumped, fencing out any publish still in
+ *   flight so it cannot mark the reset row `published` again, and never
+ *   reusing a key the provider may still be deduplicating on a roll-forward;
+ * - a claim whose lease has expired becomes a retry due now; a live one is
+ *   left to finish, which is why the second run is needed.
+ *
+ * Pointers already in the queue then no-op while the cron publishes each job
+ * when due.
  */
-export async function resetReminderDeliveriesToCronOnly(): Promise<{ reset: number }> {
-  const awaiting = getDb()
-    .select({ id: reminderDeliveryJobs.id })
-    .from(reminderDeliveryJobs)
-    .where(inArray(reminderDeliveryJobs.status, ["pending", "failed", "running"]));
-  const rows = await getDb()
-    .update(backgroundJobDeliveries)
-    .set({
-      status: "pending",
-      publishedAt: null,
-      lastError: null,
-      nextAttemptAt: sql`(select ${reminderDeliveryJobs.nextAttemptAt} from ${reminderDeliveryJobs} where ${reminderDeliveryJobs.id} = ${backgroundJobDeliveries.jobId})`,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(backgroundJobDeliveries.jobKind, "reminder_push"),
-        inArray(backgroundJobDeliveries.jobId, awaiting),
-      ),
-    )
-    .returning({ id: backgroundJobDeliveries.id });
-  return { reset: rows.length };
+export async function resetReminderDeliveriesToCronOnly(
+  now: Date = new Date(),
+): Promise<{ reset: number; released: number }> {
+  return withDatabaseTransaction(async () => {
+    const released = await getDb()
+      .update(reminderDeliveryJobs)
+      .set({
+        status: "failed",
+        outcome: "transient_failure",
+        nextAttemptAt: now,
+        lastErrorCode: "claim_released_for_rollback",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(reminderDeliveryJobs.status, "running"),
+          lte(reminderDeliveryJobs.updatedAt, new Date(now.getTime() - REMINDER_DELIVERY_LEASE_MS)),
+        ),
+      )
+      .returning({ id: reminderDeliveryJobs.id });
+    const awaiting = getDb()
+      .select({ id: reminderDeliveryJobs.id })
+      .from(reminderDeliveryJobs)
+      .where(inArray(reminderDeliveryJobs.status, ["pending", "failed", "running"]));
+    const rows = await getDb()
+      .update(backgroundJobDeliveries)
+      .set({
+        status: "pending",
+        publishedAt: null,
+        lastError: null,
+        revision: sql`${backgroundJobDeliveries.revision} + 1`,
+        nextAttemptAt: sql`(select ${reminderDeliveryJobs.nextAttemptAt} from ${reminderDeliveryJobs} where ${reminderDeliveryJobs.id} = ${backgroundJobDeliveries.jobId})`,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(backgroundJobDeliveries.jobKind, "reminder_push"),
+          inArray(backgroundJobDeliveries.jobId, awaiting),
+        ),
+      )
+      .returning({ id: backgroundJobDeliveries.id });
+    return { reset: rows.length, released: released.length };
+  });
 }

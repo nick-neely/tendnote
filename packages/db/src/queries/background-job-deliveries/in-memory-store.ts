@@ -114,6 +114,7 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
       if (!delivery || delivery.ownerUserId !== input.ownerUserId) {
         throw new Error("Background job delivery not found.");
       }
+      if (input.revision !== undefined && delivery.revision !== input.revision) return null;
       const revised: BackgroundJobDelivery = {
         ...delivery,
         status: "pending",

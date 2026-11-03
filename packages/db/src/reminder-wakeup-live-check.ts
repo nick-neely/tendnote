@@ -7,8 +7,9 @@
  * lease is taken over by exactly one claimant, that publishing waits for the
  * surrounding transaction to commit (and never happens if it rolls back), and
  * that a reminder saved through the real stores is published at once, delayed
- * to its alert time, with no cron pass, and that the rollback reset returns a
- * delivery to the cron-only contract earlier code relies on (ADR 0267).
+ * to its alert time, with no cron pass, that a stale close is conditional, and
+ * that the rollback reset returns a delivery to the cron-only contract earlier
+ * code relies on, fencing out publishes still in flight (ADR 0267).
  *
  *   pnpm --filter @tendnote/db db:reminder-wakeups:check
  *
@@ -96,7 +97,7 @@ async function checkDeliveryRevisions() {
       }),
     ),
   );
-  const revisions = revised.map((row) => row.revision).sort((a, b) => a - b);
+  const revisions = revised.map((row) => row?.revision ?? -1).sort((a, b) => a - b);
   check(
     "concurrent re-arms each get their own revision",
     revisions.join(",") === "1,2,3,4,5",
@@ -284,25 +285,47 @@ async function checkReminderPublishedOnSave() {
     sent.at(-1),
   );
 
-  // Rolling back to cron-only code: the row must look as that code expects.
-  await reminders.updateDeliveryJob({
+  // The job is fresh until the next local midnight, so a stale-close decided
+  // from any earlier snapshot must not land.
+  const notStale = await reminders.suppressStaleDeliveryJob({
     jobId: job.id,
     now: recoveryAt,
-    status: "failed",
-    outcome: "transient_failure",
-    nextAttemptAt: new Date(recoveryAt.getTime() + 5 * 60_000),
+    leaseExpiredBefore: recoveryAt,
   });
-  await resetReminderDeliveriesToCronOnly();
-  const [reset] = await getDb()
+  check("a job still inside its freshness is never closed as stale", notStale === null, notStale);
+
+  // Rolling back to cron-only code while the stranded claim is still running
+  // and a publish of the current revision is still in flight.
+  const [beforeReset] = await getDb()
     .select()
     .from(backgroundJobDeliveries)
     .where(eq(backgroundJobDeliveries.jobId, job.id));
+  const resetAt = new Date(recoveryAt.getTime() + REMINDER_DELIVERY_LEASE_MS + 1_000);
+  const { released } = await resetReminderDeliveriesToCronOnly(resetAt);
+  const [releasedJob] = await getDb()
+    .select()
+    .from(reminderDeliveryJobs)
+    .where(eq(reminderDeliveryJobs.id, job.id));
   check(
-    "rollback resets the delivery to a pending row due with its job, keeping its revision",
-    reset?.status === "pending" &&
-      reset.revision === 2 &&
-      reset.nextAttemptAt.getTime() === recoveryAt.getTime() + 5 * 60_000,
-    reset,
+    "rollback releases an expired claim as a retry older code can claim",
+    released >= 1 &&
+      releasedJob?.status === "failed" &&
+      releasedJob.nextAttemptAt.getTime() === resetAt.getTime(),
+    releasedJob,
+  );
+  if (!beforeReset) return;
+  const lateConfirmation = await deliveries.markBackgroundJobDeliveryPublished({
+    ownerUserId: DEMO_OWNER,
+    deliveryId: beforeReset.id,
+    publishedAt: resetAt,
+    revision: beforeReset.revision,
+  });
+  check(
+    "and fences out a publish still in flight, leaving the row pending and due with its job",
+    lateConfirmation.status === "pending" &&
+      lateConfirmation.revision === beforeReset.revision + 1 &&
+      lateConfirmation.nextAttemptAt.getTime() === resetAt.getTime(),
+    lateConfirmation,
   );
 }
 

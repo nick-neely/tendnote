@@ -37,6 +37,8 @@ export type BackgroundJobQueueProcessor = {
     ownerUserId: string;
     deliveryId: string;
     jobId: string;
+    /** The delivery revision the consumer validated the message against. */
+    deliveryRevision?: number;
   }) => Promise<BackgroundJobProcessorJobState>;
   processJob: (input: {
     ownerUserId: string;

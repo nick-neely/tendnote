@@ -489,6 +489,26 @@ export function createDrizzleReminderStore(): ReminderStore {
         .returning();
       return row ?? null;
     },
+    async suppressStaleDeliveryJob(input) {
+      const [row] = await getDb()
+        .update(reminderDeliveryJobs)
+        .set({ status: "skipped", outcome: "suppressed_stale", updatedAt: input.now })
+        .where(
+          and(
+            eq(reminderDeliveryJobs.id, input.jobId),
+            lte(reminderDeliveryJobs.freshUntil, input.now),
+            or(
+              inArray(reminderDeliveryJobs.status, ["pending", "failed"]),
+              and(
+                eq(reminderDeliveryJobs.status, "running"),
+                lte(reminderDeliveryJobs.updatedAt, input.leaseExpiredBefore),
+              ),
+            ),
+          ),
+        )
+        .returning();
+      return row ?? null;
+    },
     async listOverdueDeliveryJobs(input) {
       if (input.limit <= 0) return [];
       return getDb()
