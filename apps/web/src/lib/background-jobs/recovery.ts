@@ -120,12 +120,13 @@ async function reminderWakeupTarget(
   delivery: BackgroundJobDelivery,
   now: Date,
   reminderStore: Pick<ReminderStore, "getDeliveryJob">,
-): Promise<{ validity: JobValidity; deliverAt?: Date }> {
-  const deliverAt = reminderDeliveryWakeupTime(
-    await reminderStore.getDeliveryJob(delivery.jobId),
-    now,
-  );
-  return deliverAt ? { validity: "active", deliverAt } : { validity: "obsolete" };
+): Promise<{ validity: JobValidity | "busy"; deliverAt?: Date }> {
+  const job = await reminderStore.getDeliveryJob(delivery.jobId);
+  const deliverAt = reminderDeliveryWakeupTime(job, now);
+  if (deliverAt) return { validity: "active", deliverAt };
+  // A live claim is a dispatch in progress, which re-arms its own retry if it
+  // needs one; it is neither finished nor owed a wake-up from this pass.
+  return job?.status === "running" ? { validity: "busy" } : { validity: "obsolete" };
 }
 
 export async function recoverBackgroundJobDeliveries(input: {
@@ -205,14 +206,19 @@ async function republishDueDeliveries(input: {
         ? await reminderWakeupTarget(delivery, now, input.getReminderStore())
         : { validity: await input.inspectJob(delivery) };
     const jobValidity = target.validity;
+    if (jobValidity === "busy") continue;
 
     if (jobValidity === "obsolete") {
-      await store.updateBackgroundJobDelivery({
+      const abandoned = await store.updateBackgroundJobDelivery({
         ownerUserId: delivery.ownerUserId,
         deliveryId: delivery.id,
         status: "abandoned",
         lastError: "Processor job is terminal or no longer valid.",
+        // Fenced to the revision inspected: a re-arm since then (a retry, an
+        // edit) owns the row, and must not be abandoned on its behalf.
+        revision: delivery.revision,
       });
+      if (abandoned.status !== "abandoned") continue;
       input.logger?.info?.("background_job_recovery.delivery_abandoned", {
         deliveryId: delivery.id,
         jobKind: delivery.jobKind,

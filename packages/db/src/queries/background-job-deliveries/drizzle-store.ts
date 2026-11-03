@@ -141,6 +141,7 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
           status: "published",
           lastError: null,
           publishedAt,
+          ...(input.expectedAt ? { nextAttemptAt: input.expectedAt } : {}),
           updatedAt: publishedAt,
         })
         .where(deliveryTarget(input))
@@ -187,19 +188,10 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
       const [delivery] = await getDb()
         .update(backgroundJobDeliveries)
         .set(updateValues(input))
-        .where(
-          and(
-            eq(backgroundJobDeliveries.id, input.deliveryId),
-            eq(backgroundJobDeliveries.ownerUserId, input.ownerUserId),
-          ),
-        )
+        .where(deliveryTarget(input))
         .returning();
 
-      if (!delivery) {
-        throw new Error("Background job delivery not found.");
-      }
-
-      return delivery;
+      return delivery ?? supersededDelivery(input);
     },
     async listBackgroundJobDeliveries(input) {
       const filters = [];
@@ -227,6 +219,7 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
           and(
             inArray(backgroundJobDeliveries.status, input.statuses),
             lte(backgroundJobDeliveries.nextAttemptAt, input.now),
+            input.jobKind ? eq(backgroundJobDeliveries.jobKind, input.jobKind) : undefined,
           ),
         )
         .orderBy(asc(backgroundJobDeliveries.nextAttemptAt), asc(backgroundJobDeliveries.createdAt))

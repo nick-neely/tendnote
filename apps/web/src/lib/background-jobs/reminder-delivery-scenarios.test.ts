@@ -629,7 +629,7 @@ describe("Reminder wake-up recovery", () => {
     expect(pointer.deliveries).toBe(0);
     expect(harness.pushes).toEqual([]);
     await expect(harness.recover()).resolves.toMatchObject({
-      lostReminderWakeups: { scanned: 1, expired: 1 },
+      lostReminderWakeups: { expired: 1, rearmed: 0 },
     });
 
     // The stale alert is suppressed, once, and the reminder itself stays.
@@ -735,5 +735,88 @@ describe("Reminder wake-up recovery", () => {
     await harness.runUntil(job.intendedAt.getTime() + MINUTE);
 
     expect(harness.pushes).toEqual([{ endpoint: "https://push.example.test/a", at: dueAt }]);
+  });
+
+  it("leaves a delivery alone while its job is being dispatched", async () => {
+    const harness = createHarness({ occursAt, startAt });
+    harness.transport.failNextStatusWrite = true;
+    const job = await savedWithOneInstallation(harness, "09:00");
+    harness.setClock(dueAt);
+    await harness.reminders.claimDeliveryJob({ jobId: job.id, now: harness.now() });
+
+    harness.setClock(dueAt + MINUTE);
+    await expect(harness.recover()).resolves.toMatchObject({ abandoned: 0, republished: 0 });
+
+    await expect(
+      harness.deliveries.listBackgroundJobDeliveries({ ownerUserId: OWNER }),
+    ).resolves.toEqual([expect.objectContaining({ status: "pending" })]);
+  });
+
+  it("never abandons a revision re-armed after recovery inspected the job", async () => {
+    const harness = createHarness({ occursAt, startAt });
+    harness.transport.registered = false;
+    const job = await savedWithOneInstallation(harness, "09:00");
+    await harness.reminders.updateDeliveryJob({
+      jobId: job.id,
+      now: harness.now(),
+      status: "skipped",
+      outcome: "suppressed_revoked",
+    });
+    const [delivery] = await harness.deliveries.listBackgroundJobDeliveries({ ownerUserId: OWNER });
+    if (!delivery) throw new Error("expected a delivery");
+    harness.setClock(startAt.getTime() + 10 * MINUTE);
+    // Recovery reads the job as finished; a reinstall re-arms it meanwhile.
+    harness.afterNextJobRead(() =>
+      harness.deliveries.reviseBackgroundJobDelivery({
+        ownerUserId: OWNER,
+        deliveryId: delivery.id,
+        nextAttemptAt: harness.now(),
+      }),
+    );
+
+    await expect(harness.recover()).resolves.toMatchObject({ abandoned: 0 });
+
+    await expect(
+      harness.deliveries.getBackgroundJobDelivery({ ownerUserId: OWNER, deliveryId: delivery.id }),
+    ).resolves.toMatchObject({ status: "pending", revision: delivery.revision + 1 });
+  });
+
+  it("replaces a lost checkpoint hop before the far-off alert it leads to is late", async () => {
+    const harness = createHarness({
+      occursAt: new Date("2026-11-20T00:00:00.000Z"),
+      startAt,
+    });
+    const job = await savedWithOneInstallation(harness, "09:00");
+    const [hop] = harness.messages;
+    if (!hop) throw new Error("expected a checkpoint");
+    harness.messages.splice(0); // dropped, or expired during a long hold
+
+    // The first pass after the hop should have arrived re-arms the next one.
+    harness.setClock(hop.visibleAt + 10 * MINUTE);
+    await expect(harness.recover()).resolves.toMatchObject({
+      lostReminderWakeups: { rearmed: 1 },
+    });
+    await harness.runUntil(job.intendedAt.getTime() + MINUTE);
+
+    expect(harness.pushes).toEqual([
+      { endpoint: "https://push.example.test/a", at: job.intendedAt.getTime() },
+    ]);
+  });
+
+  it("abandons a delivered pointer once its job is finished, so the sweep meets it once", async () => {
+    const harness = createHarness({ occursAt, startAt });
+    await savedWithOneInstallation(harness, "09:00");
+    await harness.runUntil(dueAt + MINUTE);
+    expect(harness.pushes).toHaveLength(1);
+
+    harness.setClock(dueAt + 10 * MINUTE);
+    await harness.recover();
+    harness.setClock(dueAt + 20 * MINUTE);
+    await expect(harness.recover()).resolves.toMatchObject({
+      lostReminderWakeups: { scanned: 0 },
+    });
+    await expect(
+      harness.deliveries.listBackgroundJobDeliveries({ ownerUserId: OWNER }),
+    ).resolves.toEqual([expect.objectContaining({ status: "abandoned" })]);
   });
 });

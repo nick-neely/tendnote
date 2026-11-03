@@ -85,6 +85,7 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
         status: "published",
         lastError: null,
         publishedAt: now,
+        ...(input.expectedAt ? { nextAttemptAt: input.expectedAt } : {}),
         updatedAt: now,
       };
       deliveries.set(updated.id, updated);
@@ -133,6 +134,7 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
       if (!delivery || delivery.ownerUserId !== input.ownerUserId) {
         throw new Error("Background job delivery not found.");
       }
+      if (input.revision !== undefined && delivery.revision !== input.revision) return delivery;
       const updated: BackgroundJobDelivery = {
         ...delivery,
         ...(input.status !== undefined ? { status: input.status } : {}),
@@ -165,6 +167,7 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
         .filter(
           (delivery) =>
             statuses.has(delivery.status) &&
+            (input.jobKind === undefined || delivery.jobKind === input.jobKind) &&
             delivery.nextAttemptAt.getTime() <= input.now.getTime(),
         )
         .sort((left, right) => {

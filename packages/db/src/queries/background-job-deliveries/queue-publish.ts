@@ -386,6 +386,7 @@ export async function publishBackgroundJobDelivery(input: PublishInput) {
     ownerUserId: delivery.ownerUserId,
     deliveryId: delivery.id,
     publishedAt: now,
+    ...(timing ? { expectedAt: new Date(now.getTime() + timing.delaySeconds * 1000) } : {}),
     revision: delivery.revision,
   });
   // Re-armed while this send was in flight: the newer revision owns the row

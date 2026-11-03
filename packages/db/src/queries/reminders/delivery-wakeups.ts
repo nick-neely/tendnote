@@ -129,28 +129,42 @@ async function suppressStaleJob(
   return true;
 }
 
+type SweepInput = Omit<WakeupDependencies, "reminderStore"> & {
+  reminderStore: Pick<
+    ReminderStore,
+    "getDeliveryJob" | "listOverdueDeliveryJobs" | "suppressStaleDeliveryJob" | "appendAuditEntry"
+  >;
+  limit: number;
+};
+
 /**
- * The safety net for wake-ups the queue will never deliver.
- *
- * A delayed pointer can still be lost: it may expire during a hold longer than
- * its retention, the provider may drop it in an outage, a process may crash
- * between commit and send, a callback may time out mid-dispatch, or a rollback
- * may leave rows the old code published differently. Postgres still knows the
- * job is owed a delivery, so each recovery pass re-arms the oldest overdue
- * ones. Dispatch then decides afresh, which for a reminder whose freshness has
- * passed means suppressing that one stale alert and nothing else.
+ * Re-arms one job whose wake-up is lost, from its current state, fenced on
+ * the delivery revision read before the job; or closes it if it is stale.
  */
-export async function recoverLostReminderWakeups(
-  input: Omit<WakeupDependencies, "reminderStore"> & {
-    reminderStore: Pick<
-      ReminderStore,
-      "getDeliveryJob" | "listOverdueDeliveryJobs" | "suppressStaleDeliveryJob" | "appendAuditEntry"
-    >;
-    limit: number;
-  },
-): Promise<LostReminderWakeupResult> {
-  const result: LostReminderWakeupResult = { scanned: 0, rearmed: 0, expired: 0, failed: 0 };
-  if (input.limit <= 0) return result;
+async function recoverJobWakeup(
+  input: SweepInput,
+  job: { id: string; freshUntil: Date },
+  observedRevision: number | undefined,
+  result: LostReminderWakeupResult,
+) {
+  // Past its freshness, the only outcome left is suppressing the stale
+  // alert, so it is decided here rather than by another wake-up. This is
+  // also what bounds a job whose dispatch keeps failing: it is re-armed
+  // only until its freshness ends, never forever.
+  if (job.freshUntil.getTime() <= input.now.getTime()) {
+    if (await suppressStaleJob(input, job.id)) result.expired += 1;
+    return;
+  }
+  const rearmed = await rearmReminderDeliveryJob({ ...input, jobId: job.id, observedRevision });
+  if (rearmed?.status === "publish_failed") result.failed += 1;
+  else if (rearmed) result.rearmed += 1;
+}
+
+/**
+ * Jobs that are overdue themselves: their wake-up is lost when no row, an
+ * abandoned row, or a long-published pointer stands behind them.
+ */
+async function recoverOverdueJobs(input: SweepInput, result: LostReminderWakeupResult) {
   const jobs = await input.reminderStore.listOverdueDeliveryJobs({
     dueBefore: new Date(input.now.getTime() - REMINDER_LOST_WAKEUP_GRACE_MS),
     leaseExpiredBefore: new Date(input.now.getTime() - REMINDER_DELIVERY_LEASE_MS),
@@ -163,23 +177,61 @@ export async function recoverLostReminderWakeups(
       jobKind: "reminder_push",
       jobId: job.id,
     });
-    if (!wakeupLost(delivery, input.now)) continue;
-    // Past its freshness, the only outcome left is suppressing the stale
-    // alert, so it is decided here rather than by another wake-up. This is
-    // also what bounds a job whose dispatch keeps failing: it is re-armed
-    // only until its freshness ends, never forever.
-    if (job.freshUntil.getTime() <= input.now.getTime()) {
-      if (await suppressStaleJob(input, job.id)) result.expired += 1;
-      continue;
-    }
-    const rearmed = await rearmReminderDeliveryJob({
-      ...input,
-      jobId: job.id,
-      observedRevision: delivery?.revision,
-    });
-    if (rearmed?.status === "publish_failed") result.failed += 1;
-    else if (rearmed) result.rearmed += 1;
+    if (wakeupLost(delivery, input.now))
+      await recoverJobWakeup(input, job, delivery?.revision, result);
   }
+}
+
+/**
+ * Published pointers that should have reached the consumer by now, whatever
+ * the job's own due time: a lost or expired checkpoint hop for a reminder
+ * weeks away would otherwise go unnoticed until that final alert was late.
+ * A pointer whose job has since finished is abandoned, so it is not met again.
+ */
+async function recoverOverduePointers(input: SweepInput, result: LostReminderWakeupResult) {
+  const pointers = await input.deliveryStore.listDueBackgroundJobDeliveries({
+    statuses: ["published"],
+    jobKind: "reminder_push",
+    now: new Date(input.now.getTime() - REMINDER_LOST_WAKEUP_GRACE_MS),
+    limit: input.limit,
+  });
+  for (const delivery of pointers) {
+    result.scanned += 1;
+    const job = await input.reminderStore.getDeliveryJob(delivery.jobId);
+    if (job && reminderDeliveryWakeupTime(job, input.now)) {
+      await recoverJobWakeup(input, job, delivery.revision, result);
+    } else if (job?.status !== "running") {
+      await input.deliveryStore.updateBackgroundJobDelivery({
+        ownerUserId: delivery.ownerUserId,
+        deliveryId: delivery.id,
+        status: "abandoned",
+        lastError: "Reminder delivery job is finished.",
+        revision: delivery.revision,
+      });
+    }
+  }
+}
+
+/**
+ * The safety net for wake-ups the queue will never deliver.
+ *
+ * A delayed pointer can still be lost: it may expire during a hold longer than
+ * its retention, the provider may drop it in an outage, a process may crash
+ * between commit and send, a callback may time out mid-dispatch, or a rollback
+ * may leave rows the old code published differently. Postgres still knows the
+ * job is owed a delivery, so each recovery pass re-arms the oldest overdue
+ * ones, and every pointer that should have arrived but has not. Dispatch then
+ * decides afresh, which for a reminder whose freshness has passed means
+ * suppressing that one stale alert and nothing else. A job met by both scans
+ * in one pass is re-armed once: the second re-arm is fenced out.
+ */
+export async function recoverLostReminderWakeups(
+  input: SweepInput,
+): Promise<LostReminderWakeupResult> {
+  const result: LostReminderWakeupResult = { scanned: 0, rearmed: 0, expired: 0, failed: 0 };
+  if (input.limit <= 0) return result;
+  await recoverOverdueJobs(input, result);
+  await recoverOverduePointers(input, result);
   if (result.rearmed || result.expired || result.failed) {
     input.logger?.info?.("reminder_delivery.lost_wakeups_rearmed", {
       scanned: result.scanned,

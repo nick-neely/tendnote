@@ -77,7 +77,10 @@ The cron is kept, at its existing cadence, as the safety net. It publishes any
 unpublished revision against the job's current due time, abandons rows whose job
 has completed or been skipped, and re-arms up to 25 jobs per pass whose wake-up
 is lost: due more than five minutes ago with no row, an abandoned row, or a
-pointer published more than five minutes ago. That covers provider outages,
+pointer published more than five minutes ago. It also re-arms any published
+pointer more than five minutes past the arrival time recorded when it was
+sent, so a lost checkpoint hop for a reminder weeks away is replaced before
+that alert is due; a pointer whose job has since finished is abandoned. That covers provider outages,
 messages that expired during a long hold, crashes between commit and send, and
 rollback leftovers. A `running` claim older than five minutes belongs to a dead
 process and may be taken over; the push tag keeps a repeated notification to one

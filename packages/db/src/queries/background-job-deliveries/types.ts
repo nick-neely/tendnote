@@ -31,6 +31,12 @@ export type MarkBackgroundJobDeliveryPublishedInput = {
   deliveryId: string;
   publishedAt?: Date;
   /**
+   * When the sent message should reach its consumer, for a delayed send. Kept
+   * as the row's `nextAttemptAt`, so recovery can tell a pointer that should
+   * have arrived by now - a lost checkpoint hop, say - from one still on its way.
+   */
+  expectedAt?: Date;
+  /**
    * The revision that was sent. When given, a delivery re-armed since then is
    * left untouched, so a slow publish never marks a newer revision published.
    */
@@ -61,6 +67,12 @@ export type ReviseBackgroundJobDeliveryInput = {
 
 export type UpdateBackgroundJobDeliveryInput = {
   deliveryId: string;
+  /**
+   * The revision the caller inspected. When given, a delivery re-armed since
+   * is returned unchanged, so a decision made about an older revision (such as
+   * abandoning it) never lands on a newer one.
+   */
+  revision?: number;
   status?: BackgroundJobDeliveryStatus;
   lastError?: string | null;
   nextAttemptAt?: Date;
@@ -106,6 +118,8 @@ export type BackgroundJobDeliveryStore = {
   }) => Promise<BackgroundJobDelivery[]>;
   listDueBackgroundJobDeliveries: (input: {
     statuses: BackgroundJobDeliveryStatus[];
+    /** Only this family's deliveries, when given. */
+    jobKind?: BackgroundJobKind;
     now: Date;
     limit: number;
   }) => Promise<BackgroundJobDelivery[]>;
