@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 
-import { act, StrictMode } from "react";
+import { Activity, act, StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@/test/dom";
+import { ConfirmingStatus } from "./confirming-status";
 import {
   ADMISSION_POLL_STEPS,
   AUTOMATIC_POLLING_WINDOW_MS,
   admissionPollDelay,
   MANUAL_CHECK_COOLDOWN_MS,
-} from "./admission-poller";
-import { ConfirmingStatus } from "./confirming-status";
+} from "./use-admission-polling";
 
 const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
@@ -213,6 +213,68 @@ describe("automatic admission checks (#765)", () => {
   });
 });
 
+describe("a page Next keeps in an Activity after navigating away (#765)", () => {
+  const renderIn = (mode: "visible" | "hidden") => (
+    <Activity mode={mode}>
+      <ConfirmingStatus email="subscriber@example.com" />
+    </Activity>
+  );
+
+  it("pauses while kept hidden and resumes the same window on Back", () => {
+    const { rerender } = render(renderIn("visible"));
+    advance(10_000);
+    expect(refresh).toHaveBeenCalledTimes(5);
+
+    act(() => rerender(renderIn("hidden")));
+    advance(20_000);
+    expect(refresh).toHaveBeenCalledTimes(5);
+
+    act(() => rerender(renderIn("visible")));
+    advance(0);
+    expect(refresh).toHaveBeenCalledTimes(6);
+
+    advance(60 * 60_000);
+    expect(refresh.mock.calls.length).toBeLessThanOrEqual(33);
+  });
+
+  it("stays stopped, with no fresh window, when restored after the window", () => {
+    const { rerender } = render(renderIn("visible"));
+    advance(AUTOMATIC_POLLING_WINDOW_MS);
+    expect(refresh).toHaveBeenCalledTimes(33);
+
+    act(() => rerender(renderIn("hidden")));
+    act(() => rerender(renderIn("visible")));
+    advance(60 * 60_000);
+    expect(refresh).toHaveBeenCalledTimes(33);
+    expect(screen.getByRole("button", { name: "Check again" })).toBeTruthy();
+  });
+
+  it("stops polling when restored past the window without checking first", () => {
+    const { rerender } = render(renderIn("visible"));
+    advance(10_000);
+    act(() => rerender(renderIn("hidden")));
+    advance(AUTOMATIC_POLLING_WINDOW_MS);
+
+    act(() => rerender(renderIn("visible")));
+    advance(60 * 60_000);
+    expect(refresh).toHaveBeenCalledTimes(5);
+    expect(screen.getByRole("button", { name: "Check again" })).toBeTruthy();
+  });
+
+  it("does not leave the manual check stuck when hidden mid-check", () => {
+    const { rerender } = render(renderIn("visible"));
+    advance(AUTOMATIC_POLLING_WINDOW_MS);
+    act(() => screen.getByRole("button", { name: "Check again" }).click());
+
+    act(() => rerender(renderIn("hidden")));
+    act(() => rerender(renderIn("visible")));
+    const button = screen.getByRole("button", { name: "Check again" });
+    expect(button.hasAttribute("aria-disabled")).toBe(false);
+    act(() => button.click());
+    expect(refresh).toHaveBeenCalledTimes(35);
+  });
+});
+
 describe("the waiting state after automatic checks stop (#765)", () => {
   it("stays a calm waiting state with the email promise and an accessible manual check", () => {
     renderStatus();
@@ -245,8 +307,8 @@ describe("the waiting state after automatic checks stop (#765)", () => {
     expect(checking).toBe(button);
 
     advance(MANUAL_CHECK_COOLDOWN_MS);
-    expect(screen.getByRole("button", { name: "Check again" }).getAttribute("aria-disabled")).toBe(
-      "false",
+    expect(screen.getByRole("button", { name: "Check again" }).hasAttribute("aria-disabled")).toBe(
+      false,
     );
     act(() => button.click());
     expect(refresh).toHaveBeenCalledTimes(2);

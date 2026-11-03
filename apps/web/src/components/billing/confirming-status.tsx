@@ -3,10 +3,20 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { useAdmissionPolling } from "./admission-poller";
+import { useAdmissionPolling } from "./use-admission-polling";
 
 /** How long the confirming page waits before promising an email instead. */
 export const EMAIL_PROMISE_AFTER_MS = 60_000;
+
+/** What the status says at each stage of waiting. */
+const STAGES = {
+  waiting: { heading: "Waiting for confirmation", lead: null },
+  slow: { heading: "Still confirming", lead: "This is taking longer than usual." },
+  stopped: {
+    heading: "Still waiting for confirmation",
+    lead: "We've stopped checking automatically.",
+  },
+} as const;
 
 /**
  * The confirming page's status. It checks the admission record on a bounded
@@ -24,7 +34,7 @@ export function ConfirmingStatus({ email }: { email: string }) {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const recipient = <span className="font-medium text-foreground">{email}</span>;
+  const stage = STAGES[stopped ? "stopped" : slow ? "slow" : "waiting"];
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -34,21 +44,12 @@ export function ConfirmingStatus({ email }: { email: string }) {
       >
         <span className="flex items-center gap-2">
           {stopped ? null : <Spinner aria-hidden />}
-          {stopped
-            ? "Still waiting for confirmation"
-            : slow
-              ? "Still confirming"
-              : "Waiting for confirmation"}
+          {stage.heading}
         </span>
-        {stopped ? (
+        {stage.lead ? (
           <p>
-            We've stopped checking automatically. You can close this page: we'll email {recipient}{" "}
-            as soon as you're in.
-          </p>
-        ) : slow ? (
-          <p>
-            This is taking longer than usual. You can close this page: we'll email {recipient} as
-            soon as you're in.
+            {stage.lead} You can close this page: we'll email{" "}
+            <span className="font-medium text-foreground">{email}</span> as soon as you're in.
           </p>
         ) : null}
       </div>
@@ -56,9 +57,10 @@ export function ConfirmingStatus({ email }: { email: string }) {
         <Button
           type="button"
           variant="outline"
-          aria-disabled={checking}
+          // Not `disabled`, so keyboard focus stays on the control while it checks.
+          aria-disabled={checking || undefined}
           onClick={checkAgain}
-          className="aria-disabled:text-muted-foreground"
+          className="aria-disabled:cursor-default aria-disabled:bg-muted aria-disabled:text-muted-foreground aria-disabled:active:translate-y-0 aria-disabled:hover:bg-muted aria-disabled:hover:text-muted-foreground"
         >
           {checking ? <Spinner data-icon="inline-start" aria-hidden /> : null}
           {checking ? "Checking" : "Check again"}

@@ -35,16 +35,21 @@ export function admissionPollDelay(elapsedMs: number): number | null {
 
 const isHidden = () => document.visibilityState === "hidden";
 
+/** Where the automatic schedule stands. It outlives effect re-runs, so it is a ref. */
+type Schedule = { startedAt: number; dueAt: number | null };
+
 /**
  * Re-renders the confirming page on a bounded schedule. The page reads
  * Tendnote's own admission record on each render and redirects once Paid
  * Access lands, so a check never asks Stripe anything and can never grant
  * access by itself.
  *
- * Checks pause while the page is hidden. On return an overdue check runs once,
- * without catching up on the ones skipped, and the window keeps counting from
- * the first render, so hiding the page never extends it. Once the window is
- * spent, `stopped` turns true and `checkAgain` is the only way to check.
+ * Checks pause while the page is hidden, whether the tab is in the background
+ * or Next has kept the route in an Activity after navigating away. On return
+ * an overdue check runs once, without catching up on the ones skipped. The
+ * window counts from the first render and survives both kinds of hiding, so
+ * neither extends it. Once it is spent, `stopped` turns true and `checkAgain`
+ * is the only way to check.
  */
 export function useAdmissionPolling(): {
   stopped: boolean;
@@ -54,62 +59,65 @@ export function useAdmissionPolling(): {
   const router = useRouter();
   const [stopped, setStopped] = useState(false);
   const [checking, setChecking] = useState(false);
+  const schedule = useRef<Schedule | null>(null);
   const cooldown = useRef<number | undefined>(undefined);
   const refresh = useEffectEvent(() => router.refresh());
 
   useEffect(() => {
-    const startedAt = Date.now();
-    const windowEndsAt = startedAt + AUTOMATIC_POLLING_WINDOW_MS;
-    let dueAt: number | null = startedAt + ADMISSION_POLL_STEPS[0].everyMs;
+    schedule.current ??= {
+      startedAt: Date.now(),
+      dueAt: Date.now() + ADMISSION_POLL_STEPS[0].everyMs,
+    };
+    const state = schedule.current;
+    const windowEndsAt = state.startedAt + AUTOMATIC_POLLING_WINDOW_MS;
     let timer: number | undefined;
 
     const stop = () => {
-      dueAt = null;
+      state.dueAt = null;
       window.clearTimeout(timer);
       setStopped(true);
     };
 
-    const arm = () => {
-      window.clearTimeout(timer);
-      if (dueAt === null || isHidden()) return;
-      timer = window.setTimeout(check, Math.max(0, dueAt - Date.now()));
-    };
-
-    function check() {
-      if (dueAt === null || isHidden()) return;
+    const check = () => {
+      if (state.dueAt === null || isHidden()) return;
       const now = Date.now();
-      const delay = admissionPollDelay(now - startedAt);
+      const delay = admissionPollDelay(now - state.startedAt);
       if (delay === null) {
         stop();
       } else {
-        dueAt = Math.min(now + delay, windowEndsAt);
+        state.dueAt = Math.min(now + delay, windowEndsAt);
         arm();
       }
       // Scheduled first, so a refresh that throws still leaves the next check in place.
       refresh();
+    };
+
+    // Waits for the next due check, or for the page to show again if it is hidden.
+    function arm() {
+      window.clearTimeout(timer);
+      if (state.dueAt === null || isHidden()) return;
+      if (Date.now() > windowEndsAt) return stop();
+      timer = window.setTimeout(check, Math.max(0, state.dueAt - Date.now()));
     }
 
-    const onVisibilityChange = () => {
-      if (dueAt === null) return;
-      if (isHidden()) {
-        window.clearTimeout(timer);
-      } else if (Date.now() > windowEndsAt) {
-        stop();
-      } else {
-        arm();
-      }
-    };
+    const onVisibilityChange = () => (isHidden() ? window.clearTimeout(timer) : arm());
 
     document.addEventListener("visibilitychange", onVisibilityChange);
     arm();
     return () => {
-      dueAt = null;
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, []);
 
-  useEffect(() => () => window.clearTimeout(cooldown.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(cooldown.current);
+      cooldown.current = undefined;
+      setChecking(false);
+    },
+    [],
+  );
 
   const checkAgain = useCallback(() => {
     if (cooldown.current !== undefined) return;

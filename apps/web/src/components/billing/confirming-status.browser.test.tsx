@@ -2,8 +2,8 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { renderInBrowser } from "@/test/browser";
-import { AUTOMATIC_POLLING_WINDOW_MS, MANUAL_CHECK_COOLDOWN_MS } from "./admission-poller";
 import { ConfirmingStatus } from "./confirming-status";
+import { AUTOMATIC_POLLING_WINDOW_MS, MANUAL_CHECK_COOLDOWN_MS } from "./use-admission-polling";
 
 const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
