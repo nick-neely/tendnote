@@ -1,12 +1,12 @@
-import { FIRST_VALUE_POLICY, type FirstValuePolicy } from "@tendnote/domain/operator-alerts";
+import { FIRST_VALUE_POLICY } from "@tendnote/domain/operator-alerts";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { getDb } from "../../client";
 import { operatorAlerts } from "../../schema";
 import { claimFirstValueRun, observeFirstValue } from "./first-value";
-import type { OperatorAlertStore } from "./types";
+import type { OperatorAlertStore, OperatorAlertStoreOptions } from "./types";
 
 export function createDrizzleOperatorAlertStore(
-  options: { firstValuePolicy?: FirstValuePolicy } = {},
+  options: OperatorAlertStoreOptions = {},
 ): OperatorAlertStore {
   const policy = options.firstValuePolicy ?? FIRST_VALUE_POLICY;
   const store: OperatorAlertStore = {

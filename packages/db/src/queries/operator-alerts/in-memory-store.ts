@@ -5,11 +5,14 @@ import {
   FIRST_VALUE_POLICY,
   type FirstValueAlertContext,
   type FirstValueHealthState,
-  type FirstValuePolicy,
   type OperatorAlertCondition,
 } from "@tendnote/domain/operator-alerts";
 import { applyFirstValueDecision } from "./first-value-decision";
-import type { ClaimedOperatorAlertNotice, OperatorAlertStore } from "./types";
+import type {
+  ClaimedOperatorAlertNotice,
+  OperatorAlertStore,
+  OperatorAlertStoreOptions,
+} from "./types";
 
 type Episode = {
   id: string;
@@ -26,7 +29,7 @@ type MemoryState = { episodes: Episode[]; firstValue: FirstValueHealthState };
 /** The alert store without a database, with its episodes readable by a test. */
 export function createInMemoryOperatorAlertStore(
   state: MemoryState = { episodes: [], firstValue: emptyFirstValueHealth() },
-  options: { firstValuePolicy?: FirstValuePolicy } = {},
+  options: OperatorAlertStoreOptions = {},
 ) {
   const policy = options.firstValuePolicy ?? FIRST_VALUE_POLICY;
   const { episodes } = state;

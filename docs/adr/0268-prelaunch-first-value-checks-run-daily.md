@@ -14,6 +14,14 @@ more probe calls whenever a probe is retried. Neither the call count nor the
 checked-in model defaults say what is actually billed; that stays unknown
 until it is measured.
 
+A content-free read of the production cron logs before this change covered
+100 consecutive scheduled samples, from 10:10 UTC on November 2, 2026 to 02:40
+UTC on November 3: one every ten-minute pass. 97 were clean on the first
+attempt, two passed only after a generation deadline and a retry, and one
+exhausted the 32-second budget with two deadline attempts. That is 103 model
+attempts. Most single-attempt successes took 0.9 to 4 seconds; five took 6 to
+10.6 seconds. Retained logs cover only a day, so this is a sample, not a month.
+
 Tendnote has one owner and no paying customer yet. A synthetic check every ten
 minutes protects a path nobody is buying through, and it pages on transient
 model failures that no customer felt.
@@ -46,8 +54,12 @@ claimed only:
 
 A pass that misses 15:00 is made up by the next one. A day with no pass after
 15:00 has no reading; the next day's run starts a fresh count. The Redis claim
-on the grounded answer (ADR 0263) still allows one Eve turn a day, however many
-runs the day claims.
+on the grounded answer (ADR 0263) still allows at most one Eve turn a day,
+however many runs the day claims. The question is only asked once admission
+passes. A day whose run fails at sign-in or admission is settled by that
+serious failure, so it asks no grounded question, and the grounded episode
+holds until the next day's answer. The `first_value_path` alert already covers
+that day.
 
 **Daily state, separate from ADR 0265's window.** Daily results are never
 passed into the ten-minute adjacency and six-slot machine. The same locked row
@@ -70,8 +82,10 @@ superseded completion changes nothing.
 A failure therefore stays visible until a genuine later clean check, or until
 the operator clears it with the runbook's SQL. The daily policy sends no
 `first_value_degradation` summaries: with one sample a day, retry-recovered
-checks are visible in `first_value_check.passed` instead. The grounded answer
-keeps its independent episode.
+checks are visible in `first_value_check.passed` instead. A summary episode
+open at the transition stays open and quiet: it has already sent its only
+notice, and the next ten-minute summary replaces it. The grounded answer keeps
+its independent episode.
 
 **Transitions.** The next claim or completion under a different policy migrates
 the row in the same locked transaction. Samples from the other policy are
@@ -79,7 +93,11 @@ discarded, not reinterpreted; the summary rate limit is kept; open episodes are
 left alone. So an incident open at the transition needs a clean daily check to
 recover under `daily`, and two adjacent clean slots under `ten_minute`. Neither
 transition can recover an incident by itself. No migration file is needed: the
-state is JSON in the existing row.
+state is JSON in the existing row. While old and new deployments overlap during
+a rollout, their passes can migrate the row back and forth. Each migration
+discards the other's samples, so the overlap can cost one extra probe run and
+delay a confirmation, but it cannot recover an incident or pay for a second Eve
+turn.
 
 **On demand.** After a deployment that touches the First Value path, the
 operator runs `pnpm --filter @tendnote/web first-value-check [--grounded]`. It
@@ -106,6 +124,9 @@ support-email alerts keep their cadence. Operator alert destinations stay on.
 - The check still runs inside the deployment it watches. It cannot see its own
   cron or deployment being down, and nothing here is an external uptime
   guarantee.
+- The after measurement is the same read once this policy is deployed: about
+  one `first_value_check.sampled` line and one model attempt a day, with
+  confirmation or make-up runs counted separately.
 - Count checks with `first_value_check.sampled`, which logs only the policy and
   the sample's outcome class. Count model attempts and read latency from the
   `attempts` and `elapsedMs` fields of `first_value_check.passed` and

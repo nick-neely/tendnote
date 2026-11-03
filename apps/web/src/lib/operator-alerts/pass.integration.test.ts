@@ -6,7 +6,14 @@ import { runOperatorAlerts } from "./pass";
 
 const mocks = vi.hoisted(() => ({
   check: vi.fn(),
-  readings: { backlog: false, deletionStuck: false },
+  readings: {
+    backlog: false,
+    deletionStuck: false,
+    remindersLate: false,
+    breakerOpen: false,
+    backupFinding: false,
+    stripeFailed: false,
+  },
   createStore: vi.fn(),
   send: vi.fn<(message: OperatorAlertMessage) => Promise<void>>(),
 }));
@@ -19,12 +26,19 @@ vi.mock("@tendnote/db/queries/account-deletion", () => ({
 }));
 vi.mock("@tendnote/db/queries/reliability-indicators", () => ({
   hasBackgroundBacklog: async () => mocks.readings.backlog,
-  hasLateReminderDelivery: async () => false,
+  hasLateReminderDelivery: async () => mocks.readings.remindersLate,
 }));
 vi.mock("@tendnote/db/queries/spend-breaker", () => ({
-  readSpendBreakerStage: async () => "closed",
+  readSpendBreakerStage: async () => (mocks.readings.breakerOpen ? "interactive" : "closed"),
 }));
-vi.mock("@/lib/backup-surfaces", () => ({ backupSurfaceReading: async () => ({ status: "off" }) }));
+vi.mock("@/lib/backup-surfaces", () => ({
+  backupSurfaceReading: async () => ({
+    status: "ran",
+    findings: mocks.readings.backupFinding
+      ? [{ surface: "snapshot", id: "snap-one", name: "fixture" }]
+      : [],
+  }),
+}));
 vi.mock("@/lib/first-value-check", () => ({
   checkFirstValuePath: mocks.check,
   claimDailyGroundedAnswer: async () => false,
@@ -78,7 +92,18 @@ async function pass(slot: number, value: FirstValueCheck | null) {
     if (input.claimRun && !(await input.claimRun())) return { status: "skipped" };
     return value;
   });
-  return runOperatorAlerts({ stripeReconciliation: { status: "skipped" } });
+  return runOperatorAlerts({
+    stripeReconciliation: {
+      status: "ran",
+      scanned: 0,
+      admitted: 0,
+      dunningClosed: 0,
+      revoked: 0,
+      unknownCustomer: 0,
+      failed: mocks.readings.stripeFailed ? 1 : 0,
+      unmatchedRefunds: 0,
+    },
+  });
 }
 
 const titles = () => mocks.send.mock.calls.map(([message]) => message.title);
@@ -87,9 +112,19 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   mocks.send.mockReset().mockResolvedValue(undefined);
   mocks.check.mockReset();
-  mocks.readings.backlog = false;
-  mocks.readings.deletionStuck = false;
+  setAllConditions(false);
 });
+
+/**
+ * Every non-synthetic condition the alert pass reads, firing or clear together.
+ * The Spend Breaker is left to its own passes: a tripped breaker deliberately
+ * quiets the backlog alert.
+ */
+function setAllConditions(firing: boolean) {
+  for (const key of Object.keys(mocks.readings) as (keyof typeof mocks.readings)[]) {
+    if (key !== "breakerOpen") mocks.readings[key] = firing;
+  }
+}
 afterEach(() => vi.useRealTimers());
 
 describe("cron First Value alert wiring (ten-minute policy)", () => {
@@ -125,6 +160,7 @@ describe("cron First Value alert wiring (prelaunch daily policy)", () => {
   const dayLater = 144;
 
   it("runs the check on one pass a day and gives the others no sample", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     await pass(-36, check("clean"));
     for (let slot = 0; slot < 24; slot += 1) await pass(slot, check("clean"));
     await pass(dayLater, check("clean"));
@@ -136,6 +172,14 @@ describe("cron First Value alert wiring (prelaunch daily policy)", () => {
     );
     expect(claimed.filter((value) => value.status === "ran")).toHaveLength(2);
     expect(mocks.send).not.toHaveBeenCalled();
+    // The check count in the logs counts runs, not cron passes or a check that is off.
+    await pass(dayLater + 144, { status: "off" });
+    const sampled = info.mock.calls.filter(([message]) => message === "first_value_check.sampled");
+    expect(sampled).toEqual([
+      ["first_value_check.sampled", { policy: "daily", outcome: "clean" }],
+      ["first_value_check.sampled", { policy: "daily", outcome: "clean" }],
+    ]);
+    info.mockRestore();
   });
 
   it("holds an open incident until a genuine clean daily check, never at transition", async () => {
@@ -157,21 +201,32 @@ describe("cron First Value alert wiring (prelaunch daily policy)", () => {
 
   it("keeps every other operator condition on every pass while the check is skipped", async () => {
     await pass(0, check("clean"));
-    mocks.readings.backlog = true;
-    mocks.readings.deletionStuck = true;
+    setAllConditions(true);
     await pass(1, check("clean"));
-    expect(titles()).toEqual([
+    expect(await mocks.check.mock.results[1]?.value).toEqual({ status: "skipped" });
+    expect(titles().sort()).toEqual([
       "Account deletion stuck over 24 hours",
       "Background delivery backlog over thirty minutes",
+      "Backup surface does not match the Backup Window",
+      "Reminders delivering late",
+      "Stripe reconciliation failing",
     ]);
-    mocks.readings.backlog = false;
-    mocks.readings.deletionStuck = false;
+    setAllConditions(false);
     await pass(2, check("clean"));
-    expect(titles().slice(2).sort()).toEqual([
+    expect(await mocks.check.mock.results[2]?.value).toEqual({ status: "skipped" });
+    expect(titles().slice(5).sort()).toEqual([
       "Background delivery backlog cleared",
+      "Backup surfaces match the Backup Window again",
+      "Reminder delivery back on time",
+      "Stripe reconciliation recovered",
       "Stuck account deletions completed",
     ]);
-    const skipped = await mocks.check.mock.results[2]?.value;
-    expect(skipped).toEqual({ status: "skipped" });
+    mocks.readings.breakerOpen = true;
+    await pass(3, check("clean"));
+    mocks.readings.breakerOpen = false;
+    await pass(4, check("clean"));
+    expect(titles().slice(10)).toEqual(["Spend Breaker tripped", "Spend Breaker closed"]);
+    expect(mocks.check.mock.results).toHaveLength(5);
+    expect(memory.state.firstValue.daily).toMatchObject({ runs: 1 });
   });
 });

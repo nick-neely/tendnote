@@ -90,18 +90,18 @@ export function claimFirstValueDailyRun(
 ): { state: FirstValueHealthState; claimed: boolean } {
   const state = firstValueStateFor("daily", current);
   if (now.getUTCHours() < FIRST_VALUE_DAILY_HOUR_UTC) return { state, claimed: false };
-  const t = now.getTime();
+  const nowMs = now.getTime();
   const day = now.toISOString().slice(0, 10);
   const daily = state.daily ?? emptyDaily();
   // A failure awaiting confirmation carries into the next day; the counters do not.
   const today =
     daily.day === day ? daily : { ...daily, day, runs: 0, claimedAt: null, settled: false };
-  const leased = today.claimedAt !== null && t - today.claimedAt < RUN_LEASE_MS;
+  const leased = today.claimedAt !== null && nowMs - today.claimedAt < RUN_LEASE_MS;
   if (today.settled || leased || today.runs >= FIRST_VALUE_DAILY_RUN_LIMIT) {
     return { state: today === daily ? state : { ...state, daily: today }, claimed: false };
   }
   return {
-    state: { ...state, daily: { ...today, runs: today.runs + 1, claimedAt: t } },
+    state: { ...state, daily: { ...today, runs: today.runs + 1, claimedAt: nowMs } },
     claimed: true,
   };
 }
@@ -126,7 +126,7 @@ export function advanceFirstValueDaily(input: {
   if (daily.claimedAt !== at || !Number.isFinite(age) || age < 0 || age > MAX_SAMPLE_AGE_MS) {
     return { state, availability: "hold" };
   }
-  const settle = (next: Partial<FirstValueDailyState>) => ({
+  const finishRun = (next: Partial<FirstValueDailyState>) => ({
     ...state,
     daily: { ...daily, claimedAt: null, settled: true, unconfirmedFailureAt: null, ...next },
   });
@@ -134,12 +134,12 @@ export function advanceFirstValueDaily(input: {
   switch (input.sample.outcome) {
     case "unknown":
       return {
-        state: settle({ settled: false, unconfirmedFailureAt: daily.unconfirmedFailureAt }),
+        state: finishRun({ settled: false, unconfirmedFailureAt: daily.unconfirmedFailureAt }),
         availability: "hold",
       };
     case "serious":
       return {
-        state: settle({}),
+        state: finishRun({}),
         availability: "open",
         openedAt: input.sample.at,
         context: { sampledAt, samples: 1, failed: 0, retried: 0 },
@@ -148,23 +148,23 @@ export function advanceFirstValueDaily(input: {
       if (daily.unconfirmedFailureAt === null) {
         // Not settled: the next pass confirms it within the day's run limit.
         return {
-          state: settle({ settled: false, unconfirmedFailureAt: at }),
+          state: finishRun({ settled: false, unconfirmedFailureAt: at }),
           availability: "hold",
         };
       }
       return {
-        state: settle({}),
+        state: finishRun({}),
         availability: "open",
         openedAt: new Date(daily.unconfirmedFailureAt),
         context: { sampledAt, samples: 2, failed: 2, retried: 0 },
       };
     case "retried":
       // Degraded, not clean: neither a confirmed failure nor a recovery.
-      return { state: settle({}), availability: "hold" };
+      return { state: finishRun({}), availability: "hold" };
     case "clean":
       // A clean run dismisses an unconfirmed failure but cannot also recover.
       return {
-        state: settle({}),
+        state: finishRun({}),
         availability: daily.unconfirmedFailureAt === null ? "clear" : "hold",
       };
   }

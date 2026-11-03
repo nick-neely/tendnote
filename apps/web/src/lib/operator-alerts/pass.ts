@@ -106,8 +106,8 @@ export async function runOperatorAlerts(input: {
       firstValue?.status === "skipped"
         ? undefined
         : { at: now, outcome: firstValueOutcome(firstValue) };
-    if (sample) {
-      // Content-free: counts checks per policy for before/after comparison.
+    if (firstValue?.status === "ran" && sample) {
+      // Content-free: counts checks that ran, per policy, for before/after comparison.
       console.info("first_value_check.sampled", {
         policy: FIRST_VALUE_POLICY,
         outcome: sample.outcome,

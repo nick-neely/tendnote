@@ -1,6 +1,7 @@
 import type {
   FirstValueAlertContext,
   FirstValueHealthSample,
+  FirstValuePolicy,
   OperatorAlertCondition,
   OperatorAlertNotice,
 } from "@tendnote/domain/operator-alerts";
@@ -40,3 +41,6 @@ export type OperatorAlertStore = {
   /** Hands back a claimed notice whose send failed, for the next pass to retry. */
   releaseNotice: (notice: ClaimedOperatorAlertNotice) => Promise<void>;
 };
+
+/** Every store adapter's options. The policy defaults to `FIRST_VALUE_POLICY`. */
+export type OperatorAlertStoreOptions = { firstValuePolicy?: FirstValuePolicy };
