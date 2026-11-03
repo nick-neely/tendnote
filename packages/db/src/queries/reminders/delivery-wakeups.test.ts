@@ -8,6 +8,7 @@ import {
   REMINDER_LOST_WAKEUP_GRACE_MS,
   rearmReminderDeliveryJob,
   recoverLostReminderWakeups,
+  reminderRollbackBlocker,
 } from "./delivery-wakeups";
 import { createInMemoryReminderStore } from "./in-memory-store";
 import { armReminderDelivery } from "./outbox";
@@ -301,5 +302,21 @@ describe("Reminder delivery claim lease", () => {
         limit: 10,
       }),
     ).resolves.toEqual([expect.objectContaining({ id: job.id, status: "running" })]);
+  });
+});
+
+describe("Reminder rollback gate", () => {
+  const placedAt = new Date("2026-08-14T13:59:00.000Z");
+
+  it("refuses outside a Service-Wide Hold, where new claims could still start", () => {
+    expect(reminderRollbackBlocker(null, DUE)).toMatch(/Service-Wide Hold/);
+  });
+
+  it("refuses until every claim taken before the hold has finished or expired", () => {
+    const readyAt = new Date(placedAt.getTime() + REMINDER_DELIVERY_LEASE_MS);
+    expect(reminderRollbackBlocker({ placedAt }, new Date(readyAt.getTime() - 1))).toMatch(
+      readyAt.toISOString(),
+    );
+    expect(reminderRollbackBlocker({ placedAt }, readyAt)).toBeNull();
   });
 });

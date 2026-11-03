@@ -112,16 +112,18 @@ cron-only publication without a deploy of older code: every re-arm, including
 consumer checkpoints and recovery, waits in the outbox until due, and pointers
 already in flight still resolve or no-op safely.
 
-To deploy code that predates this change, set the switch off first, then run
-`pnpm --filter @tendnote/db db:reminder-wakeups:rollback` twice, at least five
-minutes apart, and then deploy. Older code publishes only pending rows that are
-due, drops early pointers and never reclaims a `running` job, so the reset
-returns every live reminder delivery to a pending row due with its job and
-turns any claim whose lease has expired into a retry due now; the second run
-catches claims that were still live during the first. It also bumps each
-revision, which fences out any publish still in flight so it cannot mark the
-reset row `published` again, and means rolling forward later never reuses an
-idempotency key the provider may still be deduplicating. The pointers older
-code publishes carry no revision and no-op after a roll-forward; the
-lost-wake-up sweep re-arms those jobs, so a reminder due in that window can be
-up to one pass plus the five-minute grace late.
+To deploy code that predates this change: set the switch off, place a
+Service-Wide Hold, wait one claim lease (five minutes), run
+`pnpm --filter @tendnote/db db:reminder-wakeups:rollback`, deploy the older
+code, then lift the hold. Older code publishes only pending rows that are due,
+drops early pointers and never reclaims a `running` job. The hold stops every
+callback and cron pass, so after one lease no dispatch is still running and
+none can start; the script refuses to run otherwise. The reset returns every
+live reminder delivery to a pending row due with its job and turns each
+expired claim into a retry due now. It also bumps each revision, which fences
+out any publish still in flight so it cannot mark the reset row `published`
+again, and means rolling forward later never reuses an idempotency key the
+provider may still be deduplicating. The pointers older code publishes carry
+no revision and no-op after a roll-forward; the lost-wake-up sweep re-arms
+those jobs, so a reminder due in that window can be up to one pass plus the
+five-minute grace late.

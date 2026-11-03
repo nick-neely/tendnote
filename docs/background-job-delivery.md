@@ -74,7 +74,7 @@ order by next_attempt_at asc, created_at asc
 limit 50;
 ```
 
-`pnpm --filter @tendnote/db db:reminder-wakeups:check` proves the reminder wake-up stores against a disposable local database. Before deploying code older than ADR 0267, set `REMINDER_DELIVERY_PUBLISH_AHEAD=off` and run `pnpm --filter @tendnote/db db:reminder-wakeups:rollback` twice, at least five minutes apart.
+`pnpm --filter @tendnote/db db:reminder-wakeups:check` proves the reminder wake-up stores against a disposable local database. Before deploying code older than ADR 0267, set `REMINDER_DELIVERY_PUBLISH_AHEAD=off`, place a [Service-Wide Hold](operations/service-wide-hold.md), wait five minutes, run `pnpm --filter @tendnote/db db:reminder-wakeups:rollback`, deploy, and then lift the hold ([ADR 0267](adr/0267-reminder-wake-ups-are-delayed-queue-messages.md)).
 
 Manual cron recovery can be invoked against a running deployment or local dev server:
 

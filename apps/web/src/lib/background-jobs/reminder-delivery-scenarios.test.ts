@@ -2,6 +2,7 @@ import {
   type BackgroundJobQueueSendAdapter,
   type BackgroundJobQueueSendInput,
   createInMemoryBackgroundJobDeliveryStore,
+  publishBackgroundJobDelivery,
   QUEUE_MAX_DELAY_SECONDS,
   QUEUE_RETRY_HEADROOM_SECONDS,
 } from "@tendnote/db/queries/background-job-deliveries";
@@ -52,7 +53,14 @@ function createHarness(input: { occursAt: Date; startAt: Date }) {
     return job;
   };
   const messages: QueuedMessage[] = [];
-  const transport = { up: true, registered: true, publishAhead: true, failNextStatusWrite: false };
+  const transport = {
+    up: true,
+    registered: true,
+    publishAhead: true,
+    failNextStatusWrite: false,
+    /** Write outbox rows as pre-revision code did: unrevised, due at the alert time. */
+    legacyRows: false,
+  };
   const markPublished = deliveries.markBackgroundJobDeliveryPublished;
   deliveries.markBackgroundJobDeliveryPublished = async (values) => {
     if (transport.failNextStatusWrite) {
@@ -102,6 +110,15 @@ function createHarness(input: { occursAt: Date; startAt: Date }) {
       addresses: [],
     }),
     scheduleDelivery: async (values) => {
+      if (transport.legacyRows) {
+        await deliveries.createBackgroundJobDelivery({
+          ownerUserId: values.ownerUserId,
+          jobKind: "reminder_push",
+          jobId: values.jobId,
+          nextAttemptAt: values.nextAttemptAt,
+        });
+        return;
+      }
       await armReminderDelivery({
         store: deliveries,
         ...(transport.registered ? { queue } : {}),
@@ -143,6 +160,7 @@ function createHarness(input: { occursAt: Date; startAt: Date }) {
     record,
     standing,
     transport,
+    queue,
     /** Runs `change` right after the next job read returns its (soon stale) result. */
     afterNextJobRead(change: () => Promise<unknown>) {
       raceAfterNextJobRead.push(change);
@@ -681,6 +699,35 @@ describe("Reminder wake-up recovery", () => {
     harness.setClock(startAt.getTime() + MINUTE);
     // The early callback's checkpoint reads the job (due 13:00) on its second
     // read; the owner moves it to 09:00 before the checkpoint re-arms.
+    harness.afterNextJobRead(async () => undefined);
+    harness.afterNextJobRead(() => harness.save("09:00"));
+
+    await harness.consume(pointer);
+    await harness.runUntil(job.intendedAt.getTime() + MINUTE);
+
+    expect(harness.pushes).toEqual([{ endpoint: "https://push.example.test/a", at: dueAt }]);
+  });
+
+  it("fences a checkpoint woken by a pointer from before revisions existed", async () => {
+    const harness = createHarness({ occursAt, startAt });
+    harness.transport.legacyRows = true;
+    const job = await savedWithOneInstallation(harness, "13:00");
+    harness.transport.legacyRows = false;
+    const [legacy] = await harness.deliveries.listBackgroundJobDeliveries({ ownerUserId: OWNER });
+    if (!legacy) throw new Error("expected a legacy delivery");
+    expect(legacy.revision).toBe(0);
+    // A pointer the old code published, arriving while the job is not yet due.
+    await publishBackgroundJobDelivery({
+      store: harness.deliveries,
+      queue: harness.queue,
+      ownerUserId: OWNER,
+      deliveryId: legacy.id,
+      now: harness.now(),
+    });
+    const [pointer] = harness.messages;
+    if (!pointer) throw new Error("expected a pointer");
+    expect(pointer.send.payload).not.toHaveProperty("revision");
+    // Its checkpoint reads the job (due 13:00); the owner moves it to 09:00.
     harness.afterNextJobRead(async () => undefined);
     harness.afterNextJobRead(() => harness.save("09:00"));
 

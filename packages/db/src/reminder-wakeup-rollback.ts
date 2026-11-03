@@ -1,20 +1,32 @@
 /**
  * The database half of rolling back delayed reminder wake-ups (ADR 0267).
  *
- *   REMINDER_DELIVERY_PUBLISH_AHEAD=off  (deploy, so nothing publishes ahead)
- *   DATABASE_URL=... pnpm --filter @tendnote/db db:reminder-wakeups:rollback
- *   then deploy the earlier code.
+ *   1. Set REMINDER_DELIVERY_PUBLISH_AHEAD=off on web and Eve and redeploy.
+ *   2. pnpm --filter @tendnote/web service-hold place <reason>
+ *   3. Wait five minutes (one claim lease), then:
+ *      DATABASE_URL=... pnpm --filter @tendnote/db db:reminder-wakeups:rollback
+ *   4. Deploy the earlier code, then lift the hold.
  *
- * Run it twice, the second time at least five minutes after the first, so a
- * claim that was live during the first run is released too. Only needed
- * before deploying code that predates delayed wake-ups. Turning the switch
- * off alone keeps the current code delivering through the cron.
+ * It refuses to run outside a hold that old; see `reminderRollbackBlocker`.
+ * Only needed before deploying code that predates delayed wake-ups. Turning
+ * the switch off alone keeps the current code delivering through the cron.
  */
 import { closeDb } from "./client";
-import { resetReminderDeliveriesToCronOnly } from "./queries/reminders/delivery-wakeups";
+import {
+  reminderRollbackBlocker,
+  resetReminderDeliveriesToCronOnly,
+} from "./queries/reminders/delivery-wakeups";
+import { findOpenServiceWideHold } from "./queries/service-wide-hold";
 
-const { reset, released } = await resetReminderDeliveriesToCronOnly();
-console.log(
-  `reset ${reset} reminder deliveries to cron-only publication; released ${released} expired claims`,
-);
+const now = new Date();
+const blocker = reminderRollbackBlocker(await findOpenServiceWideHold(), now);
+if (blocker) {
+  console.error(`Not reset: ${blocker}`);
+  process.exitCode = 1;
+} else {
+  const { reset, released } = await resetReminderDeliveriesToCronOnly(now);
+  console.log(
+    `reset ${reset} reminder deliveries to cron-only publication; released ${released} expired claims`,
+  );
+}
 await closeDb();

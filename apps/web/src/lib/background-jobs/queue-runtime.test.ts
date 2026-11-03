@@ -123,6 +123,7 @@ describe("background job queue runtime", () => {
       ownerUserId: "user-1",
       deliveryId: delivery.id,
       jobId: delivery.jobId,
+      deliveryRevision: 0,
     });
     expect(processJob).toHaveBeenCalledTimes(1);
     expect(processJob).toHaveBeenCalledWith({
@@ -311,6 +312,7 @@ describe("background job queue runtime", () => {
       ownerUserId: "user-1",
       deliveryId: delivery.id,
       jobId: delivery.jobId,
+      deliveryRevision: 0,
     });
     expect(processJob).not.toHaveBeenCalled();
   });

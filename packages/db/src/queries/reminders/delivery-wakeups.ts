@@ -192,12 +192,32 @@ export async function recoverLostReminderWakeups(
 }
 
 /**
+ * Why the rollback reset may not run yet, or null when it may.
+ *
+ * The reset must see a quiet system: older code never reclaims a `running`
+ * job, so a claim taken after the reset by a dispatch that then dies would be
+ * stranded for good. A Service-Wide Hold stops every queue callback and cron
+ * pass, and once it has been in force for one claim lease, every claim taken
+ * before it has either finished or expired - and the reset releases the
+ * expired ones. So the reset runs only inside a hold at least that old, and
+ * the hold stays in force until the older code is deployed.
+ */
+export function reminderRollbackBlocker(hold: { placedAt: Date } | null, now: Date): string | null {
+  if (!hold) {
+    return "Place a Service-Wide Hold first (pnpm --filter @tendnote/web service-hold place <reason>).";
+  }
+  const readyAt = new Date(hold.placedAt.getTime() + REMINDER_DELIVERY_LEASE_MS);
+  return now.getTime() < readyAt.getTime()
+    ? `Wait until ${readyAt.toISOString()}, one claim lease into the hold, so no dispatch is still running.`
+    : null;
+}
+
+/**
  * Returns every live reminder delivery to the cron-only contract the code
  * before ADR 0267 relies on: pending, and due for publication at the job's own
- * next attempt time, with every job in a state that code can claim.
- *
- * Run after setting `REMINDER_DELIVERY_PUBLISH_AHEAD=off` everywhere, and
- * again once a claim lease (five minutes) has passed, before deploying code
+ * next attempt time, with every job in a state that code can claim. Run only
+ * when {@link reminderRollbackBlocker} allows, with
+ * `REMINDER_DELIVERY_PUBLISH_AHEAD=off` set everywhere, before deploying code
  * that predates delayed wake-ups. That code publishes only pending rows that
  * are due, drops a pointer that arrives early, and never reclaims a `running`
  * job, so:
@@ -205,8 +225,7 @@ export async function recoverLostReminderWakeups(
  * - each delivery's revision is bumped, fencing out any publish still in
  *   flight so it cannot mark the reset row `published` again, and never
  *   reusing a key the provider may still be deduplicating on a roll-forward;
- * - a claim whose lease has expired becomes a retry due now; a live one is
- *   left to finish, which is why the second run is needed.
+ * - a claim whose lease has expired becomes a retry due now.
  *
  * Pointers already in the queue then no-op while the cron publishes each job
  * when due.

@@ -289,7 +289,7 @@ export async function consumeBackgroundJobQueueMessage(input: {
     ownerUserId: delivery.ownerUserId,
     deliveryId: delivery.id,
     jobId: delivery.jobId,
-    ...(delivery.revision ? { deliveryRevision: delivery.revision } : {}),
+    deliveryRevision: delivery.revision,
   });
 
   if (jobState.status !== "ready") {
