@@ -6,9 +6,10 @@ const { runBackgroundJobRecovery } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/background-jobs/recovery", () => ({ runBackgroundJobRecovery }));
 
-vi.mock("@tendnote/db/queries/file-uploads", () => ({
+const { sweepFileStorage } = vi.hoisted(() => ({
   sweepFileStorage: vi.fn(async () => ({ deleted: 0, pending: 0 })),
 }));
+vi.mock("@tendnote/db/queries/file-uploads", () => ({ sweepFileStorage }));
 
 const { sweepUsageLedger } = vi.hoisted(() => ({
   sweepUsageLedger: vi.fn(async () => ({ deleted: 0 })),
@@ -216,6 +217,7 @@ describe("background-jobs recovery cron route", () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toMatchObject({ failedStages: ["recovery"] });
     for (const sweep of [
+      sweepFileStorage,
       sweepUsageLedger,
       sweepAccountFunnelEvents,
       sweepPublicActivityCounts,
@@ -252,6 +254,20 @@ describe("background-jobs recovery cron route", () => {
     expect(sweepDeletionRecords).toHaveBeenCalledOnce();
     expect(runOperatorAlerts).toHaveBeenCalledOnce();
     errorLog.mockRestore();
+  });
+
+  it("reports a failed alert pass, which catches its own error, as a failed stage", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    runOperatorAlerts.mockResolvedValueOnce({ status: "failed" });
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      failedStages: ["operator_alerts"],
+      operatorAlerts: { status: "failed" },
+    });
+    expect(carryOutRetentionDeadlines).toHaveBeenCalledOnce();
   });
 
   it("backfills a pass interval of deferred work inside a claim budget", async () => {

@@ -162,6 +162,8 @@ export async function GET(request: NextRequest) {
   const deletionRecords = await stage("deletion_records", sweepDeletionRecords);
   // It never throws, so it runs before the retention step, which is last on purpose.
   const operatorAlerts = await runOperatorAlerts({ stripeReconciliation });
+  // The alert pass catches its own failure, so it reports one rather than throwing.
+  if (operatorAlerts.status === "failed") failedStages.push("operator_alerts");
   // Last, so a failure here never costs the housekeeping sweeps above their pass.
   const accountRetention = await stage("account_retention", () =>
     carryOutRetentionDeadlines({ limit: ACCOUNT_RETENTION_LIMIT }),

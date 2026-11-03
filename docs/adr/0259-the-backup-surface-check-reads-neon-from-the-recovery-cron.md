@@ -53,7 +53,8 @@ lives on in it for as long as it exists:
   holds can destroy, but it reaches recovery itself. The key lives in the
   private operations sheet and rotates with Neon in the credential-rotation
   order.
-- The check runs every ten minutes, three Neon API requests a pass, and only
+- From paid launch the check runs every ten minutes (hourly before it, under
+  ADR 0269), three Neon API requests a pass, and only
   while the alert channel is on.
 - A finding alerts once per episode and is logged as `backup_surface.finding`
   on every pass it holds, naming the surface by its Neon id and name.

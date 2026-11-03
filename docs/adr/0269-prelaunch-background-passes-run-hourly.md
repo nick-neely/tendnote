@@ -96,7 +96,8 @@ before.
   remaining sweeps, the operator alerts and the retention deadlines. Now each
   recovery family and each route stage that throws is logged by stage and error
   class, without its message, and the rest still run. The route still answers
-  500, so the cron's own failure reporting sees the pass fail. A stage skipped
+  500, as it does when the alert pass reports its own caught failure, so the
+  cron's own failure reporting sees the pass fail. A stage skipped
   by a throw would otherwise wait an hour for its next chance.
 
 ## Consequences
