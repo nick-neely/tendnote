@@ -1,5 +1,8 @@
 # Reminder wake-ups are delayed queue messages
 
+Until paid launch, [ADR 0269](0269-prelaunch-background-passes-run-hourly.md) runs the recovery cron hourly, so the
+lost-wake-up safety net below re-arms within about 65 minutes rather than 15.
+
 A Reminder delivery job used to wait in the outbox until the ten-minute
 recovery cron found it due, so an alert due just after a tick could wait almost
 ten minutes for its queue message. That is a source-derived risk against the

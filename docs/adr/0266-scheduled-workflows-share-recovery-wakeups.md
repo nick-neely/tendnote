@@ -1,5 +1,8 @@
 # Scheduled workflows share recovery wake-ups
 
+Until paid launch, [ADR 0269](0269-prelaunch-background-passes-run-hourly.md) moves both shared ticks to once an hour,
+on the hour. The alignment below still holds; only the interval changes.
+
 The Eve scheduled-workflow dispatcher runs every ten minutes, matching the web
 recovery cron's UTC ticks. Previously the ten-minute recovery and fifteen-minute
 dispatcher schedules woke the database at eight distinct times per hour. Aligning

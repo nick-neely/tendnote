@@ -1,3 +1,4 @@
+import { BACKGROUND_PASS_CRON } from "@tendnote/domain/background-pass";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import webConfig from "../../web/vercel.json";
 import schedule from "../agent/schedules/brief-dispatcher";
@@ -71,13 +72,10 @@ beforeEach(() => {
 });
 
 describe("scheduled workflow cadence", () => {
-  it("shares every tick with recovery while keeping delivery checks at most ten minutes apart", () => {
+  it("shares every tick with recovery on the background pass cadence", () => {
     const recovery = webConfig.crons.find((cron) => cron.path === "/api/cron/background-jobs");
-    expect(recovery?.schedule).toBe("*/10 * * * *");
+    expect(recovery?.schedule).toBe(BACKGROUND_PASS_CRON);
     expect(schedule.cron).toBe(recovery?.schedule);
-    const interval = Number(schedule.cron.match(/^\*\/(\d+) \* \* \* \*$/)?.[1]);
-    expect(interval).toBeGreaterThan(5);
-    expect(interval).toBeLessThanOrEqual(10);
   });
 
   it("checks due rows but launches no owner workflows when there are no admitted owners", async () => {

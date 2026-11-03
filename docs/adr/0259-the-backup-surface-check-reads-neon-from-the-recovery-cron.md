@@ -1,6 +1,7 @@
 # ADR 0259: The backup-surface check reads Neon from the recovery cron
 
-Status: Accepted in the October 4, 2026 implementation of issue #622.
+Status: Accepted in the October 4, 2026 implementation of issue #622. Until
+paid launch, [ADR 0269](0269-prelaunch-background-passes-run-hourly.md) runs the recovery cron, and so this check, hourly.
 
 ## Context
 

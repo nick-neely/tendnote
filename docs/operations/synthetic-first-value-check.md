@@ -6,7 +6,9 @@ Eve runs for a capped reply, and once a day asks Eve a question that only that
 account's fixture Memory answers. Before paid launch the recovery cron runs the
 whole check once a day
 ([ADR 0268](../adr/0268-prelaunch-first-value-checks-run-daily.md)); from launch
-it runs on every ten-minute pass. The account is never a customer's. Its email
+it runs on every ten-minute pass. Until then the cron itself runs hourly
+([ADR 0269](../adr/0269-prelaunch-background-passes-run-hourly.md)), so the
+daily check runs on the 15:00 UTC pass and a confirmation on the next one. The account is never a customer's. Its email
 and password live under **Synthetic check** in the operations sheet. This
 runbook never copies from the sheet.
 

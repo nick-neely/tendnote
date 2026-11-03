@@ -12,6 +12,7 @@ import { parseAdmissionPolicy } from "@tendnote/domain";
 import { type NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { carryOutRetentionDeadlines } from "@/lib/access/account-retention";
+import { classifyBackgroundJobFailure } from "@/lib/background-jobs/failure-observability";
 import { runBackgroundJobRecovery } from "@/lib/background-jobs/recovery";
 import { paidAccessProjection } from "@/lib/billing/paid-access-projection";
 import { createStripeReconciliation } from "@/lib/billing/stripe-reconciliation";
@@ -23,11 +24,23 @@ const DELIVERY_LIMIT = 25;
  * expired. Normally zero: delayed messages wake reminders on time (ADR 0267).
  */
 const LOST_REMINDER_WAKEUP_LIMIT = 25;
-const EXTRACTION_BACKFILL_LIMIT = 5;
-const EMBEDDING_BACKFILL_LIMIT = 5;
-const ACTION_EXTRACTION_BACKFILL_LIMIT = 5;
-const CONTEXT_FACT_EXTRACTION_BACKFILL_LIMIT = 5;
+/**
+ * Jobs per family the backfill claims in one pass. Normally none are waiting:
+ * a job publishes to the queue when it is enqueued. What lands here is a
+ * failure retry or work an Account Ceiling or the Spend Breaker deferred, which
+ * all comes due at once when the breaker closes at midnight. Thirty an hour is
+ * the five every ten minutes the backfill drained before passes became hourly
+ * (ADR 0269); `BACKFILL_BUDGET_MS` keeps the larger batch inside the pass.
+ */
+const PROCESSOR_BACKFILL_LIMIT = 30;
+/** Export generation is rarely deferred and much heavier, so it stays small. */
 const OWNER_DATA_EXPORT_BACKFILL_LIMIT = 5;
+/**
+ * How long the processor backfills may keep claiming jobs, measured from the
+ * start of recovery. Well inside `maxDuration` so a job claimed at the limit
+ * can finish and the sweeps, alerts, and retention after it still run.
+ */
+const BACKFILL_BUDGET_MS = 120_000;
 /**
  * Account deletions resumed per pass. Normally zero are waiting: a deletion
  * only lands here when its journal write or disposition failed at request time.
@@ -35,13 +48,13 @@ const OWNER_DATA_EXPORT_BACKFILL_LIMIT = 5;
 const ACCOUNT_DELETION_LIMIT = 10;
 /**
  * Households erased per pass. Small on purpose: each one is an irreversible
- * multi-table transaction, and a thirty-day deadline gives a backlog every ten
- * minutes to drain in rather than needing to clear in a single run.
+ * multi-table transaction, and a thirty-day deadline gives a backlog every
+ * pass to drain in rather than needing to clear in a single run.
  */
 const HOUSEHOLD_PURGE_LIMIT = 3;
 /**
  * Accounts given a deletion notice or purged per pass. A purge is one account
- * deletion; a ten-minute pass against deadlines measured in days drains any
+ * deletion; an hourly pass against deadlines measured in days drains any
  * backlog long before a notice is late by more than a pass.
  */
 const ACCOUNT_RETENTION_LIMIT = 25;
@@ -113,42 +126,87 @@ export async function GET(request: NextRequest) {
   });
   const stripeReconciliation = await reconcileStripe();
 
-  const result = await runBackgroundJobRecovery({
-    deliveryLimit: DELIVERY_LIMIT,
-    lostReminderWakeupLimit: LOST_REMINDER_WAKEUP_LIMIT,
-    extractionBackfillLimit: EXTRACTION_BACKFILL_LIMIT,
-    embeddingBackfillLimit: EMBEDDING_BACKFILL_LIMIT,
-    actionExtractionBackfillLimit: ACTION_EXTRACTION_BACKFILL_LIMIT,
-    contextFactExtractionBackfillLimit: CONTEXT_FACT_EXTRACTION_BACKFILL_LIMIT,
-    ownerDataExportBackfillLimit: OWNER_DATA_EXPORT_BACKFILL_LIMIT,
-    accountDeletionLimit: ACCOUNT_DELETION_LIMIT,
-    householdPurgeLimit: HOUSEHOLD_PURGE_LIMIT,
-    auditRetentionLimit: AUDIT_RETENTION_LIMIT,
-    logger: console,
-  });
+  // Every later stage gets its own attempt: one that throws is logged and
+  // reported, and the stages after it still run. A pass is an hour apart, so a
+  // stage skipped here would otherwise wait that long for its next chance.
+  const failedStages: string[] = [];
+  const stage = <T>(name: string, run: () => Promise<T>) => runStage(name, run, failedStages);
 
-  const files = await sweepFileStorage();
-  const usageLedger = await sweepUsageLedger();
-  const accountFunnel = await sweepAccountFunnelEvents();
-  const publicActivity = await sweepPublicActivityCounts();
-  const effectFences = await sweepEffectFences();
-  const restoredEmailFences = await sweepRestoredEmailFences();
-  const deletionRecords = await sweepDeletionRecords();
+  const result = await stage("recovery", () =>
+    runBackgroundJobRecovery({
+      deliveryLimit: DELIVERY_LIMIT,
+      lostReminderWakeupLimit: LOST_REMINDER_WAKEUP_LIMIT,
+      extractionBackfillLimit: PROCESSOR_BACKFILL_LIMIT,
+      embeddingBackfillLimit: PROCESSOR_BACKFILL_LIMIT,
+      actionExtractionBackfillLimit: PROCESSOR_BACKFILL_LIMIT,
+      contextFactExtractionBackfillLimit: PROCESSOR_BACKFILL_LIMIT,
+      ownerDataExportBackfillLimit: OWNER_DATA_EXPORT_BACKFILL_LIMIT,
+      backfillBudgetMs: BACKFILL_BUDGET_MS,
+      accountDeletionLimit: ACCOUNT_DELETION_LIMIT,
+      householdPurgeLimit: HOUSEHOLD_PURGE_LIMIT,
+      auditRetentionLimit: AUDIT_RETENTION_LIMIT,
+      logger: console,
+    }),
+  );
+
+  const files = await stage("files", sweepFileStorage);
+  const usageLedger = await stage("usage_ledger", sweepUsageLedger);
+  const accountFunnel = await stage("account_funnel", sweepAccountFunnelEvents);
+  const publicActivity = await stage("public_activity", sweepPublicActivityCounts);
+  const effectFences = await stage("effect_fences", sweepEffectFences);
+  const restoredEmailFences = await stage("restored_email_fences", sweepRestoredEmailFences);
+  const deletionRecords = await stage("deletion_records", sweepDeletionRecords);
   // It never throws, so it runs before the retention step, which is last on purpose.
   const operatorAlerts = await runOperatorAlerts({ stripeReconciliation });
   // Last, so a failure here never costs the housekeeping sweeps above their pass.
-  const accountRetention = await carryOutRetentionDeadlines({ limit: ACCOUNT_RETENTION_LIMIT });
-  return NextResponse.json({
-    ...result,
-    accountRetention,
-    files,
-    usageLedger,
-    accountFunnel,
-    publicActivity,
-    effectFences,
-    restoredEmailFences,
-    deletionRecords,
-    stripeReconciliation,
-    operatorAlerts,
-  });
+  const accountRetention = await stage("account_retention", () =>
+    carryOutRetentionDeadlines({ limit: ACCOUNT_RETENTION_LIMIT }),
+  );
+  return NextResponse.json(
+    {
+      ...(isFailedStage(result) ? {} : result),
+      ...(failedStages.length > 0 ? { failedStages } : {}),
+      accountRetention,
+      files,
+      usageLedger,
+      accountFunnel,
+      publicActivity,
+      effectFences,
+      restoredEmailFences,
+      deletionRecords,
+      stripeReconciliation,
+      operatorAlerts,
+    },
+    // A failed stage still fails the invocation, so the cron's own failure
+    // reporting sees it; only the stages after it are no longer lost.
+    { status: failedStages.length > 0 ? 500 : 200 },
+  );
+}
+
+type FailedStage = { status: "failed" };
+
+function isFailedStage(value: object): value is FailedStage {
+  return "status" in value && value.status === "failed";
+}
+
+/**
+ * Runs one pass stage, turning a throw into a logged, content-free failure so
+ * the stages after it still run. Only the error's class is logged: a stage's
+ * message can carry database or provider detail.
+ */
+async function runStage<T>(
+  name: string,
+  run: () => Promise<T>,
+  failedStages: string[],
+): Promise<T | FailedStage> {
+  try {
+    return await run();
+  } catch (error) {
+    failedStages.push(name);
+    console.error("background_jobs.stage_failed", {
+      stage: name,
+      errorCode: classifyBackgroundJobFailure(error),
+    });
+    return { status: "failed" };
+  }
 }

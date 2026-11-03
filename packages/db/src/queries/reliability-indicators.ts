@@ -1,3 +1,4 @@
+import { BACKGROUND_PASS_INTERVAL_MS } from "@tendnote/domain/background-pass";
 import {
   BACKGROUND_BACKLOG_LIMIT_MS,
   REMINDER_LATENESS_LIMIT_MS,
@@ -14,11 +15,13 @@ import {
 } from "../schema";
 
 /**
- * How far back a reminder resolved late still counts. A little over one cron
- * interval, so a reminder delivered late between two passes is seen by the
- * next one, and the alert clears one pass after reminders are on time again.
+ * How far back a reminder resolved late still counts. One pass interval plus
+ * five minutes for the pass's own start jitter and run time, so a reminder
+ * delivered late between two passes is seen by the next one, and the alert
+ * clears one pass after reminders are on time again. Derived from the cadence
+ * so a slower pass never leaves a gap the lookback cannot see (ADR 0269).
  */
-const LATE_REMINDER_LOOKBACK_MS = 15 * 60 * 1000;
+export const LATE_REMINDER_LOOKBACK_MS = BACKGROUND_PASS_INTERVAL_MS + 5 * 60 * 1000;
 
 /**
  * How long past its freshness a job nothing has picked up still counts. Only

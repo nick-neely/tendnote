@@ -1,4 +1,5 @@
 import { createInMemoryBackgroundJobDeliveryStore } from "@tendnote/db/queries/background-job-deliveries";
+import { BACKGROUND_PASS_CRON } from "@tendnote/domain/background-pass";
 import { describe, expect, it, vi } from "vitest";
 import vercelConfig from "../../../vercel.json";
 import { maxDuration as recoveryMaxDuration } from "../../app/api/cron/background-jobs/route";
@@ -148,6 +149,79 @@ describe("background job recovery", () => {
       jobId: "job-2",
       errorCode: "configuration_missing",
     });
+  });
+
+  it("stops claiming once the pass budget is spent, finishing the job it holds", async () => {
+    let now = 1_000;
+    const claimNextJob = vi.fn(async () => ({ id: `job-${claimNextJob.mock.calls.length}` }));
+    // Each job takes forty seconds, so the third claim would start past the budget.
+    const processJob = vi.fn(async () => {
+      now += 40_000;
+      return { outcome: "completed" };
+    });
+
+    const result = await runExtractionBackfill({
+      limit: 30,
+      claimNextJob,
+      processJob,
+      claimUntil: 1_000 + 60_000,
+      clock: () => now,
+    });
+
+    expect(result).toEqual({ scanned: 2, processed: 2, failed: 0 });
+    expect(claimNextJob).toHaveBeenCalledTimes(2);
+  });
+
+  it("claims nothing when the pass budget is already spent", async () => {
+    const claimNextJob = vi.fn();
+
+    const result = await runExtractionBackfill({
+      limit: 30,
+      claimNextJob,
+      processJob: vi.fn(),
+      claimUntil: 5_000,
+      clock: () => 5_000,
+    });
+
+    expect(result).toEqual({ scanned: 0, processed: 0, failed: 0 });
+    expect(claimNextJob).not.toHaveBeenCalled();
+  });
+
+  it("measures one backfill budget from the start of recovery for every family", async () => {
+    const emptyBackfill = () => vi.fn().mockResolvedValue({ scanned: 0, processed: 0, failed: 0 });
+    const families = {
+      backfillExtraction: emptyBackfill(),
+      backfillEmbedding: vi
+        .fn()
+        .mockResolvedValue({ recovered: 0, scanned: 0, processed: 0, failed: 0 }),
+      backfillActionExtraction: emptyBackfill(),
+      backfillContextFactExtraction: emptyBackfill(),
+      backfillOwnerDataExport: emptyBackfill(),
+    };
+
+    await runBackgroundJobRecovery({
+      deliveryLimit: 0,
+      extractionBackfillLimit: 30,
+      embeddingBackfillLimit: 30,
+      actionExtractionBackfillLimit: 30,
+      backfillBudgetMs: 120_000,
+      clock: () => 7_000,
+      recoverDeliveries: vi
+        .fn()
+        .mockResolvedValue({ scanned: 0, republished: 0, failed: 0, abandoned: 0 }),
+      ...families,
+      completeAccountDeletions: vi
+        .fn()
+        .mockResolvedValue({ scanned: 0, completed: 0, failed: 0, stuck: 0 }),
+      purgeDissolvedHouseholds: vi
+        .fn()
+        .mockResolvedValue({ scanned: 0, purged: 0, skipped: 0, failed: 0 }),
+      retainAuditLog: vi.fn().mockResolvedValue({ scanned: 0, deleted: 0, skipped: 0, failed: 0 }),
+    });
+
+    for (const family of Object.values(families)) {
+      expect(family).toHaveBeenCalledWith(expect.objectContaining({ claimUntil: 127_000 }));
+    }
   });
 
   it("runs embedding backfill through the shared processor seam with a cap", async () => {
@@ -303,6 +377,57 @@ describe("background job recovery", () => {
     expect(retainAuditLog).toHaveBeenCalledWith(expect.objectContaining({ limit: 7 }));
   });
 
+  it("runs every later family when an earlier one fails, then raises the first failure", async () => {
+    const deliveryError = new Error("Failed query: private connection string");
+    const embeddingError = new Error("embedding stage failed");
+    const logger = { info: vi.fn(), error: vi.fn() };
+    const backfillActionExtraction = vi
+      .fn()
+      .mockResolvedValue({ scanned: 0, processed: 0, failed: 0 });
+    const completeAccountDeletions = vi
+      .fn()
+      .mockResolvedValue({ scanned: 0, completed: 0, failed: 0, stuck: 0 });
+    const purgeDissolvedHouseholds = vi
+      .fn()
+      .mockResolvedValue({ scanned: 0, purged: 0, skipped: 0, failed: 0 });
+
+    await expect(
+      runBackgroundJobRecovery({
+        deliveryLimit: 1,
+        extractionBackfillLimit: 1,
+        embeddingBackfillLimit: 1,
+        actionExtractionBackfillLimit: 1,
+        logger,
+        recoverDeliveries: vi.fn().mockRejectedValue(deliveryError),
+        backfillExtraction: vi.fn().mockResolvedValue({ scanned: 0, processed: 0, failed: 0 }),
+        backfillEmbedding: vi.fn().mockRejectedValue(embeddingError),
+        backfillActionExtraction,
+        backfillContextFactExtraction: vi
+          .fn()
+          .mockResolvedValue({ scanned: 0, processed: 0, failed: 0 }),
+        backfillOwnerDataExport: vi.fn().mockResolvedValue({ scanned: 0, processed: 0, failed: 0 }),
+        completeAccountDeletions,
+        purgeDissolvedHouseholds,
+        retainAuditLog: vi
+          .fn()
+          .mockResolvedValue({ scanned: 0, deleted: 0, skipped: 0, failed: 0 }),
+      }),
+    ).rejects.toBe(deliveryError);
+
+    expect(backfillActionExtraction).toHaveBeenCalledOnce();
+    expect(completeAccountDeletions).toHaveBeenCalledOnce();
+    expect(purgeDissolvedHouseholds).toHaveBeenCalledOnce();
+    expect(logger.error).toHaveBeenCalledWith("background_job_recovery.stage_failed", {
+      stage: "deliveries",
+      errorCode: "persistence_failure",
+    });
+    expect(logger.error).toHaveBeenCalledWith("background_job_recovery.stage_failed", {
+      stage: "embedding",
+      errorCode: "processing_failure",
+    });
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain("private connection string");
+  });
+
   it("preserves an earlier failure when audit retention also fails", async () => {
     const recoveryError = new Error("delivery recovery failed");
     const retentionError = new Error("postgres detail: private connection string");
@@ -376,11 +501,11 @@ describe("background job recovery", () => {
     expect(result.auditRetention).toEqual({ scanned: 0, deleted: 0, skipped: 0, failed: 0 });
   });
 
-  it("configures a bounded Vercel cron trigger for recovery", () => {
+  it("configures a bounded Vercel cron trigger for recovery on the shared cadence", () => {
     expect(recoveryMaxDuration).toBe(300);
     expect(vercelConfig.crons).toContainEqual({
       path: "/api/cron/background-jobs",
-      schedule: "*/10 * * * *",
+      schedule: BACKGROUND_PASS_CRON,
     });
   });
 });
