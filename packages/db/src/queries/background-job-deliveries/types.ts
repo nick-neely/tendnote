@@ -13,6 +13,8 @@ export type BackgroundJobDelivery = {
   lastError?: string | null;
   nextAttemptAt: Date;
   publishedAt?: Date | null;
+  /** Bumped by every re-arm of a scheduled delivery; zero for one-shot work. */
+  revision: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -28,6 +30,17 @@ export type MarkBackgroundJobDeliveryPublishedInput = {
   ownerUserId: string;
   deliveryId: string;
   publishedAt?: Date;
+  /**
+   * When the sent message should reach its consumer, for a delayed send. Kept
+   * as the row's `nextAttemptAt`, so recovery can tell a pointer that should
+   * have arrived by now - a lost checkpoint hop, say - from one still on its way.
+   */
+  expectedAt?: Date;
+  /**
+   * The revision that was sent. When given, a delivery re-armed since then is
+   * left untouched, so a slow publish never marks a newer revision published.
+   */
+  revision?: number;
 };
 
 export type MarkBackgroundJobDeliveryPublishFailedInput = {
@@ -35,10 +48,31 @@ export type MarkBackgroundJobDeliveryPublishFailedInput = {
   deliveryId: string;
   error: string;
   nextAttemptAt: Date;
+  /** As for {@link MarkBackgroundJobDeliveryPublishedInput.revision}. */
+  revision?: number;
+};
+
+export type ReviseBackgroundJobDeliveryInput = {
+  ownerUserId: string;
+  deliveryId: string;
+  /** When recovery should next try publishing this revision if nothing else does. */
+  nextAttemptAt: Date;
+  /**
+   * The revision the caller based its decision on. When given, the bump only
+   * happens if the delivery is still at it, so a re-arm computed from state
+   * read before a concurrent edit cannot supersede that edit.
+   */
+  revision?: number;
 };
 
 export type UpdateBackgroundJobDeliveryInput = {
   deliveryId: string;
+  /**
+   * The revision the caller inspected. When given, a delivery re-armed since
+   * is returned unchanged, so a decision made about an older revision (such as
+   * abandoning it) never lands on a newer one.
+   */
+  revision?: number;
   status?: BackgroundJobDeliveryStatus;
   lastError?: string | null;
   nextAttemptAt?: Date;
@@ -67,6 +101,14 @@ export type BackgroundJobDeliveryStore = {
   markBackgroundJobDeliveryPublishFailed: (
     input: MarkBackgroundJobDeliveryPublishFailedInput,
   ) => Promise<BackgroundJobDelivery>;
+  /**
+   * Starts a new revision of a scheduled delivery: pending, unpublished, and
+   * with the revision bumped atomically so concurrent re-arms each get their own.
+   * Null only when `revision` was given and the delivery has moved past it.
+   */
+  reviseBackgroundJobDelivery: (
+    input: ReviseBackgroundJobDeliveryInput,
+  ) => Promise<BackgroundJobDelivery | null>;
   updateBackgroundJobDelivery: (
     input: UpdateBackgroundJobDeliveryInput & { ownerUserId: string },
   ) => Promise<BackgroundJobDelivery>;
@@ -76,6 +118,8 @@ export type BackgroundJobDeliveryStore = {
   }) => Promise<BackgroundJobDelivery[]>;
   listDueBackgroundJobDeliveries: (input: {
     statuses: BackgroundJobDeliveryStatus[];
+    /** Only this family's deliveries, when given. */
+    jobKind?: BackgroundJobKind;
     now: Date;
     limit: number;
   }) => Promise<BackgroundJobDelivery[]>;

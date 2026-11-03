@@ -88,6 +88,34 @@ describe("Node runtime startup evidence", () => {
     expect(runtime[runtimeVersionLogged]).toBeUndefined();
   });
 
+  it("registers the signed queue transport reminder wake-ups publish through", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const { registerBackgroundJobQueueTransport, registeredBackgroundJobQueueTransport } =
+      await import("@tendnote/db/queries/background-job-deliveries");
+    registerBackgroundJobQueueTransport(undefined);
+    const { register } = await import("./instrumentation");
+
+    await register();
+
+    expect(registeredBackgroundJobQueueTransport()?.send).toEqual(expect.any(Function));
+    registerBackgroundJobQueueTransport(undefined);
+  });
+
+  it("keeps startup available, and reminders on the cron, if the transport cannot load", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.doMock("@/lib/background-jobs/vercel-queue-transport", () => {
+      throw new Error("transport module unavailable");
+    });
+    const { register } = await import("./instrumentation");
+
+    await expect(register()).resolves.toBeUndefined();
+    expect(error).toHaveBeenCalledWith("runtime.queue_transport_unavailable", { service: "web" });
+    vi.doUnmock("@/lib/background-jobs/vercel-queue-transport");
+  });
+
   it("leaves the existing server error reporter behind its Node runtime guard", async () => {
     const { onRequestError } = await import("./instrumentation");
     const { reportServerError } = await import("@/lib/diagnostics/report");

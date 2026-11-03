@@ -18,6 +18,11 @@ import { createStripeReconciliation } from "@/lib/billing/stripe-reconciliation"
 import { runOperatorAlerts } from "@/lib/operator-alerts/pass";
 
 const DELIVERY_LIMIT = 25;
+/**
+ * Reminder jobs re-armed per pass because their queue wake-up was lost or
+ * expired. Normally zero: delayed messages wake reminders on time (ADR 0267).
+ */
+const LOST_REMINDER_WAKEUP_LIMIT = 25;
 const EXTRACTION_BACKFILL_LIMIT = 5;
 const EMBEDDING_BACKFILL_LIMIT = 5;
 const ACTION_EXTRACTION_BACKFILL_LIMIT = 5;
@@ -110,6 +115,7 @@ export async function GET(request: NextRequest) {
 
   const result = await runBackgroundJobRecovery({
     deliveryLimit: DELIVERY_LIMIT,
+    lostReminderWakeupLimit: LOST_REMINDER_WAKEUP_LIMIT,
     extractionBackfillLimit: EXTRACTION_BACKFILL_LIMIT,
     embeddingBackfillLimit: EMBEDDING_BACKFILL_LIMIT,
     actionExtractionBackfillLimit: ACTION_EXTRACTION_BACKFILL_LIMIT,

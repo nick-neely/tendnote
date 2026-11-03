@@ -2,16 +2,20 @@
 
 Tendnote uses a backend-only background job delivery foundation for lightweight asynchronous processors. Postgres remains the source of truth for product job state; Vercel Queues is the default production transport that wakes processor-specific consumers.
 
-The delivery ledger is `background_job_deliveries`. Each row records a queue publication intent with `id`, `owner_user_id`, `job_kind`, `job_id`, `topic`, `status`, `attempts`, `last_error`, `next_attempt_at`, `created_at`, `updated_at`, and `published_at`. `job_kind` supports five values: `extraction`, `embedding`, `action_extraction`, `context_fact_extraction`, and `reminder_push`. Delivery status is transport-only:
+The delivery ledger is `background_job_deliveries`. Each row records a queue publication intent with `id`, `owner_user_id`, `job_kind`, `job_id`, `topic`, `status`, `attempts`, `last_error`, `next_attempt_at`, `created_at`, `updated_at`, `published_at`, and `revision`. `job_kind` supports five values: `extraction`, `embedding`, `action_extraction`, `context_fact_extraction`, and `reminder_push`. Delivery status is transport-only:
 
 - `pending`: the delivery intent exists and has not been accepted by the queue.
 - `published`: Vercel Queue accepted the send call. This does not mean the job was consumed or processed.
 - `publish_failed`: the durable product record and processor job exist, but queue publication failed and can be retried.
 - `abandoned`: recovery found the underlying processor job terminal or no longer valid.
 
-For `extraction`, `embedding`, `action_extraction`, and `context_fact_extraction`, recovery treats the underlying processor job's status as the authority on whether a delivery is still worth republishing. `reminder_push` has no processor job in that sense: recovery always treats its deliveries as active and defers to the reminder policy processor, which independently suppresses stale, revoked, completed, or otherwise ineligible work before it ever contacts Web Push.
+For `extraction`, `embedding`, `action_extraction`, and `context_fact_extraction`, recovery treats the underlying processor job's status as the authority on whether a delivery is still worth republishing. For `reminder_push` the authority is the Reminder delivery job: recovery abandons a delivery whose job has completed or been skipped, and otherwise publishes it against the job's current due time. The reminder policy processor still suppresses stale, revoked, completed, or otherwise ineligible work before it ever contacts Web Push.
 
-Topic routing goes through the typed topic map in `@tendnote/db/queries/background-job-deliveries`; the concrete topic string is still stored on each delivery row for inspection. There are three topics: `tendnote-extraction-v1`, shared by `extraction`, `action_extraction`, and `context_fact_extraction` (the consumer route dispatches by the payload's `jobKind`, so one route and one Vercel queue cover all three); `tendnote-embedding-v1`; and `tendnote-reminder-push-v1`. Queue payloads carry `deliveryId`, `jobKind`, and `jobId` as pointers. Consumers reload the delivery row and processor job from Postgres, validate payload fields, and then process only the delivered job id through the shared processor for that job kind.
+### Reminder wake-ups
+
+Reminder deliveries are scheduled, not one-shot ([ADR 0267](adr/0267-reminder-wake-ups-are-delayed-queue-messages.md)). Once a reminder's outbox row commits, it is published at once as a message delayed to the alert time, kept for 24 hours past it, and capped at a six-day delay; a later reminder is reached through checkpoint hops that re-arm from current state. Every re-arm (an edit, a retry, a reinstall, a hop) bumps `revision`, so each pointer has its own signed revision and idempotency key, and a pointer for an earlier revision returns without writing anything. Web and Eve register their signed transport at startup; a runtime without one leaves the publish to the cron. `REMINDER_DELIVERY_PUBLISH_AHEAD=off` restores cron-only publication.
+
+Topic routing goes through the typed topic map in `@tendnote/db/queries/background-job-deliveries`; the concrete topic string is still stored on each delivery row for inspection. There are three topics: `tendnote-extraction-v1`, shared by `extraction`, `action_extraction`, and `context_fact_extraction` (the consumer route dispatches by the payload's `jobKind`, so one route and one Vercel queue cover all three); `tendnote-embedding-v1`; and `tendnote-reminder-push-v1`. Queue payloads carry `deliveryId`, `jobKind`, and `jobId` as pointers, signed with `sig`; a revised reminder delivery's payload also carries `revision`, signed with `revisionSig`. Consumers reload the delivery row and processor job from Postgres, validate payload fields, and then process only the delivered job id through the shared processor for that job kind.
 
 Local development can keep work inline through the existing processor runtime modes. Ordinary verification uses fake queue adapters and fake queue messages, so `pnpm verify` does not require Vercel Queue access or live provider credentials.
 
@@ -44,7 +48,7 @@ While a restore holds the Outbound Pause ([restore runbook](operations/restore.m
 
 Extraction and Action extraction claims expire after fifteen minutes, longer than the hosted function execution limit. The next bounded backfill or queue delivery atomically reclaims an expired `running` job, incrementing its attempt count and replacing `claimed_at`; a live claim and a terminal job remain untouched. Legacy running rows without `claimed_at` use `updated_at` as the lease start. This repairs abandoned claims without a manual production-data reset.
 
-The recovery dispatcher runs bounded work on the same ten-minute cron. It republishes due `pending` or `publish_failed` delivery intents (up to 25 per pass), abandons obsolete delivery intents, and backfills up to 5 jobs per pass each for `extraction`, `embedding`, `action_extraction`, and `context_fact_extraction` through the same shared processors used by queue consumers.
+The recovery dispatcher runs bounded work on the same ten-minute cron. It republishes due `pending` or `publish_failed` delivery intents (up to 25 per pass), abandons obsolete delivery intents, re-arms up to 25 reminder jobs whose wake-up was lost (due more than five minutes ago with no pointer on its way) and up to 25 published reminder pointers, including checkpoint hops, more than five minutes past their expected arrival and closes those whose freshness has passed as stale, and backfills up to 5 jobs per pass each for `extraction`, `embedding`, `action_extraction`, and `context_fact_extraction` through the same shared processors used by queue consumers.
 
 A job whose account has reached its background Account Ceiling is deferred, not failed ([ADR 0254](adr/0254-background-and-web-search-ceilings-pause-where-the-spend-happens.md)). The model-call entry point refuses the call, and the processor puts the job back in `pending` with its `run_after` at the start of the Usage Period's reset day and no `last_error`; Context Fact extraction, the one family that dead-letters on attempts, also hands back the attempt its claim counted. The queue message is acknowledged, so nothing redelivers it early; the backfill above picks the job up once it is due. The Spend Breaker defers the same way while it sheds background work ([ADR 0255](adr/0255-the-spend-breaker-sheds-in-stages-past-its-daily-ceiling.md)), with `run_after` at the next UTC midnight, when the breaker's day ends. Reminder pushes have no model call and are never deferred.
 
@@ -69,6 +73,8 @@ where status in ('pending', 'publish_failed', 'abandoned')
 order by next_attempt_at asc, created_at asc
 limit 50;
 ```
+
+`pnpm --filter @tendnote/db db:reminder-wakeups:check` proves the reminder wake-up stores against a disposable local database. Before deploying code older than ADR 0267, set `REMINDER_DELIVERY_PUBLISH_AHEAD=off`, place a [Service-Wide Hold](operations/service-wide-hold.md), wait five minutes, run `pnpm --filter @tendnote/db db:reminder-wakeups:rollback`, deploy, and then lift the hold ([ADR 0267](adr/0267-reminder-wake-ups-are-delayed-queue-messages.md)).
 
 Manual cron recovery can be invoked against a running deployment or local dev server:
 

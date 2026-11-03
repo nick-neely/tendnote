@@ -24,6 +24,14 @@ import {
   expireOwnerDataExportArtifacts,
   type OwnerDataExportJobStore,
 } from "@tendnote/db/queries/owner-data-export";
+import {
+  createDrizzleReminderStore,
+  type LostReminderWakeupResult,
+  type ReminderStore,
+  recoverLostReminderWakeups,
+  reminderDeliveryPublishesAhead,
+  reminderDeliveryWakeupTime,
+} from "@tendnote/db/queries/reminders";
 import { recoverStaleSemanticEmbeddingJobs } from "@tendnote/db/queries/semantic-retrieval";
 import { findLatestServiceWideHoldLift } from "@tendnote/db/queries/service-wide-hold";
 import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
@@ -56,7 +64,14 @@ export type DeliveryRecoveryResult = {
   republished: number;
   failed: number;
   abandoned: number;
+  /** Reminder wake-ups the queue would never deliver, re-armed from job state. */
+  lostReminderWakeups?: LostReminderWakeupResult;
 };
+
+type ReminderWakeupStore = Pick<
+  ReminderStore,
+  "getDeliveryJob" | "listOverdueDeliveryJobs" | "suppressStaleDeliveryJob" | "appendAuditEntry"
+>;
 
 export type ProcessorBackfillResult = {
   scanned: number;
@@ -88,27 +103,52 @@ function jobValidity(job: { status: string } | null): JobValidity {
 }
 
 async function inspectDeliveryProcessorJob(delivery: BackgroundJobDelivery): Promise<JobValidity> {
-  // Reminder delivery has its own authoritative policy processor. It is intentionally
-  // allowed through this generic outbox recovery seam; that processor suppresses stale,
-  // revoked, completed, or otherwise ineligible work before contacting Web Push.
+  // Reminder deliveries never reach here; see `reminderWakeupTarget`.
   if (delivery.jobKind === "reminder_push") return "active";
   // Registry-driven: each family reports its own job state through the same seam, so
   // recovery no longer re-lists the per-family `getJob` functions by hand.
   return jobValidity(await BACKGROUND_JOB_FAMILIES[delivery.jobKind].getJob(delivery.jobId));
 }
 
+/**
+ * Whether a reminder delivery still owes a wake-up, and when. Read from the
+ * job itself, never from the outbox row, so a republish follows the latest
+ * edit and a job that has completed or been skipped gets no message at all.
+ * The consumer still re-decides eligibility before anything is sent.
+ */
+async function reminderWakeupTarget(
+  delivery: BackgroundJobDelivery,
+  now: Date,
+  reminderStore: Pick<ReminderStore, "getDeliveryJob">,
+): Promise<{ validity: JobValidity | "busy"; deliverAt?: Date }> {
+  const job = await reminderStore.getDeliveryJob(delivery.jobId);
+  const deliverAt = reminderDeliveryWakeupTime(job, now);
+  if (deliverAt) return { validity: "active", deliverAt };
+  // A live claim is a dispatch in progress, which re-arms its own retry if it
+  // needs one; it is neither finished nor owed a wake-up from this pass.
+  return job?.status === "running" ? { validity: "busy" } : { validity: "obsolete" };
+}
+
 export async function recoverBackgroundJobDeliveries(input: {
   limit: number;
+  /** Budget for re-arming reminder wake-ups the queue lost; zero skips the sweep. */
+  lostReminderWakeupLimit?: number;
   now?: Date;
   store?: BackgroundJobDeliveryStore;
   queue?: BackgroundJobQueueSendAdapter;
   inspectJob?: DeliveryJobInspector;
+  reminderStore?: ReminderWakeupStore;
   logger?: BackgroundJobQueueLogger;
 }): Promise<DeliveryRecoveryResult> {
   const now = input.now ?? new Date();
   const store = input.store ?? createDrizzleBackgroundJobDeliveryStore();
   const queue = input.queue ?? createVercelBackgroundJobQueueAdapter();
   const inspectJob = input.inspectJob ?? inspectDeliveryProcessorJob;
+  let reminderStore = input.reminderStore;
+  const getReminderStore = () => {
+    reminderStore ??= createDrizzleReminderStore();
+    return reminderStore;
+  };
   const result: DeliveryRecoveryResult = {
     scanned: 0,
     republished: 0,
@@ -116,10 +156,51 @@ export async function recoverBackgroundJobDeliveries(input: {
     abandoned: 0,
   };
 
-  if (input.limit <= 0) {
-    return result;
+  if (input.limit > 0) {
+    await republishDueDeliveries({
+      ...input,
+      now,
+      store,
+      queue,
+      inspectJob,
+      getReminderStore,
+      result,
+    });
+  }
+  if ((input.lostReminderWakeupLimit ?? 0) > 0) {
+    // A safety net must not take the rest of the pass down with it: a failure
+    // here is logged and retried next pass while every later stage still runs.
+    try {
+      result.lostReminderWakeups = await recoverLostReminderWakeups({
+        reminderStore: getReminderStore(),
+        deliveryStore: store,
+        queue,
+        now,
+        publishAhead: reminderDeliveryPublishesAhead(process.env),
+        limit: input.lostReminderWakeupLimit ?? 0,
+        logger: input.logger,
+      });
+    } catch (error) {
+      input.logger?.error?.("reminder_delivery.lost_wakeup_sweep_failed", {
+        errorCode: classifyBackgroundJobFailure(error),
+      });
+    }
   }
 
+  return result;
+}
+
+async function republishDueDeliveries(input: {
+  limit: number;
+  now: Date;
+  store: BackgroundJobDeliveryStore;
+  queue: BackgroundJobQueueSendAdapter;
+  inspectJob: DeliveryJobInspector;
+  getReminderStore: () => Pick<ReminderStore, "getDeliveryJob">;
+  logger?: BackgroundJobQueueLogger;
+  result: DeliveryRecoveryResult;
+}) {
+  const { now, store, queue, result } = input;
   const dueDeliveries = await store.listDueBackgroundJobDeliveries({
     statuses: ["pending", "publish_failed"],
     now,
@@ -128,15 +209,24 @@ export async function recoverBackgroundJobDeliveries(input: {
 
   for (const delivery of dueDeliveries) {
     result.scanned += 1;
-    const jobValidity = await inspectJob(delivery);
+    const target =
+      delivery.jobKind === "reminder_push"
+        ? await reminderWakeupTarget(delivery, now, input.getReminderStore())
+        : { validity: await input.inspectJob(delivery) };
+    const jobValidity = target.validity;
+    if (jobValidity === "busy") continue;
 
     if (jobValidity === "obsolete") {
-      await store.updateBackgroundJobDelivery({
+      const abandoned = await store.updateBackgroundJobDelivery({
         ownerUserId: delivery.ownerUserId,
         deliveryId: delivery.id,
         status: "abandoned",
         lastError: "Processor job is terminal or no longer valid.",
+        // Fenced to the revision inspected: a re-arm since then (a retry, an
+        // edit) owns the row, and must not be abandoned on its behalf.
+        revision: delivery.revision,
       });
+      if (abandoned.status !== "abandoned") continue;
       input.logger?.info?.("background_job_recovery.delivery_abandoned", {
         deliveryId: delivery.id,
         jobKind: delivery.jobKind,
@@ -157,6 +247,9 @@ export async function recoverBackgroundJobDeliveries(input: {
       ownerUserId: delivery.ownerUserId,
       deliveryId: delivery.id,
       now,
+      // Fenced to the revision inspected above, so a concurrent edit's newer
+      // revision is never sent with this pass's stale delivery time.
+      ...(target.deliverAt ? { deliverAt: target.deliverAt, revision: delivery.revision } : {}),
       logger: input.logger,
     });
 
@@ -166,8 +259,6 @@ export async function recoverBackgroundJobDeliveries(input: {
       result.failed += 1;
     }
   }
-
-  return result;
 }
 
 type ProcessorBackfillInput = {
@@ -351,6 +442,7 @@ function reportSecondaryAuditRetentionFailure(input: { logger?: BackgroundJobQue
 
 async function runRetryableBackgroundRecovery(input: {
   deliveryLimit: number;
+  lostReminderWakeupLimit: number;
   extractionBackfillLimit: number;
   embeddingBackfillLimit: number;
   actionExtractionBackfillLimit: number;
@@ -371,6 +463,7 @@ async function runRetryableBackgroundRecovery(input: {
 }): Promise<Omit<BackgroundJobRecoveryRunResult, "auditRetention">> {
   const deliveries = await input.recoverDeliveries({
     limit: input.deliveryLimit,
+    lostReminderWakeupLimit: input.lostReminderWakeupLimit,
     now: input.now,
     logger: input.logger,
   });
@@ -424,6 +517,7 @@ async function runRetryableBackgroundRecovery(input: {
 
 type BackgroundJobRecoveryInput = {
   deliveryLimit: number;
+  lostReminderWakeupLimit?: number;
   extractionBackfillLimit: number;
   embeddingBackfillLimit: number;
   actionExtractionBackfillLimit: number;
@@ -522,6 +616,7 @@ async function runBackgroundJobRecoveryPass(
   const recovery = await attemptRetryableBackgroundRecovery({
     recovery: {
       deliveryLimit: input.deliveryLimit,
+      lostReminderWakeupLimit: input.lostReminderWakeupLimit ?? 0,
       extractionBackfillLimit: input.extractionBackfillLimit,
       embeddingBackfillLimit: input.embeddingBackfillLimit,
       actionExtractionBackfillLimit: input.actionExtractionBackfillLimit,

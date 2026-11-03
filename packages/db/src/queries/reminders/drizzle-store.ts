@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, lte, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lte, ne, or } from "drizzle-orm";
 import { getDb } from "../../client";
 import {
   auditLog,
@@ -10,8 +10,10 @@ import {
 } from "../../schema";
 import {
   reminderDeliveryJobPersistenceValues,
+  reminderDeliveryJobUpdateValues,
   reminderSchedulePersistenceValues,
 } from "./persistence-values";
+import { REMINDER_DELIVERY_LEASE_MS } from "./policy";
 import type { ReminderAuditEntry, ReminderStore } from "./types";
 
 export function createDrizzleReminderStore(): ReminderStore {
@@ -468,26 +470,69 @@ export function createDrizzleReminderStore(): ReminderStore {
         .where(
           and(
             eq(reminderDeliveryJobs.id, input.jobId),
-            inArray(reminderDeliveryJobs.status, ["pending", "failed"]),
-            lte(reminderDeliveryJobs.nextAttemptAt, input.now),
+            or(
+              and(
+                inArray(reminderDeliveryJobs.status, ["pending", "failed"]),
+                lte(reminderDeliveryJobs.nextAttemptAt, input.now),
+              ),
+              and(
+                eq(reminderDeliveryJobs.status, "running"),
+                lte(
+                  reminderDeliveryJobs.updatedAt,
+                  new Date(input.now.getTime() - REMINDER_DELIVERY_LEASE_MS),
+                ),
+              ),
+            ),
             lte(reminderDeliveryJobs.intendedAt, input.now),
           ),
         )
         .returning();
       return row ?? null;
     },
+    async suppressStaleDeliveryJob(input) {
+      const [row] = await getDb()
+        .update(reminderDeliveryJobs)
+        .set({ status: "skipped", outcome: "suppressed_stale", updatedAt: input.now })
+        .where(
+          and(
+            eq(reminderDeliveryJobs.id, input.jobId),
+            lte(reminderDeliveryJobs.freshUntil, input.now),
+            or(
+              inArray(reminderDeliveryJobs.status, ["pending", "failed"]),
+              and(
+                eq(reminderDeliveryJobs.status, "running"),
+                lte(reminderDeliveryJobs.updatedAt, input.leaseExpiredBefore),
+              ),
+            ),
+          ),
+        )
+        .returning();
+      return row ?? null;
+    },
+    async listOverdueDeliveryJobs(input) {
+      if (input.limit <= 0) return [];
+      return getDb()
+        .select()
+        .from(reminderDeliveryJobs)
+        .where(
+          or(
+            and(
+              inArray(reminderDeliveryJobs.status, ["pending", "failed"]),
+              lte(reminderDeliveryJobs.nextAttemptAt, input.dueBefore),
+            ),
+            and(
+              eq(reminderDeliveryJobs.status, "running"),
+              lte(reminderDeliveryJobs.updatedAt, input.leaseExpiredBefore),
+            ),
+          ),
+        )
+        .orderBy(asc(reminderDeliveryJobs.nextAttemptAt), asc(reminderDeliveryJobs.id))
+        .limit(input.limit);
+    },
     async updateDeliveryJob(input) {
       const [row] = await getDb()
         .update(reminderDeliveryJobs)
-        .set({
-          status: input.status,
-          outcome: input.outcome,
-          ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
-          ...(input.nextAttemptAt !== undefined ? { nextAttemptAt: input.nextAttemptAt } : {}),
-          ...(input.lastErrorCode !== undefined ? { lastErrorCode: input.lastErrorCode } : {}),
-          ...(input.acceptedAt !== undefined ? { acceptedAt: input.acceptedAt } : {}),
-          updatedAt: input.now,
-        })
+        .set(reminderDeliveryJobUpdateValues(input))
         .where(eq(reminderDeliveryJobs.id, input.jobId))
         .returning();
       if (!row) throw new Error("Reminder delivery job not found.");

@@ -9,6 +9,27 @@ export async function register() {
   } catch {
     // Temporary diagnostics must not block startup if their module cannot load.
   }
+  await registerReminderWakeupTransport();
+}
+
+/**
+ * Lets reminder mutations publish their wake-up as soon as they commit, delayed
+ * to the alert time (ADR 0267). Reminder scheduling runs deep inside shared
+ * mutations, so it reaches the transport through this registration rather than
+ * a parameter. Without it reminders still arrive, only through the recovery
+ * cron, so a failure here is reported and startup continues.
+ */
+async function registerReminderWakeupTransport() {
+  try {
+    const [{ registerBackgroundJobQueueTransport }, { createVercelBackgroundJobQueueAdapter }] =
+      await Promise.all([
+        import("@tendnote/db/queries/background-job-deliveries"),
+        import("@/lib/background-jobs/vercel-queue-transport"),
+      ]);
+    registerBackgroundJobQueueTransport(createVercelBackgroundJobQueueAdapter());
+  } catch {
+    console.error("runtime.queue_transport_unavailable", { service: "web" });
+  }
 }
 
 /**

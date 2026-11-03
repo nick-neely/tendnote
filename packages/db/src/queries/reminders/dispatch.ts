@@ -163,8 +163,9 @@ function suppressionReason(
   return null;
 }
 
-async function suppressDelivery(
-  store: ReminderStore,
+/** Skips one delivery job with an audited reason, leaving its record untouched. */
+async function suppressReminderDelivery(
+  store: Pick<ReminderStore, "updateDeliveryJob" | "appendAuditEntry">,
   claimed: ReminderDeliveryJob,
   now: Date,
   reason: "suppressed_stale" | "suppressed_revoked" | "suppressed_ineligible",
@@ -325,7 +326,7 @@ export function createReminderDispatcher(input: ReminderDispatcherDependencies) 
     const context = await loadDispatchContext(input, claimed);
     const suppression = suppressionReason(claimed, context, values.now);
     if (suppression) {
-      return suppressDelivery(input.store, claimed, values.now, suppression);
+      return suppressReminderDelivery(input.store, claimed, values.now, suppression);
     }
     if (
       !context.record ||

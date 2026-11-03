@@ -10,7 +10,10 @@ import {
   affectedScopesForReminder,
   type MutationOutcome,
 } from "./affected-scopes";
-import { createDrizzleBackgroundJobDeliveryStore } from "./background-job-deliveries";
+import {
+  createDrizzleBackgroundJobDeliveryStore,
+  registeredBackgroundJobQueueTransport,
+} from "./background-job-deliveries";
 import type {
   CaptureOutcomeResult,
   ConversationalCaptureResult,
@@ -20,7 +23,8 @@ import { createDrizzleGeneralActionLifecycleStore } from "./general-actions/driz
 import { createHouseholdAuthorizationProver } from "./households/authorization";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createDrizzleReminderStore } from "./reminders/drizzle-store";
-import { scheduleReminderDeliveryOutbox } from "./reminders/outbox";
+import { armReminderDelivery } from "./reminders/outbox";
+import { reminderDeliveryPublishesAhead } from "./reminders/policy";
 import { createReminderRecordLoader } from "./reminders/record-loaders";
 import { createReminderService } from "./reminders/service";
 import { createReminderSubscriptionAuthorizer } from "./reminders/subscription-authorization";
@@ -46,7 +50,16 @@ export const reminderService = createReminderService({
     savedItemStore,
     sourceRecordStore,
   }),
-  scheduleDelivery: (input) => scheduleReminderDeliveryOutbox(outboxStore, input).then(() => {}),
+  scheduleDelivery: (input) =>
+    armReminderDelivery({
+      store: outboxStore,
+      queue: registeredBackgroundJobQueueTransport(),
+      ownerUserId: input.ownerUserId,
+      jobId: input.jobId,
+      deliverAt: input.nextAttemptAt,
+      publishAhead: reminderDeliveryPublishesAhead(process.env),
+      logger: console,
+    }).then(() => {}),
 });
 
 export const saveGeneralActionReminder = reminderService.saveGeneralActionReminder;

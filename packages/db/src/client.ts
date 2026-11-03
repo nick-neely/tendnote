@@ -16,6 +16,8 @@ export type DatabaseExecutor = Database | Parameters<Parameters<Database["transa
 let db: Database | undefined;
 let postgresClient: postgres.Sql | undefined;
 const transactionContext = new AsyncLocalStorage<DatabaseExecutor>();
+/** Work waiting for the outermost {@link withDatabaseTransaction} to commit. */
+const afterCommitContext = new AsyncLocalStorage<Array<() => Promise<void>>>();
 
 const localDatabaseUrl = "postgres://tendnote:tendnote@localhost:55432/tendnote";
 
@@ -75,7 +77,33 @@ export async function withDatabaseTransaction<T>(fn: () => Promise<T>): Promise<
   if (transactionContext.getStore()) {
     return fn();
   }
-  return getDb().transaction((tx) => transactionContext.run(tx, fn));
+  const afterCommit: Array<() => Promise<void>> = [];
+  const result = await afterCommitContext.run(afterCommit, () =>
+    getDb().transaction((tx) => transactionContext.run(tx, fn)),
+  );
+  for (const callback of afterCommit) {
+    // Each callback owns its failure handling; one cannot undo the commit or
+    // stop the others from running.
+    await callback().catch(() => undefined);
+  }
+  return result;
+}
+
+/**
+ * Run an external side effect once the rows it points at are durable.
+ *
+ * Inside {@link withDatabaseTransaction} it waits for the outermost commit and
+ * is dropped if that rolls back; outside one every statement has already
+ * committed, so it runs now. A queue message published before its row commits
+ * could be delivered to a consumer that cannot see the row yet.
+ */
+export async function runAfterDatabaseCommit(fn: () => Promise<void>): Promise<void> {
+  const pending = transactionContext.getStore() ? afterCommitContext.getStore() : undefined;
+  if (pending) {
+    pending.push(fn);
+    return;
+  }
+  await fn();
 }
 
 /**

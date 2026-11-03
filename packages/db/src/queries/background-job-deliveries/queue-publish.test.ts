@@ -84,6 +84,232 @@ describe("publishBackgroundJobDelivery", () => {
   });
 });
 
+describe("scheduled, revisioned publication", () => {
+  const now = new Date("2026-03-08T06:59:30.250Z");
+
+  async function revisedReminderDelivery(store = createInMemoryBackgroundJobDeliveryStore()) {
+    const { delivery } = await store.createBackgroundJobDelivery({
+      ownerUserId: OWNER,
+      jobKind: "reminder_push",
+      jobId: "11111111-1111-1111-1111-111111111111",
+    });
+    const revised = await store.reviseBackgroundJobDelivery({
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      nextAttemptAt: now,
+    });
+    if (!revised) throw new Error("expected an unfenced revision");
+    return { store, delivery: revised };
+  }
+
+  it("delays the pointer until the alert time and keeps it past that time for retries", async () => {
+    const { store, delivery } = await revisedReminderDelivery();
+    const queue = okQueue();
+
+    // 07:30 UTC is 02:30 local on the New York spring-forward night: the delay
+    // is plain elapsed time, rounded up so the pointer never arrives early.
+    const result = await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      deliverAt: new Date("2026-03-08T07:30:00.000Z"),
+      now,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.delivery).toMatchObject({ status: "published", revision: 1 });
+    expect(queue.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: {
+          deliveryId: delivery.id,
+          jobKind: "reminder_push",
+          jobId: delivery.jobId,
+          revision: 1,
+        },
+        idempotencyKey: `reminder_push:${delivery.jobId}:${delivery.topic}:${delivery.id}:r1`,
+        delaySeconds: 1830,
+        retentionSeconds: 1830 + 24 * 60 * 60,
+      }),
+    );
+  });
+
+  it("caps a far-future pointer at a checkpoint the queue can still hold", async () => {
+    const { store, delivery } = await revisedReminderDelivery();
+    const queue = okQueue();
+
+    await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      deliverAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+      now,
+    });
+
+    expect(queue.send).toHaveBeenCalledWith(
+      expect.objectContaining({ delaySeconds: 6 * 24 * 60 * 60, retentionSeconds: 604_800 }),
+    );
+  });
+
+  it("sends a due pointer without delay", async () => {
+    const { store, delivery } = await revisedReminderDelivery();
+    const queue = okQueue();
+
+    await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      deliverAt: new Date(now.getTime() - 60_000),
+      now,
+    });
+
+    expect(queue.send).toHaveBeenCalledWith(
+      expect.objectContaining({ delaySeconds: 0, retentionSeconds: 24 * 60 * 60 }),
+    );
+  });
+
+  it("gives every revision its own idempotency key", async () => {
+    const { store, delivery } = await revisedReminderDelivery();
+    const queue = okQueue();
+    await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      now,
+    });
+    await store.reviseBackgroundJobDelivery({
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      nextAttemptAt: now,
+    });
+    await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      now,
+    });
+
+    const keys = vi.mocked(queue.send).mock.calls.map(([call]) => call.idempotencyKey);
+    expect(keys).toEqual([expect.stringMatching(/:r1$/), expect.stringMatching(/:r2$/)]);
+  });
+
+  it("never marks a newer revision published on behalf of an older publish", async () => {
+    const { store, delivery } = await revisedReminderDelivery();
+    let resolveSend: (() => void) | undefined;
+    const queue: BackgroundJobQueueSendAdapter = {
+      send: vi.fn(
+        () =>
+          new Promise<{ messageId: string | null }>((resolve) => {
+            resolveSend = () => resolve({ messageId: "m-old" });
+          }),
+      ),
+    };
+
+    const oldPublish = publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      now,
+    });
+    await vi.waitFor(() => expect(resolveSend).toBeDefined());
+    // An edit lands while the old revision's send is still in flight.
+    await store.reviseBackgroundJobDelivery({
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      nextAttemptAt: now,
+    });
+    resolveSend?.();
+    const result = await oldPublish;
+
+    expect(result).toMatchObject({ ok: true, superseded: true });
+    await expect(
+      store.getBackgroundJobDelivery({ ownerUserId: OWNER, deliveryId: delivery.id }),
+    ).resolves.toMatchObject({ revision: 2, status: "pending", publishedAt: null });
+  });
+
+  it("sends nothing for a revision that was re-armed before its publish ran", async () => {
+    const { store, delivery } = await revisedReminderDelivery();
+    // A second edit commits before the first edit's after-commit publish runs.
+    await store.reviseBackgroundJobDelivery({
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      nextAttemptAt: now,
+    });
+    const queue = okQueue();
+
+    const result = await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      deliverAt: new Date(now.getTime() + 60 * 60_000),
+      revision: delivery.revision,
+      now,
+    });
+
+    // Otherwise it would send revision 2's key timed to revision 1's alert,
+    // and revision 2's own send would then be deduplicated away.
+    expect(result).toMatchObject({ ok: true, superseded: true });
+    expect(queue.send).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed send for a revision re-armed meanwhile as superseded, not failed", async () => {
+    const { store, delivery } = await revisedReminderDelivery();
+    const queue: BackgroundJobQueueSendAdapter = {
+      send: vi.fn(async () => {
+        await store.reviseBackgroundJobDelivery({
+          ownerUserId: OWNER,
+          deliveryId: delivery.id,
+          nextAttemptAt: now,
+        });
+        throw new Error("provider outage");
+      }),
+    };
+
+    const result = await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      now,
+    });
+
+    expect(result).toMatchObject({ ok: true, superseded: true });
+    expect(result.delivery).toMatchObject({ revision: 2, status: "pending" });
+  });
+
+  it("leaves an unrevised pointer exactly as it always was", async () => {
+    const store = createInMemoryBackgroundJobDeliveryStore();
+    const { delivery } = await store.createBackgroundJobDelivery({
+      ownerUserId: OWNER,
+      jobKind: "embedding",
+      jobId: "job-9",
+    });
+    const queue = okQueue();
+
+    await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+    });
+
+    const [call] = vi.mocked(queue.send).mock.calls[0] ?? [];
+    expect(call?.payload).toEqual({
+      deliveryId: delivery.id,
+      jobKind: "embedding",
+      jobId: "job-9",
+    });
+    expect(call).not.toHaveProperty("delaySeconds");
+    expect(call).not.toHaveProperty("retentionSeconds");
+  });
+});
+
 describe("background job queue callback signatures", () => {
   const secret = "queue-signing-secret";
   const payload: BackgroundJobQueuePayload = {
@@ -117,6 +343,22 @@ describe("background job queue callback signatures", () => {
     expect(verifyBackgroundJobQueueSignature({ ...payload, sig: "not-hex" }, secret)).toBe(false);
     expect(verifyBackgroundJobQueueSignature(null, secret)).toBe(false);
     expect(verifyBackgroundJobQueueSignature("string", secret)).toBe(false);
+  });
+
+  it("authenticates a revision so a genuine pointer cannot be retargeted", () => {
+    const revised: BackgroundJobQueuePayload = { ...payload, revision: 3 };
+    const signed = attachBackgroundJobQueueSignature(revised, secret);
+
+    expect(verifyBackgroundJobQueueSignature(signed, secret)).toBe(true);
+    expect(verifyBackgroundJobQueueSignature({ ...signed, revision: 4 }, secret)).toBe(false);
+    expect(verifyBackgroundJobQueueSignature({ ...signed, revisionSig: undefined }, secret)).toBe(
+      false,
+    );
+    expect(verifyBackgroundJobQueueSignature({ ...signed, revision: -1 }, secret)).toBe(false);
+    // The legacy tag stays valid on its own, so a consumer rolled back to the
+    // pre-revision code still accepts revisioned pointers already in flight.
+    const { revision: _revision, revisionSig: _revisionSig, ...legacy } = signed;
+    expect(verifyBackgroundJobQueueSignature(legacy, secret)).toBe(true);
   });
 
   it("signs deterministically for the same tuple and secret", () => {

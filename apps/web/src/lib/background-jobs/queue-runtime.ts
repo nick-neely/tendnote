@@ -1,13 +1,10 @@
 import {
-  attachBackgroundJobQueueSignature,
   BACKGROUND_JOB_TOPICS,
   type BackgroundJobDelivery,
   type BackgroundJobDeliveryStore,
   type BackgroundJobKind,
   type BackgroundJobQueueLogger,
   type BackgroundJobQueuePayload,
-  type BackgroundJobQueueSendAdapter,
-  resolveBackgroundJobQueueSecret,
   topicForBackgroundJob,
   verifyBackgroundJobQueueSignature,
 } from "@tendnote/db/queries/background-job-deliveries";
@@ -18,10 +15,11 @@ import type {
 } from "@tendnote/db/queries/background-jobs";
 import { isOutboundPaused } from "@tendnote/db/queries/outbound-pause";
 import { isServiceWideHoldActive } from "@tendnote/db/queries/service-wide-hold";
-import { handleCallback, send as sendVercelQueueMessage } from "@vercel/queue";
+import { handleCallback } from "@vercel/queue";
 import type { CostCategory, ProductRateLimiter } from "@/lib/rate-limit";
 import { getProductRateLimiter } from "@/lib/rate-limit";
 import { classifyBackgroundJobFailure } from "./failure-observability";
+import { isProductionLikeDeployment, queueCallbackSecret } from "./vercel-queue-transport";
 
 // The outbox-publish orchestration and its transport seam live in @tendnote/db (shared by
 // Eve and the web so the publish path is no longer re-inlined per app); the shared
@@ -39,23 +37,7 @@ export type {
   BackgroundJobQueueConsumerMetadata,
   BackgroundJobQueueProcessor,
 } from "@tendnote/db/queries/background-jobs";
-
-/**
- * Whether this process runs as a production or preview deployment. `NODE_ENV` is
- * `"production"` for both Vercel production and preview builds and only differs for
- * local development, which is exactly the boundary we want for the fail-closed rule.
- */
-function isProductionLikeDeployment(): boolean {
-  return process.env.NODE_ENV === "production";
-}
-
-/**
- * The shared secret used to sign and verify background-job queue callbacks, or
- * `undefined` when none is configured. See {@link resolveBackgroundJobQueueSecret}.
- */
-function queueCallbackSecret(): string | undefined {
-  return resolveBackgroundJobQueueSecret(process.env);
-}
+export { createVercelBackgroundJobQueueAdapter } from "./vercel-queue-transport";
 
 /**
  * Reject a queue callback whose payload is not authentically signed, before any
@@ -229,38 +211,6 @@ export const EMBEDDING_JOB_LEASE_DURATION_MS =
     EMBEDDING_QUEUE_MAX_DURATION_SECONDS * 2,
   ) * 1000;
 
-export function createVercelBackgroundJobQueueAdapter(): BackgroundJobQueueSendAdapter {
-  return {
-    async send(input) {
-      const secret = queueCallbackSecret();
-      if (!secret) {
-        // Fail closed: a production/preview deploy without the secret cannot publish a
-        // message the consumer would accept, so surface it as a publish failure (the
-        // outbox retries) rather than enqueuing work that will be rejected on delivery.
-        if (isProductionLikeDeployment()) {
-          throw new Error(
-            "Background job queue signing secret is not configured; cannot publish signed delivery.",
-          );
-        }
-        // Local development: publish unsigned; the consumer's dev allowance skips
-        // verification symmetrically.
-        return sendVercelQueueMessage(input.topic, input.payload, {
-          idempotencyKey: input.idempotencyKey,
-          headers: input.headers,
-        });
-      }
-      return sendVercelQueueMessage(
-        input.topic,
-        attachBackgroundJobQueueSignature(input.payload, secret),
-        {
-          idempotencyKey: input.idempotencyKey,
-          headers: input.headers,
-        },
-      );
-    },
-  };
-}
-
 export async function consumeBackgroundJobQueueMessage(input: {
   store: BackgroundJobDeliveryStore;
   payload: unknown;
@@ -292,6 +242,19 @@ export async function consumeBackgroundJobQueueMessage(input: {
       jobId: payload.jobId,
     });
     return { status: "ignored" as const, reason: "missing_delivery" as const };
+  }
+
+  // A pointer for an earlier revision of a re-armed delivery. The newer one has
+  // its own pointer, so this one must neither process nor write anything: the
+  // row now belongs to that revision.
+  if ((payload.revision ?? 0) !== delivery.revision) {
+    input.logger?.info?.("background_job_queue.superseded", {
+      deliveryId: delivery.id,
+      jobKind: delivery.jobKind,
+      payloadRevision: payload.revision ?? 0,
+      deliveryRevision: delivery.revision,
+    });
+    return { status: "ignored" as const, reason: "superseded_revision" as const };
   }
 
   const invalidDeliveryResult = await validatePublishedDelivery(input, delivery, payload);
@@ -326,6 +289,7 @@ export async function consumeBackgroundJobQueueMessage(input: {
     ownerUserId: delivery.ownerUserId,
     deliveryId: delivery.id,
     jobId: delivery.jobId,
+    deliveryRevision: delivery.revision,
   });
 
   if (jobState.status !== "ready") {
@@ -369,7 +333,10 @@ async function validatePublishedDelivery(
     return { status: "ignored" as const, reason: "obsolete_delivery" as const };
   }
 
-  if (delivery.status !== "published") {
+  if (
+    delivery.status !== "published" &&
+    !isCurrentRevisionAwaitingConfirmation(delivery, payload)
+  ) {
     logQueueAnomaly(input.logger, "stale_delivery", {
       deliveryId: delivery.id,
       jobKind: delivery.jobKind,
@@ -434,6 +401,25 @@ async function processClaimedJob(
     });
     throw error;
   }
+}
+
+/**
+ * Whether a revisioned pointer arrived for the current revision before its
+ * publish was recorded: the send was accepted but the `published` write has not
+ * landed yet (a due pointer can arrive within milliseconds) or failed outright.
+ * The pointer is authentic and current, and the job is authoritative, so it is
+ * processed rather than dropped. One-shot payloads carry no revision and keep
+ * the original rule.
+ */
+function isCurrentRevisionAwaitingConfirmation(
+  delivery: BackgroundJobDelivery,
+  payload: BackgroundJobQueuePayload,
+): boolean {
+  return (
+    payload.revision !== undefined &&
+    payload.revision === delivery.revision &&
+    (delivery.status === "pending" || delivery.status === "publish_failed")
+  );
 }
 
 /**
@@ -506,10 +492,18 @@ function parseBackgroundJobQueuePayload(payload: unknown): BackgroundJobQueuePay
     return null;
   }
 
+  if (
+    candidate.revision !== undefined &&
+    !(Number.isSafeInteger(candidate.revision) && candidate.revision >= 0)
+  ) {
+    return null;
+  }
+
   return {
     deliveryId: candidate.deliveryId,
     jobKind: candidate.jobKind,
     jobId: candidate.jobId,
+    ...(candidate.revision !== undefined ? { revision: candidate.revision } : {}),
   };
 }
 
