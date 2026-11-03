@@ -55,7 +55,9 @@ and keys.
 Revisions protect the transport; the job protects the outcome. Dispatch still
 reloads the record, schedule, installation, opt-in and subscription, and still
 enforces occurrence and installation deduplication, Reminder Freshness Windows,
-attempt budgets, Outbound Pause and Service-Wide Hold. A pointer held past its
+Outbound Pause and Service-Wide Hold. Reminder retries have no attempt cap of
+their own, before or after this change: a transient failure retries every five
+minutes at most, and the freshness window is what ends them. A pointer held past its
 freshness suppresses only that one stale alert. Reminders remain outside the
 restore Effect Fence and are not shed at usage ceilings.
 

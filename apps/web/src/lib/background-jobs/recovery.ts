@@ -168,15 +168,23 @@ export async function recoverBackgroundJobDeliveries(input: {
     });
   }
   if ((input.lostReminderWakeupLimit ?? 0) > 0) {
-    result.lostReminderWakeups = await recoverLostReminderWakeups({
-      reminderStore: getReminderStore(),
-      deliveryStore: store,
-      queue,
-      now,
-      publishAhead: reminderDeliveryPublishesAhead(process.env),
-      limit: input.lostReminderWakeupLimit ?? 0,
-      logger: input.logger,
-    });
+    // A safety net must not take the rest of the pass down with it: a failure
+    // here is logged and retried next pass while every later stage still runs.
+    try {
+      result.lostReminderWakeups = await recoverLostReminderWakeups({
+        reminderStore: getReminderStore(),
+        deliveryStore: store,
+        queue,
+        now,
+        publishAhead: reminderDeliveryPublishesAhead(process.env),
+        limit: input.lostReminderWakeupLimit ?? 0,
+        logger: input.logger,
+      });
+    } catch (error) {
+      input.logger?.error?.("reminder_delivery.lost_wakeup_sweep_failed", {
+        errorCode: classifyBackgroundJobFailure(error),
+      });
+    }
   }
 
   return result;

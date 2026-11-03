@@ -303,6 +303,11 @@ async function recordPublishFailure(
     nextAttemptAt: new Date(now.getTime() + (input.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS)),
     revision: delivery.revision,
   });
+  // Re-armed meanwhile: this revision's failure is moot, and the newer one
+  // owns the row and its own publication.
+  if (failed.revision !== delivery.revision) {
+    return { ok: true as const, delivery: failed, superseded: true };
+  }
   return { ok: false as const, delivery: failed };
 }
 

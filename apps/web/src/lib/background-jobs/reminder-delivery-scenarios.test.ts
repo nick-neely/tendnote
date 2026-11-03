@@ -819,4 +819,31 @@ describe("Reminder wake-up recovery", () => {
       harness.deliveries.listBackgroundJobDeliveries({ ownerUserId: OWNER }),
     ).resolves.toEqual([expect.objectContaining({ status: "abandoned" })]);
   });
+
+  it("keeps the rest of the recovery pass running when the lost-wake-up sweep fails", async () => {
+    const harness = createHarness({ occursAt, startAt });
+    const error = vi.fn();
+
+    const result = await recoverBackgroundJobDeliveries({
+      limit: 25,
+      lostReminderWakeupLimit: 25,
+      now: harness.now(),
+      store: harness.deliveries,
+      queue: harness.queue,
+      reminderStore: {
+        ...harness.reminders,
+        listOverdueDeliveryJobs: async () => {
+          throw new Error("database unavailable");
+        },
+      },
+      logger: { error },
+    });
+
+    expect(result).toMatchObject({ scanned: 0 });
+    expect(result.lostReminderWakeups).toBeUndefined();
+    expect(error).toHaveBeenCalledWith(
+      "reminder_delivery.lost_wakeup_sweep_failed",
+      expect.objectContaining({ errorCode: expect.any(String) }),
+    );
+  });
 });

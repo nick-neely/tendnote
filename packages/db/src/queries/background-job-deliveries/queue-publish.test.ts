@@ -258,6 +258,31 @@ describe("scheduled, revisioned publication", () => {
     expect(queue.send).not.toHaveBeenCalled();
   });
 
+  it("reports a failed send for a revision re-armed meanwhile as superseded, not failed", async () => {
+    const { store, delivery } = await revisedReminderDelivery();
+    const queue: BackgroundJobQueueSendAdapter = {
+      send: vi.fn(async () => {
+        await store.reviseBackgroundJobDelivery({
+          ownerUserId: OWNER,
+          deliveryId: delivery.id,
+          nextAttemptAt: now,
+        });
+        throw new Error("provider outage");
+      }),
+    };
+
+    const result = await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: OWNER,
+      deliveryId: delivery.id,
+      now,
+    });
+
+    expect(result).toMatchObject({ ok: true, superseded: true });
+    expect(result.delivery).toMatchObject({ revision: 2, status: "pending" });
+  });
+
   it("leaves an unrevised pointer exactly as it always was", async () => {
     const store = createInMemoryBackgroundJobDeliveryStore();
     const { delivery } = await store.createBackgroundJobDelivery({

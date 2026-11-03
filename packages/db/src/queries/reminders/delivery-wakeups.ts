@@ -1,6 +1,6 @@
-import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import { getDb, withDatabaseTransaction } from "../../client";
-import { backgroundJobDeliveries, reminderDeliveryJobs } from "../../schema";
+import { backgroundJobDeliveries, reminderDeliveryJobs, serviceWideHolds } from "../../schema";
 import type {
   BackgroundJobDelivery,
   BackgroundJobDeliveryStore,
@@ -119,13 +119,17 @@ async function suppressStaleJob(
     leaseExpiredBefore: new Date(input.now.getTime() - REMINDER_DELIVERY_LEASE_MS),
   });
   if (!suppressed) return false;
-  await input.reminderStore.appendAuditEntry({
-    ownerUserId: suppressed.ownerUserId,
-    action: "reminder.delivery_suppressed",
-    entityId: suppressed.id,
-    metadata: { outcome: "suppressed_stale", installationId: suppressed.installationId },
-    createdAt: input.now,
-  });
+  // Evidence, not state, and best-effort like the other reminder audit
+  // writes: a failed entry must not stop the rest of the sweep.
+  await input.reminderStore
+    .appendAuditEntry({
+      ownerUserId: suppressed.ownerUserId,
+      action: "reminder.delivery_suppressed",
+      entityId: suppressed.id,
+      metadata: { outcome: "suppressed_stale", installationId: suppressed.installationId },
+      createdAt: input.now,
+    })
+    .catch(() => undefined);
   return true;
 }
 
@@ -286,6 +290,16 @@ export async function resetReminderDeliveriesToCronOnly(
   now: Date = new Date(),
 ): Promise<{ reset: number; released: number }> {
   return withDatabaseTransaction(async () => {
+    // Checked under a lock on the open hold, so lifting it waits for this
+    // transaction: no claim can start while the reset runs.
+    const [hold] = await getDb()
+      .select({ placedAt: serviceWideHolds.placedAt })
+      .from(serviceWideHolds)
+      .where(isNull(serviceWideHolds.liftedAt))
+      .limit(1)
+      .for("update");
+    const blocker = reminderRollbackBlocker(hold ?? null, now);
+    if (blocker) throw new Error(blocker);
     const released = await getDb()
       .update(reminderDeliveryJobs)
       .set({

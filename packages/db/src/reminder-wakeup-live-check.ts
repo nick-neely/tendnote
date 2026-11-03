@@ -40,6 +40,7 @@ import {
   reminderOccurrenceIntents,
   reminderOptInStates,
   reminderSchedules,
+  serviceWideHolds,
 } from "./schema";
 
 const NOW = new Date("2026-08-14T12:00:00.000Z");
@@ -301,7 +302,22 @@ async function checkReminderPublishedOnSave() {
     .from(backgroundJobDeliveries)
     .where(eq(backgroundJobDeliveries.jobId, job.id));
   const resetAt = new Date(recoveryAt.getTime() + REMINDER_DELIVERY_LEASE_MS + 1_000);
-  const { released } = await resetReminderDeliveriesToCronOnly(resetAt);
+  const refused = await resetReminderDeliveriesToCronOnly(resetAt).catch((error: Error) => error);
+  check("rollback refuses to reset outside a Service-Wide Hold", refused instanceof Error, refused);
+  // A hold placed one claim lease before the reset, as the procedure requires.
+  const [hold] = await getDb()
+    .insert(serviceWideHolds)
+    .values({
+      reason: "reminder wake-up live check",
+      placedAt: new Date(resetAt.getTime() - REMINDER_DELIVERY_LEASE_MS),
+    })
+    .returning({ id: serviceWideHolds.id });
+  let released = 0;
+  try {
+    ({ released } = await resetReminderDeliveriesToCronOnly(resetAt));
+  } finally {
+    if (hold) await getDb().delete(serviceWideHolds).where(eq(serviceWideHolds.id, hold.id));
+  }
   const [releasedJob] = await getDb()
     .select()
     .from(reminderDeliveryJobs)
@@ -329,7 +345,21 @@ async function checkReminderPublishedOnSave() {
   );
 }
 
+/**
+ * The rollback step resets every live reminder delivery in the database, not
+ * just this check's fixtures, so it runs only against a local database.
+ */
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+function requireLocalDatabase() {
+  const host = new URL(process.env.DATABASE_URL ?? "postgres://localhost").hostname;
+  if (LOCAL_HOSTS.has(host)) return;
+  console.error(`refusing to run against ${host}: this check needs a disposable local database`);
+  process.exit(1);
+}
+
 async function main() {
+  requireLocalDatabase();
   await requireDemoAccounts();
   await cleanup();
   try {
