@@ -11,20 +11,11 @@
  * for a pass: jobs publish to the queue when enqueued and reminders wake at
  * their alert time (ADR 0267). Restore the ten-minute cadence before paid
  * launch; the Hosted Obligations Register tracks it. Changing these two
- * constants and the two cron literals is the whole switch.
+ * constants and the two cron literals is the whole switch: what is sized by
+ * the cadence (the reminder-lateness lookback, the backfill limits) derives
+ * from `BACKGROUND_PASS_INTERVAL_MS`.
  */
 export const BACKGROUND_PASS_CRON = "0 * * * *";
 
 /** How long one pass waits for the next, matching `BACKGROUND_PASS_CRON`. */
 export const BACKGROUND_PASS_INTERVAL_MS = 60 * 60 * 1000;
-
-/**
- * The interval a cron string of the two shapes this cadence uses runs at:
- * `M * * * *` (hourly) or `*\/N * * * *` (every N minutes). Anything else is
- * not a cadence this module describes, so it returns null.
- */
-export function backgroundPassIntervalMs(cron: string): number | null {
-  if (/^\d{1,2} \* \* \* \*$/.test(cron)) return 60 * 60 * 1000;
-  const minutes = cron.match(/^\*\/(\d{1,2}) \* \* \* \*$/)?.[1];
-  return minutes && 60 % Number(minutes) === 0 ? Number(minutes) * 60 * 1000 : null;
-}

@@ -152,7 +152,7 @@ describe("background job recovery", () => {
   });
 
   it("stops claiming once the pass budget is spent, finishing the job it holds", async () => {
-    let now = 1_000;
+    let now = 0;
     const claimNextJob = vi.fn(async () => ({ id: `job-${claimNextJob.mock.calls.length}` }));
     // Each job takes forty seconds, so the third claim would start past the budget.
     const processJob = vi.fn(async () => {
@@ -164,30 +164,30 @@ describe("background job recovery", () => {
       limit: 30,
       claimNextJob,
       processJob,
-      claimUntil: 1_000 + 60_000,
-      clock: () => now,
+      stopClaiming: () => now >= 60_000,
     });
 
     expect(result).toEqual({ scanned: 2, processed: 2, failed: 0 });
     expect(claimNextJob).toHaveBeenCalledTimes(2);
   });
 
-  it("claims nothing when the pass budget is already spent", async () => {
-    const claimNextJob = vi.fn();
+  it("still claims one job when earlier families spent the budget", async () => {
+    const claimNextJob = vi.fn().mockResolvedValueOnce({ id: "job-1" });
+    const processJob = vi.fn().mockResolvedValue({ outcome: "completed" });
 
     const result = await runExtractionBackfill({
       limit: 30,
       claimNextJob,
-      processJob: vi.fn(),
-      claimUntil: 5_000,
-      clock: () => 5_000,
+      processJob,
+      stopClaiming: () => true,
     });
 
-    expect(result).toEqual({ scanned: 0, processed: 0, failed: 0 });
-    expect(claimNextJob).not.toHaveBeenCalled();
+    expect(result).toEqual({ scanned: 1, processed: 1, failed: 0 });
+    expect(claimNextJob).toHaveBeenCalledOnce();
   });
 
   it("measures one backfill budget from the start of recovery for every family", async () => {
+    let clockNow = 7_000;
     const emptyBackfill = () => vi.fn().mockResolvedValue({ scanned: 0, processed: 0, failed: 0 });
     const families = {
       backfillExtraction: emptyBackfill(),
@@ -205,7 +205,7 @@ describe("background job recovery", () => {
       embeddingBackfillLimit: 30,
       actionExtractionBackfillLimit: 30,
       backfillBudgetMs: 120_000,
-      clock: () => 7_000,
+      clock: () => clockNow,
       recoverDeliveries: vi
         .fn()
         .mockResolvedValue({ scanned: 0, republished: 0, failed: 0, abandoned: 0 }),
@@ -219,9 +219,13 @@ describe("background job recovery", () => {
       retainAuditLog: vi.fn().mockResolvedValue({ scanned: 0, deleted: 0, skipped: 0, failed: 0 }),
     });
 
-    for (const family of Object.values(families)) {
-      expect(family).toHaveBeenCalledWith(expect.objectContaining({ claimUntil: 127_000 }));
-    }
+    const budgets = Object.values(families).map(
+      (family) => family.mock.calls[0]?.[0]?.stopClaiming as () => boolean,
+    );
+    clockNow = 126_999;
+    expect(budgets.map((spent) => spent())).toEqual([false, false, false, false, false]);
+    clockNow = 127_000;
+    expect(budgets.map((spent) => spent())).toEqual([true, true, true, true, true]);
   });
 
   it("runs embedding backfill through the shared processor seam with a cap", async () => {

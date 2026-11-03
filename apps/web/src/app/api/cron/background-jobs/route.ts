@@ -9,10 +9,11 @@ import { sweepRestoredEmailFences } from "@tendnote/db/queries/restored-email-fe
 import { isServiceWideHoldActive } from "@tendnote/db/queries/service-wide-hold";
 import { sweepUsageLedger } from "@tendnote/db/queries/usage-ledger";
 import { parseAdmissionPolicy } from "@tendnote/domain";
+import { BACKGROUND_PASS_INTERVAL_MS } from "@tendnote/domain/background-pass";
 import { type NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { carryOutRetentionDeadlines } from "@/lib/access/account-retention";
-import { classifyBackgroundJobFailure } from "@/lib/background-jobs/failure-observability";
+import { settleStage } from "@/lib/background-jobs/failure-observability";
 import { runBackgroundJobRecovery } from "@/lib/background-jobs/recovery";
 import { paidAccessProjection } from "@/lib/billing/paid-access-projection";
 import { createStripeReconciliation } from "@/lib/billing/stripe-reconciliation";
@@ -28,17 +29,20 @@ const LOST_REMINDER_WAKEUP_LIMIT = 25;
  * Jobs per family the backfill claims in one pass. Normally none are waiting:
  * a job publishes to the queue when it is enqueued. What lands here is a
  * failure retry or work an Account Ceiling or the Spend Breaker deferred, which
- * all comes due at once when the breaker closes at midnight. Thirty an hour is
- * the five every ten minutes the backfill drained before passes became hourly
- * (ADR 0269); `BACKFILL_BUDGET_MS` keeps the larger batch inside the pass.
+ * all comes due at once when the breaker closes at midnight. Five for every ten
+ * minutes of pass interval keeps the rate the ten-minute cadence had: thirty an
+ * hourly pass (ADR 0269), five a ten-minute one. `BACKFILL_BUDGET_MS` keeps a
+ * larger batch of slow jobs inside the pass.
  */
-const PROCESSOR_BACKFILL_LIMIT = 30;
+const PROCESSOR_BACKFILL_LIMIT = 5 * Math.ceil(BACKGROUND_PASS_INTERVAL_MS / (10 * 60 * 1000));
 /** Export generation is rarely deferred and much heavier, so it stays small. */
 const OWNER_DATA_EXPORT_BACKFILL_LIMIT = 5;
 /**
  * How long the processor backfills may keep claiming jobs, measured from the
- * start of recovery. Well inside `maxDuration` so a job claimed at the limit
- * can finish and the sweeps, alerts, and retention after it still run.
+ * start of recovery; each family still takes its first job a pass, so one slow
+ * family cannot starve the ones after it. Well inside `maxDuration`, so a job
+ * claimed at the limit can finish and the sweeps, alerts, and retention after
+ * it usually still run. It bounds the backfills, not the whole pass.
  */
 const BACKFILL_BUDGET_MS = 120_000;
 /**
@@ -54,8 +58,8 @@ const ACCOUNT_DELETION_LIMIT = 10;
 const HOUSEHOLD_PURGE_LIMIT = 3;
 /**
  * Accounts given a deletion notice or purged per pass. A purge is one account
- * deletion; an hourly pass against deadlines measured in days drains any
- * backlog long before a notice is late by more than a pass.
+ * deletion; a pass at most an hour apart against deadlines measured in days
+ * drains any backlog long before a notice is late by more than a pass.
  */
 const ACCOUNT_RETENTION_LIMIT = 25;
 /** Audit evidence is cheaper than a household purge, but stays bounded per pass. */
@@ -127,8 +131,8 @@ export async function GET(request: NextRequest) {
   const stripeReconciliation = await reconcileStripe();
 
   // Every later stage gets its own attempt: one that throws is logged and
-  // reported, and the stages after it still run. A pass is an hour apart, so a
-  // stage skipped here would otherwise wait that long for its next chance.
+  // reported, and the stages after it still run, rather than waiting a whole
+  // pass interval for their next chance.
   const failedStages: string[] = [];
   const stage = <T>(name: string, run: () => Promise<T>) => runStage(name, run, failedStages);
 
@@ -189,24 +193,19 @@ function isFailedStage(value: object): value is FailedStage {
   return "status" in value && value.status === "failed";
 }
 
-/**
- * Runs one pass stage, turning a throw into a logged, content-free failure so
- * the stages after it still run. Only the error's class is logged: a stage's
- * message can carry database or provider detail.
- */
+/** One route stage; a throw is logged and recorded, and the pass goes on. */
 async function runStage<T>(
   name: string,
   run: () => Promise<T>,
   failedStages: string[],
 ): Promise<T | FailedStage> {
-  try {
-    return await run();
-  } catch (error) {
-    failedStages.push(name);
-    console.error("background_jobs.stage_failed", {
-      stage: name,
-      errorCode: classifyBackgroundJobFailure(error),
-    });
-    return { status: "failed" };
-  }
+  const settled = await settleStage({
+    event: "background_jobs.stage_failed",
+    stage: name,
+    run,
+    logger: console,
+  });
+  if (settled.status === "fulfilled") return settled.value;
+  failedStages.push(name);
+  return { status: "failed" };
 }

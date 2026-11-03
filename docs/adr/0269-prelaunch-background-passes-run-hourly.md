@@ -64,7 +64,8 @@ before.
 | --- | --- | --- |
 | Lost reminder wake-up re-armed (provider outage, crash between commit and send) | 5 to 15 minutes late | 5 to 65 minutes late; an instant reminder (one-hour freshness) can be closed as stale instead of delivered |
 | Failed extraction, embedding, action, Context Fact or export job retried | Next pass after its five-minute backoff | Next hourly pass |
-| Spend Breaker or Account Ceiling deferral drained | 5 jobs per family per pass | 30 per family per pass, inside a 120-second claim budget |
+| Spend Breaker or Account Ceiling deferral drained | 5 jobs per family per pass | 30 per family per pass while 120 seconds of claiming last, and at least one per family |
+| Every other per-pass limit (25 deliveries and 25 lost reminder wake-ups, 10 account deletions, 3 household purges, 25 retention steps, 100 audit rows) | Per ten minutes | Unchanged per pass, so a sixth of the hourly capacity: for example 72 household purges a day against a thirty-day deadline |
 | Account deletion whose request-time journal or disposition failed | Retried every ten minutes | Retried hourly; the 24-hour stuck alert is unchanged |
 | Household purge, retention notices and purges, audit and telemetry retention | Deadlines in days, checked every ten minutes | Up to an hour later against the same deadlines |
 | Stripe dropped-webhook repair and the seven-day dunning close | Next pass | Up to an hour |
@@ -79,12 +80,17 @@ before.
   fixed fifteen minutes, a little over one ten-minute pass. Hourly passes would
   never have seen a reminder accepted late between them. It is now one pass
   interval plus five minutes, derived from the cadence.
-- The processor backfills claim up to 30 jobs per family a pass, the hourly
-  equivalent of five every ten minutes, so a Spend Breaker day still drains in
-  the same wall time. Each family stops claiming once 120 seconds of recovery
-  have passed, measured from the start of recovery; a job already claimed
-  always finishes. That leaves the route's 300-second limit room for the
-  stages after it.
+- The processor backfills claim up to five jobs per family for every ten
+  minutes of pass interval, thirty an hourly pass, derived from
+  `BACKGROUND_PASS_INTERVAL_MS`. Each family stops claiming once 120 seconds
+  of recovery have passed, but always takes its first job, so one slow family
+  cannot starve the ones after it, and a job already claimed always finishes.
+  Fast jobs drain at the ten-minute cadence's rate. Slow ones (model calls of
+  several seconds) are bounded by the budget instead, about two minutes of
+  claiming a pass, so a large deferred backlog drains more slowly than it did
+  and the backlog condition reports the lag. The budget bounds the backfills,
+  not the whole pass: Stripe reconciliation, the sweeps and the alert pass
+  keep their own costs inside the route's 300-second limit, as before.
 - Each stage gets its own attempt. Before, a recovery family that threw
   skipped every family after it, and a failed recovery or sweep skipped the
   remaining sweeps, the operator alerts and the retention deadlines. Now each
@@ -117,8 +123,8 @@ before.
   (`BACKGROUND_PASS_CRON = "*/10 * * * *"`, a ten-minute interval, and both cron
   literals) in the same reviewed change as, or before, ADR 0268's
   `FIRST_VALUE_POLICY` restore. The Hosted Obligations Register tracks it. The
-  lookback and the backfill limits are sized for an hour and stay correct at
-  ten minutes.
+  lookback and the backfill limits derive from the interval, so they follow it
+  back.
 
 ## Alternatives considered
 

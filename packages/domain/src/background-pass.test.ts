@@ -1,23 +1,30 @@
 import { describe, expect, it } from "vitest";
-import {
-  BACKGROUND_PASS_CRON,
-  BACKGROUND_PASS_INTERVAL_MS,
-  backgroundPassIntervalMs,
-} from "./background-pass";
+import { BACKGROUND_PASS_CRON, BACKGROUND_PASS_INTERVAL_MS } from "./background-pass";
 import { FIRST_VALUE_POLICY } from "./first-value-daily";
 import { FIRST_VALUE_INTERVAL_MS } from "./first-value-health";
 
+/**
+ * The interval a cron string of the two shapes this cadence uses runs at:
+ * `M * * * *` (hourly) or `*\/N * * * *` (every N minutes, N dividing 60).
+ */
+function intervalOf(cron: string): number | null {
+  if (/^[0-5]?\d \* \* \* \*$/.test(cron)) return 60 * 60 * 1000;
+  const minutes = Number(cron.match(/^\*\/(\d{1,2}) \* \* \* \*$/)?.[1]);
+  return minutes > 0 && 60 % minutes === 0 ? minutes * 60 * 1000 : null;
+}
+
 describe("background pass cadence", () => {
   it("describes the interval its cron string runs at", () => {
-    expect(backgroundPassIntervalMs(BACKGROUND_PASS_CRON)).toBe(BACKGROUND_PASS_INTERVAL_MS);
+    expect(intervalOf(BACKGROUND_PASS_CRON)).toBe(BACKGROUND_PASS_INTERVAL_MS);
   });
 
   it("reads the hourly and every-N-minutes shapes, and nothing else", () => {
-    expect(backgroundPassIntervalMs("0 * * * *")).toBe(60 * 60 * 1000);
-    expect(backgroundPassIntervalMs("*/10 * * * *")).toBe(10 * 60 * 1000);
-    expect(backgroundPassIntervalMs("*/7 * * * *")).toBeNull();
-    expect(backgroundPassIntervalMs("0 */2 * * *")).toBeNull();
-    expect(backgroundPassIntervalMs("0 0 * * *")).toBeNull();
+    expect(intervalOf("0 * * * *")).toBe(60 * 60 * 1000);
+    expect(intervalOf("*/10 * * * *")).toBe(10 * 60 * 1000);
+    expect(intervalOf("*/7 * * * *")).toBeNull();
+    expect(intervalOf("0 */2 * * *")).toBeNull();
+    expect(intervalOf("0 0 * * *")).toBeNull();
+    expect(intervalOf("75 * * * *")).toBeNull();
   });
 
   it("keeps ten-minute passes whenever First Value samples every ten minutes", () => {
