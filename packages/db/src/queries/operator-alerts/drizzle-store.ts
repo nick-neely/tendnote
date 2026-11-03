@@ -1,10 +1,14 @@
+import { FIRST_VALUE_POLICY, type FirstValuePolicy } from "@tendnote/domain/operator-alerts";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { getDb } from "../../client";
 import { operatorAlerts } from "../../schema";
-import { observeFirstValue } from "./first-value";
+import { claimFirstValueRun, observeFirstValue } from "./first-value";
 import type { OperatorAlertStore } from "./types";
 
-export function createDrizzleOperatorAlertStore(): OperatorAlertStore {
+export function createDrizzleOperatorAlertStore(
+  options: { firstValuePolicy?: FirstValuePolicy } = {},
+): OperatorAlertStore {
+  const policy = options.firstValuePolicy ?? FIRST_VALUE_POLICY;
   const store: OperatorAlertStore = {
     async open({ condition, at, firstValueContext }) {
       // The partial unique index on open episodes makes this a no-op while one
@@ -27,8 +31,12 @@ export function createDrizzleOperatorAlertStore(): OperatorAlertStore {
         .where(and(eq(operatorAlerts.condition, condition), isNull(operatorAlerts.clearedAt)));
     },
 
+    claimFirstValueRun(input) {
+      return claimFirstValueRun(input, policy);
+    },
+
     observeFirstValue(input) {
-      return observeFirstValue(input, store);
+      return observeFirstValue(input, store, policy);
     },
 
     async claimNotices({ at }) {

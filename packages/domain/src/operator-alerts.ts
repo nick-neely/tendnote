@@ -2,6 +2,14 @@ import { RETENTION } from "./retention";
 import { type SpendBreakerStage, sheds } from "./usage-bounds";
 
 export {
+  advanceFirstValue,
+  claimFirstValueDailyRun,
+  FIRST_VALUE_DAILY_HOUR_UTC,
+  FIRST_VALUE_POLICY,
+  type FirstValuePolicy,
+  firstValueStateFor,
+} from "./first-value-daily";
+export {
   advanceFirstValueHealth,
   emptyFirstValueHealth,
   type FirstValueAlertContext,

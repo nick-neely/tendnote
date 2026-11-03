@@ -7,7 +7,7 @@ import { firstValueHealth, operatorAlerts } from "../../schema";
 import { createDrizzleOperatorAlertStore } from "./drizzle-store";
 import { observeFirstValue } from "./first-value";
 import { runOperatorAlertPass } from "./service";
-import type { ClaimedOperatorAlertNotice } from "./types";
+import type { ClaimedOperatorAlertNotice, OperatorAlertStore } from "./types";
 
 /** Explicit opt-in; each run creates and drops its own loopback-only database. */
 const configured = process.env.TENDNOTE_FIRST_VALUE_TEST_DATABASE_URL;
@@ -63,7 +63,7 @@ describe.skipIf(!configured)("First Value durable Postgres contract", () => {
   });
 
   function harness() {
-    const store = createDrizzleOperatorAlertStore();
+    const store = createDrizzleOperatorAlertStore({ firstValuePolicy: "ten_minute" });
     const sent: ClaimedOperatorAlertNotice[] = [];
     const sample = (
       outcome: "clean" | "failed" | "retried" | "serious" | "unknown",
@@ -81,6 +81,114 @@ describe.skipIf(!configured)("First Value durable Postgres contract", () => {
       });
     return { store, sent, sample };
   }
+
+  /** The prelaunch daily policy (ADR 0268); `at(0)` is 20:00 UTC, after the daily hour. */
+  function dailyHarness() {
+    const store = createDrizzleOperatorAlertStore({ firstValuePolicy: "daily" });
+    const sent: ClaimedOperatorAlertNotice[] = [];
+    const complete = (
+      outcome: "clean" | "failed" | "retried" | "serious" | "unknown",
+      slot: number,
+      against: OperatorAlertStore = store,
+    ) =>
+      runOperatorAlertPass({
+        store: against,
+        readings: [],
+        breaker: "closed",
+        now: at(slot),
+        firstValue: { at: at(slot), outcome },
+        notify: async (notice) => {
+          sent.push(notice);
+        },
+      });
+    /** One cron pass: the claim, then a sample only when this pass ran the check. */
+    const pass = async (outcome: Parameters<typeof complete>[0], slot: number) => {
+      if (await store.claimFirstValueRun({ at: at(slot) })) await complete(outcome, slot);
+    };
+    const daily = async () => (await getDb().select().from(firstValueHealth))[0]?.state.daily;
+    return { store, sent, complete, pass, daily };
+  }
+
+  it("daily: lets exactly one of many concurrent passes claim the day's run", async () => {
+    const h = dailyHarness();
+    const claims = await Promise.all(
+      Array.from({ length: 12 }, () => h.store.claimFirstValueRun({ at: at(0) })),
+    );
+    expect(claims.filter(Boolean)).toHaveLength(1);
+    await Promise.all(Array.from({ length: 6 }, () => h.complete("serious", 0)));
+    expect(h.sent.map((notice) => notice.kind)).toEqual(["alert"]);
+    expect(await h.daily()).toMatchObject({ runs: 1, settled: true, claimedAt: null });
+    expect(await h.store.claimFirstValueRun({ at: at(1) })).toBe(false);
+  });
+
+  it("daily: migrates an open ten-minute incident without recovering it", async () => {
+    const tenMinute = harness();
+    await tenMinute.sample("failed", 0);
+    await tenMinute.sample("failed", 1);
+    await tenMinute.sample("clean", 2);
+    expect(tenMinute.sent.map((notice) => notice.kind)).toEqual(["alert"]);
+    await closeDb();
+    const h = dailyHarness();
+    // The transition alone, and a retry-recovered daily check, hold the incident.
+    await h.pass("retried", 3);
+    const [row] = await getDb().select().from(firstValueHealth);
+    expect(row?.state).toMatchObject({ policy: "daily", history: [] });
+    expect(h.sent).toEqual([]);
+    await h.pass("clean", 3 + 144);
+    expect(h.sent.map((notice) => notice.kind)).toEqual(["recovery"]);
+  });
+
+  it("daily: rejects a superseded run's late result and persists the claim across restart", async () => {
+    const h = dailyHarness();
+    expect(await h.store.claimFirstValueRun({ at: at(0) })).toBe(true);
+    await closeDb();
+    const restarted = dailyHarness();
+    // The claim's lease survives the restart: no second paid run.
+    expect(await restarted.store.claimFirstValueRun({ at: at(1) })).toBe(false);
+    expect(await restarted.store.claimFirstValueRun({ at: at(2) })).toBe(true);
+    await restarted.complete("serious", 0);
+    expect(restarted.sent).toEqual([]);
+    expect(await restarted.daily()).toMatchObject({ runs: 2, claimedAt: at(2).getTime() });
+    await restarted.complete("failed", 2);
+    await restarted.complete("failed", 2);
+    expect(restarted.sent).toEqual([]);
+    await restarted.pass("failed", 3);
+    expect(restarted.sent.map((notice) => notice.openedAt)).toEqual([at(2)]);
+  });
+
+  it("daily: rolls the completion back with its episode write, keeping the run claimed", async () => {
+    const h = dailyHarness();
+    await h.pass("failed", 0);
+    expect(await h.store.claimFirstValueRun({ at: at(1) })).toBe(true);
+    const failing: OperatorAlertStore = {
+      ...h.store,
+      open: async (input) => {
+        await h.store.open(input);
+        throw new Error("rollback");
+      },
+    };
+    await expect(
+      observeFirstValue({ sample: { at: at(1), outcome: "failed" }, at: at(1) }, failing, "daily"),
+    ).rejects.toThrow("rollback");
+    expect(await getDb().select().from(operatorAlerts)).toEqual([]);
+    expect(await h.daily()).toMatchObject({ claimedAt: at(1).getTime(), settled: false });
+    await h.complete("failed", 1);
+    expect(h.sent.map((notice) => [notice.kind, notice.openedAt])).toEqual([["alert", at(0)]]);
+  });
+
+  it("daily: restoring the ten-minute policy needs two clean slots for an open incident", async () => {
+    const h = dailyHarness();
+    await h.pass("serious", 0);
+    expect(h.sent.map((notice) => notice.kind)).toEqual(["alert"]);
+    const tenMinute = harness();
+    await tenMinute.sample("clean", 145);
+    const [row] = await getDb().select().from(firstValueHealth);
+    expect(row?.state).toMatchObject({ policy: "ten_minute", history: [{ outcome: "clean" }] });
+    expect(row?.state.daily).toBeUndefined();
+    expect(tenMinute.sent).toEqual([]);
+    await tenMinute.sample("clean", 146);
+    expect(tenMinute.sent.map((notice) => notice.kind)).toEqual(["recovery"]);
+  });
 
   it("counts concurrent duplicate deliveries once and claims one confirmed incident notice", async () => {
     const h = harness();
@@ -158,6 +266,7 @@ describe.skipIf(!configured)("First Value durable Postgres contract", () => {
             throw new Error("rollback");
           },
         },
+        "ten_minute",
       ),
     ).rejects.toThrow("rollback");
     expect(await getDb().select().from(operatorAlerts)).toEqual([]);

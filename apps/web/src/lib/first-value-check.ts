@@ -1,6 +1,7 @@
 import { resolveBetterAuthBaseUrl } from "@tendnote/auth";
 import { hostedModel, type ModelGenerationPhase } from "@tendnote/db/queries/model-calls";
 import { parseAdmissionPolicy } from "@tendnote/domain";
+import { FIRST_VALUE_DAILY_HOUR_UTC } from "@tendnote/domain/operator-alerts";
 import { generateText } from "ai";
 import { Client } from "eve/client";
 import Stripe from "stripe";
@@ -10,12 +11,13 @@ import { MARKETING_URL } from "@/lib/public-links";
 
 /**
  * The synthetic First Value check (#649), one of the three Reliability
- * Indicators. Every alert pass it walks the path a newcomer takes, as far as
- * it can without a customer account: the landing page loads, Checkout's prices
- * are live in Stripe, and a dedicated operator-owned account signs in through
- * the deployment and is admitted by Eve, whose model answers. Once a day it
- * also asks Eve a question only that account's fixture Memory answers, which
- * costs one real turn; the cheap steps cost a few tokens a pass (ADR 0263).
+ * Indicators. It walks the path a newcomer takes, as far as it can without a
+ * customer account: the landing page loads, Checkout's prices are live in
+ * Stripe, and a dedicated operator-owned account signs in through the
+ * deployment and is admitted by Eve, whose model answers. Once a day it also
+ * asks Eve a question only that account's fixture Memory answers, which costs
+ * one real turn; the cheap steps cost a few tokens a run (ADR 0263). How often
+ * the alert pass runs it is the First Value policy's call (ADR 0268).
  */
 
 /** The fixture the synthetic account holds, created through the product when it is provisioned. */
@@ -26,11 +28,6 @@ export const FIRST_VALUE_FIXTURE = {
   answer: /lapsang/i,
 } as const;
 
-/**
- * From this UTC hour each day, the first pass that reaches Eve asks it the
- * fixture question: 9:00 or 10:00 Central, inside the operator's waking hours.
- */
-const GROUNDED_ANSWER_HOUR_UTC = 15;
 const GROUNDED_ANSWER_CLAIM_TTL_SECONDS = 2 * 24 * 60 * 60;
 
 /** Sets `key` only if it is unset, reporting whether this caller set it. */
@@ -41,14 +38,14 @@ const redisSetOnce: SetOnce = async (key, ttlSeconds) =>
 
 /**
  * Whether this pass asks Eve today's grounded question. Only the first pass at
- * or after the grounded hour claims the UTC day, so a late or failed pass is
+ * or after the daily hour claims the UTC day, so a late or failed pass is
  * made up by the next one and two passes never both pay for a turn.
  */
 export async function claimDailyGroundedAnswer(
   now: Date,
   setOnce: SetOnce = redisSetOnce,
 ): Promise<boolean> {
-  if (now.getUTCHours() < GROUNDED_ANSWER_HOUR_UTC) return false;
+  if (now.getUTCHours() < FIRST_VALUE_DAILY_HOUR_UTC) return false;
   const day = now.toISOString().slice(0, 10);
   return setOnce(`tendnote:first-value-check:grounded:${day}`, GROUNDED_ANSWER_CLAIM_TTL_SECONDS);
 }
@@ -66,6 +63,8 @@ type FirstValuePathStep = Exclude<FirstValueCheckStep, "grounded_answer">;
 
 export type FirstValueCheck =
   | { status: "off" }
+  /** Configured, but the First Value policy did not give this pass a run. */
+  | { status: "skipped" }
   | {
       status: "ran";
       /** Every cheap step that failed; empty when the path is up. */
@@ -416,17 +415,23 @@ async function passes(step: FirstValueCheckStep, run: () => Promise<boolean>): P
 
 /**
  * Walks the First Value path once. Off unless this is a hosted deployment with
- * the synthetic account's credentials set. Each step that fails is logged as
- * `first_value_check.failed` and reported; only an invalid app URL throws.
- * Once Eve has admitted the account, `claimGroundedAnswer` decides whether this
- * pass also asks the fixture question.
+ * the synthetic account's credentials set. When configured, `claimRun` decides
+ * before any step whether this pass runs at all; without it, it always runs.
+ * Each step that fails is logged as `first_value_check.failed` and reported;
+ * only an invalid app URL or a failed claim throws. Once Eve has admitted the
+ * account, `claimGroundedAnswer` decides whether this pass also asks the
+ * fixture question.
  */
 export async function checkFirstValuePath(
-  input: { claimGroundedAnswer?: () => Promise<boolean> } & FirstValueCheckDependencies = {},
+  input: {
+    claimRun?: () => Promise<boolean>;
+    claimGroundedAnswer?: () => Promise<boolean>;
+  } & FirstValueCheckDependencies = {},
 ): Promise<FirstValueCheck> {
   const env = input.env ?? process.env;
   const config = readConfig(env);
   if (!config) return { status: "off" };
+  if (input.claimRun && !(await input.claimRun())) return { status: "skipped" };
   const doFetch = input.fetch ?? fetch;
   const priceIsActive = input.priceIsActive ?? defaultPriceIsActive;
   const failed: FirstValuePathStep[] = [];

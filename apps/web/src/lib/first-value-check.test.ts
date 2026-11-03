@@ -114,6 +114,32 @@ describe("checkFirstValuePath", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("claims a run only once configured, and a pass without one touches nothing", async () => {
+    const claimRun = vi.fn(async () => false);
+    const fetch = vi.fn() as unknown as typeof globalThis.fetch;
+    const off = { ...ENV, TENDNOTE_SYNTHETIC_CHECK_EMAIL: undefined };
+    await expect(checkFirstValuePath({ env: off, fetch, claimRun })).resolves.toEqual({
+      status: "off",
+    });
+    expect(claimRun).not.toHaveBeenCalled();
+
+    const { run, network, callModel, askEve, priceIsActive } = check({
+      claimRun,
+      claimGroundedAnswer: async () => true,
+    });
+    await expect(run).resolves.toEqual({ status: "skipped" });
+    expect(claimRun).toHaveBeenCalledOnce();
+    expect(network.requests).toEqual([]);
+    expect(priceIsActive).not.toHaveBeenCalled();
+    expect(callModel).not.toHaveBeenCalled();
+    expect(askEve).not.toHaveBeenCalled();
+
+    const claimed = check({ claimRun: async () => true, claimGroundedAnswer: async () => true });
+    await expect(claimed.run).resolves.toMatchObject({ status: "ran", groundedAnswer: true });
+    expect(claimed.callModel).toHaveBeenCalledOnce();
+    expect(claimed.askEve).toHaveBeenCalledOnce();
+  });
+
   it("walks the cheap path as the synthetic account and signs out, without asking Eve", async () => {
     const { run, network, callModel, askEve, priceIsActive } = check({
       claimGroundedAnswer: async () => false,

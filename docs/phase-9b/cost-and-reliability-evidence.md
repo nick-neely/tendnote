@@ -143,6 +143,10 @@ Targets are revised after the first measured month. No uptime percentage is
 promised publicly. The synthetic check asks Eve its grounded question once a
 day rather than every ten minutes, for cost; the other steps run every ten
 minutes ([ADR 0263](../adr/0263-reliability-indicators-are-read-by-the-recovery-cron-and-eve-is-asked-daily.md)).
+Until paid launch the whole check runs once a day, so a First Value outage can
+go unseen for up to a day
+([ADR 0268](../adr/0268-prelaunch-first-value-checks-run-daily.md)); the
+ten-minute cadence returns before launch.
 
 ## Regression bar for cost-motivated changes
 

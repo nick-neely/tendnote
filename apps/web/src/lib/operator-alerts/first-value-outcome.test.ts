@@ -14,6 +14,12 @@ const deadline = { outcome: "deadline", phase: "gateway", elapsedMs: 15_000 } as
 const passed = { outcome: "passed", phase: "complete", elapsedMs: 2_000 } as const;
 
 describe("First Value sample classification", () => {
+  it("never reads an off, skipped, or failed check as healthy", () => {
+    for (const value of [null, { status: "off" }, { status: "skipped" }] as const) {
+      expect(firstValueOutcome(value)).toBe("unknown");
+    }
+  });
+
   it("counts two deadline attempts as one failed sample and retains recovered degradation", () => {
     expect(firstValueOutcome(check([deadline, deadline]))).toBe("failed");
     expect(firstValueOutcome(check([deadline, passed], true))).toBe("retried");

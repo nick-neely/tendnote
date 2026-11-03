@@ -8,8 +8,11 @@ import { describe, expect, it } from "vitest";
 import { createInMemoryOperatorAlertStore } from "./in-memory-store";
 import { runOperatorAlertPass } from "./service";
 
+/** These cases pin ADR 0265's policy; the daily policy has its own suite. */
+const TEN_MINUTE = { firstValuePolicy: "ten_minute" } as const;
+
 function harness() {
-  const { store, episodes } = createInMemoryOperatorAlertStore();
+  const { store, episodes } = createInMemoryOperatorAlertStore(undefined, TEN_MINUTE);
   const sent: OperatorAlertNotice[] = [];
   let failing = false;
   const errors: string[] = [];
@@ -48,7 +51,7 @@ describe("scheduled First Value episodes", () => {
   const at = (slot: number) => new Date(Date.parse("2026-10-23T20:00:00Z") + slot * 600_000);
 
   it("survives an adapter restart, deduplicates slots, and confirms recovery", async () => {
-    const memory = createInMemoryOperatorAlertStore();
+    const memory = createInMemoryOperatorAlertStore(undefined, TEN_MINUTE);
     let store = memory.store;
     const notices: string[] = [];
     const sample = (outcome: FirstValueOutcome, slot: number) =>
@@ -64,7 +67,7 @@ describe("scheduled First Value episodes", () => {
       });
     await Promise.all([sample("failed", 0), sample("failed", 0)]);
     expect(notices).toEqual([]);
-    store = createInMemoryOperatorAlertStore(memory.state).store;
+    store = createInMemoryOperatorAlertStore(memory.state, TEN_MINUTE).store;
     await sample("failed", 1);
     await sample("clean", 2);
     await sample("clean", 0);
@@ -74,7 +77,7 @@ describe("scheduled First Value episodes", () => {
   });
 
   it("retries a failed summary with its original counts and no recovery notice", async () => {
-    const memory = createInMemoryOperatorAlertStore();
+    const memory = createInMemoryOperatorAlertStore(undefined, TEN_MINUTE);
     let fail = true;
     const sent: unknown[] = [];
     const sample = (outcome: FirstValueOutcome, slot: number) =>
@@ -108,7 +111,7 @@ describe("scheduled First Value episodes", () => {
   });
 
   it("holds a failed policy write while still delivering another serious condition", async () => {
-    const { store } = createInMemoryOperatorAlertStore();
+    const { store } = createInMemoryOperatorAlertStore(undefined, TEN_MINUTE);
     const notify = async () => {};
     const errors: string[] = [];
     expect(
@@ -287,7 +290,7 @@ describe("First Value episode stability", () => {
   });
 
   it("claims one notice across concurrent passes and retains original sample dates on redelivery", async () => {
-    const { store } = createInMemoryOperatorAlertStore();
+    const { store } = createInMemoryOperatorAlertStore(undefined, TEN_MINUTE);
     const openedAt = new Date("2026-10-11T17:50:00Z");
     const clearedAt = new Date("2026-10-11T18:00:00Z");
     const notices: unknown[] = [];
@@ -337,7 +340,7 @@ describe("First Value episode stability", () => {
 });
 
 it("attaches current evidence only to the episode this pass actually opened", async () => {
-  const { store } = createInMemoryOperatorAlertStore();
+  const { store } = createInMemoryOperatorAlertStore(undefined, TEN_MINUTE);
   const at = new Date("2026-10-11T17:50:00Z");
   // Another concurrent pass won the insert, even with the identical timestamp.
   await store.open({ condition: "first_value_path", at });

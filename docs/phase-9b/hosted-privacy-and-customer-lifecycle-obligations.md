@@ -428,6 +428,7 @@ reviews it. This is a planning table, not policy text.
 | State breach triggers and deadlines | Wording follows the research | Researched; wording pending counsel | agent research ([#580](https://github.com/nick-neely/tendnote/issues/580)), then counsel review |
 | Birthdays stored as month and day, no year | Domain schema constraint; removes name-plus-birthday breach elements in North Dakota and Washington | Proposed, undecided | owner-decided, hands to specification |
 | Note bodies encrypted at the application layer with keys outside the database | Architecture decision for the specification | Proposed, undecided | owner-decided, then counsel review of the safe-harbor fit |
+| First Value path checked every ten minutes for paying customers | `FIRST_VALUE_POLICY` returned from the prelaunch `daily` policy to `ten_minute` in a reviewed change, then one confirmation cycle seen in the cron logs ([ADR 0268](../adr/0268-prelaunch-first-value-checks-run-daily.md)) | Daily policy in force; restore before launch | owner-decided |
 | Credential hashing documented at Argon2id or bcrypt cost twelve or higher | Better Auth configuration, recorded | Verify before launch | owner-decided |
 | Retention and destruction policy covers records not retained (Texas 521.052(b)) | Retention table plus sweeps | Decided, unbuilt | counsel review |
 | Incident clock: fourteen business days to the strictest regulator, thirty days to individuals | Runbook in [#582](https://github.com/nick-neely/tendnote/issues/582) | Decided, unbuilt | counsel review |
