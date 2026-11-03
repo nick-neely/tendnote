@@ -129,7 +129,9 @@ each question below is answered by what the prototype does.
 3. **Account before payment.** The account is created first, then Checkout.
 4. **Slow confirmation.** After a minute the confirming page promises an email
    on admission. Implementation therefore owes a content-free "you're in"
-   message, which falls inside the account and sign-in email category.
+   message, which falls inside the account and sign-in email category. Its
+   automatic checks back off, pause while the page is hidden, and stop after
+   five minutes, leaving a manual Check again (#765).
 5. **Walkthrough payment mode.** Real card in live mode, refunded under the
    guarantee.
 6. **First-run prompt.** One skippable prompt on admission, repeated once on

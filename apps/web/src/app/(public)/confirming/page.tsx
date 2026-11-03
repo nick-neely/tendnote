@@ -2,7 +2,6 @@ import { parseAdmissionPolicy } from "@tendnote/domain";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
-import { AdmissionPoller } from "@/components/billing/admission-poller";
 import { ConfirmingStatus } from "@/components/billing/confirming-status";
 import { requireSubscribingAccess } from "@/lib/access/pending-access";
 
@@ -29,7 +28,6 @@ export default async function ConfirmingPage() {
       subtitle="This usually takes a few seconds. You'll be let in as soon as your payment is confirmed."
     >
       <ConfirmingStatus email={access.user.email} />
-      <AdmissionPoller />
     </AuthScaffold>
   );
 }

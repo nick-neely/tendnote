@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@/test/dom";
 import { ConfirmingStatus, EMAIL_PROMISE_AFTER_MS } from "./confirming-status";
 
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+
 beforeEach(() => {
   vi.useFakeTimers();
 });
