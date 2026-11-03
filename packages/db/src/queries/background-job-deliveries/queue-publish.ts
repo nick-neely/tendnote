@@ -268,7 +268,7 @@ export function backgroundJobQueueIdempotencyKey(
   return delivery.revision ? `${key}:r${delivery.revision}` : key;
 }
 
-export async function publishBackgroundJobDelivery(input: {
+type PublishInput = {
   store: BackgroundJobDeliveryStore;
   queue: BackgroundJobQueueSendAdapter;
   ownerUserId: string;
@@ -287,7 +287,60 @@ export async function publishBackgroundJobDelivery(input: {
   revision?: number;
   retryDelayMs?: number;
   logger?: BackgroundJobQueueLogger;
-}) {
+};
+
+/** Records a failed publish of this revision, due for another try after the retry delay. */
+async function recordPublishFailure(
+  input: PublishInput,
+  delivery: BackgroundJobDelivery,
+  now: Date,
+  error: string,
+) {
+  const failed = await input.store.markBackgroundJobDeliveryPublishFailed({
+    ownerUserId: delivery.ownerUserId,
+    deliveryId: delivery.id,
+    error,
+    nextAttemptAt: new Date(now.getTime() + (input.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS)),
+    revision: delivery.revision,
+  });
+  return { ok: false as const, delivery: failed };
+}
+
+function sendInputFor(
+  delivery: BackgroundJobDelivery,
+  timing: ReturnType<typeof scheduledQueueTiming> | null,
+): BackgroundJobQueueSendInput {
+  return {
+    topic: delivery.topic,
+    payload: buildBackgroundJobQueuePayload(delivery),
+    idempotencyKey: backgroundJobQueueIdempotencyKey(delivery),
+    headers: {
+      "x-tendnote-job-kind": delivery.jobKind,
+      "x-tendnote-delivery-id": delivery.id,
+    },
+    ...(timing
+      ? { delaySeconds: timing.delaySeconds, retentionSeconds: timing.retentionSeconds }
+      : {}),
+  };
+}
+
+function logPublished(
+  logger: BackgroundJobQueueLogger | undefined,
+  delivery: BackgroundJobDelivery,
+  timing: ReturnType<typeof scheduledQueueTiming> | null,
+  superseded: boolean,
+) {
+  logger?.info?.("background_job_queue.published", {
+    deliveryId: delivery.id,
+    jobKind: delivery.jobKind,
+    topic: delivery.topic,
+    ...(delivery.revision ? { revision: delivery.revision } : {}),
+    ...(timing ? { delaySeconds: timing.delaySeconds, checkpoint: timing.checkpoint } : {}),
+    ...(superseded ? { superseded } : {}),
+  });
+}
+
+export async function publishBackgroundJobDelivery(input: PublishInput) {
   const now = input.now ?? new Date();
   const delivery = await input.store.getBackgroundJobDelivery({
     ownerUserId: input.ownerUserId,
@@ -308,44 +361,25 @@ export async function publishBackgroundJobDelivery(input: {
       jobKind: delivery.jobKind,
       topic: delivery.topic,
     });
-    const failed = await input.store.markBackgroundJobDeliveryPublishFailed({
-      ownerUserId: delivery.ownerUserId,
-      deliveryId: delivery.id,
-      error: "Delivery topic does not match the typed topic map.",
-      nextAttemptAt: new Date(now.getTime() + (input.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS)),
-      revision: delivery.revision,
-    });
-    return { ok: false as const, delivery: failed };
+    return recordPublishFailure(
+      input,
+      delivery,
+      now,
+      "Delivery topic does not match the typed topic map.",
+    );
   }
 
   const timing = input.deliverAt ? scheduledQueueTiming({ deliverAt: input.deliverAt, now }) : null;
   try {
-    await input.queue.send({
-      topic: delivery.topic,
-      payload: buildBackgroundJobQueuePayload(delivery),
-      idempotencyKey: backgroundJobQueueIdempotencyKey(delivery),
-      headers: {
-        "x-tendnote-job-kind": delivery.jobKind,
-        "x-tendnote-delivery-id": delivery.id,
-      },
-      ...(timing
-        ? { delaySeconds: timing.delaySeconds, retentionSeconds: timing.retentionSeconds }
-        : {}),
-    });
+    await input.queue.send(sendInputFor(delivery, timing));
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     input.logger?.error?.("background_job_queue.publish_failed", {
       deliveryId: delivery.id,
       jobKind: delivery.jobKind,
-      error: error instanceof Error ? error.message : String(error),
+      error: message,
     });
-    const failed = await input.store.markBackgroundJobDeliveryPublishFailed({
-      ownerUserId: delivery.ownerUserId,
-      deliveryId: delivery.id,
-      error: error instanceof Error ? error.message : String(error),
-      nextAttemptAt: new Date(now.getTime() + (input.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS)),
-      revision: delivery.revision,
-    });
-    return { ok: false as const, delivery: failed };
+    return recordPublishFailure(input, delivery, now, message);
   }
 
   const published = await input.store.markBackgroundJobDeliveryPublished({
@@ -357,14 +391,7 @@ export async function publishBackgroundJobDelivery(input: {
   // Re-armed while this send was in flight: the newer revision owns the row
   // and publishes its own pointer; this one will no-op on arrival.
   const superseded = published.revision !== delivery.revision;
-  input.logger?.info?.("background_job_queue.published", {
-    deliveryId: delivery.id,
-    jobKind: delivery.jobKind,
-    topic: delivery.topic,
-    ...(delivery.revision ? { revision: delivery.revision } : {}),
-    ...(timing ? { delaySeconds: timing.delaySeconds, checkpoint: timing.checkpoint } : {}),
-    ...(superseded ? { superseded } : {}),
-  });
+  logPublished(input.logger, delivery, timing, superseded);
 
   return { ok: true as const, delivery: published, superseded };
 }
