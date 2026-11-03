@@ -1,6 +1,7 @@
 # ADR 0259: The backup-surface check reads Neon from the recovery cron
 
-Status: Accepted in the October 4, 2026 implementation of issue #622.
+Status: Accepted in the October 4, 2026 implementation of issue #622. Until
+paid launch, [ADR 0269](0269-prelaunch-background-passes-run-hourly.md) runs the recovery cron, and so this check, hourly.
 
 ## Context
 
@@ -52,7 +53,8 @@ lives on in it for as long as it exists:
   holds can destroy, but it reaches recovery itself. The key lives in the
   private operations sheet and rotates with Neon in the credential-rotation
   order.
-- The check runs every ten minutes, three Neon API requests a pass, and only
+- From paid launch the check runs every ten minutes (hourly before it, under
+  ADR 0269), three Neon API requests a pass, and only
   while the alert channel is on.
 - A finding alerts once per episode and is logged as `backup_surface.finding`
   on every pass it holds, naming the surface by its Neon id and name.

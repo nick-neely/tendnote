@@ -6,9 +6,10 @@ const { runBackgroundJobRecovery } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/background-jobs/recovery", () => ({ runBackgroundJobRecovery }));
 
-vi.mock("@tendnote/db/queries/file-uploads", () => ({
+const { sweepFileStorage } = vi.hoisted(() => ({
   sweepFileStorage: vi.fn(async () => ({ deleted: 0, pending: 0 })),
 }));
+vi.mock("@tendnote/db/queries/file-uploads", () => ({ sweepFileStorage }));
 
 const { sweepUsageLedger } = vi.hoisted(() => ({
   sweepUsageLedger: vi.fn(async () => ({ deleted: 0 })),
@@ -198,9 +199,92 @@ describe("background-jobs recovery cron route", () => {
     vi.stubEnv("CRON_SECRET", SECRET);
     runBackgroundJobRecovery.mockRejectedValue(new Error("recovery stage failed"));
 
-    await expect(GET(request(`Bearer ${SECRET}`))).rejects.toThrow(/recovery stage failed/);
+    const response = await GET(request(`Bearer ${SECRET}`));
 
+    expect(response.status).toBe(500);
     expect(reconcileStripe).toHaveBeenCalledOnce();
+  });
+
+  it("still sweeps, alerts, and carries out retention when recovery fails", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    runBackgroundJobRecovery.mockRejectedValue(
+      new Error("Failed query: private connection string"),
+    );
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({ failedStages: ["recovery"] });
+    for (const sweep of [
+      sweepFileStorage,
+      sweepUsageLedger,
+      sweepAccountFunnelEvents,
+      sweepPublicActivityCounts,
+      sweepEffectFences,
+      sweepRestoredEmailFences,
+      sweepDeletionRecords,
+    ]) {
+      expect(sweep).toHaveBeenCalledOnce();
+    }
+    expect(runOperatorAlerts).toHaveBeenCalledOnce();
+    expect(carryOutRetentionDeadlines).toHaveBeenCalledOnce();
+    expect(errorLog).toHaveBeenCalledWith("background_jobs.stage_failed", {
+      stage: "recovery",
+      errorCode: "persistence_failure",
+    });
+    expect(JSON.stringify(errorLog.mock.calls)).not.toContain("private connection string");
+    errorLog.mockRestore();
+  });
+
+  it("runs the sweeps after one that fails, and reports each failed stage", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    sweepUsageLedger.mockRejectedValueOnce(new Error("usage ledger down"));
+    carryOutRetentionDeadlines.mockRejectedValueOnce(new Error("retention down"));
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      failedStages: ["usage_ledger", "account_retention"],
+      usageLedger: { status: "failed" },
+      deletionRecords: { deleted: 0, failed: false },
+    });
+    expect(sweepDeletionRecords).toHaveBeenCalledOnce();
+    expect(runOperatorAlerts).toHaveBeenCalledOnce();
+    errorLog.mockRestore();
+  });
+
+  it("reports a failed alert pass, which catches its own error, as a failed stage", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    runOperatorAlerts.mockResolvedValueOnce({ status: "failed" });
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      failedStages: ["operator_alerts"],
+      operatorAlerts: { status: "failed" },
+    });
+    expect(carryOutRetentionDeadlines).toHaveBeenCalledOnce();
+  });
+
+  it("backfills a pass interval of deferred work inside a claim budget", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+
+    await GET(request(`Bearer ${SECRET}`));
+
+    expect(runBackgroundJobRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        extractionBackfillLimit: 30,
+        embeddingBackfillLimit: 30,
+        actionExtractionBackfillLimit: 30,
+        contextFactExtractionBackfillLimit: 30,
+        ownerDataExportBackfillLimit: 5,
+        backfillBudgetMs: 120_000,
+      }),
+    );
   });
 
   it("ends the pass with operator alerts over what the pass found", async () => {

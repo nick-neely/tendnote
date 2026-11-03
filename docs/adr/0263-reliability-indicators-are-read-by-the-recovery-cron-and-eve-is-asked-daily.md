@@ -2,7 +2,9 @@
 
 Status: Accepted in the October 4, 2026 implementation of issue #649. Until
 paid launch, [ADR 0268](0268-prelaunch-first-value-checks-run-daily.md) runs
-the First Value check once a day instead of on every pass.
+the First Value check once a day instead of on every pass, and
+[ADR 0269](0269-prelaunch-background-passes-run-hourly.md) runs every pass hourly, with the reminder-lateness lookback
+widened to one pass.
 
 ## Context
 

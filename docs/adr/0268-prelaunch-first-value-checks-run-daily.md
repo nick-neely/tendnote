@@ -1,7 +1,8 @@
 # ADR 0268: Prelaunch First Value checks run once a day
 
 Status: Accepted in the November 2, 2026 implementation of issue #763. Prelaunch
-only: restore the ten-minute policy before paid launch.
+only: restore the ten-minute policy before paid launch. [ADR 0269](0269-prelaunch-background-passes-run-hourly.md)
+later moved the recovery cron itself to hourly passes; restore both together.
 
 ## Context
 

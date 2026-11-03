@@ -306,7 +306,9 @@ and counts, not content.
 2. An account deleted after the restore point cannot sign in, and its email can
    sign up afresh.
 3. The next cron pass (`/api/cron/background-jobs`) completes in the Vercel logs
-   with a normal report, not `{"status":"paused"}`. A queue job completes, and
+   with a normal report, not `{"status":"paused"}`. Before paid launch passes are
+   hourly ([ADR 0269](../adr/0269-prelaunch-background-passes-run-hourly.md)), so
+   the next one can be up to an hour away. A queue job completes, and
    a reminder push arrives.
 4. No email fenced before the restore is received again. In the drill this is
    checked against the Resend log.

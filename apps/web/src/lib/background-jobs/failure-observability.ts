@@ -36,3 +36,30 @@ export function classifyBackgroundJobFailure(error: unknown): BackgroundJobFailu
   }
   return "processing_failure";
 }
+
+/**
+ * Runs one stage of a pass, turning a throw into a logged, content-free failure
+ * so the stages after it still run. Only the error's class is logged: a stage's
+ * message can carry database or provider detail. A logger that throws never
+ * replaces the failure being reported.
+ */
+export async function settleStage<T>(input: {
+  event: string;
+  stage: string;
+  run: () => Promise<T>;
+  logger?: { error?: (message: string, fields: Record<string, unknown>) => void };
+}): Promise<PromiseSettledResult<T>> {
+  try {
+    return { status: "fulfilled", value: await input.run() };
+  } catch (reason) {
+    try {
+      input.logger?.error?.(input.event, {
+        stage: input.stage,
+        errorCode: classifyBackgroundJobFailure(reason),
+      });
+    } catch {
+      // Diagnostics are best effort.
+    }
+    return { status: "rejected", reason };
+  }
+}

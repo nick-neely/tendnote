@@ -39,7 +39,8 @@ tickets, listed at the end.
   [ADR 0070](../adr/0070-product-rate-limits-are-separate-from-auth-limits.md)).
   Nothing bounds a month.
 - Background work is Postgres-owned and delivered through Vercel Queues with a
-  ten-minute recovery cron; reminder push is its own topic and never depends on
+  recovery cron, hourly until paid launch and every ten minutes after
+  ([ADR 0269](../adr/0269-prelaunch-background-passes-run-hourly.md)); reminder push is its own topic and never depends on
   an extraction job ([Background Job Delivery](../background-job-delivery.md)).
 - Asset evidence files are stored as bytes in Postgres, so storage cost scales
   with the account rather than with an object store
@@ -146,7 +147,10 @@ minutes ([ADR 0263](../adr/0263-reliability-indicators-are-read-by-the-recovery-
 Until paid launch the whole check runs once a day, so a First Value outage can
 go unseen for up to a day
 ([ADR 0268](../adr/0268-prelaunch-first-value-checks-run-daily.md)); the
-ten-minute cadence returns before launch.
+ten-minute cadence returns before launch. The other indicators are read on
+every recovery pass, which is hourly until launch, so a breach can take up to
+an hour longer to alert
+([ADR 0269](../adr/0269-prelaunch-background-passes-run-hourly.md)).
 
 ## Regression bar for cost-motivated changes
 

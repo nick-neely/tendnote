@@ -14,7 +14,8 @@ import { createScheduledDeliveryPause } from "../lib/scheduled-delivery-pause";
 
 const timezone = process.env.TENDNOTE_BRIEF_TIMEZONE ?? "UTC";
 // Keep the existing five-attempt budget and at least the previous retry spacing.
-// Ten-minute ticks pick a failed occurrence up on the first tick after this hold.
+// A failed occurrence is picked up on the first tick after this hold: the next
+// hour under the prelaunch cadence, twenty minutes under the ten-minute one.
 const RETRY_DELAY_MS = 15 * 60 * 1000;
 
 type DiscordProactiveDeliverySender = ReturnType<typeof createDiscordProactiveDeliverySender>;
@@ -44,16 +45,20 @@ function briefDiscordOptions(sender: DiscordProactiveDeliverySender) {
  * in-app brief persistence is a direct database write, and external delivery is
  * out of scope for Phase 1F.
  *
- * Vercel evaluates cron in UTC. Match the web recovery cron's ten-minute ticks so
- * empty checks share database wake-ups rather than waking a sleeping compute at
- * :15 and :45. Per-owner timezone-derived next-run times still govern delivery.
+ * Vercel evaluates cron in UTC. Match the web recovery cron's ticks so empty
+ * checks share database wake-ups rather than each waking a sleeping compute
+ * (ADR 0266). Prelaunch both run hourly on the hour (`BACKGROUND_PASS_CRON`,
+ * ADR 0269), which lands on the default 08:00 and 09:00 local schedule times in
+ * whole-hour timezones. Per-owner timezone-derived next-run times still govern
+ * delivery; a time off the hour waits for the next tick.
  *
  * An owner whose scheduled workflows are paused, at their Account Ceiling or by
  * the Spend Breaker, skips the delivery: a due brief or review rolls forward to
  * its next run, and aftercare does not run this tick.
  */
 export default defineSchedule({
-  cron: "*/10 * * * *",
+  // A literal Eve reads statically; tests hold it to `BACKGROUND_PASS_CRON`.
+  cron: "0 * * * *",
   run({ waitUntil }) {
     const discordSender = createDiscordProactiveDeliverySender();
     const deliveryPaused = createScheduledDeliveryPause();

@@ -97,6 +97,7 @@ the bounded publication evidence path.
 - [0266 - Scheduled workflows share recovery wake-ups](0266-scheduled-workflows-share-recovery-wakeups.md)
 - [0267 - Reminder wake-ups are delayed queue messages](0267-reminder-wake-ups-are-delayed-queue-messages.md)
 - [0268 - Prelaunch First Value checks run once a day](0268-prelaunch-first-value-checks-run-daily.md)
+- [0269 - Prelaunch background passes run hourly](0269-prelaunch-background-passes-run-hourly.md)
 
 The catalog intentionally omits the Phase 9a planning workspace. That
 workspace remains useful to maintainers, but it is not a newcomer evidence

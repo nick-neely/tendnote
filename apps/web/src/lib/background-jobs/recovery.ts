@@ -35,7 +35,7 @@ import {
 import { recoverStaleSemanticEmbeddingJobs } from "@tendnote/db/queries/semantic-retrieval";
 import { findLatestServiceWideHoldLift } from "@tendnote/db/queries/service-wide-hold";
 import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
-import { classifyBackgroundJobFailure } from "./failure-observability";
+import { classifyBackgroundJobFailure, settleStage } from "./failure-observability";
 import {
   type BackgroundJobQueueLogger,
   type BackgroundJobQueueSendAdapter,
@@ -264,6 +264,12 @@ async function republishDueDeliveries(input: {
 type ProcessorBackfillInput = {
   limit: number;
   now?: Date;
+  /**
+   * Whether the pass's backfill budget is spent. Asked before every claim but
+   * the first, so each family still takes one job a pass however long the
+   * families before it ran, and a job already claimed always finishes.
+   */
+  stopClaiming?: () => boolean;
   claimNextJob?: BackfillClaimNextJob;
   processJob?: BackfillProcessJob;
   logger?: BackgroundJobQueueLogger;
@@ -286,6 +292,7 @@ function runFamilyBackfill(
     jobKind,
     limit: input.limit,
     now: input.now,
+    stopClaiming: input.stopClaiming,
     claimNextJob: input.claimNextJob ?? family.claimNextJob,
     processJob: input.processJob ?? family.processJob,
     logger: input.logger,
@@ -412,7 +419,7 @@ function purgeDueDissolvedHouseholds(input: {
 }
 
 /**
- * Keeps the internal audit trail bounded on the same ten-minute recovery pass.
+ * Keeps the internal audit trail bounded on the same recovery pass.
  * It runs in a separate final stage so a failure in any earlier recovery stage
  * cannot prevent retention from getting its own attempt and budget.
  */
@@ -451,6 +458,7 @@ async function runRetryableBackgroundRecovery(input: {
   accountDeletionLimit: number;
   householdPurgeLimit: number;
   now: Date;
+  stopClaiming?: () => boolean;
   logger?: BackgroundJobQueueLogger;
   recoverDeliveries: typeof recoverBackgroundJobDeliveries;
   backfillExtraction: typeof runExtractionBackfill;
@@ -461,58 +469,86 @@ async function runRetryableBackgroundRecovery(input: {
   completeAccountDeletions: typeof completePendingAccountDeletions;
   purgeDissolvedHouseholds: typeof purgeDueDissolvedHouseholds;
 }): Promise<Omit<BackgroundJobRecoveryRunResult, "auditRetention">> {
-  const deliveries = await input.recoverDeliveries({
-    limit: input.deliveryLimit,
-    lostReminderWakeupLimit: input.lostReminderWakeupLimit,
-    now: input.now,
-    logger: input.logger,
-  });
-  const extraction = await input.backfillExtraction({
-    limit: input.extractionBackfillLimit,
-    now: input.now,
-    logger: input.logger,
-  });
-  const embedding = await input.backfillEmbedding({
-    limit: input.embeddingBackfillLimit,
-    now: input.now,
-    logger: input.logger,
-  });
-  const actionExtraction = await input.backfillActionExtraction({
-    limit: input.actionExtractionBackfillLimit,
-    now: input.now,
-    logger: input.logger,
-  });
-  const contextFactExtraction = await input.backfillContextFactExtraction({
-    limit: input.contextFactExtractionBackfillLimit,
-    now: input.now,
-    logger: input.logger,
-  });
-  const ownerDataExport = await input.backfillOwnerDataExport({
-    limit: input.ownerDataExportBackfillLimit,
-    now: input.now,
-    logger: input.logger,
-  });
-  const accountDeletion = await input.completeAccountDeletions({
-    limit: input.accountDeletionLimit,
-    now: input.now,
-    ...(input.logger ? { logger: input.logger } : {}),
-  });
-  const householdPurge = await input.purgeDissolvedHouseholds({
-    limit: input.householdPurgeLimit,
-    now: input.now,
-    ...(input.logger ? { logger: input.logger } : {}),
-  });
+  // Each family gets its own attempt, in order: one that throws is logged and
+  // the families after it still run rather than waiting a pass interval. The
+  // first failure is still raised once every family has had its turn.
+  const attempt = <T>(stage: string, run: () => Promise<T>) =>
+    settleStage({
+      event: "background_job_recovery.stage_failed",
+      stage,
+      run,
+      logger: input.logger,
+    });
+  const deliveries = await attempt("deliveries", () =>
+    input.recoverDeliveries({
+      limit: input.deliveryLimit,
+      lostReminderWakeupLimit: input.lostReminderWakeupLimit,
+      now: input.now,
+      logger: input.logger,
+    }),
+  );
+  const backfill = { now: input.now, stopClaiming: input.stopClaiming, logger: input.logger };
+  const extraction = await attempt("extraction", () =>
+    input.backfillExtraction({
+      ...backfill,
+      limit: input.extractionBackfillLimit,
+    }),
+  );
+  const embedding = await attempt("embedding", () =>
+    input.backfillEmbedding({
+      ...backfill,
+      limit: input.embeddingBackfillLimit,
+    }),
+  );
+  const actionExtraction = await attempt("action_extraction", () =>
+    input.backfillActionExtraction({
+      ...backfill,
+      limit: input.actionExtractionBackfillLimit,
+    }),
+  );
+  const contextFactExtraction = await attempt("context_fact_extraction", () =>
+    input.backfillContextFactExtraction({
+      ...backfill,
+      limit: input.contextFactExtractionBackfillLimit,
+    }),
+  );
+  const ownerDataExport = await attempt("owner_data_export", () =>
+    input.backfillOwnerDataExport({
+      ...backfill,
+      limit: input.ownerDataExportBackfillLimit,
+    }),
+  );
+  const accountDeletion = await attempt("account_deletion", () =>
+    input.completeAccountDeletions({
+      limit: input.accountDeletionLimit,
+      now: input.now,
+      ...(input.logger ? { logger: input.logger } : {}),
+    }),
+  );
+  const householdPurge = await attempt("household_purge", () =>
+    input.purgeDissolvedHouseholds({
+      limit: input.householdPurgeLimit,
+      now: input.now,
+      ...(input.logger ? { logger: input.logger } : {}),
+    }),
+  );
 
+  // Read in stage order, so the first family that failed is the one raised.
   return {
-    deliveries,
-    extraction,
-    embedding,
-    actionExtraction,
-    contextFactExtraction,
-    ownerDataExport,
-    accountDeletion,
-    householdPurge,
+    deliveries: settledValue(deliveries),
+    extraction: settledValue(extraction),
+    embedding: settledValue(embedding),
+    actionExtraction: settledValue(actionExtraction),
+    contextFactExtraction: settledValue(contextFactExtraction),
+    ownerDataExport: settledValue(ownerDataExport),
+    accountDeletion: settledValue(accountDeletion),
+    householdPurge: settledValue(householdPurge),
   };
+}
+
+function settledValue<T>(result: PromiseSettledResult<T>): T {
+  if (result.status === "rejected") throw result.reason;
+  return result.value;
 }
 
 type BackgroundJobRecoveryInput = {
@@ -526,7 +562,17 @@ type BackgroundJobRecoveryInput = {
   accountDeletionLimit?: number;
   householdPurgeLimit?: number;
   auditRetentionLimit?: number;
+  /**
+   * How long after recovery starts the processor backfills may keep claiming
+   * jobs. Their per-family limits cover a full pass interval of deferred work,
+   * so without a budget a large backlog could outrun the route's time limit and
+   * cost the stages after it their pass. Each family still claims one job a
+   * pass after the budget is spent, so none is starved by the ones before it.
+   */
+  backfillBudgetMs?: number;
   now?: Date;
+  /** The wall clock the backfill budget is measured on; tests drive it. */
+  clock?: () => number;
   logger?: BackgroundJobQueueLogger;
   recoverDeliveries?: typeof recoverBackgroundJobDeliveries;
   backfillExtraction?: typeof runExtractionBackfill;
@@ -608,6 +654,16 @@ async function runAuditRetentionAfterRecovery(input: {
   }
 }
 
+/**
+ * The backfills' shared claim budget, measured from the start of recovery, or
+ * none when the caller sets no budget.
+ */
+function backfillBudget(budgetMs: number | undefined, clock: () => number) {
+  if (budgetMs === undefined) return undefined;
+  const until = clock() + budgetMs;
+  return () => clock() >= until;
+}
+
 async function runBackgroundJobRecoveryPass(
   input: BackgroundJobRecoveryInput,
   now: Date,
@@ -625,6 +681,7 @@ async function runBackgroundJobRecoveryPass(
       accountDeletionLimit: input.accountDeletionLimit ?? 0,
       householdPurgeLimit: input.householdPurgeLimit ?? 0,
       now,
+      stopClaiming: backfillBudget(input.backfillBudgetMs, input.clock ?? Date.now),
       logger: input.logger,
       recoverDeliveries: dependencies.recoverDeliveries,
       backfillExtraction: dependencies.backfillExtraction,
@@ -666,6 +723,7 @@ async function runProcessorBackfill(input: {
   jobKind: keyof typeof BACKGROUND_JOB_FAMILIES;
   limit: number;
   now?: Date;
+  stopClaiming?: () => boolean;
   claimNextJob: BackfillClaimNextJob;
   processJob: BackfillProcessJob;
   logger?: BackgroundJobQueueLogger;
@@ -674,6 +732,9 @@ async function runProcessorBackfill(input: {
   const result: ProcessorBackfillResult = { scanned: 0, processed: 0, failed: 0 };
 
   for (let index = 0; index < input.limit; index += 1) {
+    // Checked before each claim after the first, never mid-job: what is left
+    // waits for the next pass, exactly as a job past the per-family limit does.
+    if (index > 0 && input.stopClaiming?.()) break;
     const job = await input.claimNextJob({ now: input.now });
     if (!job) {
       break;
