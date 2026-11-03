@@ -8,7 +8,7 @@ import {
   hasLateReminderDelivery,
 } from "@tendnote/db/queries/reliability-indicators";
 import { readSpendBreakerStage } from "@tendnote/db/queries/spend-breaker";
-import type { OperatorAlertReading } from "@tendnote/domain/operator-alerts";
+import { FIRST_VALUE_POLICY, type OperatorAlertReading } from "@tendnote/domain/operator-alerts";
 import type { SpendBreakerStage } from "@tendnote/domain/usage-bounds";
 import { type BackupSurfaceCheck, backupSurfaceReading } from "@/lib/backup-surfaces";
 import type { StripeReconciliationResult } from "@/lib/billing/stripe-reconciliation";
@@ -26,6 +26,7 @@ import { noticeMessage } from "./notice-message";
  * failed or a stage that did not run gives no reading, so its alert holds
  * rather than recovering. The last four are the Reliability Indicators (#649);
  * the grounded Eve answer is asked on one pass a day, so the others hold it.
+ * None of these readings depends on the First Value policy (ADR 0268).
  */
 export function operatorAlertReadings(input: {
   stripeReconciliation: StripeReconciliationResult;
@@ -80,6 +81,7 @@ export async function runOperatorAlerts(input: {
 
   try {
     const now = new Date();
+    const store = createDrizzleOperatorAlertStore();
     const [breaker, deletionStuck, backupSurfaces, backgroundBacklog, remindersLate, firstValue] =
       await Promise.all([
         readSpendBreakerStage({ now }).catch(() => null),
@@ -87,19 +89,33 @@ export async function runOperatorAlerts(input: {
         backupSurfaceReading({ now }),
         hasBackgroundBacklog({ now }).catch(() => null),
         hasLateReminderDelivery({ now }).catch(() => null),
-        checkFirstValuePath({ claimGroundedAnswer: () => claimDailyGroundedAnswer(now) }).catch(
-          (error: unknown) => {
-            console.error("first_value_check.check_failed", {
-              reason: error instanceof Error ? error.name : "unknown",
-            });
-            return null;
-          },
-        ),
+        // The First Value policy decides whether this pass runs the check (ADR 0268).
+        checkFirstValuePath({
+          claimRun: () => store.claimFirstValueRun({ at: now }),
+          claimGroundedAnswer: () => claimDailyGroundedAnswer(now),
+        }).catch((error: unknown) => {
+          console.error("first_value_check.check_failed", {
+            reason: error instanceof Error ? error.name : "unknown",
+          });
+          return null;
+        }),
       ]);
     const send = createOperatorAlertSender({ destinations });
+    // A pass the policy skipped gives no sample, not an unknown one.
+    const sample =
+      firstValue?.status === "skipped"
+        ? undefined
+        : { at: now, outcome: firstValueOutcome(firstValue) };
+    if (firstValue?.status === "ran" && sample) {
+      // Content-free: counts checks that ran, per policy, for before/after comparison.
+      console.info("first_value_check.sampled", {
+        policy: FIRST_VALUE_POLICY,
+        outcome: sample.outcome,
+      });
+    }
     const result = await runOperatorAlertPass({
-      store: createDrizzleOperatorAlertStore(),
-      firstValue: { at: now, outcome: firstValueOutcome(firstValue) },
+      store,
+      firstValue: sample,
       readings: operatorAlertReadings({
         ...input,
         deletionStuck,

@@ -1,12 +1,18 @@
 import {
-  advanceFirstValueHealth,
+  advanceFirstValue,
+  claimFirstValueDailyRun,
   emptyFirstValueHealth,
+  FIRST_VALUE_POLICY,
   type FirstValueAlertContext,
   type FirstValueHealthState,
   type OperatorAlertCondition,
 } from "@tendnote/domain/operator-alerts";
 import { applyFirstValueDecision } from "./first-value-decision";
-import type { ClaimedOperatorAlertNotice, OperatorAlertStore } from "./types";
+import type {
+  ClaimedOperatorAlertNotice,
+  OperatorAlertStore,
+  OperatorAlertStoreOptions,
+} from "./types";
 
 type Episode = {
   id: string;
@@ -23,7 +29,9 @@ type MemoryState = { episodes: Episode[]; firstValue: FirstValueHealthState };
 /** The alert store without a database, with its episodes readable by a test. */
 export function createInMemoryOperatorAlertStore(
   state: MemoryState = { episodes: [], firstValue: emptyFirstValueHealth() },
+  options: OperatorAlertStoreOptions = {},
 ) {
+  const policy = options.firstValuePolicy ?? FIRST_VALUE_POLICY;
   const { episodes } = state;
   const openEpisode = (condition: OperatorAlertCondition) =>
     episodes.find((episode) => episode.condition === condition && !episode.clearedAt);
@@ -52,8 +60,15 @@ export function createInMemoryOperatorAlertStore(
       }
     },
 
+    async claimFirstValueRun({ at }) {
+      if (policy === "ten_minute") return true;
+      const claim = claimFirstValueDailyRun(state.firstValue, at);
+      state.firstValue = claim.state;
+      return claim.claimed;
+    },
+
     async observeFirstValue({ sample, at }) {
-      const decision = advanceFirstValueHealth({
+      const decision = advanceFirstValue(policy, {
         state: state.firstValue,
         sample,
         now: at,

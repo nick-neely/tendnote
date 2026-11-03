@@ -1,9 +1,9 @@
-import type { advanceFirstValueHealth } from "@tendnote/domain/operator-alerts";
+import type { advanceFirstValue } from "@tendnote/domain/operator-alerts";
 import type { OperatorAlertStore } from "./types";
 
 /** Shared by transactional and in-memory adapters; summary closure is silent. */
 export async function applyFirstValueDecision(
-  decision: ReturnType<typeof advanceFirstValueHealth>,
+  decision: ReturnType<typeof advanceFirstValue>,
   at: Date,
   store: OperatorAlertStore,
 ): Promise<string[]> {

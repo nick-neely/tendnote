@@ -1,6 +1,8 @@
 # ADR 0265: First Value model alerts confirm scheduled samples
 
-Status: Accepted by the owner on October 24, 2026.
+Status: Accepted by the owner on October 24, 2026. Suspended until paid launch
+by [ADR 0268](0268-prelaunch-first-value-checks-run-daily.md), which runs the
+check daily under its own state; this policy returns at launch.
 
 ## Context
 

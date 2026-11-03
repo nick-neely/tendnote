@@ -1,10 +1,13 @@
+import type { FirstValueDailyState, FirstValuePolicy } from "./first-value-daily";
+
 /** One scheduled sample, not one model attempt. No account or provider payloads. */
 export type FirstValueOutcome = "clean" | "retried" | "failed" | "serious" | "unknown";
 
 export const FIRST_VALUE_INTERVAL_MS = 10 * 60 * 1000;
 const WINDOW_SLOTS = 6;
 const SUMMARY_INTERVAL_MS = 6 * 60 * 60 * 1000;
-const MAX_SAMPLE_AGE_MS = 5 * 60 * 1000;
+/** Check start to policy read, matching the cron's maximum execution allowance. */
+export const MAX_SAMPLE_AGE_MS = 5 * 60 * 1000;
 
 type Observation = { slot: number; at: number; outcome: FirstValueOutcome };
 
@@ -14,6 +17,10 @@ export type FirstValueHealthState = {
   lastSummaryAt: number | null;
   /** Older persisted rows have no boundary until their first confirmed recovery. */
   recoveredThroughSlot?: number | null;
+  /** Which policy wrote this state. Rows written before ADR 0268 have none: `ten_minute`. */
+  policy?: FirstValuePolicy;
+  /** The daily policy's run ledger; absent under the ten-minute policy. */
+  daily?: FirstValueDailyState;
 };
 
 /** Immutable counts belonging to the notice, including on delayed delivery. */
@@ -26,7 +33,7 @@ export type FirstValueAlertContext = {
 
 export type FirstValueHealthSample = { at: Date; outcome: FirstValueOutcome };
 
-type HealthDecision = {
+export type FirstValueHealthDecision = {
   state: FirstValueHealthState;
   availability: "open" | "clear" | "hold";
   openedAt?: Date;
@@ -50,7 +57,7 @@ export function emptyFirstValueHealth(): FirstValueHealthState {
  * stale samples cannot advance counters. Missing slots break consecutive streaks;
  * the rolling window is six scheduled slots, never six arbitrarily old reads.
  */
-export function advanceFirstValueHealth(input: HealthInput): HealthDecision {
+export function advanceFirstValueHealth(input: HealthInput): FirstValueHealthDecision {
   const { state, sample } = input;
   const at = sample.at.getTime();
   const slot = Math.floor(at / FIRST_VALUE_INTERVAL_MS) * FIRST_VALUE_INTERVAL_MS;
@@ -65,7 +72,7 @@ export function advanceFirstValueHealth(input: HealthInput): HealthDecision {
     (entry) => entry.slot > (state.recoveredThroughSlot ?? -Infinity) || entry.slot === slot,
   );
   const context = sampleContext(confirmation, sample.at);
-  const decision: HealthDecision = {
+  const decision: FirstValueHealthDecision = {
     state: { ...state, history },
     availability: availability(sample.outcome, confirmation.at(-2), slot, context.failed),
   };
@@ -108,7 +115,7 @@ function availability(
   previous: Observation | undefined,
   slot: number,
   failed: number,
-): HealthDecision["availability"] {
+): FirstValueHealthDecision["availability"] {
   if (outcome === "serious") return "open";
   const consecutive =
     previous?.slot === slot - FIRST_VALUE_INTERVAL_MS && previous.outcome === outcome;
@@ -119,7 +126,7 @@ function availability(
 
 function summaryDue(
   input: HealthInput,
-  action: HealthDecision["availability"],
+  action: FirstValueHealthDecision["availability"],
   context: FirstValueAlertContext,
   slot: number,
 ): boolean {

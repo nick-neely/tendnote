@@ -1,6 +1,7 @@
 import type {
   FirstValueAlertContext,
   FirstValueHealthSample,
+  FirstValuePolicy,
   OperatorAlertCondition,
   OperatorAlertNotice,
 } from "@tendnote/domain/operator-alerts";
@@ -22,6 +23,11 @@ export type OperatorAlertStore = {
   }) => Promise<string | null>;
   /** Clears the condition's open episode, if there is one. */
   clear: (input: { condition: OperatorAlertCondition; at: Date }) => Promise<void>;
+  /**
+   * Whether this pass runs the synthetic First Value check. Always under the
+   * ten-minute policy; under the daily policy, an atomic claim of the day's run.
+   */
+  claimFirstValueRun: (input: { at: Date }) => Promise<boolean>;
   /** Atomically records one scheduled sample and its incident/summary transitions. */
   observeFirstValue: (input: { sample: FirstValueHealthSample; at: Date }) => Promise<string[]>;
   /**
@@ -35,3 +41,6 @@ export type OperatorAlertStore = {
   /** Hands back a claimed notice whose send failed, for the next pass to retry. */
   releaseNotice: (notice: ClaimedOperatorAlertNotice) => Promise<void>;
 };
+
+/** Every store adapter's options. The policy defaults to `FIRST_VALUE_POLICY`. */
+export type OperatorAlertStoreOptions = { firstValuePolicy?: FirstValuePolicy };

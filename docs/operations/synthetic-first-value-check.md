@@ -1,11 +1,14 @@
 # Runbook: provision the synthetic First Value check
 
 The synthetic First Value check ([ADR 0263](../adr/0263-reliability-indicators-are-read-by-the-recovery-cron-and-eve-is-asked-daily.md))
-signs in as a dedicated, operator-owned synthetic account on every recovery
-cron pass, and once a day asks Eve a question that only that account's fixture
-Memory answers. The account is never a customer's. Its email and password live
-under **Synthetic check** in the operations sheet. This runbook never copies
-from the sheet.
+signs in as a dedicated, operator-owned synthetic account and asks the model
+Eve runs for a capped reply, and once a day asks Eve a question that only that
+account's fixture Memory answers. Before paid launch the recovery cron runs the
+whole check once a day
+([ADR 0268](../adr/0268-prelaunch-first-value-checks-run-daily.md)); from launch
+it runs on every ten-minute pass. The account is never a customer's. Its email
+and password live under **Synthetic check** in the operations sheet. This
+runbook never copies from the sheet.
 
 ## Trigger
 
@@ -43,9 +46,9 @@ account or its fixture changed.
 ## Record produced
 
 The synthetic account, its `manual_grant` Access Profile, and its fixture. Each
-pass then records a session that it signs out of, and one capped model call in
-the account's Usage Ledger, or up to three when the gateway fails and the step
-retries. Each daily answer adds a retired Eve session.
+run of the check then records a session that it signs out of, and one capped
+model call in the account's Usage Ledger, or up to three when the gateway fails
+and the step retries. Each daily answer adds a retired Eve session.
 
 ## Verification
 
@@ -58,6 +61,46 @@ pnpm --filter @tendnote/web first-value-check --grounded
 It prints `"failed": []` and `"groundedAnswer": true` and exits 0. Exit 1
 names the failing steps; the server log has `first_value_check.failed` with the
 same step. `--grounded` runs one real Eve turn, so run it once, not in a loop.
+
+Run the same command after a deployment that touches the landing page,
+Checkout, sign-in, admission, Eve or the model path: under the daily policy the
+cron may not run the check for up to a day. The command claims no scheduled
+run and changes no alert episode or policy state. A failure it prints raises no
+alert, and a pass it prints recovers nothing; the next scheduled check decides
+both.
+
+### Prelaunch daily policy
+
+Until paid launch `FIRST_VALUE_POLICY` is `daily`
+([ADR 0268](../adr/0268-prelaunch-first-value-checks-run-daily.md)). The first
+cron pass at or after 15:00 UTC claims the day and runs every step, the grounded
+answer included. Other passes skip the check and give no sample. A day claims at
+most three runs: the check, a confirmation of a transient model failure on the
+next pass, and a make-up for a run that gave an unknown reading or never
+finished within its 15-minute lease. The grounded answer is still asked at most
+once a day.
+
+A serious failure alerts at once. A transient model failure alerts when the next
+completed run also fails it. An open incident recovers only on a clean
+first-attempt daily check with no unconfirmed failure before it, or when the
+operator clears it with the SQL under Rollback. No degradation summary is sent
+under this policy. The ten-minute rules below, and their detection times, apply
+once the ten-minute policy is restored; under the daily policy an outage can go
+unseen for up to a day, longer if a day's runs are all missed.
+
+Each sample logs `first_value_check.sampled` with only `policy` and `outcome`
+(`clean`, `retried`, `failed`, `serious`, or `unknown`). To compare cadence
+before and after a policy change, count those lines per day, count model calls
+from the `attempts` arrays of `first_value_check.passed` and
+`first_value_check.failed`, and compare their `elapsedMs`. Report model calls,
+not dollars: billed spend is only known from the AI Gateway's own usage.
+
+**Before paid launch,** set `FIRST_VALUE_POLICY` back to `ten_minute` in a
+reviewed change and deploy it. The first pass migrates the state: daily
+samples are discarded and an open incident needs two clean ten-minute slots to
+recover. Confirm in the logs that `first_value_check.sampled` reports
+`"policy": "ten_minute"` on consecutive passes. The Hosted Obligations Register
+tracks this.
 
 The model step also logs `first_value_check.passed` when it passes. Both lines
 carry `elapsedMs` for the step and one entry per call in `attempts`. A failed
@@ -161,8 +204,8 @@ Do not run extra paid probes merely to reproduce a rare timeout.
 A pass that could not sign out logs `first_value_check.cleanup_failed` with an
 HTTP status (`http_415`) or an error class (`TimeoutError`). It does not change
 the pass's reading or alert. The synthetic session it left open lasts until
-Better Auth's seven-day expiry, so a run of them means every ten-minute pass is
-leaving one behind: find the cause before they pile up.
+Better Auth's seven-day expiry, so a run of them means every check is leaving
+one behind: find the cause before they pile up.
 
 ### Rollout and migration
 
@@ -192,7 +235,9 @@ outage. Missing data is held as unknown, not reported as recovery.
 
 ## Rollback
 
-Unset the two environment variables and redeploy. Every pass then gives no
+To undo the prelaunch daily policy, set `FIRST_VALUE_POLICY` to `ten_minute`
+and deploy, as above. To turn the check off entirely, unset the two environment
+variables and redeploy. Every pass then gives no
 reading, so any open First Value alert holds until it is cleared by hand:
 
 ```sql
