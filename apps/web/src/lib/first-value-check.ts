@@ -413,6 +413,36 @@ async function passes(step: FirstValueCheckStep, run: () => Promise<boolean>): P
   return (await attempt(step, run)) !== null;
 }
 
+/** The steps that need no account: the landing page loads and Checkout's prices are live. */
+async function publicStepFailures(
+  doFetch: typeof fetch,
+  env: FirstValueCheckEnvironment,
+  priceIsActive: NonNullable<FirstValueCheckDependencies["priceIsActive"]>,
+): Promise<FirstValuePathStep[]> {
+  const [landing, checkout] = await Promise.all([
+    passes("landing", async () => {
+      const response = await doFetch(MARKETING_URL, {
+        signal: AbortSignal.timeout(STEP_TIMEOUT_MS),
+      });
+      return response.ok;
+    }),
+    passes("checkout", async () => {
+      const stripe = readHostedStripeBillingConfig(env);
+      if (!stripe) return false;
+      const active = await Promise.all(
+        Object.values(stripe.prices).map((priceId) =>
+          priceIsActive({ secretKey: stripe.secretKey, priceId }),
+        ),
+      );
+      return active.every(Boolean);
+    }),
+  ]);
+  const failed: FirstValuePathStep[] = [];
+  if (!landing) failed.push("landing");
+  if (!checkout) failed.push("checkout");
+  return failed;
+}
+
 /**
  * Walks the First Value path once. Off unless this is a hosted deployment with
  * the synthetic account's credentials set. When configured, `claimRun` decides
@@ -433,29 +463,11 @@ export async function checkFirstValuePath(
   if (!config) return { status: "off" };
   if (input.claimRun && !(await input.claimRun())) return { status: "skipped" };
   const doFetch = input.fetch ?? fetch;
-  const priceIsActive = input.priceIsActive ?? defaultPriceIsActive;
-  const failed: FirstValuePathStep[] = [];
-
-  const [landing, checkout] = await Promise.all([
-    passes("landing", async () => {
-      const response = await doFetch(MARKETING_URL, {
-        signal: AbortSignal.timeout(STEP_TIMEOUT_MS),
-      });
-      return response.ok;
-    }),
-    passes("checkout", async () => {
-      const stripe = readHostedStripeBillingConfig(env);
-      if (!stripe) return false;
-      const active = await Promise.all(
-        Object.values(stripe.prices).map((priceId) =>
-          priceIsActive({ secretKey: stripe.secretKey, priceId }),
-        ),
-      );
-      return active.every(Boolean);
-    }),
-  ]);
-  if (!landing) failed.push("landing");
-  if (!checkout) failed.push("checkout");
+  const failed = await publicStepFailures(
+    doFetch,
+    env,
+    input.priceIsActive ?? defaultPriceIsActive,
+  );
 
   const account = await attempt("sign_in", () => signIn(doFetch, config));
   if (!account) {

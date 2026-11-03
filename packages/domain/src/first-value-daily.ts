@@ -114,7 +114,7 @@ export function claimFirstValueDailyRun(
  * failure opens when the next completed run fails too; recovery needs a clean
  * first-attempt run with no unconfirmed failure before it.
  */
-export function advanceFirstValueDaily(input: {
+function advanceFirstValueDaily(input: {
   state: FirstValueHealthState;
   sample: FirstValueHealthSample;
   now: Date;
