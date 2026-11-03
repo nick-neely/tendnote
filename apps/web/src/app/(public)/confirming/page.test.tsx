@@ -12,7 +12,6 @@ vi.mock("@/lib/access/current-access", () => ({ getCurrentAccess }));
 vi.mock("@/components/auth/auth-scaffold", () => ({
   AuthScaffold: ({ children }: { children: unknown }) => children,
 }));
-vi.mock("@/components/billing/admission-poller", () => ({ AdmissionPoller: () => null }));
 
 import ConfirmingPage from "./page";
 
