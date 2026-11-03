@@ -3,7 +3,7 @@
 import { Activity, act, StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@/test/dom";
-import { ConfirmingStatus } from "./confirming-status";
+import { ConfirmingStatus, EMAIL_PROMISE_AFTER_MS } from "./confirming-status";
 import {
   ADMISSION_POLL_STEPS,
   AUTOMATIC_POLLING_WINDOW_MS,
@@ -35,6 +35,7 @@ function scheduledCheckTimes(): number[] {
   let at = 0;
   let delay: number | null = ADMISSION_POLL_STEPS[0].everyMs;
   while (delay !== null) {
+    if (delay <= 0) throw new Error(`non-positive poll delay at ${at}ms`);
     at = Math.min(at + delay, AUTOMATIC_POLLING_WINDOW_MS);
     times.push(at);
     delay = admissionPollDelay(at);
@@ -109,6 +110,16 @@ describe("automatic admission checks (#765)", () => {
     advance(60 * 60_000);
     expect(refresh).toHaveBeenCalledTimes(33);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("is not stretched by a backward wall-clock correction", () => {
+    renderStatus();
+    advance(60_000);
+    vi.setSystemTime(Date.now() - 4 * 60_000);
+
+    advance(AUTOMATIC_POLLING_WINDOW_MS);
+    expect(refresh).toHaveBeenCalledTimes(33);
+    expect(screen.getByRole("button", { name: "Check again" })).toBeTruthy();
   });
 
   it("makes no request while hidden and no catch-up burst on return", () => {
@@ -268,10 +279,41 @@ describe("a page Next keeps in an Activity after navigating away (#765)", () => 
 
     act(() => rerender(renderIn("hidden")));
     act(() => rerender(renderIn("visible")));
-    const button = screen.getByRole("button", { name: "Check again" });
+    const button = screen.getByRole("button", { name: "Checking" });
+    act(() => button.click());
+    expect(refresh).toHaveBeenCalledTimes(34);
+
+    advance(MANUAL_CHECK_COOLDOWN_MS);
     expect(button.hasAttribute("aria-disabled")).toBe(false);
     act(() => button.click());
     expect(refresh).toHaveBeenCalledTimes(35);
+  });
+
+  it("re-enables the manual check on restore once its cooldown ran out while hidden", () => {
+    const { rerender } = render(renderIn("visible"));
+    advance(AUTOMATIC_POLLING_WINDOW_MS);
+    act(() => screen.getByRole("button", { name: "Check again" }).click());
+
+    act(() => rerender(renderIn("hidden")));
+    advance(MANUAL_CHECK_COOLDOWN_MS * 5);
+    act(() => rerender(renderIn("visible")));
+    advance(0);
+    expect(screen.getByRole("button", { name: "Check again" }).hasAttribute("aria-disabled")).toBe(
+      false,
+    );
+  });
+
+  it("keeps the slow-confirmation promise on its original minute after a restore", () => {
+    const { rerender } = render(renderIn("visible"));
+    advance(30_000);
+    act(() => rerender(renderIn("hidden")));
+    advance(10_000);
+    act(() => rerender(renderIn("visible")));
+
+    advance(EMAIL_PROMISE_AFTER_MS - 40_000 - 1);
+    expect(screen.getByRole("status").textContent).toContain("Waiting for confirmation");
+    advance(1);
+    expect(screen.getByRole("status").textContent).toContain("Still confirming");
   });
 });
 

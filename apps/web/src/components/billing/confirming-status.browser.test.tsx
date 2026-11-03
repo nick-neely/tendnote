@@ -11,7 +11,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 let cleanup: (() => Promise<void>) | undefined;
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
   refresh.mockReset();
 });
 

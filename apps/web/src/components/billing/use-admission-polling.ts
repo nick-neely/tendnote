@@ -35,6 +35,9 @@ export function admissionPollDelay(elapsedMs: number): number | null {
 
 const isHidden = () => document.visibilityState === "hidden";
 
+/** A monotonic clock, so a wall-clock correction cannot stretch the window or a cooldown. */
+const now = () => performance.now();
+
 /** Where the automatic schedule stands. It outlives effect re-runs, so it is a ref. */
 type Schedule = { startedAt: number; dueAt: number | null };
 
@@ -60,13 +63,14 @@ export function useAdmissionPolling(): {
   const [stopped, setStopped] = useState(false);
   const [checking, setChecking] = useState(false);
   const schedule = useRef<Schedule | null>(null);
-  const cooldown = useRef<number | undefined>(undefined);
+  const cooldownEndsAt = useRef<number | null>(null);
+  const cooldownTimer = useRef<number | undefined>(undefined);
   const refresh = useEffectEvent(() => router.refresh());
 
   useEffect(() => {
     schedule.current ??= {
-      startedAt: Date.now(),
-      dueAt: Date.now() + ADMISSION_POLL_STEPS[0].everyMs,
+      startedAt: now(),
+      dueAt: now() + ADMISSION_POLL_STEPS[0].everyMs,
     };
     const state = schedule.current;
     const windowEndsAt = state.startedAt + AUTOMATIC_POLLING_WINDOW_MS;
@@ -80,12 +84,12 @@ export function useAdmissionPolling(): {
 
     const check = () => {
       if (state.dueAt === null || isHidden()) return;
-      const now = Date.now();
-      const delay = admissionPollDelay(now - state.startedAt);
+      const checkedAt = now();
+      const delay = admissionPollDelay(checkedAt - state.startedAt);
       if (delay === null) {
         stop();
       } else {
-        state.dueAt = Math.min(now + delay, windowEndsAt);
+        state.dueAt = Math.min(checkedAt + delay, windowEndsAt);
         arm();
       }
       // Scheduled first, so a refresh that throws still leaves the next check in place.
@@ -96,8 +100,8 @@ export function useAdmissionPolling(): {
     function arm() {
       window.clearTimeout(timer);
       if (state.dueAt === null || isHidden()) return;
-      if (Date.now() > windowEndsAt) return stop();
-      timer = window.setTimeout(check, Math.max(0, state.dueAt - Date.now()));
+      if (now() > windowEndsAt) return stop();
+      timer = window.setTimeout(check, Math.max(0, state.dueAt - now()));
     }
 
     const onVisibilityChange = () => (isHidden() ? window.clearTimeout(timer) : arm());
@@ -110,24 +114,32 @@ export function useAdmissionPolling(): {
     };
   }, []);
 
-  useEffect(
-    () => () => {
-      window.clearTimeout(cooldown.current);
-      cooldown.current = undefined;
-      setChecking(false);
-    },
-    [],
-  );
+  // The cooldown also outlives effect re-runs, so a restored page keeps blocking repeat presses.
+  const armCooldown = useCallback(() => {
+    window.clearTimeout(cooldownTimer.current);
+    const endsAt = cooldownEndsAt.current;
+    if (endsAt === null) return;
+    cooldownTimer.current = window.setTimeout(
+      () => {
+        cooldownEndsAt.current = null;
+        setChecking(false);
+      },
+      Math.max(0, endsAt - now()),
+    );
+  }, []);
+
+  useEffect(() => {
+    armCooldown();
+    return () => window.clearTimeout(cooldownTimer.current);
+  }, [armCooldown]);
 
   const checkAgain = useCallback(() => {
-    if (cooldown.current !== undefined) return;
+    if (cooldownEndsAt.current !== null) return;
+    cooldownEndsAt.current = now() + MANUAL_CHECK_COOLDOWN_MS;
     setChecking(true);
-    cooldown.current = window.setTimeout(() => {
-      cooldown.current = undefined;
-      setChecking(false);
-    }, MANUAL_CHECK_COOLDOWN_MS);
+    armCooldown();
     router.refresh();
-  }, [router]);
+  }, [armCooldown, router]);
 
   return { stopped, checking, checkAgain };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useAdmissionPolling } from "./use-admission-polling";
@@ -29,8 +29,12 @@ export function ConfirmingStatus({ email }: { email: string }) {
   const [slow, setSlow] = useState(false);
   const { stopped, checking, checkAgain } = useAdmissionPolling();
 
+  // Counted from the first render, so a page restored from an Activity keeps its place.
+  const firstRenderedAt = useRef<number | null>(null);
   useEffect(() => {
-    const timer = window.setTimeout(() => setSlow(true), EMAIL_PROMISE_AFTER_MS);
+    firstRenderedAt.current ??= performance.now();
+    const remaining = EMAIL_PROMISE_AFTER_MS - (performance.now() - firstRenderedAt.current);
+    const timer = window.setTimeout(() => setSlow(true), Math.max(0, remaining));
     return () => window.clearTimeout(timer);
   }, []);
 
