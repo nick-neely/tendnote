@@ -22,6 +22,7 @@ const embeddingJob = {
   claimedAt: null,
   completedAt: null,
   rerunRequestedAt: null,
+  deadLetteredFingerprint: null,
   createdAt: new Date("2026-06-29T12:00:00.000Z"),
   updatedAt: new Date("2026-06-29T12:00:00.000Z"),
 } as const;

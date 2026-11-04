@@ -54,11 +54,13 @@ function reopenFields(job: EmbeddingJob, input: { now: Date; runAfter: Date }) {
       claimedAt: null,
       completedAt: null,
       rerunRequestedAt: null,
+      attempts: 0,
     } satisfies Partial<EmbeddingJob>;
   }
 
   return {
     rerunRequestedAt: job.status === "running" ? input.now : null,
+    attempts: job.status === "running" ? job.attempts : 0,
   } satisfies Partial<EmbeddingJob>;
 }
 
@@ -70,6 +72,7 @@ function rerunFields(now: Date) {
     lastError: null,
     claimedAt: null,
     completedAt: null,
+    attempts: 0,
   } satisfies Partial<EmbeddingJob>;
 }
 
@@ -265,6 +268,7 @@ export function createInMemoryEmbeddingStore(
           claimedAt: null,
           completedAt: null,
           rerunRequestedAt: null,
+          attempts: job.rerunRequestedAt ? 0 : Math.max(0, job.attempts - 1),
           updatedAt: input.now,
         };
         jobs.set(recovered.id, recovered);
@@ -304,10 +308,20 @@ export function createInMemoryEmbeddingStore(
       const settled =
         job.rerunRequestedAt && input.status !== "failed" && input.status !== "pending"
           ? rerunFields(input.now)
-          : applyJobUpdateFields(job, input);
+          : {
+              ...applyJobUpdateFields(job, input),
+              ...(job.rerunRequestedAt
+                ? { attempts: 0 }
+                : input.attempts !== undefined
+                  ? { attempts: input.attempts }
+                  : {}),
+            };
       const updated = {
         ...job,
         ...settled,
+        ...(input.deadLetteredFingerprint !== undefined
+          ? { deadLetteredFingerprint: input.deadLetteredFingerprint }
+          : {}),
         rerunRequestedAt: null,
         updatedAt: input.now,
       };

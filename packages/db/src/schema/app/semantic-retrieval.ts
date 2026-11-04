@@ -85,6 +85,9 @@ export const relationshipContextEmbeddingJobs = pgTable(
     // Set when an enqueue lands on a job that is already `running`, and consumed by the
     // statement that settles that run - see `rerunRequestedAt` in the domain schema (#330).
     rerunRequestedAt: timestamp("rerun_requested_at", { withTimezone: true }),
+    // Fingerprint of the text the job was dead-lettered on, so an enqueue for unchanged
+    // text does not buy a fresh set of provider calls - see the domain schema.
+    deadLetteredFingerprint: text("dead_lettered_fingerprint"),
     ...timestamps,
   },
   (table) => [

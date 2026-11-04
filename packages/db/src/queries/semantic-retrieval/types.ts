@@ -109,7 +109,7 @@ export const STALE_EMBEDDING_JOB_RECOVERY_MESSAGE =
  */
 export type SettledEmbeddingJobStatus = Extract<
   EmbeddingJobStatus,
-  "completed" | "skipped" | "failed" | "pending"
+  "completed" | "skipped" | "failed" | "pending" | "dead_lettered"
 >;
 
 /**
@@ -127,6 +127,16 @@ export type SettleEmbeddingJobInput = {
   runAfter?: Date;
   claimedAt?: Date | null;
   completedAt?: Date | null;
+  /**
+   * Overrides the claim's attempt count. A deferral passes the count from before its claim,
+   * so a pass the Account Ceiling refused is not spent from the failure budget.
+   */
+  attempts?: number;
+  /**
+   * The fingerprint to record as the text this verdict was reached on: set by a
+   * dead-letter, cleared by a completed run, left standing when omitted.
+   */
+  deadLetteredFingerprint?: string | null;
 };
 
 export type SettleEmbeddingJobResult = {

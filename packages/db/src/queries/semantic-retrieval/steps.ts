@@ -9,6 +9,8 @@ import {
   decideGeneralActionEmbedding,
   decideSavedItemEmbedding,
   decideSourceRecordEmbedding,
+  EMBEDDING_JOB_MAX_ATTEMPTS,
+  EMBEDDING_JOB_MAX_TRANSIENT_ATTEMPTS,
   type EmbeddingDecision,
   type GeneralAction,
   type Memory,
@@ -23,7 +25,7 @@ import {
   type SemanticTrustLevel,
   type SourceRecord,
 } from "@tendnote/domain";
-import type { UsagePausedError } from "@tendnote/domain/usage-bounds";
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import type {
   EmbeddingAdapter,
   EmbeddingConfig,
@@ -51,6 +53,43 @@ export class SupersededEmbeddingClaimError extends Error {
   constructor() {
     super("Embedding job claim was superseded.");
     this.name = "SupersededEmbeddingClaimError";
+  }
+}
+
+/**
+ * A provider call that threw. When the provider refused the input itself, it carries the
+ * fingerprint of the text it was sent so a dead-letter can record which text the provider
+ * kept refusing; for an outage, a rate limit or a timeout it carries none, so the same text
+ * is tried again once the job is reopened. The message is the provider's own, so the job's
+ * `lastError` reads exactly as it did before the wrap.
+ */
+export class EmbeddingProviderError extends Error {
+  readonly contentFingerprint: string | null;
+
+  constructor(cause: unknown, contentFingerprint: string | null) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "EmbeddingProviderError";
+    this.contentFingerprint = contentFingerprint;
+  }
+}
+
+/**
+ * Deleting a restricted record's embeddings failed. Its job keeps retrying past the attempt
+ * cap: dead-lettering it would leave the restricted text and its vector stored, with nothing
+ * left to retry the delete once the database recovers.
+ */
+export class RestrictedScrubError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "RestrictedScrubError";
+  }
+}
+
+/** The run built the same text its job was dead-lettered on, so it skips the provider. */
+export class UnchangedDeadLetteredTextError extends Error {
+  constructor() {
+    super("Record text is unchanged since this embedding job was dead-lettered.");
+    this.name = "UnchangedDeadLetteredTextError";
   }
 }
 
@@ -159,7 +198,7 @@ async function reuseOrEmbed(
     sourceUpdatedAt: Date;
   },
 ): Promise<RelationshipContextEmbedding> {
-  const { store, adapter, config } = ctx;
+  const { store, config } = ctx;
   const contentFingerprint = fingerprintEmbeddedText({
     recordKind: params.recordKind,
     recordId: params.recordId,
@@ -182,10 +221,13 @@ async function reuseOrEmbed(
     });
   }
 
-  const adapterResult = await adapter.embedText(
-    { text: params.embeddedText, model: config.model, version: config.version },
-    { accountId: params.ownerUserId },
-  );
+  // The provider already refused this exact text five times; an edit that left it alone
+  // gets the verdict again rather than five more calls.
+  if (params.job.deadLetteredFingerprint === contentFingerprint) {
+    throw new UnchangedDeadLetteredTextError();
+  }
+
+  const adapterResult = await embedWithFingerprint(ctx, params, contentFingerprint);
 
   const embedding = await store.upsertRelationshipContextEmbeddingForClaim({
     claim: {
@@ -213,8 +255,117 @@ async function reuseOrEmbed(
   return embedding;
 }
 
+/** Calls the provider, tagging any failure but a usage pause with the text's fingerprint. */
+async function embedWithFingerprint(
+  ctx: EmbeddingContext,
+  params: { ownerUserId: string; embeddedText: string },
+  contentFingerprint: string,
+) {
+  try {
+    return await ctx.adapter.embedText(
+      { text: params.embeddedText, model: ctx.config.model, version: ctx.config.version },
+      { accountId: params.ownerUserId },
+    );
+  } catch (error) {
+    if (error instanceof UsagePausedError) throw error;
+    throw new EmbeddingProviderError(error, isInputRejection(error) ? contentFingerprint : null);
+  }
+}
+
+/** HTTP statuses a provider answers when the request's input is what it refuses. */
+const INPUT_REJECTION_STATUSES = new Set([400, 413, 422]);
+const INPUT_REJECTION_MESSAGE =
+  /context length|context window|too many tokens|maximum[^.]*tokens|token limit|input[^.]*too (long|large)/i;
+
+/**
+ * Whether a provider error refused the text itself, so sending the same text again would
+ * fail the same way. Walks the AI SDK's wrappers (`lastError` on a retry error, `cause`
+ * on a gateway error) looking for an input-rejection status or message. Anything else,
+ * such as an outage, a rate limit or a timeout, is treated as transient.
+ */
+export function isInputRejection(error: unknown): boolean {
+  if (typeof error === "string") return INPUT_REJECTION_MESSAGE.test(error);
+  const chain = errorChain(error);
+  // Statuses first, across every layer: a retry wrapper carries no status of its own, but
+  // its message quotes the last error's, so a rate limit's "token limit" text would
+  // otherwise read as a refused input before the 429 beneath it is seen.
+  const statuses = chain.map(layerStatus).filter((status) => status !== null);
+  if (statuses.some((status) => INPUT_REJECTION_STATUSES.has(status))) return true;
+  if (statuses.some(isTransientStatus)) return false;
+  return chain.some(
+    (layer) => typeof layer.message === "string" && INPUT_REJECTION_MESSAGE.test(layer.message),
+  );
+}
+
+type ErrorLayer = {
+  statusCode?: unknown;
+  status?: unknown;
+  message?: unknown;
+  lastError?: unknown;
+  cause?: unknown;
+};
+
+/** The error and each wrapped error beneath it, stopping at a cycle. */
+function errorChain(error: unknown): ErrorLayer[] {
+  const chain: ErrorLayer[] = [];
+  let current: unknown = error;
+  while (current && typeof current === "object" && !chain.includes(current as ErrorLayer)) {
+    const layer = current as ErrorLayer;
+    chain.push(layer);
+    current = layer.lastError ?? layer.cause;
+  }
+  return chain;
+}
+
+function layerStatus(layer: ErrorLayer): number | null {
+  const status = typeof layer.statusCode === "number" ? layer.statusCode : layer.status;
+  return typeof status === "number" ? status : null;
+}
+
+/** A rate limit, timeout or server error: its status says it is transient. */
+function isTransientStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+/** Network error codes, and Postgres SQLSTATE classes, for a dependency that went away. */
+const TRANSIENT_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "EAI_AGAIN",
+  "EPIPE",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+const TRANSIENT_SQLSTATE = /^(08|53|57P0)/;
+const TRANSIENT_MESSAGE =
+  /timed? ?out|aborted|fetch failed|socket hang up|connection (terminated|reset|refused)|service unavailable/i;
+
+/**
+ * Whether a failure is one that clears on its own once a dependency recovers: a transient
+ * HTTP status, a dropped connection or a timeout anywhere in the error chain. A refused
+ * input never is, whatever its message says.
+ */
+export function isTransientFailure(error: unknown): boolean {
+  if (isInputRejection(error)) return false;
+  return errorChain(error).some((layer) => {
+    const status = layerStatus(layer);
+    if (status !== null) return isTransientStatus(status);
+    const code = (layer as { code?: unknown }).code;
+    if (typeof code === "string" && (TRANSIENT_CODES.has(code) || TRANSIENT_SQLSTATE.test(code))) {
+      return true;
+    }
+    return typeof layer.message === "string" && TRANSIENT_MESSAGE.test(layer.message);
+  });
+}
+
 /**
  * Fail the job and requeue it on a backoff so a transient error retries.
+ *
+ * At the attempt cap the job is dead-lettered instead, unless `retryPastCap` is set for a
+ * failure that must keep retrying however long it takes, such as a restricted scrub. A
+ * `transient` failure gets the higher {@link EMBEDDING_JOB_MAX_TRANSIENT_ATTEMPTS} cap.
  *
  * Settled rather than plainly updated so that a rerun requested mid-run is consumed here
  * too. It needs no separate pass: the backoff already schedules one, and that retry reads
@@ -226,15 +377,22 @@ export async function failJob(
   message: string,
   now: Date,
   retryDelayMs: number,
+  options: { contentFingerprint?: string | null; retryPastCap?: boolean; transient?: boolean } = {},
 ): Promise<ProcessEmbeddingJobResult> {
+  const { contentFingerprint = null, retryPastCap = false, transient = false } = options;
+  const cap = transient ? EMBEDDING_JOB_MAX_TRANSIENT_ATTEMPTS : EMBEDDING_JOB_MAX_ATTEMPTS;
+  // `attempts` already counts this pass: the claim incremented it.
+  const deadLettered = !retryPastCap && job.attempts >= cap;
   const settlement = await ctx.store.settleEmbeddingJob({
     jobId: job.id,
-    status: "failed",
+    status: deadLettered ? "dead_lettered" : "failed",
     now,
     expectedClaimedAt: job.claimedAt ?? null,
     lastError: message,
-    runAfter: new Date(now.getTime() + retryDelayMs),
     claimedAt: null,
+    ...(deadLettered
+      ? { completedAt: now, deadLetteredFingerprint: contentFingerprint }
+      : { runAfter: new Date(now.getTime() + retryDelayMs) }),
   });
 
   if (!settlement.settled) {
@@ -243,13 +401,61 @@ export async function failJob(
 
   await ctx.store.createAuditLogEntry({
     ownerUserId: job.ownerUserId,
-    action: "embedding_job.failed",
+    // Read from the row: an edit that landed mid-run turns a dead-letter into `pending`.
+    action:
+      settlement.job.status === "dead_lettered"
+        ? "embedding_job.dead_lettered"
+        : "embedding_job.failed",
     entityType: "relationship_context_embedding_job",
     entityId: job.id,
     metadataJson: {
       recordKind: job.recordKind,
       recordId: job.recordId,
+      attempts: job.attempts,
       error: message,
+    },
+  });
+
+  return { job: settlement.job, outcome: "failed", embedding: null, error: message };
+}
+
+/**
+ * Dead-letter again, without a provider call, a job whose record was re-saved with the
+ * text it was dead-lettered on.
+ */
+export async function redeadLetterUnchangedJob(
+  ctx: EmbeddingContext,
+  job: ProcessEmbeddingJobResult["job"],
+  message: string,
+  now: Date,
+): Promise<ProcessEmbeddingJobResult> {
+  const settlement = await ctx.store.settleEmbeddingJob({
+    jobId: job.id,
+    status: "dead_lettered",
+    now,
+    expectedClaimedAt: job.claimedAt ?? null,
+    lastError: message,
+    claimedAt: null,
+    completedAt: now,
+  });
+
+  if (!settlement.settled) {
+    return { job: settlement.job, outcome: "not_claimable", embedding: null };
+  }
+
+  await ctx.store.createAuditLogEntry({
+    ownerUserId: job.ownerUserId,
+    action:
+      settlement.job.status === "dead_lettered"
+        ? "embedding_job.dead_lettered"
+        : "embedding_job.failed",
+    entityType: "relationship_context_embedding_job",
+    entityId: job.id,
+    metadataJson: {
+      recordKind: job.recordKind,
+      recordId: job.recordId,
+      attempts: job.attempts,
+      reason: "unchanged_text",
     },
   });
 
@@ -275,6 +481,8 @@ export async function deferJob(
     lastError: null,
     runAfter: paused.resumesAt,
     claimedAt: null,
+    // The claim counted this pass; a refused pass is not a failed one.
+    attempts: Math.max(0, job.attempts - 1),
   });
 
   return {
@@ -325,7 +533,18 @@ export async function scrubRestrictedEmbeddings(
   if (skipReason !== RESTRICTED_SKIP_REASON) {
     return 0;
   }
+  try {
+    return await deleteRestrictedEmbeddings(ctx, job);
+  } catch (error) {
+    if (error instanceof SupersededEmbeddingClaimError) throw error;
+    throw new RestrictedScrubError(error);
+  }
+}
 
+async function deleteRestrictedEmbeddings(
+  ctx: EmbeddingContext,
+  job: ProcessEmbeddingJobResult["job"],
+): Promise<number> {
   const result = await ctx.store.deleteRelationshipContextEmbeddingsForRecordForClaim({
     claim: { jobId: job.id, expectedClaimedAt: job.claimedAt ?? null },
     ownerUserId: job.ownerUserId,

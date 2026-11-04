@@ -179,10 +179,27 @@ function standingValue(input: SettleEmbeddingJobInput, key: CarriedJobColumn): S
  * has to reset the run being superseded whether or not this verdict mentioned it.
  */
 function buildSettleUpdate(input: SettleEmbeddingJobInput) {
-  const cleared = { rerunRequestedAt: null, updatedAt: input.now };
+  // An edit that landed mid-run earns a fresh budget; otherwise the caller's count, if any.
+  const attempts = branch(
+    RERUN_REQUESTED,
+    sql`0`,
+    input.attempts !== undefined
+      ? sql`${input.attempts}`
+      : sql`${relationshipContextEmbeddingJobs.attempts}`,
+  );
+  const cleared = {
+    rerunRequestedAt: null,
+    updatedAt: input.now,
+    // Not branched on the marker: it describes text the run read, and a mid-run edit that
+    // left the text alone should still find it on the next pass.
+    ...(input.deadLetteredFingerprint !== undefined
+      ? { deadLetteredFingerprint: input.deadLetteredFingerprint }
+      : {}),
+  };
 
   if (input.status === "failed" || input.status === "pending") {
-    return { ...buildJobUpdate(input), ...cleared };
+    // The verdict stands, but an edit that landed mid-run still earns a fresh budget.
+    return { ...buildJobUpdate(input), attempts, ...cleared };
   }
 
   return {
@@ -192,6 +209,7 @@ function buildSettleUpdate(input: SettleEmbeddingJobInput) {
     claimedAt: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "claimedAt")),
     completedAt: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "completedAt")),
     lastError: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "lastError")),
+    attempts,
   };
 }
 
@@ -418,6 +436,14 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
           claimedAt: null,
           completedAt: null,
           rerunRequestedAt: null,
+          // An abandoned claim is not a failed pass, so it gives back the attempt it took.
+          // An edit that landed during the abandoned run earns a fresh budget, as it would
+          // have at settle. Postgres reads the marker from the pre-update row.
+          attempts: branch(
+            RERUN_REQUESTED,
+            sql`0`,
+            sql`greatest(${relationshipContextEmbeddingJobs.attempts} - 1, 0)`,
+          ),
           updatedAt: input.now,
         })
         .where(inArray(relationshipContextEmbeddingJobs.id, staleJobs))
@@ -450,6 +476,9 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
           lastError: branch(REOPENABLE, sql`null`, jobValue(columns.lastError)),
           claimedAt: branch(REOPENABLE, sql`null`, jobValue(columns.claimedAt)),
           completedAt: branch(REOPENABLE, sql`null`, jobValue(columns.completedAt)),
+          // An enqueue is news the record changed, so the failure budget starts over for
+          // every job but a running one, whose own settle resets it with the marker.
+          attempts: branch(RUNNING, sql`${columns.attempts}`, sql`0`),
           updatedAt: input.now,
         })
         .where(eq(columns.id, input.jobId))

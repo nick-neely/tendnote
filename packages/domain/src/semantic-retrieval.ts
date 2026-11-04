@@ -157,7 +157,23 @@ export const embeddingJobStatusSchema = z.enum([
   "completed",
   "failed",
   "skipped",
+  "dead_lettered",
 ]);
+
+/**
+ * How many passes a job may fail before it is dead-lettered. A failure the provider will
+ * keep refusing (the record's text itself is the problem) otherwise retries on every
+ * recovery pass forever. An edit to the record reopens the job with a fresh count.
+ */
+export const EMBEDDING_JOB_MAX_ATTEMPTS = 5;
+
+/**
+ * The higher ceiling for a job whose failures are all transient (a rate limit, timeout,
+ * server error or lost connection), about two days of hourly passes. Such a failure clears
+ * once the dependency recovers, so five passes would dead-letter a healthy record during an
+ * ordinary outage; the ceiling still stops a "transient" error that never clears.
+ */
+export const EMBEDDING_JOB_MAX_TRANSIENT_ATTEMPTS = 48;
 
 export const relationshipContextEmbeddingSchema = z.object({
   id: z.string(),
@@ -238,6 +254,15 @@ export const embeddingJobSchema = z.object({
    * inheritance.
    */
   rerunRequestedAt: z.date().nullable().default(null),
+  /**
+   * Content fingerprint of the text this job was dead-lettered on, or null.
+   *
+   * An enqueue reopens a dead-lettered job without knowing whether the text changed, since
+   * the text is only built when the job runs. The run compares the text it built against
+   * this value and dead-letters again at once on a match, so re-saving a record with the
+   * same text costs no provider calls. A completed run clears it.
+   */
+  deadLetteredFingerprint: z.string().nullable().default(null),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
@@ -286,10 +311,14 @@ export const claimableEmbeddingJobStatuses = [
  * without help. `running` is the one that needs help and cannot take it here: reopening a
  * job mid-flight only lets the finishing run write its verdict over the top. It records
  * {@link embeddingJobSchema}'s `rerunRequestedAt` instead (#330).
+ *
+ * `dead_lettered` gave up on the text the record had then; an edit is the one thing that
+ * can change the provider's answer, so it earns the job a fresh set of attempts.
  */
 export const reopenableEmbeddingJobStatuses = [
   "completed",
   "skipped",
+  "dead_lettered",
 ] as const satisfies ReadonlyArray<EmbeddingJobStatus>;
 
 export type ApprovedMemoryEmbeddingSource = {

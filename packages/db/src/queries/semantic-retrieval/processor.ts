@@ -7,16 +7,21 @@ import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import {
   deferJob,
   type EmbeddingContext,
+  EmbeddingProviderError,
   failJob,
+  isTransientFailure,
   processApprovedMemory,
   processAsset,
   processAssetMemory,
   processGeneralAction,
   processSavedItem,
   processSourceRecord,
+  RestrictedScrubError,
+  redeadLetterUnchangedJob,
   SupersededEmbeddingClaimError,
   scrubRestrictedEmbeddings,
   skipJob,
+  UnchangedDeadLetteredTextError,
 } from "./steps";
 import type {
   EmbeddingAdapter,
@@ -198,6 +203,7 @@ async function processEmbeddingJob(
       expectedClaimedAt: job.claimedAt ?? null,
       completedAt: now,
       lastError: null,
+      deadLetteredFingerprint: null,
     });
 
     if (!settlement.settled) {
@@ -250,8 +256,21 @@ async function settleProcessingError(
     return { job: current, outcome: "not_claimable", embedding: null };
   }
 
+  if (error instanceof UnchangedDeadLetteredTextError) {
+    return redeadLetterUnchangedJob(ctx, job, error.message, now);
+  }
+  if (error instanceof EmbeddingProviderError) {
+    return failJob(ctx, job, error.message, now, retryDelayMs, {
+      contentFingerprint: error.contentFingerprint,
+      transient: isTransientFailure(error),
+    });
+  }
+  if (error instanceof RestrictedScrubError) {
+    return failJob(ctx, job, error.message, now, retryDelayMs, { retryPastCap: true });
+  }
+
   const message = error instanceof Error ? error.message : String(error);
-  return failJob(ctx, job, message, now, retryDelayMs);
+  return failJob(ctx, job, message, now, retryDelayMs, { transient: isTransientFailure(error) });
 }
 
 /** Dispatches a job to the embedding step for its record kind. */
