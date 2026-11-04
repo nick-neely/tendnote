@@ -60,6 +60,7 @@ function reopenFields(job: EmbeddingJob, input: { now: Date; runAfter: Date }) {
 
   return {
     rerunRequestedAt: job.status === "running" ? input.now : null,
+    attempts: job.status === "running" ? job.attempts : 0,
   } satisfies Partial<EmbeddingJob>;
 }
 
@@ -308,7 +309,11 @@ export function createInMemoryEmbeddingStore(
           ? rerunFields(input.now)
           : {
               ...applyJobUpdateFields(job, input),
-              ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
+              ...(job.rerunRequestedAt
+                ? { attempts: 0 }
+                : input.attempts !== undefined
+                  ? { attempts: input.attempts }
+                  : {}),
             };
       const updated = {
         ...job,

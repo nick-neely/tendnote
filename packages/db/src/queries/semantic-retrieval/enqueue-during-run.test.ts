@@ -419,18 +419,16 @@ describe("the Drizzle store decides both handoffs inside one statement", () => {
     expect(rendered(clause.rerunRequestedAt)).toBe(
       'case when "relationship_context_embedding_jobs"."status" = $1 then $2::timestamptz else null end',
     );
-    for (const column of [
-      "status",
-      "runAfter",
-      "claimedAt",
-      "completedAt",
-      "lastError",
-      "attempts",
-    ]) {
+    for (const column of ["status", "runAfter", "claimedAt", "completedAt", "lastError"]) {
       expect(rendered(clause[column])).toContain(
         '"relationship_context_embedding_jobs"."status" in ($1, $2, $3)',
       );
     }
+    // Every job but a running one takes a fresh failure budget; a running one gets it from
+    // the marker its own settle consumes.
+    expect(rendered(clause.attempts)).toContain(
+      'case when "relationship_context_embedding_jobs"."status" = $1',
+    );
   });
 
   /**

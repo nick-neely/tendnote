@@ -109,4 +109,51 @@ describe("embedding job dead-lettering", () => {
     expect(failed?.job.status).toBe("failed");
     expect(failed?.job.attempts).toBe(1);
   });
+
+  it("gives a failed job a fresh budget when its record is edited, keeping the backoff", async () => {
+    const harness = createHarness({ adapter: refusingAdapter });
+    const memory = await harness.createApprovedMemory({ content: "Mara likes ceramics." });
+    const enqueue = () =>
+      harness.processor.enqueueEmbeddingJob({
+        ownerUserId: OWNER,
+        recordKind: "memory",
+        recordId: memory.id,
+      });
+    await enqueue();
+
+    let now = new Date();
+    let last = null;
+    for (let pass = 1; pass < EMBEDDING_JOB_MAX_ATTEMPTS; pass += 1) {
+      last = await runPass(harness, now);
+      now = new Date(now.getTime() + 60 * 60 * 1000);
+    }
+    expect(last?.job).toMatchObject({ status: "failed", attempts: EMBEDDING_JOB_MAX_ATTEMPTS - 1 });
+
+    const { job: edited } = await enqueue();
+    expect(edited).toMatchObject({ status: "failed", attempts: 0 });
+    expect(edited.runAfter).toEqual(last?.job.runAfter);
+  });
+
+  it("gives a fresh budget to an edit that lands while a failing pass is running", async () => {
+    const { store, processor, createApprovedMemory } = createHarness({ adapter: refusingAdapter });
+    const memory = await createApprovedMemory({ content: "Mara likes ceramics." });
+    const enqueue = () =>
+      processor.enqueueEmbeddingJob({
+        ownerUserId: OWNER,
+        recordKind: "memory",
+        recordId: memory.id,
+      });
+    const { job } = await enqueue();
+    await store.updateEmbeddingJob({ jobId: job.id, status: "failed", runAfter: new Date() });
+    for (let claim = 0; claim < 3; claim += 1) {
+      await store.claimEmbeddingJob({ jobId: job.id, now: new Date() });
+      await store.updateEmbeddingJob({ jobId: job.id, status: "failed", claimedAt: null });
+    }
+    await store.claimEmbeddingJob({ jobId: job.id, now: new Date() });
+    await enqueue();
+
+    const result = await processor.processEmbeddingJob({ jobId: job.id, claim: false });
+    expect(result.outcome).toBe("failed");
+    expect(result.job).toMatchObject({ status: "failed", attempts: 0, rerunRequestedAt: null });
+  });
 });

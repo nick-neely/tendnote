@@ -182,9 +182,16 @@ function buildSettleUpdate(input: SettleEmbeddingJobInput) {
   const cleared = { rerunRequestedAt: null, updatedAt: input.now };
 
   if (input.status === "failed" || input.status === "pending") {
+    // The verdict stands, but an edit that landed mid-run still earns a fresh budget.
     return {
       ...buildJobUpdate(input),
-      ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
+      attempts: branch(
+        RERUN_REQUESTED,
+        sql`0`,
+        input.attempts !== undefined
+          ? sql`${input.attempts}`
+          : sql`${relationshipContextEmbeddingJobs.attempts}`,
+      ),
       ...cleared,
     };
   }
@@ -455,8 +462,9 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
           lastError: branch(REOPENABLE, sql`null`, jobValue(columns.lastError)),
           claimedAt: branch(REOPENABLE, sql`null`, jobValue(columns.claimedAt)),
           completedAt: branch(REOPENABLE, sql`null`, jobValue(columns.completedAt)),
-          // A reopen is news the record changed, so the attempt cap starts over.
-          attempts: branch(REOPENABLE, sql`0`, sql`${columns.attempts}`),
+          // An enqueue is news the record changed, so the failure budget starts over for
+          // every job but a running one, whose own settle resets it with the marker.
+          attempts: branch(RUNNING, sql`${columns.attempts}`, sql`0`),
           updatedAt: input.now,
         })
         .where(eq(columns.id, input.jobId))

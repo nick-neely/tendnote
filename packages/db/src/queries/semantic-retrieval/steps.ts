@@ -246,7 +246,11 @@ export async function failJob(
 
   await ctx.store.createAuditLogEntry({
     ownerUserId: job.ownerUserId,
-    action: deadLettered ? "embedding_job.dead_lettered" : "embedding_job.failed",
+    // Read from the row: an edit that landed mid-run turns a dead-letter into `pending`.
+    action:
+      settlement.job.status === "dead_lettered"
+        ? "embedding_job.dead_lettered"
+        : "embedding_job.failed",
     entityType: "relationship_context_embedding_job",
     entityId: job.id,
     metadataJson: {
