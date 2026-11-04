@@ -132,6 +132,11 @@ export type SettleEmbeddingJobInput = {
    * so a pass the Account Ceiling refused is not spent from the failure budget.
    */
   attempts?: number;
+  /**
+   * The fingerprint to record as the text this verdict was reached on: set by a
+   * dead-letter, cleared by a completed run, left standing when omitted.
+   */
+  deadLetteredFingerprint?: string | null;
 };
 
 export type SettleEmbeddingJobResult = {

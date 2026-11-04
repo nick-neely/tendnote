@@ -72,8 +72,90 @@ describe("embedding job dead-lettering", () => {
     expect(reopened.attempts).toBe(0);
     expect(reopened.lastError).toBeNull();
 
+    await harness.store.updateMemory({
+      ownerUserId: OWNER,
+      memoryId: memory.id,
+      patch: { content: "Mara likes ceramics and glazing." },
+    });
     const retried = await runPass(harness, new Date());
     expect(retried?.job.status).toBe("failed");
+  });
+
+  it("dead-letters a re-saved record with unchanged text again without calling the provider", async () => {
+    let calls = 0;
+    const harness = createHarness({
+      adapter: {
+        async embedText(request) {
+          calls += 1;
+          if (request.text.includes("glazing")) {
+            return { vector: [1, 0, 0, 0], model: request.model, version: request.version };
+          }
+          throw new Error("This model's maximum context length is 8192 tokens.");
+        },
+      },
+    });
+    const memory = await harness.createApprovedMemory({ content: "Mara likes ceramics." });
+    const enqueue = () =>
+      harness.processor.enqueueEmbeddingJob({
+        ownerUserId: OWNER,
+        recordKind: "memory",
+        recordId: memory.id,
+      });
+    const { job } = await enqueue();
+
+    let now = new Date();
+    for (let pass = 0; pass < EMBEDDING_JOB_MAX_ATTEMPTS; pass += 1) {
+      await runPass(harness, now);
+      now = new Date(now.getTime() + 60 * 60 * 1000);
+    }
+    const dead = await harness.store.getEmbeddingJob(job.id);
+    expect(dead?.status).toBe("dead_lettered");
+    expect(dead?.deadLetteredFingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(calls).toBe(EMBEDDING_JOB_MAX_ATTEMPTS);
+
+    // Same text: straight back to dead-lettered, no provider call.
+    await enqueue();
+    const unchanged = await runPass(harness, now);
+    expect(unchanged?.job.status).toBe("dead_lettered");
+    expect(unchanged?.job.lastError).toContain("unchanged");
+    expect(calls).toBe(EMBEDDING_JOB_MAX_ATTEMPTS);
+
+    // New text: the provider is tried again, and success clears the fingerprint.
+    await harness.store.updateMemory({
+      ownerUserId: OWNER,
+      memoryId: memory.id,
+      patch: { content: "Mara likes ceramics and glazing." },
+    });
+    await enqueue();
+    const changed = await runPass(harness, new Date(now.getTime() + 60 * 60 * 1000));
+    expect(changed?.outcome).toBe("completed");
+    expect(changed?.job.deadLetteredFingerprint).toBeNull();
+    expect(calls).toBe(EMBEDDING_JOB_MAX_ATTEMPTS + 1);
+  });
+
+  it("gives back the attempt of a claim that stale recovery requeues", async () => {
+    const harness = createHarness({ adapter: refusingAdapter });
+    const memory = await harness.createApprovedMemory({ content: "Mara likes ceramics." });
+    const { job } = await harness.processor.enqueueEmbeddingJob({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: memory.id,
+    });
+
+    let now = new Date();
+    for (let abandoned = 0; abandoned < EMBEDDING_JOB_MAX_ATTEMPTS; abandoned += 1) {
+      const claimed = await harness.store.claimNextEmbeddingJob({ now });
+      expect(claimed?.attempts).toBe(1);
+      now = new Date(now.getTime() + 60 * 60 * 1000);
+      const { jobs } = await harness.processor.recoverStaleEmbeddingJobs({
+        now,
+        leaseDurationMs: 10 * 60 * 1000,
+      });
+      expect(jobs.map((recovered) => recovered.attempts)).toEqual([0]);
+    }
+
+    const failed = await runPass(harness, now);
+    expect(failed?.job).toMatchObject({ id: job.id, status: "failed", attempts: 1 });
   });
 
   it("does not spend the failure budget on passes the Account Ceiling deferred", async () => {

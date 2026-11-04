@@ -179,7 +179,15 @@ function standingValue(input: SettleEmbeddingJobInput, key: CarriedJobColumn): S
  * has to reset the run being superseded whether or not this verdict mentioned it.
  */
 function buildSettleUpdate(input: SettleEmbeddingJobInput) {
-  const cleared = { rerunRequestedAt: null, updatedAt: input.now };
+  const cleared = {
+    rerunRequestedAt: null,
+    updatedAt: input.now,
+    // Not branched on the marker: it describes text the run read, and a mid-run edit that
+    // left the text alone should still find it on the next pass.
+    ...(input.deadLetteredFingerprint !== undefined
+      ? { deadLetteredFingerprint: input.deadLetteredFingerprint }
+      : {}),
+  };
 
   if (input.status === "failed" || input.status === "pending") {
     // The verdict stands, but an edit that landed mid-run still earns a fresh budget.
@@ -430,6 +438,8 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
           claimedAt: null,
           completedAt: null,
           rerunRequestedAt: null,
+          // An abandoned claim is not a failed pass, so it gives back the attempt it took.
+          attempts: sql`greatest(${relationshipContextEmbeddingJobs.attempts} - 1, 0)`,
           updatedAt: input.now,
         })
         .where(inArray(relationshipContextEmbeddingJobs.id, staleJobs))

@@ -1,0 +1,1 @@
+ALTER TABLE "relationship_context_embedding_jobs" ADD COLUMN "dead_lettered_fingerprint" text;

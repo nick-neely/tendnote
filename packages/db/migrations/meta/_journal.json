@@ -757,6 +757,13 @@
       "when": 1793804558598,
       "tag": "0107_embedding_job_dead_lettered",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1793807259248,
+      "tag": "0108_embedding_job_dead_lettered_fingerprint",
+      "breakpoints": true
     }
   ]
 }

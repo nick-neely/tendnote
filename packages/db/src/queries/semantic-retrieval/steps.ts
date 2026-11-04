@@ -24,7 +24,7 @@ import {
   type SemanticTrustLevel,
   type SourceRecord,
 } from "@tendnote/domain";
-import type { UsagePausedError } from "@tendnote/domain/usage-bounds";
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import type {
   EmbeddingAdapter,
   EmbeddingConfig,
@@ -52,6 +52,29 @@ export class SupersededEmbeddingClaimError extends Error {
   constructor() {
     super("Embedding job claim was superseded.");
     this.name = "SupersededEmbeddingClaimError";
+  }
+}
+
+/**
+ * A provider call that threw, carrying the fingerprint of the text it was sent so a
+ * dead-letter can record which text the provider kept refusing. The message is the
+ * provider's own, so the job's `lastError` reads exactly as it did before the wrap.
+ */
+export class EmbeddingProviderError extends Error {
+  readonly contentFingerprint: string;
+
+  constructor(cause: unknown, contentFingerprint: string) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "EmbeddingProviderError";
+    this.contentFingerprint = contentFingerprint;
+  }
+}
+
+/** The run built the same text its job was dead-lettered on, so it skips the provider. */
+export class UnchangedDeadLetteredTextError extends Error {
+  constructor() {
+    super("Record text is unchanged since this embedding job was dead-lettered.");
+    this.name = "UnchangedDeadLetteredTextError";
   }
 }
 
@@ -160,7 +183,7 @@ async function reuseOrEmbed(
     sourceUpdatedAt: Date;
   },
 ): Promise<RelationshipContextEmbedding> {
-  const { store, adapter, config } = ctx;
+  const { store, config } = ctx;
   const contentFingerprint = fingerprintEmbeddedText({
     recordKind: params.recordKind,
     recordId: params.recordId,
@@ -183,10 +206,13 @@ async function reuseOrEmbed(
     });
   }
 
-  const adapterResult = await adapter.embedText(
-    { text: params.embeddedText, model: config.model, version: config.version },
-    { accountId: params.ownerUserId },
-  );
+  // The provider already refused this exact text five times; an edit that left it alone
+  // gets the verdict again rather than five more calls.
+  if (params.job.deadLetteredFingerprint === contentFingerprint) {
+    throw new UnchangedDeadLetteredTextError();
+  }
+
+  const adapterResult = await embedWithFingerprint(ctx, params, contentFingerprint);
 
   const embedding = await store.upsertRelationshipContextEmbeddingForClaim({
     claim: {
@@ -214,6 +240,23 @@ async function reuseOrEmbed(
   return embedding;
 }
 
+/** Calls the provider, tagging any failure but a usage pause with the text's fingerprint. */
+async function embedWithFingerprint(
+  ctx: EmbeddingContext,
+  params: { ownerUserId: string; embeddedText: string },
+  contentFingerprint: string,
+) {
+  try {
+    return await ctx.adapter.embedText(
+      { text: params.embeddedText, model: ctx.config.model, version: ctx.config.version },
+      { accountId: params.ownerUserId },
+    );
+  } catch (error) {
+    if (error instanceof UsagePausedError) throw error;
+    throw new EmbeddingProviderError(error, contentFingerprint);
+  }
+}
+
 /**
  * Fail the job and requeue it on a backoff so a transient error retries.
  *
@@ -227,6 +270,7 @@ export async function failJob(
   message: string,
   now: Date,
   retryDelayMs: number,
+  contentFingerprint: string | null = null,
 ): Promise<ProcessEmbeddingJobResult> {
   // `attempts` already counts this pass: the claim incremented it.
   const deadLettered = job.attempts >= EMBEDDING_JOB_MAX_ATTEMPTS;
@@ -237,7 +281,9 @@ export async function failJob(
     expectedClaimedAt: job.claimedAt ?? null,
     lastError: message,
     claimedAt: null,
-    ...(deadLettered ? { completedAt: now } : { runAfter: new Date(now.getTime() + retryDelayMs) }),
+    ...(deadLettered
+      ? { completedAt: now, deadLetteredFingerprint: contentFingerprint }
+      : { runAfter: new Date(now.getTime() + retryDelayMs) }),
   });
 
   if (!settlement.settled) {
@@ -258,6 +304,49 @@ export async function failJob(
       recordId: job.recordId,
       attempts: job.attempts,
       error: message,
+    },
+  });
+
+  return { job: settlement.job, outcome: "failed", embedding: null, error: message };
+}
+
+/**
+ * Dead-letter again, without a provider call, a job whose record was re-saved with the
+ * text it was dead-lettered on.
+ */
+export async function redeadLetterUnchangedJob(
+  ctx: EmbeddingContext,
+  job: ProcessEmbeddingJobResult["job"],
+  message: string,
+  now: Date,
+): Promise<ProcessEmbeddingJobResult> {
+  const settlement = await ctx.store.settleEmbeddingJob({
+    jobId: job.id,
+    status: "dead_lettered",
+    now,
+    expectedClaimedAt: job.claimedAt ?? null,
+    lastError: message,
+    claimedAt: null,
+    completedAt: now,
+  });
+
+  if (!settlement.settled) {
+    return { job: settlement.job, outcome: "not_claimable", embedding: null };
+  }
+
+  await ctx.store.createAuditLogEntry({
+    ownerUserId: job.ownerUserId,
+    action:
+      settlement.job.status === "dead_lettered"
+        ? "embedding_job.dead_lettered"
+        : "embedding_job.failed",
+    entityType: "relationship_context_embedding_job",
+    entityId: job.id,
+    metadataJson: {
+      recordKind: job.recordKind,
+      recordId: job.recordId,
+      attempts: job.attempts,
+      reason: "unchanged_text",
     },
   });
 

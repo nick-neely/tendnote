@@ -268,6 +268,7 @@ export function createInMemoryEmbeddingStore(
           claimedAt: null,
           completedAt: null,
           rerunRequestedAt: null,
+          attempts: Math.max(0, job.attempts - 1),
           updatedAt: input.now,
         };
         jobs.set(recovered.id, recovered);
@@ -318,6 +319,9 @@ export function createInMemoryEmbeddingStore(
       const updated = {
         ...job,
         ...settled,
+        ...(input.deadLetteredFingerprint !== undefined
+          ? { deadLetteredFingerprint: input.deadLetteredFingerprint }
+          : {}),
         rerunRequestedAt: null,
         updatedAt: input.now,
       };

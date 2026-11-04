@@ -7,6 +7,7 @@ import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import {
   deferJob,
   type EmbeddingContext,
+  EmbeddingProviderError,
   failJob,
   processApprovedMemory,
   processAsset,
@@ -14,9 +15,11 @@ import {
   processGeneralAction,
   processSavedItem,
   processSourceRecord,
+  redeadLetterUnchangedJob,
   SupersededEmbeddingClaimError,
   scrubRestrictedEmbeddings,
   skipJob,
+  UnchangedDeadLetteredTextError,
 } from "./steps";
 import type {
   EmbeddingAdapter,
@@ -198,6 +201,7 @@ async function processEmbeddingJob(
       expectedClaimedAt: job.claimedAt ?? null,
       completedAt: now,
       lastError: null,
+      deadLetteredFingerprint: null,
     });
 
     if (!settlement.settled) {
@@ -248,6 +252,13 @@ async function settleProcessingError(
     const current = await ctx.store.getEmbeddingJob(job.id);
     if (!current) throw new Error("Embedding job not found.");
     return { job: current, outcome: "not_claimable", embedding: null };
+  }
+
+  if (error instanceof UnchangedDeadLetteredTextError) {
+    return redeadLetterUnchangedJob(ctx, job, error.message, now);
+  }
+  if (error instanceof EmbeddingProviderError) {
+    return failJob(ctx, job, error.message, now, retryDelayMs, error.contentFingerprint);
   }
 
   const message = error instanceof Error ? error.message : String(error);

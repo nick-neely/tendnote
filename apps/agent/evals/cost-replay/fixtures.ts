@@ -106,7 +106,7 @@ export async function storedActivity() {
     sql`select coalesce(sum(octet_length(bytes)), 0) as bytes from asset_evidence_files where owner_user_id = ${ownerUserId}`,
   );
   const failed = await db.execute<{ count: string }>(
-    sql`select count(*) as count from (select j.status::text from extraction_jobs j join source_records s on s.id = j.source_record_id where s.owner_user_id = ${ownerUserId} union all select j.status::text from action_extraction_jobs j join source_records s on s.id = j.source_record_id where s.owner_user_id = ${ownerUserId} union all select status::text from context_fact_extraction_jobs where owner_user_id = ${ownerUserId} union all select status::text from relationship_context_embedding_jobs where owner_user_id = ${ownerUserId}) jobs where status::text not in ('completed', 'skipped')`,
+    sql`select count(*) as count from (select j.status::text from extraction_jobs j join source_records s on s.id = j.source_record_id where s.owner_user_id = ${ownerUserId} union all select j.status::text from action_extraction_jobs j join source_records s on s.id = j.source_record_id where s.owner_user_id = ${ownerUserId} union all select status::text from context_fact_extraction_jobs where owner_user_id = ${ownerUserId} union all select status::text from relationship_context_embedding_jobs where owner_user_id = ${ownerUserId}) jobs where status::text not in ('completed', 'skipped', 'dead_lettered')`,
   );
   return {
     counts,

@@ -246,6 +246,15 @@ export const embeddingJobSchema = z.object({
    * inheritance.
    */
   rerunRequestedAt: z.date().nullable().default(null),
+  /**
+   * Content fingerprint of the text this job was dead-lettered on, or null.
+   *
+   * An enqueue reopens a dead-lettered job without knowing whether the text changed, since
+   * the text is only built when the job runs. The run compares the text it built against
+   * this value and dead-letters again at once on a match, so re-saving a record with the
+   * same text costs no provider calls. A completed run clears it.
+   */
+  deadLetteredFingerprint: z.string().nullable().default(null),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
