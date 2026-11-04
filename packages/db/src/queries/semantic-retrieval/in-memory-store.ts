@@ -268,7 +268,7 @@ export function createInMemoryEmbeddingStore(
           claimedAt: null,
           completedAt: null,
           rerunRequestedAt: null,
-          attempts: Math.max(0, job.attempts - 1),
+          attempts: job.rerunRequestedAt ? 0 : Math.max(0, job.attempts - 1),
           updatedAt: input.now,
         };
         jobs.set(recovered.id, recovered);

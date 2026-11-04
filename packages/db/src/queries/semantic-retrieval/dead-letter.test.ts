@@ -158,6 +158,33 @@ describe("embedding job dead-lettering", () => {
     expect(failed?.job).toMatchObject({ id: job.id, status: "failed", attempts: 1 });
   });
 
+  it("gives a fresh budget to an edit that lands during a run stale recovery requeues", async () => {
+    const { store, processor, createApprovedMemory } = createHarness({ adapter: refusingAdapter });
+    const memory = await createApprovedMemory({ content: "Mara likes ceramics." });
+    const enqueue = () =>
+      processor.enqueueEmbeddingJob({
+        ownerUserId: OWNER,
+        recordKind: "memory",
+        recordId: memory.id,
+      });
+    const { job } = await enqueue();
+    for (let claim = 0; claim < EMBEDDING_JOB_MAX_ATTEMPTS - 1; claim += 1) {
+      await store.claimEmbeddingJob({ jobId: job.id, now: new Date() });
+      await store.updateEmbeddingJob({ jobId: job.id, status: "failed", claimedAt: null });
+    }
+    const claimedAt = new Date();
+    const claimed = await store.claimEmbeddingJob({ jobId: job.id, now: claimedAt });
+    expect(claimed?.attempts).toBe(EMBEDDING_JOB_MAX_ATTEMPTS);
+    await enqueue();
+
+    const { jobs } = await processor.recoverStaleEmbeddingJobs({
+      now: new Date(claimedAt.getTime() + 60 * 60 * 1000),
+      leaseDurationMs: 10 * 60 * 1000,
+    });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({ status: "pending", attempts: 0, rerunRequestedAt: null });
+  });
+
   it("does not spend the failure budget on passes the Account Ceiling deferred", async () => {
     let paused = true;
     const harness = createHarness({

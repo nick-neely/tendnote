@@ -439,7 +439,13 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
           completedAt: null,
           rerunRequestedAt: null,
           // An abandoned claim is not a failed pass, so it gives back the attempt it took.
-          attempts: sql`greatest(${relationshipContextEmbeddingJobs.attempts} - 1, 0)`,
+          // An edit that landed during the abandoned run earns a fresh budget, as it would
+          // have at settle. Postgres reads the marker from the pre-update row.
+          attempts: branch(
+            RERUN_REQUESTED,
+            sql`0`,
+            sql`greatest(${relationshipContextEmbeddingJobs.attempts} - 1, 0)`,
+          ),
           updatedAt: input.now,
         })
         .where(inArray(relationshipContextEmbeddingJobs.id, staleJobs))
