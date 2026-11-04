@@ -182,7 +182,11 @@ function buildSettleUpdate(input: SettleEmbeddingJobInput) {
   const cleared = { rerunRequestedAt: null, updatedAt: input.now };
 
   if (input.status === "failed" || input.status === "pending") {
-    return { ...buildJobUpdate(input), ...cleared };
+    return {
+      ...buildJobUpdate(input),
+      ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
+      ...cleared,
+    };
   }
 
   return {

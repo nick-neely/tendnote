@@ -306,7 +306,10 @@ export function createInMemoryEmbeddingStore(
       const settled =
         job.rerunRequestedAt && input.status !== "failed" && input.status !== "pending"
           ? rerunFields(input.now)
-          : applyJobUpdateFields(job, input);
+          : {
+              ...applyJobUpdateFields(job, input),
+              ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
+            };
       const updated = {
         ...job,
         ...settled,

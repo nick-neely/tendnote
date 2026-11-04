@@ -279,6 +279,8 @@ export async function deferJob(
     lastError: null,
     runAfter: paused.resumesAt,
     claimedAt: null,
+    // The claim counted this pass; a refused pass is not a failed one.
+    attempts: Math.max(0, job.attempts - 1),
   });
 
   return {

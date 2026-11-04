@@ -1,4 +1,5 @@
 import { EMBEDDING_JOB_MAX_ATTEMPTS } from "@tendnote/domain";
+import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import { describe, expect, it } from "vitest";
 import { createHarness, OWNER } from "./harness";
 import type { EmbeddingAdapter } from "./types";
@@ -73,5 +74,39 @@ describe("embedding job dead-lettering", () => {
 
     const retried = await runPass(harness, new Date());
     expect(retried?.job.status).toBe("failed");
+  });
+
+  it("does not spend the failure budget on passes the Account Ceiling deferred", async () => {
+    let paused = true;
+    const harness = createHarness({
+      adapter: {
+        async embedText() {
+          if (paused) throw UsagePausedError.atCeiling("2026-11-15");
+          throw new Error("provider unavailable");
+        },
+      },
+    });
+    const memory = await harness.createApprovedMemory({ content: "Mara likes ceramics." });
+    const { job } = await harness.processor.enqueueEmbeddingJob({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: memory.id,
+    });
+
+    let now = new Date();
+    for (let pass = 0; pass < EMBEDDING_JOB_MAX_ATTEMPTS; pass += 1) {
+      await harness.store.updateEmbeddingJob({ jobId: job.id, runAfter: now });
+      const result = await runPass(harness, now);
+      expect(result?.outcome).toBe("deferred");
+      expect(result?.job.attempts).toBe(0);
+      now = new Date(now.getTime() + 60 * 60 * 1000);
+    }
+
+    paused = false;
+    await harness.store.updateEmbeddingJob({ jobId: job.id, runAfter: now });
+    const failed = await runPass(harness, now);
+    expect(failed?.outcome).toBe("failed");
+    expect(failed?.job.status).toBe("failed");
+    expect(failed?.job.attempts).toBe(1);
   });
 });

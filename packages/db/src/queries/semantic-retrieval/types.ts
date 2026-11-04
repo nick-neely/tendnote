@@ -127,6 +127,11 @@ export type SettleEmbeddingJobInput = {
   runAfter?: Date;
   claimedAt?: Date | null;
   completedAt?: Date | null;
+  /**
+   * Overrides the claim's attempt count. A deferral passes the count from before its claim,
+   * so a pass the Account Ceiling refused is not spent from the failure budget.
+   */
+  attempts?: number;
 };
 
 export type SettleEmbeddingJobResult = {
