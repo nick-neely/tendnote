@@ -186,12 +186,7 @@ async function processEmbeddingJob(
     const result = await processJobByKind(ctx, job);
 
     if ("skipReason" in result) {
-      try {
-        await scrubRestrictedEmbeddings(ctx, job, result.skipReason);
-      } catch (error) {
-        if (error instanceof SupersededEmbeddingClaimError) throw error;
-        throw new RestrictedScrubError(error);
-      }
+      await scrubRestrictedEmbeddings(ctx, job, result.skipReason);
 
       return skipJob(ctx, job, result.skipReason, now, extractSkipSources(result));
     }

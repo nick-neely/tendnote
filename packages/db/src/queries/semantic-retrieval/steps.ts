@@ -283,30 +283,46 @@ const INPUT_REJECTION_MESSAGE =
  * such as an outage, a rate limit or a timeout, is treated as transient.
  */
 export function isInputRejection(error: unknown): boolean {
-  const seen = new Set<unknown>();
-  let current: unknown = error;
-  while (current && typeof current === "object" && !seen.has(current)) {
-    seen.add(current);
-    const candidate = current as {
-      statusCode?: unknown;
-      status?: unknown;
-      message?: unknown;
-      lastError?: unknown;
-      cause?: unknown;
-    };
-    const status =
-      typeof candidate.statusCode === "number" ? candidate.statusCode : candidate.status;
-    if (typeof status === "number") {
-      if (INPUT_REJECTION_STATUSES.has(status)) return true;
-      // A rate limit or server error can mention tokens; its status says it is transient.
-      if (status === 408 || status === 429 || status >= 500) return false;
-    }
-    if (typeof candidate.message === "string" && INPUT_REJECTION_MESSAGE.test(candidate.message)) {
-      return true;
-    }
-    current = candidate.lastError ?? candidate.cause;
+  if (typeof error === "string") return INPUT_REJECTION_MESSAGE.test(error);
+  for (const layer of errorChain(error)) {
+    const verdict = classifyErrorLayer(layer);
+    if (verdict !== null) return verdict;
   }
-  return typeof error === "string" && INPUT_REJECTION_MESSAGE.test(error);
+  return false;
+}
+
+type ErrorLayer = {
+  statusCode?: unknown;
+  status?: unknown;
+  message?: unknown;
+  lastError?: unknown;
+  cause?: unknown;
+};
+
+/** The error and each wrapped error beneath it, stopping at a cycle. */
+function errorChain(error: unknown): ErrorLayer[] {
+  const chain: ErrorLayer[] = [];
+  let current: unknown = error;
+  while (current && typeof current === "object" && !chain.includes(current as ErrorLayer)) {
+    const layer = current as ErrorLayer;
+    chain.push(layer);
+    current = layer.lastError ?? layer.cause;
+  }
+  return chain;
+}
+
+/** True or false when this layer settles it, null to look at the layer beneath. */
+function classifyErrorLayer(layer: ErrorLayer): boolean | null {
+  const status = typeof layer.statusCode === "number" ? layer.statusCode : layer.status;
+  if (typeof status === "number") {
+    if (INPUT_REJECTION_STATUSES.has(status)) return true;
+    // A rate limit or server error can mention tokens; its status says it is transient.
+    if (status === 408 || status === 429 || status >= 500) return false;
+  }
+  if (typeof layer.message === "string" && INPUT_REJECTION_MESSAGE.test(layer.message)) {
+    return true;
+  }
+  return null;
 }
 
 /**
@@ -480,7 +496,18 @@ export async function scrubRestrictedEmbeddings(
   if (skipReason !== RESTRICTED_SKIP_REASON) {
     return 0;
   }
+  try {
+    return await deleteRestrictedEmbeddings(ctx, job);
+  } catch (error) {
+    if (error instanceof SupersededEmbeddingClaimError) throw error;
+    throw new RestrictedScrubError(error);
+  }
+}
 
+async function deleteRestrictedEmbeddings(
+  ctx: EmbeddingContext,
+  job: ProcessEmbeddingJobResult["job"],
+): Promise<number> {
   const result = await ctx.store.deleteRelationshipContextEmbeddingsForRecordForClaim({
     claim: { jobId: job.id, expectedClaimedAt: job.claimedAt ?? null },
     ownerUserId: job.ownerUserId,
