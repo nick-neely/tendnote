@@ -162,6 +162,10 @@ type CarriedJobColumn = "runAfter" | "claimedAt" | "completedAt" | "lastError";
 function standingValue(input: SettleEmbeddingJobInput, key: CarriedJobColumn): SQL {
   const supplied = input[key];
 
+  // Both arms of a `case` can be a bare `null` here, which Postgres types as `text` and a
+  // timestamp column refuses. A typed null keeps the arm assignable to its column.
+  if (supplied === null) return key === "lastError" ? sql`null::text` : sql`null::timestamptz`;
+
   return jobValue(supplied === undefined ? relationshipContextEmbeddingJobs[key] : supplied);
 }
 
