@@ -2,6 +2,7 @@ import { EMBEDDING_JOB_MAX_ATTEMPTS } from "@tendnote/domain";
 import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import { describe, expect, it } from "vitest";
 import { createHarness, OWNER } from "./harness";
+import { isInputRejection } from "./steps";
 import type { EmbeddingAdapter } from "./types";
 
 /** A provider that refuses this record's text on every pass, as a too-long input would. */
@@ -264,5 +265,99 @@ describe("embedding job dead-lettering", () => {
     const result = await processor.processEmbeddingJob({ jobId: job.id, claim: false });
     expect(result.outcome).toBe("failed");
     expect(result.job).toMatchObject({ status: "failed", attempts: 0, rerunRequestedAt: null });
+  });
+
+  it("keeps no fingerprint when a job dead-letters on transient failures, so the same text is tried again", async () => {
+    let calls = 0;
+    let outage = true;
+    const harness = createHarness({
+      adapter: {
+        async embedText(request) {
+          calls += 1;
+          if (outage) {
+            throw Object.assign(new Error("Service Unavailable"), { statusCode: 503 });
+          }
+          return { vector: [1, 0, 0, 0], model: request.model, version: request.version };
+        },
+      },
+    });
+    const memory = await harness.createApprovedMemory({ content: "Mara likes ceramics." });
+    const enqueue = () =>
+      harness.processor.enqueueEmbeddingJob({
+        ownerUserId: OWNER,
+        recordKind: "memory",
+        recordId: memory.id,
+      });
+    const { job } = await enqueue();
+
+    let now = new Date();
+    for (let pass = 0; pass < EMBEDDING_JOB_MAX_ATTEMPTS; pass += 1) {
+      await runPass(harness, now);
+      now = new Date(now.getTime() + 60 * 60 * 1000);
+    }
+    const dead = await harness.store.getEmbeddingJob(job.id);
+    expect(dead?.status).toBe("dead_lettered");
+    expect(dead?.deadLetteredFingerprint).toBeNull();
+
+    // The outage is over and the record is re-saved unchanged: the provider is tried again.
+    outage = false;
+    await enqueue();
+    const retried = await runPass(harness, now);
+    expect(retried?.outcome).toBe("completed");
+    expect(calls).toBe(EMBEDDING_JOB_MAX_ATTEMPTS + 1);
+  });
+});
+
+describe("isInputRejection", () => {
+  it("treats a refused input as permanent", () => {
+    expect(isInputRejection(new Error("This model's maximum context length is 8192 tokens."))).toBe(
+      true,
+    );
+    expect(isInputRejection(Object.assign(new Error("Bad Request"), { statusCode: 400 }))).toBe(
+      true,
+    );
+    expect(
+      isInputRejection(Object.assign(new Error("Payload Too Large"), { statusCode: 413 })),
+    ).toBe(true);
+    // The AI SDK's retry wrapper and a gateway's cause both hide the provider's answer.
+    expect(
+      isInputRejection(
+        Object.assign(new Error("Failed after 3 attempts."), {
+          lastError: Object.assign(new Error("Unprocessable"), { statusCode: 422 }),
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isInputRejection(
+        new Error("Gateway request failed", {
+          cause: new Error("input is too long for this model"),
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("treats outages, rate limits and timeouts as transient", () => {
+    expect(
+      isInputRejection(Object.assign(new Error("Service Unavailable"), { statusCode: 503 })),
+    ).toBe(false);
+    expect(
+      isInputRejection(Object.assign(new Error("Too Many Requests"), { statusCode: 429 })),
+    ).toBe(false);
+    expect(
+      isInputRejection(
+        Object.assign(new Error("Failed after 3 attempts."), {
+          lastError: Object.assign(new Error("Internal Server Error"), { statusCode: 500 }),
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isInputRejection(
+        Object.assign(new Error("Rate limit reached on tokens per min: token limit 1000000"), {
+          statusCode: 429,
+        }),
+      ),
+    ).toBe(false);
+    expect(isInputRejection(new Error("The operation was aborted due to timeout"))).toBe(false);
+    expect(isInputRejection(new Error("provider unavailable"))).toBe(false);
   });
 });

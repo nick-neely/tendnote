@@ -56,14 +56,16 @@ export class SupersededEmbeddingClaimError extends Error {
 }
 
 /**
- * A provider call that threw, carrying the fingerprint of the text it was sent so a
- * dead-letter can record which text the provider kept refusing. The message is the
- * provider's own, so the job's `lastError` reads exactly as it did before the wrap.
+ * A provider call that threw. When the provider refused the input itself, it carries the
+ * fingerprint of the text it was sent so a dead-letter can record which text the provider
+ * kept refusing; for an outage, a rate limit or a timeout it carries none, so the same text
+ * is tried again once the job is reopened. The message is the provider's own, so the job's
+ * `lastError` reads exactly as it did before the wrap.
  */
 export class EmbeddingProviderError extends Error {
-  readonly contentFingerprint: string;
+  readonly contentFingerprint: string | null;
 
-  constructor(cause: unknown, contentFingerprint: string) {
+  constructor(cause: unknown, contentFingerprint: string | null) {
     super(cause instanceof Error ? cause.message : String(cause), { cause });
     this.name = "EmbeddingProviderError";
     this.contentFingerprint = contentFingerprint;
@@ -253,8 +255,46 @@ async function embedWithFingerprint(
     );
   } catch (error) {
     if (error instanceof UsagePausedError) throw error;
-    throw new EmbeddingProviderError(error, contentFingerprint);
+    throw new EmbeddingProviderError(error, isInputRejection(error) ? contentFingerprint : null);
   }
+}
+
+/** HTTP statuses a provider answers when the request's input is what it refuses. */
+const INPUT_REJECTION_STATUSES = new Set([400, 413, 422]);
+const INPUT_REJECTION_MESSAGE =
+  /context length|context window|too many tokens|maximum[^.]*tokens|token limit|input[^.]*too (long|large)/i;
+
+/**
+ * Whether a provider error refused the text itself, so sending the same text again would
+ * fail the same way. Walks the AI SDK's wrappers (`lastError` on a retry error, `cause`
+ * on a gateway error) looking for an input-rejection status or message. Anything else,
+ * such as an outage, a rate limit or a timeout, is treated as transient.
+ */
+export function isInputRejection(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const candidate = current as {
+      statusCode?: unknown;
+      status?: unknown;
+      message?: unknown;
+      lastError?: unknown;
+      cause?: unknown;
+    };
+    const status =
+      typeof candidate.statusCode === "number" ? candidate.statusCode : candidate.status;
+    if (typeof status === "number") {
+      if (INPUT_REJECTION_STATUSES.has(status)) return true;
+      // A rate limit or server error can mention tokens; its status says it is transient.
+      if (status === 408 || status === 429 || status >= 500) return false;
+    }
+    if (typeof candidate.message === "string" && INPUT_REJECTION_MESSAGE.test(candidate.message)) {
+      return true;
+    }
+    current = candidate.lastError ?? candidate.cause;
+  }
+  return typeof error === "string" && INPUT_REJECTION_MESSAGE.test(error);
 }
 
 /**
