@@ -109,7 +109,7 @@ export const STALE_EMBEDDING_JOB_RECOVERY_MESSAGE =
  */
 export type SettledEmbeddingJobStatus = Extract<
   EmbeddingJobStatus,
-  "completed" | "skipped" | "failed" | "pending"
+  "completed" | "skipped" | "failed" | "pending" | "dead_lettered"
 >;
 
 /**

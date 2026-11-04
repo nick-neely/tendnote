@@ -550,6 +550,7 @@ export const embeddingJobStatus = pgEnum("embedding_job_status", [
   "completed",
   "failed",
   "skipped",
+  "dead_lettered",
 ]);
 
 export const backgroundJobKind = pgEnum("background_job_kind", [

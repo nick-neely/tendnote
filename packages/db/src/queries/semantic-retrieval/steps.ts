@@ -9,6 +9,7 @@ import {
   decideGeneralActionEmbedding,
   decideSavedItemEmbedding,
   decideSourceRecordEmbedding,
+  EMBEDDING_JOB_MAX_ATTEMPTS,
   type EmbeddingDecision,
   type GeneralAction,
   type Memory,
@@ -227,14 +228,16 @@ export async function failJob(
   now: Date,
   retryDelayMs: number,
 ): Promise<ProcessEmbeddingJobResult> {
+  // `attempts` already counts this pass: the claim incremented it.
+  const deadLettered = job.attempts >= EMBEDDING_JOB_MAX_ATTEMPTS;
   const settlement = await ctx.store.settleEmbeddingJob({
     jobId: job.id,
-    status: "failed",
+    status: deadLettered ? "dead_lettered" : "failed",
     now,
     expectedClaimedAt: job.claimedAt ?? null,
     lastError: message,
-    runAfter: new Date(now.getTime() + retryDelayMs),
     claimedAt: null,
+    ...(deadLettered ? { completedAt: now } : { runAfter: new Date(now.getTime() + retryDelayMs) }),
   });
 
   if (!settlement.settled) {
@@ -243,12 +246,13 @@ export async function failJob(
 
   await ctx.store.createAuditLogEntry({
     ownerUserId: job.ownerUserId,
-    action: "embedding_job.failed",
+    action: deadLettered ? "embedding_job.dead_lettered" : "embedding_job.failed",
     entityType: "relationship_context_embedding_job",
     entityId: job.id,
     metadataJson: {
       recordKind: job.recordKind,
       recordId: job.recordId,
+      attempts: job.attempts,
       error: message,
     },
   });

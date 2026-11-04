@@ -192,6 +192,7 @@ function buildSettleUpdate(input: SettleEmbeddingJobInput) {
     claimedAt: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "claimedAt")),
     completedAt: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "completedAt")),
     lastError: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "lastError")),
+    attempts: branch(RERUN_REQUESTED, sql`0`, sql`${relationshipContextEmbeddingJobs.attempts}`),
   };
 }
 
@@ -450,6 +451,8 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
           lastError: branch(REOPENABLE, sql`null`, jobValue(columns.lastError)),
           claimedAt: branch(REOPENABLE, sql`null`, jobValue(columns.claimedAt)),
           completedAt: branch(REOPENABLE, sql`null`, jobValue(columns.completedAt)),
+          // A reopen is news the record changed, so the attempt cap starts over.
+          attempts: branch(REOPENABLE, sql`0`, sql`${columns.attempts}`),
           updatedAt: input.now,
         })
         .where(eq(columns.id, input.jobId))

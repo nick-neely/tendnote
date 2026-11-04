@@ -1,0 +1,1 @@
+ALTER TYPE "public"."embedding_job_status" ADD VALUE 'dead_lettered';

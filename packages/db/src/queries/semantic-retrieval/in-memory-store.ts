@@ -54,6 +54,7 @@ function reopenFields(job: EmbeddingJob, input: { now: Date; runAfter: Date }) {
       claimedAt: null,
       completedAt: null,
       rerunRequestedAt: null,
+      attempts: 0,
     } satisfies Partial<EmbeddingJob>;
   }
 
@@ -70,6 +71,7 @@ function rerunFields(now: Date) {
     lastError: null,
     claimedAt: null,
     completedAt: null,
+    attempts: 0,
   } satisfies Partial<EmbeddingJob>;
 }
 

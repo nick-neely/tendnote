@@ -750,6 +750,13 @@
       "when": 1793662509660,
       "tag": "0106_background_job_delivery_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1793804558598,
+      "tag": "0107_embedding_job_dead_lettered",
+      "breakpoints": true
     }
   ]
 }

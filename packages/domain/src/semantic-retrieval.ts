@@ -157,7 +157,15 @@ export const embeddingJobStatusSchema = z.enum([
   "completed",
   "failed",
   "skipped",
+  "dead_lettered",
 ]);
+
+/**
+ * How many passes a job may fail before it is dead-lettered. A failure the provider will
+ * keep refusing (the record's text itself is the problem) otherwise retries on every
+ * recovery pass forever. An edit to the record reopens the job with a fresh count.
+ */
+export const EMBEDDING_JOB_MAX_ATTEMPTS = 5;
 
 export const relationshipContextEmbeddingSchema = z.object({
   id: z.string(),
@@ -286,10 +294,14 @@ export const claimableEmbeddingJobStatuses = [
  * without help. `running` is the one that needs help and cannot take it here: reopening a
  * job mid-flight only lets the finishing run write its verdict over the top. It records
  * {@link embeddingJobSchema}'s `rerunRequestedAt` instead (#330).
+ *
+ * `dead_lettered` gave up on the text the record had then; an edit is the one thing that
+ * can change the provider's answer, so it earns the job a fresh set of attempts.
  */
 export const reopenableEmbeddingJobStatuses = [
   "completed",
   "skipped",
+  "dead_lettered",
 ] as const satisfies ReadonlyArray<EmbeddingJobStatus>;
 
 export type ApprovedMemoryEmbeddingSource = {
