@@ -9,6 +9,7 @@ import {
   type EmbeddingContext,
   EmbeddingProviderError,
   failJob,
+  isTransientFailure,
   processApprovedMemory,
   processAsset,
   processAssetMemory,
@@ -261,6 +262,7 @@ async function settleProcessingError(
   if (error instanceof EmbeddingProviderError) {
     return failJob(ctx, job, error.message, now, retryDelayMs, {
       contentFingerprint: error.contentFingerprint,
+      transient: isTransientFailure(error),
     });
   }
   if (error instanceof RestrictedScrubError) {
@@ -268,7 +270,7 @@ async function settleProcessingError(
   }
 
   const message = error instanceof Error ? error.message : String(error);
-  return failJob(ctx, job, message, now, retryDelayMs);
+  return failJob(ctx, job, message, now, retryDelayMs, { transient: isTransientFailure(error) });
 }
 
 /** Dispatches a job to the embedding step for its record kind. */

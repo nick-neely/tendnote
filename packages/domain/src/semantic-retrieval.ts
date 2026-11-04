@@ -167,6 +167,14 @@ export const embeddingJobStatusSchema = z.enum([
  */
 export const EMBEDDING_JOB_MAX_ATTEMPTS = 5;
 
+/**
+ * The higher ceiling for a job whose failures are all transient (a rate limit, timeout,
+ * server error or lost connection), about two days of hourly passes. Such a failure clears
+ * once the dependency recovers, so five passes would dead-letter a healthy record during an
+ * ordinary outage; the ceiling still stops a "transient" error that never clears.
+ */
+export const EMBEDDING_JOB_MAX_TRANSIENT_ATTEMPTS = 48;
+
 export const relationshipContextEmbeddingSchema = z.object({
   id: z.string(),
   ownerUserId: z.string(),

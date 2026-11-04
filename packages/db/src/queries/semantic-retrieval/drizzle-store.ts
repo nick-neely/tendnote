@@ -179,6 +179,14 @@ function standingValue(input: SettleEmbeddingJobInput, key: CarriedJobColumn): S
  * has to reset the run being superseded whether or not this verdict mentioned it.
  */
 function buildSettleUpdate(input: SettleEmbeddingJobInput) {
+  // An edit that landed mid-run earns a fresh budget; otherwise the caller's count, if any.
+  const attempts = branch(
+    RERUN_REQUESTED,
+    sql`0`,
+    input.attempts !== undefined
+      ? sql`${input.attempts}`
+      : sql`${relationshipContextEmbeddingJobs.attempts}`,
+  );
   const cleared = {
     rerunRequestedAt: null,
     updatedAt: input.now,
@@ -191,17 +199,7 @@ function buildSettleUpdate(input: SettleEmbeddingJobInput) {
 
   if (input.status === "failed" || input.status === "pending") {
     // The verdict stands, but an edit that landed mid-run still earns a fresh budget.
-    return {
-      ...buildJobUpdate(input),
-      attempts: branch(
-        RERUN_REQUESTED,
-        sql`0`,
-        input.attempts !== undefined
-          ? sql`${input.attempts}`
-          : sql`${relationshipContextEmbeddingJobs.attempts}`,
-      ),
-      ...cleared,
-    };
+    return { ...buildJobUpdate(input), attempts, ...cleared };
   }
 
   return {
@@ -211,7 +209,7 @@ function buildSettleUpdate(input: SettleEmbeddingJobInput) {
     claimedAt: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "claimedAt")),
     completedAt: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "completedAt")),
     lastError: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "lastError")),
-    attempts: branch(RERUN_REQUESTED, sql`0`, sql`${relationshipContextEmbeddingJobs.attempts}`),
+    attempts,
   };
 }
 

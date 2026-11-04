@@ -10,6 +10,7 @@ import {
   decideSavedItemEmbedding,
   decideSourceRecordEmbedding,
   EMBEDDING_JOB_MAX_ATTEMPTS,
+  EMBEDDING_JOB_MAX_TRANSIENT_ATTEMPTS,
   type EmbeddingDecision,
   type GeneralAction,
   type Memory,
@@ -284,11 +285,16 @@ const INPUT_REJECTION_MESSAGE =
  */
 export function isInputRejection(error: unknown): boolean {
   if (typeof error === "string") return INPUT_REJECTION_MESSAGE.test(error);
-  for (const layer of errorChain(error)) {
-    const verdict = classifyErrorLayer(layer);
-    if (verdict !== null) return verdict;
-  }
-  return false;
+  const chain = errorChain(error);
+  // Statuses first, across every layer: a retry wrapper carries no status of its own, but
+  // its message quotes the last error's, so a rate limit's "token limit" text would
+  // otherwise read as a refused input before the 429 beneath it is seen.
+  const statuses = chain.map(layerStatus).filter((status) => status !== null);
+  if (statuses.some((status) => INPUT_REJECTION_STATUSES.has(status))) return true;
+  if (statuses.some(isTransientStatus)) return false;
+  return chain.some(
+    (layer) => typeof layer.message === "string" && INPUT_REJECTION_MESSAGE.test(layer.message),
+  );
 }
 
 type ErrorLayer = {
@@ -311,25 +317,55 @@ function errorChain(error: unknown): ErrorLayer[] {
   return chain;
 }
 
-/** True or false when this layer settles it, null to look at the layer beneath. */
-function classifyErrorLayer(layer: ErrorLayer): boolean | null {
+function layerStatus(layer: ErrorLayer): number | null {
   const status = typeof layer.statusCode === "number" ? layer.statusCode : layer.status;
-  if (typeof status === "number") {
-    if (INPUT_REJECTION_STATUSES.has(status)) return true;
-    // A rate limit or server error can mention tokens; its status says it is transient.
-    if (status === 408 || status === 429 || status >= 500) return false;
-  }
-  if (typeof layer.message === "string" && INPUT_REJECTION_MESSAGE.test(layer.message)) {
-    return true;
-  }
-  return null;
+  return typeof status === "number" ? status : null;
+}
+
+/** A rate limit, timeout or server error: its status says it is transient. */
+function isTransientStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+/** Network error codes, and Postgres SQLSTATE classes, for a dependency that went away. */
+const TRANSIENT_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "EAI_AGAIN",
+  "EPIPE",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+const TRANSIENT_SQLSTATE = /^(08|53|57P0)/;
+const TRANSIENT_MESSAGE =
+  /timed? ?out|aborted|fetch failed|socket hang up|connection (terminated|reset|refused)|service unavailable/i;
+
+/**
+ * Whether a failure is one that clears on its own once a dependency recovers: a transient
+ * HTTP status, a dropped connection or a timeout anywhere in the error chain. A refused
+ * input never is, whatever its message says.
+ */
+export function isTransientFailure(error: unknown): boolean {
+  if (isInputRejection(error)) return false;
+  return errorChain(error).some((layer) => {
+    const status = layerStatus(layer);
+    if (status !== null) return isTransientStatus(status);
+    const code = (layer as { code?: unknown }).code;
+    if (typeof code === "string" && (TRANSIENT_CODES.has(code) || TRANSIENT_SQLSTATE.test(code))) {
+      return true;
+    }
+    return typeof layer.message === "string" && TRANSIENT_MESSAGE.test(layer.message);
+  });
 }
 
 /**
  * Fail the job and requeue it on a backoff so a transient error retries.
  *
  * At the attempt cap the job is dead-lettered instead, unless `retryPastCap` is set for a
- * failure that must keep retrying however long it takes, such as a restricted scrub.
+ * failure that must keep retrying however long it takes, such as a restricted scrub. A
+ * `transient` failure gets the higher {@link EMBEDDING_JOB_MAX_TRANSIENT_ATTEMPTS} cap.
  *
  * Settled rather than plainly updated so that a rerun requested mid-run is consumed here
  * too. It needs no separate pass: the backoff already schedules one, and that retry reads
@@ -341,11 +377,12 @@ export async function failJob(
   message: string,
   now: Date,
   retryDelayMs: number,
-  options: { contentFingerprint?: string | null; retryPastCap?: boolean } = {},
+  options: { contentFingerprint?: string | null; retryPastCap?: boolean; transient?: boolean } = {},
 ): Promise<ProcessEmbeddingJobResult> {
-  const { contentFingerprint = null, retryPastCap = false } = options;
+  const { contentFingerprint = null, retryPastCap = false, transient = false } = options;
+  const cap = transient ? EMBEDDING_JOB_MAX_TRANSIENT_ATTEMPTS : EMBEDDING_JOB_MAX_ATTEMPTS;
   // `attempts` already counts this pass: the claim incremented it.
-  const deadLettered = !retryPastCap && job.attempts >= EMBEDDING_JOB_MAX_ATTEMPTS;
+  const deadLettered = !retryPastCap && job.attempts >= cap;
   const settlement = await ctx.store.settleEmbeddingJob({
     jobId: job.id,
     status: deadLettered ? "dead_lettered" : "failed",

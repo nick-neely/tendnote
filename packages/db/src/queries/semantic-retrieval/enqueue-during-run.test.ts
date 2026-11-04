@@ -426,8 +426,8 @@ describe("the Drizzle store decides both handoffs inside one statement", () => {
     }
     // Every job but a running one takes a fresh failure budget; a running one gets it from
     // the marker its own settle consumes.
-    expect(rendered(clause.attempts)).toContain(
-      'case when "relationship_context_embedding_jobs"."status" = $1',
+    expect(rendered(clause.attempts)).toBe(
+      'case when "relationship_context_embedding_jobs"."status" = $1 then "relationship_context_embedding_jobs"."attempts" else 0 end',
     );
   });
 
@@ -471,6 +471,25 @@ describe("the Drizzle store decides both handoffs inside one statement", () => {
       );
     }
     expect(clause.rerunRequestedAt).toBeNull();
+  });
+
+  it("applies a caller's attempts count to a terminal verdict unless a rerun was requested", async () => {
+    const clause = await captureSetClause((store) =>
+      store.settleEmbeddingJob({
+        jobId: "job-1",
+        status: "dead_lettered",
+        now: new Date(),
+        expectedClaimedAt: new Date(),
+        completedAt: new Date(),
+        lastError: "refused",
+        attempts: 3,
+      }),
+    );
+
+    expect(rendered(clause.attempts)).toBe(
+      'case when "relationship_context_embedding_jobs"."rerun_requested_at" is not null then 0 else $1 end',
+    );
+    expect(query(clause.attempts).params).toContain(3);
   });
 
   /**

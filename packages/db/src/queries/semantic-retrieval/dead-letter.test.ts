@@ -1,8 +1,8 @@
-import { EMBEDDING_JOB_MAX_ATTEMPTS } from "@tendnote/domain";
+import { EMBEDDING_JOB_MAX_ATTEMPTS, EMBEDDING_JOB_MAX_TRANSIENT_ATTEMPTS } from "@tendnote/domain";
 import { UsagePausedError } from "@tendnote/domain/usage-bounds";
 import { describe, expect, it } from "vitest";
 import { createHarness, OWNER } from "./harness";
-import { isInputRejection } from "./steps";
+import { isInputRejection, isTransientFailure } from "./steps";
 import type { EmbeddingAdapter } from "./types";
 
 /** A provider that refuses this record's text on every pass, as a too-long input would. */
@@ -66,20 +66,23 @@ describe("embedding job dead-lettering", () => {
     }
     expect((await harness.store.getEmbeddingJob(job.id))?.status).toBe("dead_lettered");
 
-    const { job: reopened, created } = await enqueue();
-    expect(created).toBe(false);
-    expect(reopened.id).toBe(job.id);
-    expect(reopened.status).toBe("pending");
-    expect(reopened.attempts).toBe(0);
-    expect(reopened.lastError).toBeNull();
-
+    // The edit, then the enqueue its save schedules: the only reopen this job gets.
     await harness.store.updateMemory({
       ownerUserId: OWNER,
       memoryId: memory.id,
       patch: { content: "Mara likes ceramics and glazing." },
     });
+    const { job: reopened, created } = await enqueue();
+    expect(created).toBe(false);
+    expect(reopened.id).toBe(job.id);
+    expect(await harness.store.getEmbeddingJob(job.id)).toMatchObject({
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+    });
+
     const retried = await runPass(harness, new Date());
-    expect(retried?.job.status).toBe("failed");
+    expect(retried?.job).toMatchObject({ id: job.id, status: "failed", attempts: 1 });
   });
 
   it("dead-letters a re-saved record with unchanged text again without calling the provider", async () => {
@@ -267,7 +270,7 @@ describe("embedding job dead-lettering", () => {
     expect(result.job).toMatchObject({ status: "failed", attempts: 0, rerunRequestedAt: null });
   });
 
-  it("keeps no fingerprint when a job dead-letters on transient failures, so the same text is tried again", async () => {
+  it("keeps retrying transient failures past the cap, and keeps no fingerprint when they dead-letter", async () => {
     let calls = 0;
     let outage = true;
     const harness = createHarness({
@@ -291,20 +294,49 @@ describe("embedding job dead-lettering", () => {
     const { job } = await enqueue();
 
     let now = new Date();
-    for (let pass = 0; pass < EMBEDDING_JOB_MAX_ATTEMPTS; pass += 1) {
-      await runPass(harness, now);
+    for (let pass = 1; pass < EMBEDDING_JOB_MAX_TRANSIENT_ATTEMPTS; pass += 1) {
+      const result = await runPass(harness, now);
+      expect(result?.job.status).toBe("failed");
       now = new Date(now.getTime() + 60 * 60 * 1000);
     }
-    const dead = await harness.store.getEmbeddingJob(job.id);
-    expect(dead?.status).toBe("dead_lettered");
-    expect(dead?.deadLetteredFingerprint).toBeNull();
+    const last = await runPass(harness, now);
+    expect(last?.job).toMatchObject({
+      status: "dead_lettered",
+      attempts: EMBEDDING_JOB_MAX_TRANSIENT_ATTEMPTS,
+      deadLetteredFingerprint: null,
+    });
 
     // The outage is over and the record is re-saved unchanged: the provider is tried again.
     outage = false;
     await enqueue();
-    const retried = await runPass(harness, now);
+    const retried = await runPass(harness, new Date(now.getTime() + 60 * 60 * 1000));
     expect(retried?.outcome).toBe("completed");
-    expect(calls).toBe(EMBEDDING_JOB_MAX_ATTEMPTS + 1);
+    expect(calls).toBe(EMBEDDING_JOB_MAX_TRANSIENT_ATTEMPTS + 1);
+    expect((await harness.store.getEmbeddingJob(job.id))?.status).toBe("completed");
+  });
+
+  it("dead-letters a failure that is neither transient nor a refused input at the normal cap", async () => {
+    const harness = createHarness({
+      adapter: {
+        async embedText() {
+          throw new Error("Unexpected embedding response shape.");
+        },
+      },
+    });
+    const memory = await harness.createApprovedMemory({ content: "Mara likes ceramics." });
+    await harness.processor.enqueueEmbeddingJob({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: memory.id,
+    });
+
+    let now = new Date();
+    let last = null;
+    for (let pass = 0; pass < EMBEDDING_JOB_MAX_ATTEMPTS; pass += 1) {
+      last = await runPass(harness, now);
+      now = new Date(now.getTime() + 60 * 60 * 1000);
+    }
+    expect(last?.job).toMatchObject({ status: "dead_lettered", deadLetteredFingerprint: null });
   });
 
   it("keeps retrying a restricted scrub past the cap until the delete succeeds", async () => {
@@ -345,6 +377,47 @@ describe("embedding job dead-lettering", () => {
     );
     expect((await store.getEmbeddingJob(job.id))?.status).not.toBe("dead_lettered");
     await expect(store.listRelationshipContextEmbeddings()).resolves.toEqual([]);
+  });
+});
+
+describe("isTransientFailure", () => {
+  it("treats rate limits, server errors, timeouts and dropped connections as transient", () => {
+    expect(
+      isTransientFailure(Object.assign(new Error("Too Many Requests"), { statusCode: 429 })),
+    ).toBe(true);
+    expect(
+      isTransientFailure(
+        Object.assign(new Error("Failed after 3 attempts."), {
+          lastError: Object.assign(new Error("Bad Gateway"), { statusCode: 502 }),
+        }),
+      ),
+    ).toBe(true);
+    expect(isTransientFailure(new Error("The operation was aborted due to timeout"))).toBe(true);
+    expect(
+      isTransientFailure(
+        new Error("Failed query: select 1", {
+          cause: Object.assign(new Error("Connection terminated unexpectedly"), { code: "08006" }),
+        }),
+      ),
+    ).toBe(true);
+    expect(isTransientFailure(Object.assign(new Error("read"), { code: "ECONNRESET" }))).toBe(true);
+  });
+
+  it("does not treat a refused input or an unknown failure as transient", () => {
+    expect(
+      isTransientFailure(new Error("This model's maximum context length is 8192 tokens.")),
+    ).toBe(false);
+    expect(isTransientFailure(Object.assign(new Error("Bad Request"), { statusCode: 400 }))).toBe(
+      false,
+    );
+    expect(isTransientFailure(new Error("Unexpected embedding response shape."))).toBe(false);
+    expect(
+      isTransientFailure(
+        new Error("Failed query: insert", {
+          cause: Object.assign(new Error("duplicate key"), { code: "23505" }),
+        }),
+      ),
+    ).toBe(false);
   });
 });
 
@@ -395,6 +468,21 @@ describe("isInputRejection", () => {
         Object.assign(new Error("Rate limit reached on tokens per min: token limit 1000000"), {
           statusCode: 429,
         }),
+      ),
+    ).toBe(false);
+    // The AI SDK's retry wrapper has no status, but its message quotes the 429's text.
+    expect(
+      isInputRejection(
+        Object.assign(
+          new Error(
+            "Failed after 3 attempts. Last error: Rate limit reached: token limit exceeded",
+          ),
+          {
+            lastError: Object.assign(new Error("Rate limit reached: token limit exceeded"), {
+              statusCode: 429,
+            }),
+          },
+        ),
       ),
     ).toBe(false);
     expect(isInputRejection(new Error("The operation was aborted due to timeout"))).toBe(false);
