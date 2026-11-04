@@ -72,6 +72,18 @@ export class EmbeddingProviderError extends Error {
   }
 }
 
+/**
+ * Deleting a restricted record's embeddings failed. Its job keeps retrying past the attempt
+ * cap: dead-lettering it would leave the restricted text and its vector stored, with nothing
+ * left to retry the delete once the database recovers.
+ */
+export class RestrictedScrubError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "RestrictedScrubError";
+  }
+}
+
 /** The run built the same text its job was dead-lettered on, so it skips the provider. */
 export class UnchangedDeadLetteredTextError extends Error {
   constructor() {
@@ -300,6 +312,9 @@ export function isInputRejection(error: unknown): boolean {
 /**
  * Fail the job and requeue it on a backoff so a transient error retries.
  *
+ * At the attempt cap the job is dead-lettered instead, unless `retryPastCap` is set for a
+ * failure that must keep retrying however long it takes, such as a restricted scrub.
+ *
  * Settled rather than plainly updated so that a rerun requested mid-run is consumed here
  * too. It needs no separate pass: the backoff already schedules one, and that retry reads
  * the record as it now stands.
@@ -310,10 +325,11 @@ export async function failJob(
   message: string,
   now: Date,
   retryDelayMs: number,
-  contentFingerprint: string | null = null,
+  options: { contentFingerprint?: string | null; retryPastCap?: boolean } = {},
 ): Promise<ProcessEmbeddingJobResult> {
+  const { contentFingerprint = null, retryPastCap = false } = options;
   // `attempts` already counts this pass: the claim incremented it.
-  const deadLettered = job.attempts >= EMBEDDING_JOB_MAX_ATTEMPTS;
+  const deadLettered = !retryPastCap && job.attempts >= EMBEDDING_JOB_MAX_ATTEMPTS;
   const settlement = await ctx.store.settleEmbeddingJob({
     jobId: job.id,
     status: deadLettered ? "dead_lettered" : "failed",

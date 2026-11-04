@@ -306,6 +306,46 @@ describe("embedding job dead-lettering", () => {
     expect(retried?.outcome).toBe("completed");
     expect(calls).toBe(EMBEDDING_JOB_MAX_ATTEMPTS + 1);
   });
+
+  it("keeps retrying a restricted scrub past the cap until the delete succeeds", async () => {
+    const harness = createHarness();
+    const { store } = harness;
+    const memory = await harness.createApprovedMemory({ content: "Mara likes ceramics." });
+    await harness.embedMemory(memory.id);
+    await store.updateMemory({
+      ownerUserId: OWNER,
+      memoryId: memory.id,
+      patch: { sensitivity: "restricted" },
+    });
+    const { job } = await harness.processor.enqueueEmbeddingJob({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: memory.id,
+    });
+
+    const deleteForClaim = store.deleteRelationshipContextEmbeddingsForRecordForClaim;
+    let databaseDown = true;
+    store.deleteRelationshipContextEmbeddingsForRecordForClaim = async (input) => {
+      if (databaseDown) throw new Error("database connection lost");
+      return deleteForClaim(input);
+    };
+
+    let now = new Date();
+    for (let pass = 0; pass < EMBEDDING_JOB_MAX_ATTEMPTS + 2; pass += 1) {
+      const result = await runPass(harness, now);
+      expect(result?.job.status).toBe("failed");
+      now = new Date(now.getTime() + 60 * 60 * 1000);
+    }
+    await expect(store.listRelationshipContextEmbeddings()).resolves.toHaveLength(1);
+
+    databaseDown = false;
+    const scrubbed = await runPass(harness, now);
+    expect(scrubbed).toEqual(
+      expect.objectContaining({ outcome: "skipped", reason: "restricted_content" }),
+    );
+    expect((await store.getEmbeddingJob(job.id))?.status).not.toBe("dead_lettered");
+    await expect(store.listRelationshipContextEmbeddings()).resolves.toEqual([]);
+  });
 });
 
 describe("isInputRejection", () => {

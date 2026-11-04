@@ -15,6 +15,7 @@ import {
   processGeneralAction,
   processSavedItem,
   processSourceRecord,
+  RestrictedScrubError,
   redeadLetterUnchangedJob,
   SupersededEmbeddingClaimError,
   scrubRestrictedEmbeddings,
@@ -185,7 +186,12 @@ async function processEmbeddingJob(
     const result = await processJobByKind(ctx, job);
 
     if ("skipReason" in result) {
-      await scrubRestrictedEmbeddings(ctx, job, result.skipReason);
+      try {
+        await scrubRestrictedEmbeddings(ctx, job, result.skipReason);
+      } catch (error) {
+        if (error instanceof SupersededEmbeddingClaimError) throw error;
+        throw new RestrictedScrubError(error);
+      }
 
       return skipJob(ctx, job, result.skipReason, now, extractSkipSources(result));
     }
@@ -258,7 +264,12 @@ async function settleProcessingError(
     return redeadLetterUnchangedJob(ctx, job, error.message, now);
   }
   if (error instanceof EmbeddingProviderError) {
-    return failJob(ctx, job, error.message, now, retryDelayMs, error.contentFingerprint);
+    return failJob(ctx, job, error.message, now, retryDelayMs, {
+      contentFingerprint: error.contentFingerprint,
+    });
+  }
+  if (error instanceof RestrictedScrubError) {
+    return failJob(ctx, job, error.message, now, retryDelayMs, { retryPastCap: true });
   }
 
   const message = error instanceof Error ? error.message : String(error);
