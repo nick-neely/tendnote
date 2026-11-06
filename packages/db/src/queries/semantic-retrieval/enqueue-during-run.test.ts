@@ -493,6 +493,30 @@ describe("the Drizzle store decides both handoffs inside one statement", () => {
   });
 
   /**
+   * A dead-letter clears `claimedAt`, so both arms of its branch are null. Postgres types an
+   * all-null `case` as `text`, and the timestamp column then refuses the whole statement -
+   * which is how the first dead-letter in production failed every recovery pass.
+   */
+  it("types the nulls a dead-letter writes to its timestamp columns", async () => {
+    const clause = await captureSetClause((store) =>
+      store.settleEmbeddingJob({
+        jobId: "job-1",
+        status: "dead_lettered",
+        now: new Date(),
+        expectedClaimedAt: new Date(),
+        lastError: "refused",
+        claimedAt: null,
+        completedAt: new Date(),
+        deadLetteredFingerprint: null,
+      }),
+    );
+
+    expect(rendered(clause.claimedAt)).toBe(
+      'case when "relationship_context_embedding_jobs"."rerun_requested_at" is not null then null else null::timestamptz end',
+    );
+  });
+
+  /**
    * A parameter inside a `sql` template skips the column mapping drizzle applies to an
    * ordinary `set` value, and the driver then refuses the raw `Date` it is handed - at
    * runtime, on the one statement no unit test in this suite executes. Every timestamp in
